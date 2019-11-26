@@ -21,13 +21,9 @@ dataset from an existing version, all chunks that are modified are copied.
 This will be implemented using HDF5 virtual datasets. HDF5 virtual datasets
 can reference arbitrary subsets of a dataset, however, for our implementation,
 we will only reference full chunks. This will greatly simplify the process of
-producing an index into the final dataset.
-
-<!-- Copy on write -->
-
-<!-- Chunk based -->
-
-<!-- Chunk storage dataset vs. Reference storage -->
+producing an index into the final dataset. This is analogous to a
+copy-on-write filesystem that works at the block level. The most appropriate
+chunk size can be chosen to fit the specific application.
 
 Every dataset in the system will be part of a snapshot or "version". In order
 for a modification to be saved, it must be added to a new version. Versions
