@@ -64,8 +64,8 @@ array will be passed to a function
 ```py
 with versioned_hdf5.open('data.hdf5', '+') as data:
     data.current_version.new_version(new_array,
-                                 name='name', # optional
-                                 )
+                                     name='name', # optional
+                                     )
 ```
 
 The library will then automatically take care of chunking the array and
