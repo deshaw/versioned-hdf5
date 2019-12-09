@@ -53,7 +53,7 @@ def write_dataset(f, name, data):
 def create_virtual_dataset(f, name, slices):
     for s in slices[:-1]:
         if s.stop - s.start != CHUNK_SIZE:
-            raise NotImplementedError("Smaller than chunk size slice is only supported as the las slice.")
+            raise NotImplementedError("Smaller than chunk size slice is only supported as the last slice.")
     shape = (CHUNK_SIZE*(len(slices) - 1) + slices[-1].stop - slices[-1].start,)
 
     layout = VirtualLayout(shape)
