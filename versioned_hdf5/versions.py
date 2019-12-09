@@ -50,7 +50,12 @@ def write_dataset(f, name, data):
         slices.append(raw_slice)
     return slices
 
-def create_virtual_dataset(f, name, shape, slices):
+def create_virtual_dataset(f, name, slices):
+    for s in slices[:-1]:
+        if s.stop - s.start != CHUNK_SIZE:
+            raise NotImplementedError("Smaller than chunk size slice is only supported as the las slice.")
+    shape = (CHUNK_SIZE*(len(slices) - 1) + slices[-1].stop - slices[-1].start,)
+
     layout = VirtualLayout(shape)
     vs = VirtualSource(f['_version_data/raw_data'][name])
 
