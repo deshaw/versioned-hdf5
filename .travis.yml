@@ -21,7 +21,6 @@ install:
 
 script:
   - set -e
-  - set -x
   - pyflakes .
   - python -We:invalid -We::SyntaxWarning -m compileall -f -q versioned_hdf5/
   - pytest
