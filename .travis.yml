@@ -24,5 +24,5 @@ script:
   - pyflakes .
   - python -We:invalid -We::SyntaxWarning -m compileall -f -q versioned_hdf5/
   - pytest
-  # Make sure it installs
-  - python setup.py install
+  # # Make sure it installs
+  # - python setup.py install
