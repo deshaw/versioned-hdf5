@@ -1,4 +1,5 @@
 from h5py import VirtualLayout, VirtualSource
+import math
 
 CHUNK_SIZE = 2**20
 
@@ -8,6 +9,13 @@ def get_chunks(shape):
     if len(shape) > 1:
         raise NotImplementedError
     return (CHUNK_SIZE,)
+
+def split_chunks(shape):
+    if len(shape) > 1:
+        raise NotImplementedError
+
+    for i in range(math.ceil(shape[0]/CHUNK_SIZE)):
+        yield slice(CHUNK_SIZE*i, CHUNK_SIZE*(i + 1))
 
 def initialize(f):
     f.create_group('_version_data/raw_data')
@@ -26,22 +34,29 @@ def create_base_dataset(f, name, *, shape=None, data=None):
 def write_dataset(f, name, data):
     if name not in f['/_version_data/raw_data']:
         create_base_dataset(f, name, data=data)
-        return
+        return [slice(0, data.shape[0])]
 
     ds = f['/_version_data/raw_data'][name]
     # TODO: Handle more than one dimension
     old_shape = ds.shape
-    ds.resize((old_shape[0] + data.shape[0],))
-    ds[old_shape[0]:] = data
-    return ds
+    idx = ds.shape[0]//CHUNK_SIZE
+    slices = []
+    ds.resize((old_shape[0] + math.ceil(data.shape[0]/CHUNK_SIZE)*CHUNK_SIZE,))
+    for i, s in enumerate(split_chunks(data.shape), idx):
+        data_s = data[s]
+        raw_slice = slice(i*CHUNK_SIZE, i*CHUNK_SIZE + data_s.shape[0])
+        ds[raw_slice] = data_s
+        # TODO: Store metadata about the true shape somewhere
+        slices.append(raw_slice)
+    return slices
 
-def create_virtual_dataset(f, name, shape, indices):
+def create_virtual_dataset(f, name, shape, slices):
     layout = VirtualLayout(shape)
     vs = VirtualSource(f['_version_data/raw_data'][name])
 
-    for i, idx in enumerate(indices):
+    for i, s in enumerate(slices):
         # TODO: This needs to handle more than one dimension
-        layout[i*CHUNK_SIZE:(i+1)*CHUNK_SIZE] = vs[idx*CHUNK_SIZE:(idx+1)*CHUNK_SIZE]
+        layout[i*CHUNK_SIZE:i*CHUNK_SIZE + s.stop - s.start] = vs[s]
 
     virtual_data = f.create_virtual_dataset(name, layout)
     return virtual_data
