@@ -1,0 +1,19 @@
+language: python
+
+sudo: false
+dist: xenial
+python:
+  - 3.6
+  - 3.7
+  - 3.8
+
+install:
+  - pip install pyflakes pytest pytest-doctestplus
+
+script:
+  - set -e
+  - pyflakes .
+  - python -We:invalid -We::SyntaxWarning -m compileall -f -q versioned_hdf5/
+  - pytest
+  # Make sure it installs
+  - python setup.py install
