@@ -68,3 +68,18 @@ def test_create_virtual_dataset():
         assert virtual_data.shape == (2*CHUNK_SIZE,)
         assert_equal(virtual_data[0:CHUNK_SIZE], 1.0)
         assert_equal(virtual_data[CHUNK_SIZE:2*CHUNK_SIZE], 3.0)
+
+
+def test_create_virtual_dataset_offset():
+    with setup() as f:
+        slices1 = write_dataset(f, 'test_data', np.ones((CHUNK_SIZE,)))
+        slices2 = write_dataset(f, 'test_data',
+                                np.concatenate((2*np.ones((CHUNK_SIZE,)),
+                                                3*np.ones((CHUNK_SIZE - 2,)))))
+
+        virtual_data = create_virtual_dataset(f, 'test_data', (2*CHUNK_SIZE - 2,),
+                                              slices1 + [slices2[1]])
+
+        assert virtual_data.shape == (2*CHUNK_SIZE - 2,)
+        assert_equal(virtual_data[0:CHUNK_SIZE], 1.0)
+        assert_equal(virtual_data[CHUNK_SIZE:2*CHUNK_SIZE - 2], 3.0)
