@@ -8,10 +8,20 @@ python:
   - 3.8
 
 install:
-  - pip install pyflakes pytest pytest-doctestplus
+  - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh;
+  - bash miniconda.sh -b -p $HOME/miniconda
+  - export PATH="$HOME/miniconda/bin:$PATH"
+  - hash -r
+  - conda config --set always_yes yes --set changeps1 no
+  - conda config --add channels conda-forge
+  - conda update -q conda
+  - conda info -a
+  - conda create -n test-environment pyflakes pytest pytest-doctestplus h5py
+  - source activate test-environment
 
 script:
   - set -e
+  - set -x
   - pyflakes .
   - python -We:invalid -We::SyntaxWarning -m compileall -f -q versioned_hdf5/
   - pytest
