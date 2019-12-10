@@ -26,15 +26,20 @@ def create_base_dataset(f, name, *, shape=None, data=None):
     if shape is None:
         shape = data.shape
     ds = f['/_version_data/raw_data'].create_dataset(name, shape=shape, data=data,
-                                            chunks=get_chunks(shape),
-                                            maxshape=(None,)*len(shape))
+                                                chunks=get_chunks(shape),
+                                                maxshape=(None,)*len(shape))
 
-    return ds
+    ds.resize((math.ceil(shape[0]/CHUNK_SIZE)*CHUNK_SIZE,))
+
+    slices = []
+    for i, s in enumerate(split_chunks(data.shape)):
+        raw_slice = slice(i*CHUNK_SIZE, i*CHUNK_SIZE + s.stop - s.start)
+        slices.append(raw_slice)
+    return slices
 
 def write_dataset(f, name, data):
     if name not in f['/_version_data/raw_data']:
-        create_base_dataset(f, name, data=data)
-        return [slice(0, data.shape[0])]
+        return create_base_dataset(f, name, data=data)
 
     ds = f['/_version_data/raw_data'][name]
     # TODO: Handle more than one dimension
@@ -46,7 +51,6 @@ def write_dataset(f, name, data):
         data_s = data[s]
         raw_slice = slice(i*CHUNK_SIZE, i*CHUNK_SIZE + data_s.shape[0])
         ds[raw_slice] = data_s
-        # TODO: Store metadata about the true shape somewhere
         slices.append(raw_slice)
     return slices
 
