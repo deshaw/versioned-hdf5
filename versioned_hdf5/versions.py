@@ -18,14 +18,15 @@ def split_chunks(shape):
         yield slice(CHUNK_SIZE*i, CHUNK_SIZE*(i + 1))
 
 def initialize(f):
-    f.create_group('_version_data/raw_data')
+    f.create_group('_version_data')
 
 def create_base_dataset(f, name, *, shape=None, data=None):
     if data is not None and shape is not None:
         raise ValueError("Only one of data or shape should be passed")
     if shape is None:
         shape = data.shape
-    ds = f['/_version_data/raw_data'].create_dataset(name, shape=shape, data=data,
+    group = f['/_version_data'].create_group(name)
+    ds = group.create_dataset('raw_data', shape=shape, data=data,
                                                 chunks=get_chunks(shape),
                                                 maxshape=(None,)*len(shape))
 
@@ -38,10 +39,10 @@ def create_base_dataset(f, name, *, shape=None, data=None):
     return slices
 
 def write_dataset(f, name, data):
-    if name not in f['/_version_data/raw_data']:
+    if name not in f['/_version_data']:
         return create_base_dataset(f, name, data=data)
 
-    ds = f['/_version_data/raw_data'][name]
+    ds = f['/_version_data'][name]['raw_data']
     # TODO: Handle more than one dimension
     old_shape = ds.shape
     idx = ds.shape[0]//CHUNK_SIZE
@@ -61,7 +62,7 @@ def create_virtual_dataset(f, name, slices):
     shape = (CHUNK_SIZE*(len(slices) - 1) + slices[-1].stop - slices[-1].start,)
 
     layout = VirtualLayout(shape)
-    vs = VirtualSource(f['_version_data/raw_data'][name])
+    vs = VirtualSource(f['_version_data'][name]['raw_data'])
 
     for i, s in enumerate(slices):
         # TODO: This needs to handle more than one dimension

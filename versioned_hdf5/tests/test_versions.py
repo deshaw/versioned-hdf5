@@ -31,7 +31,7 @@ def test_write_dataset():
         assert slices2 == [slice(2*CHUNK_SIZE, 3*CHUNK_SIZE),
                            slice(3*CHUNK_SIZE, 4*CHUNK_SIZE)]
 
-        ds = f['/_version_data/raw_data/test_data']
+        ds = f['/_version_data/test_data/raw_data']
         assert ds.shape == (4*CHUNK_SIZE,)
         assert_equal(ds[0:2*CHUNK_SIZE], 1.0)
         assert_equal(ds[2*CHUNK_SIZE:3*CHUNK_SIZE], 2.0)
@@ -50,7 +50,7 @@ def test_write_dataset_offset():
         assert slices2 == [slice(2*CHUNK_SIZE, 3*CHUNK_SIZE),
                            slice(3*CHUNK_SIZE, 4*CHUNK_SIZE - 2)]
 
-        ds = f['/_version_data/raw_data/test_data']
+        ds = f['/_version_data/test_data/raw_data']
         assert ds.shape == (4*CHUNK_SIZE,)
         assert_equal(ds[0*CHUNK_SIZE:2*CHUNK_SIZE], 1.0)
         assert_equal(ds[2*CHUNK_SIZE:3*CHUNK_SIZE], 2.0)
