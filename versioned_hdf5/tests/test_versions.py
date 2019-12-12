@@ -87,7 +87,7 @@ def test_create_virtual_dataset_offset():
         assert_equal(virtual_data[0:CHUNK_SIZE], 1.0)
         assert_equal(virtual_data[CHUNK_SIZE:2*CHUNK_SIZE - 2], 3.0)
 
-def test_create_hashtable():
+def test_hashtable():
     with setup() as f:
-        create_base_dataset(f, 'test_data', data=np.ones((CHUNK_SIZE,)))
+        f['/_version_data'].create_group('test_data')
         create_hashtable(f, 'test_data')

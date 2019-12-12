@@ -28,6 +28,7 @@ def create_base_dataset(f, name, *, shape=None, data=None):
     if shape is None:
         shape = data.shape
     group = f['/_version_data'].create_group(name)
+    create_hashtable(f, name)
     ds = group.create_dataset('raw_data', shape=shape, data=data,
                                                 chunks=get_chunks(shape),
                                                 maxshape=(None,)*len(shape))
@@ -43,21 +44,30 @@ def create_base_dataset(f, name, *, shape=None, data=None):
 def hash(data):
     return hashlib.sha256(bytes(data)).digest()
 
+# TODO: Wrap this in a dict-like class
 def create_hashtable(f, name):
     hash_size = 32 # hash_size = hashlib.sha256().digest_size
 
     # TODO: Use get_chunks() here (the real chunk size should be based on
     # bytes, not number of elements)
     keys_chunks = (CHUNK_SIZE//hash_size, hash_size)
-    f['/_version_data'][name].create_dataset('hash_table_keys',
+    keys = f['/_version_data'][name].create_dataset('hash_table_keys',
                                              shape=keys_chunks, dtype='B',
                                              chunks=keys_chunks,
                                              maxshape=(None, hash_size))
+    keys.attrs['largest_index'] = 0
     values_chunks = (CHUNK_SIZE//2, 2)
-    f['/_version_data'][name].create_dataset('hash_table_values',
+    values = f['/_version_data'][name].create_dataset('hash_table_values',
                                              shape=values_chunks, dtype='u8',
                                              chunks=values_chunks,
                                              maxshape=(None, 2))
+    return keys, values
+
+def load_hashtable(f, name):
+    keys = f['/_version_data'][name]['hash_table_keys']
+    largest_index = keys.attrs['largest_index']
+    values = f['/_version_data'][name]['hash_table_values']
+    return {bytes(keys[i]): tuple(values(i)) for i in range(largest_index)}
 
 def write_dataset(f, name, data):
     if name not in f['/_version_data']:
