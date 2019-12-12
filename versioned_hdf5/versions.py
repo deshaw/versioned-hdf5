@@ -1,5 +1,7 @@
 from h5py import VirtualLayout, VirtualSource
+
 import math
+import hashlib
 
 CHUNK_SIZE = 2**20
 
@@ -37,6 +39,25 @@ def create_base_dataset(f, name, *, shape=None, data=None):
         raw_slice = slice(i*CHUNK_SIZE, i*CHUNK_SIZE + s.stop - s.start)
         slices.append(raw_slice)
     return slices
+
+def hash(data):
+    return hashlib.sha256(bytes(data)).digest()
+
+def create_hashtable(f, name):
+    hash_size = 32 # hash_size = hashlib.sha256().digest_size
+
+    # TODO: Use get_chunks() here (the real chunk size should be based on
+    # bytes, not number of elements)
+    keys_chunks = (CHUNK_SIZE//hash_size, hash_size)
+    f['/_version_data'][name].create_dataset('hash_table_keys',
+                                             shape=keys_chunks, dtype='B',
+                                             chunks=keys_chunks,
+                                             maxshape=(None, hash_size))
+    values_chunks = (CHUNK_SIZE//2, 2)
+    f['/_version_data'][name].create_dataset('hash_table_values',
+                                             shape=values_chunks, dtype='u8',
+                                             chunks=values_chunks,
+                                             maxshape=(None, 2))
 
 def write_dataset(f, name, data):
     if name not in f['/_version_data']:

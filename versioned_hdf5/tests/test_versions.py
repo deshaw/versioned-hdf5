@@ -3,7 +3,8 @@ import h5py
 import numpy as np
 from numpy.testing import assert_equal
 
-from ..versions import (create_base_dataset, initialize, write_dataset, create_virtual_dataset, CHUNK_SIZE)
+from ..versions import (create_base_dataset, initialize, write_dataset,
+                        create_virtual_dataset, CHUNK_SIZE, create_hashtable)
 
 def setup():
     f = h5py.File('test.hdf5', 'w')
@@ -85,3 +86,8 @@ def test_create_virtual_dataset_offset():
         assert virtual_data.shape == (2*CHUNK_SIZE - 2,)
         assert_equal(virtual_data[0:CHUNK_SIZE], 1.0)
         assert_equal(virtual_data[CHUNK_SIZE:2*CHUNK_SIZE - 2], 3.0)
+
+def test_create_hashtable():
+    with setup() as f:
+        create_base_dataset(f, 'test_data', data=np.ones((CHUNK_SIZE,)))
+        create_hashtable(f, 'test_data')
