@@ -2,6 +2,7 @@ from h5py import VirtualLayout, VirtualSource
 
 import math
 import hashlib
+from collections.abc import MutableMapping
 
 CHUNK_SIZE = 2**20
 
@@ -28,7 +29,7 @@ def create_base_dataset(f, name, *, shape=None, data=None):
     if shape is None:
         shape = data.shape
     group = f['/_version_data'].create_group(name)
-    create_hashtable(f, name)
+    # h = hashtable(f, name)
     ds = group.create_dataset('raw_data', shape=shape, data=data,
                                                 chunks=get_chunks(shape),
                                                 maxshape=(None,)*len(shape))
@@ -41,33 +42,89 @@ def create_base_dataset(f, name, *, shape=None, data=None):
         slices.append(raw_slice)
     return slices
 
-def hash(data):
-    return hashlib.sha256(bytes(data)).digest()
+class hashtable(MutableMapping):
+    def __init__(self, f, name):
+        self.f = f
+        self.name = name
+        if 'hash_table_keys' in f['_version_data'][name]:
+            self._load_hashtable()
+        else:
+            self._create_hashtable()
 
-# TODO: Wrap this in a dict-like class
-def create_hashtable(f, name):
+        self.keys = f['/_version_data'][name]['hash_table_keys']
+        self.values = f['/_version_data'][name]['hash_table_values']
+
     hash_size = 32 # hash_size = hashlib.sha256().digest_size
 
-    # TODO: Use get_chunks() here (the real chunk size should be based on
-    # bytes, not number of elements)
-    keys_chunks = (CHUNK_SIZE//hash_size, hash_size)
-    keys = f['/_version_data'][name].create_dataset('hash_table_keys',
-                                             shape=keys_chunks, dtype='B',
-                                             chunks=keys_chunks,
-                                             maxshape=(None, hash_size))
-    keys.attrs['largest_index'] = 0
-    values_chunks = (CHUNK_SIZE//2, 2)
-    values = f['/_version_data'][name].create_dataset('hash_table_values',
-                                             shape=values_chunks, dtype='u8',
-                                             chunks=values_chunks,
-                                             maxshape=(None, 2))
-    return keys, values
+    def hash(self, data):
+        return hashlib.sha256(bytes(data)).digest()
 
-def load_hashtable(f, name):
-    keys = f['/_version_data'][name]['hash_table_keys']
-    largest_index = keys.attrs['largest_index']
-    values = f['/_version_data'][name]['hash_table_values']
-    return {bytes(keys[i]): tuple(values(i)) for i in range(largest_index)}
+    @property
+    def largest_index(self):
+        return self.keys.attrs['largest_index']
+
+    @largest_index.setter
+    def largest_index(self, value):
+        self.keys.attrs['largest_index'] = value
+
+    # TODO: Wrap this in a dict-like class
+    def _create_hashtable(self):
+        f = self.f
+        name = self.name
+
+        # TODO: Use get_chunks() here (the real chunk size should be based on
+        # bytes, not number of elements)
+        keys_chunks = (CHUNK_SIZE//self.hash_size, self.hash_size)
+        keys = f['/_version_data'][name].create_dataset('hash_table_keys',
+                                                 shape=keys_chunks, dtype='B',
+                                                 chunks=keys_chunks,
+                                                 maxshape=(None, self.hash_size))
+        keys.attrs['largest_index'] = 0
+        values_chunks = (CHUNK_SIZE//2, 2)
+        values = f['/_version_data'][name].create_dataset('hash_table_values',
+                                                 shape=values_chunks, dtype='u8',
+                                                 chunks=values_chunks,
+                                                 maxshape=(None, 2))
+        self.keys = keys
+        self.values = values
+        self._d = {}
+        self._indices = {}
+
+    def _load_hashtable(self):
+        keys = self.keys
+        largest_index = self.largest_index
+        values = self.values
+
+        self._d = {bytes(keys[i]): tuple(values(i)) for i in range(largest_index)}
+        self._indices = {bytes(keys[i]): i for i in range(largest_index)}
+
+    def __getitem__(self, key):
+        return self._d[key]
+
+    def __setitem__(self, key, value):
+        if not isinstance(key, bytes):
+            raise TypeError("key must be bytes")
+        if len(key) != self.hash_size:
+            raise ValueError("key must be %d bytes" % self.hash_size)
+
+        if key in self._d:
+            assert bytes(self.keys[self._indices[key]]) == key
+            self.values[self._indices[key]] = value
+        else:
+            self.keys[self.largest_index] = tuple(key)
+            self.values[self.largest_index] = value
+            self._indices[key] = self.largest_index
+            self.largest_index += 1
+        self._d[key] = value
+
+    def __delitem__(self, key):
+        raise NotImplementedError
+
+    def __iter__(self):
+        return iter(self._d)
+
+    def __len__(self):
+        return len(self._d)
 
 def write_dataset(f, name, data):
     if name not in f['/_version_data']:

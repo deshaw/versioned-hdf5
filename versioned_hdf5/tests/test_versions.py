@@ -4,11 +4,13 @@ import numpy as np
 from numpy.testing import assert_equal
 
 from ..versions import (create_base_dataset, initialize, write_dataset,
-                        create_virtual_dataset, CHUNK_SIZE, create_hashtable)
+                        create_virtual_dataset, CHUNK_SIZE, hashtable)
 
-def setup():
+def setup(name=None):
     f = h5py.File('test.hdf5', 'w')
     initialize(f)
+    if name:
+        f['_version_data'].create_group(name)
     return f
 
 def test_initialize():
@@ -88,6 +90,13 @@ def test_create_virtual_dataset_offset():
         assert_equal(virtual_data[CHUNK_SIZE:2*CHUNK_SIZE - 2], 3.0)
 
 def test_hashtable():
-    with setup() as f:
-        f['/_version_data'].create_group('test_data')
-        create_hashtable(f, 'test_data')
+    with setup('test_data') as f:
+        h = hashtable(f, 'test_data')
+        assert len(h) == 0
+        h[b'\xff'*32] = (0, 1)
+        assert len(h) == 1
+        assert h[b'\xff'*32] == (0, 1)
+        assert h.largest_index == 1
+        assert bytes(h.keys[0]) == b'\xff'*32
+        assert tuple(h.values[0]) == (0, 1)
+        assert h == {b'\xff'*32: (0, 1)}
