@@ -1,0 +1,37 @@
+{% set name = "versioned-hdf5" %}
+{% set version = environ.get('GIT_DESCRIBE_TAG', 'untagged')|string|replace('-','_') %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  git_url: {{ environ.get('FEEDSTOCK_ROOT', '..') }}
+
+build:
+  noarch: python
+  number: {{ environ.get('GIT_DESCRIBE_NUMBER', '0' }}
+  string: {{ [build_number, ('h' + PKG_HASH), environ.get('GIT_DESCRIBE_HASH', '')]|join('_') }}
+  script: "{{ PYTHON }} -m pip install . -vv"
+
+requirements:
+  host:
+    - python
+    - pip
+  run:
+    - python
+    - h5py
+
+test:
+  imports:
+    - versioned_hdf5
+  commands:
+    - pytest
+  requires:
+    - pytest
+
+about:
+  home: https://github.com/conda-forge/conda-smithy
+  license: MIT
+  license_family: MIT
+  license_file: LICENSE
