@@ -2,7 +2,7 @@ from pytest import raises
 
 from ..hashtable import hashtable
 
-from .test_versions import setup
+from .test_backend import setup
 
 def test_hashtable():
     with setup('test_data') as f:

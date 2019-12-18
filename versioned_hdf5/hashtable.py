@@ -47,7 +47,7 @@ class hashtable(MutableMapping):
         self.hash_table.attrs['largest_index'] = value
 
     def _create_hashtable(self):
-        from .versions import CHUNK_SIZE
+        from .backend import CHUNK_SIZE
 
         f = self.f
         name = self.name

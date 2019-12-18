@@ -3,7 +3,7 @@ import h5py
 import numpy as np
 from numpy.testing import assert_equal
 
-from ..versions import (create_base_dataset, initialize, write_dataset,
+from ..backend import (create_base_dataset, initialize, write_dataset,
                         create_virtual_dataset, CHUNK_SIZE)
 
 def setup(name=None):
