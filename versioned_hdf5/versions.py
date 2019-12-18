@@ -2,6 +2,8 @@ from h5py import VirtualLayout, VirtualSource
 
 import math
 
+from .hashtable import hashtable
+
 CHUNK_SIZE = 2**20
 
 def get_chunks(shape):
@@ -21,23 +23,18 @@ def initialize(f):
     f.create_group('_version_data')
 
 def create_base_dataset(f, name, *, shape=None, data=None):
-    if data is not None and shape is not None:
-        raise ValueError("Only one of data or shape should be passed")
-    if shape is None:
-        shape = data.shape
     group = f['/_version_data'].create_group(name)
-    # h = hashtable(f, name)
-    ds = group.create_dataset('raw_data', shape=shape, data=data,
-                                                chunks=get_chunks(shape),
-                                                maxshape=(None,)*len(shape))
+    group.create_dataset('raw_data', shape=(0,),
+                              chunks=(CHUNK_SIZE,), maxshape=(None,))
 
-    ds.resize((math.ceil(shape[0]/CHUNK_SIZE)*CHUNK_SIZE,))
+    return write_dataset(f, name, data)
 
-    slices = []
-    for i, s in enumerate(split_chunks(data.shape)):
-        raw_slice = slice(i*CHUNK_SIZE, i*CHUNK_SIZE + s.stop - s.start)
-        slices.append(raw_slice)
-    return slices
+# Helper functions to workaround slices not being hashable
+def s2t(s):
+    return (s.start, s.stop)
+
+def t2s(t):
+    return slice(*t)
 
 def write_dataset(f, name, data):
     if name not in f['/_version_data']:
@@ -46,14 +43,22 @@ def write_dataset(f, name, data):
     ds = f['/_version_data'][name]['raw_data']
     # TODO: Handle more than one dimension
     old_shape = ds.shape
-    idx = ds.shape[0]//CHUNK_SIZE
+    h = hashtable(f, name)
     slices = []
-    ds.resize((old_shape[0] + math.ceil(data.shape[0]/CHUNK_SIZE)*CHUNK_SIZE,))
-    for i, s in enumerate(split_chunks(data.shape), idx):
+    slices_to_write = {}
+    for s in split_chunks(data.shape):
+        idx = h.largest_index
         data_s = data[s]
-        raw_slice = slice(i*CHUNK_SIZE, i*CHUNK_SIZE + data_s.shape[0])
-        ds[raw_slice] = data_s
-        slices.append(raw_slice)
+        raw_slice = slice(idx*CHUNK_SIZE, idx*CHUNK_SIZE + data_s.shape[0])
+        data_hash = h.hash(data_s)
+        raw_slice2 = h.setdefault(data_hash, raw_slice)
+        if raw_slice2 == raw_slice:
+            slices_to_write[s2t(raw_slice)] = s
+        slices.append(raw_slice2)
+
+    ds.resize((old_shape[0] + len(slices_to_write)*CHUNK_SIZE,))
+    for raw_slice, s in slices_to_write.items():
+        ds[t2s(raw_slice)] = data[s]
     return slices
 
 def create_virtual_dataset(f, name, slices):
