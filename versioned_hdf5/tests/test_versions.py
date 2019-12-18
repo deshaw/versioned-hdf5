@@ -2,10 +2,9 @@
 import h5py
 import numpy as np
 from numpy.testing import assert_equal
-from pytest import raises
 
 from ..versions import (create_base_dataset, initialize, write_dataset,
-                        create_virtual_dataset, CHUNK_SIZE, hashtable)
+                        create_virtual_dataset, CHUNK_SIZE)
 
 def setup(name=None):
     f = h5py.File('test.hdf5', 'w')
@@ -87,24 +86,3 @@ def test_create_virtual_dataset_offset():
         assert virtual_data.shape == (2*CHUNK_SIZE - 2,)
         assert_equal(virtual_data[0:CHUNK_SIZE], 1.0)
         assert_equal(virtual_data[CHUNK_SIZE:2*CHUNK_SIZE - 2], 3.0)
-
-def test_hashtable():
-    with setup('test_data') as f:
-        h = hashtable(f, 'test_data')
-        assert len(h) == 0
-        h[b'\xff'*32] = slice(0, 1)
-        assert len(h) == 1
-        assert h[b'\xff'*32] == slice(0, 1)
-        assert h.largest_index == 1
-        assert bytes(h.hash_table[0][0]) == b'\xff'*32
-        assert tuple(h.hash_table[0][1]) == (0, 1)
-        assert h == {b'\xff'*32: slice(0, 1)}
-
-        with raises(TypeError):
-            h['\x01'*32] = slice(0, 1)
-        with raises(ValueError):
-            h[b'\x01'] = slice(0, 1)
-        with raises(TypeError):
-            h[b'\x01'*32] = (0, 1)
-        with raises(ValueError):
-            h[b'\x01'*32] = slice(0, 4, 2)
