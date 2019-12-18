@@ -19,6 +19,9 @@ class hashtable(MutableMapping):
     where setdefault will insert the hash into the table if it
     doesn't exist, and return the existing entry otherwise.
 
+    hashtable.largest_index is the largest index in the array that has slices
+    mapped to it.
+
     """
     def __init__(self, f, name):
         self.f = f
