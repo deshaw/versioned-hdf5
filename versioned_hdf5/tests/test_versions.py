@@ -28,7 +28,6 @@ def test_write_dataset():
                                 np.concatenate((2*np.ones((CHUNK_SIZE,)),
                                                 3*np.ones((CHUNK_SIZE,)))))
 
-
         assert slices1 == [slice(0*CHUNK_SIZE, 1*CHUNK_SIZE),
                            slice(1*CHUNK_SIZE, 2*CHUNK_SIZE)]
         assert slices2 == [slice(2*CHUNK_SIZE, 3*CHUNK_SIZE),
@@ -46,7 +45,6 @@ def test_write_dataset_offset():
         slices2 = write_dataset(f, 'test_data',
                                 np.concatenate((2*np.ones((CHUNK_SIZE,)),
                                                 3*np.ones((CHUNK_SIZE - 2,)))))
-
 
         assert slices1 == [slice(0*CHUNK_SIZE, 1*CHUNK_SIZE),
                            slice(1*CHUNK_SIZE, 2*CHUNK_SIZE)]
@@ -97,6 +95,6 @@ def test_hashtable():
         assert len(h) == 1
         assert h[b'\xff'*32] == (0, 1)
         assert h.largest_index == 1
-        assert bytes(h.keys[0]) == b'\xff'*32
-        assert tuple(h.values[0]) == (0, 1)
+        assert bytes(h.hash_table[0][0]) == b'\xff'*32
+        assert tuple(h.hash_table[0][1]) == (0, 1)
         assert h == {b'\xff'*32: (0, 1)}
