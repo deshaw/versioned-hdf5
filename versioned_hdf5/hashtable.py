@@ -4,6 +4,22 @@ import hashlib
 from collections.abc import MutableMapping
 
 class hashtable(MutableMapping):
+    """
+    A proxy class representing the hash table for an array
+
+    The hash table for an array is a mapping from {sha256_hash: slice}, where
+    slice is a slice for the data in the array.
+
+    General usage should look like
+
+        h = hashtable(f, name)
+        data_hash = h.hash(data[raw_slice])
+        raw_slice = h.setdefault(data_hash, raw_slice)
+
+    where setdefault will insert the hash into the table if it
+    doesn't exist, and return the existing entry otherwise.
+
+    """
     def __init__(self, f, name):
         self.f = f
         self.name = name
