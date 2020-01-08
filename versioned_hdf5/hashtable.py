@@ -54,7 +54,7 @@ class hashtable(MutableMapping):
 
         # TODO: Use get_chunks() here (the real chunk size should be based on
         # bytes, not number of elements)
-        dtype = np.dtype([('hash', 'B', (self.hash_size,)), ('shape', 'u8', (2,))])
+        dtype = np.dtype([('hash', 'B', (self.hash_size,)), ('shape', 'i8', (2,))])
         hash_table = f['/_version_data'][name].create_dataset('hash_table',
                                                  shape=(CHUNK_SIZE,), dtype=dtype,
                                                  chunks=(CHUNK_SIZE,),
