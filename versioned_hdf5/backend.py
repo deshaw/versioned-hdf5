@@ -61,7 +61,7 @@ def write_dataset(f, name, data):
         ds[t2s(raw_slice)] = data[s]
     return slices
 
-def create_virtual_dataset(f, name, slices):
+def create_virtual_dataset(f, version_name, name, slices):
     for s in slices[:-1]:
         if s.stop - s.start != CHUNK_SIZE:
             raise NotImplementedError("Smaller than chunk size slice is only supported as the last slice.")
@@ -74,5 +74,5 @@ def create_virtual_dataset(f, name, slices):
         # TODO: This needs to handle more than one dimension
         layout[i*CHUNK_SIZE:i*CHUNK_SIZE + s.stop - s.start] = vs[s]
 
-    virtual_data = f.create_virtual_dataset(name, layout)
+    virtual_data = f['_version_data'][version_name].create_virtual_dataset(name, layout)
     return virtual_data
