@@ -1,7 +1,4 @@
-from contextlib import contextmanager
 from uuid import uuid4
-
-import numpy
 
 from .backend import write_dataset, create_virtual_dataset
 
