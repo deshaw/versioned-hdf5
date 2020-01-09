@@ -20,3 +20,5 @@ def create_version(f, version_name, prev_version, datasets):
     for name, data in datasets.items():
         slices = write_dataset(f, name, data)
         create_virtual_dataset(f, version_name, name, slices)
+
+    return group
