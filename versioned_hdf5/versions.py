@@ -16,7 +16,6 @@ def create_version(f, version_name, prev_version, datasets):
         raise ValueError(f"Previous version {prev_version!r} not found")
 
     group = versions.create_group(version_name)
-    group.attrs['version_name'] = version_name
     group.attrs['prev_version'] = prev_version
 
     for name, data in datasets.items():
