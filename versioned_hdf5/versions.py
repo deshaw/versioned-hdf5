@@ -9,10 +9,11 @@ def create_version(f, version_name, prev_version, datasets):
     if version_name is None:
         version_name = str(uuid4())
 
-    if version_name in f['_version_data']:
+    versions = f['_version_data/versions']
+    if version_name in versions:
         raise ValueError(f"There is already a version with the name {version_name}")
 
-    group = f['_version_data'].create_group(version_name)
+    group = versions.create_group(version_name)
     group.attrs['version_name'] = version_name
     group.attrs['prev_version'] = prev_version
 

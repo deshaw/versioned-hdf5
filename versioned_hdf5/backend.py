@@ -20,13 +20,13 @@ def split_chunks(shape):
         yield slice(CHUNK_SIZE*i, CHUNK_SIZE*(i + 1))
 
 def initialize(f):
-    f.create_group('_version_data')
+    group = f.create_group('_version_data')
+    group.create_group('versions')
 
 def create_base_dataset(f, name, *, shape=None, data=None):
     group = f['/_version_data'].create_group(name)
     group.create_dataset('raw_data', shape=(0,),
                               chunks=(CHUNK_SIZE,), maxshape=(None,))
-
     return write_dataset(f, name, data)
 
 # Helper functions to workaround slices not being hashable
@@ -74,5 +74,5 @@ def create_virtual_dataset(f, version_name, name, slices):
         # TODO: This needs to handle more than one dimension
         layout[i*CHUNK_SIZE:i*CHUNK_SIZE + s.stop - s.start] = vs[s]
 
-    virtual_data = f['_version_data'][version_name].create_virtual_dataset(name, layout)
+    virtual_data = f['_version_data/versions'][version_name].create_virtual_dataset(name, layout)
     return virtual_data

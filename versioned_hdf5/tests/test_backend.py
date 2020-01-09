@@ -12,7 +12,7 @@ def setup(name=None, version_name=None):
     if name:
         f['_version_data'].create_group(name)
     if version_name:
-        f['_version_data'].create_group(version_name)
+        f['_version_data/versions'].create_group(version_name)
     return f
 
 def test_initialize():
