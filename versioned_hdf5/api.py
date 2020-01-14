@@ -18,6 +18,9 @@ class Data:
         return Version(self)
 
     def get_version_by_name(self, version):
+        if not version:
+            version = '__first_version__'
+
         if version not in self._versions:
             raise ValueError(f"Version {version!r} not found")
 
@@ -54,11 +57,11 @@ class InMemoryGroup(Group):
         if isinstance(res, Group):
             raise NotImplementedError("Groups are not yet supported")
 
-        res2 = np.asarray(res)
+        res2 = np.array(res)
         self._data[name] = res2
         return res2
 
     def __setitem__(self, name, obj):
-        raise NotImplementedError
+        self._data[name] = obj
 
     #TODO: override other relevant methods here
