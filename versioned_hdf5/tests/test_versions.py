@@ -13,7 +13,7 @@ def test_create_version():
                                3*np.ones((CHUNK_SIZE,))))
 
         version1 = create_version(f, 'version1', '', {'test_data': data})
-        assert version1.attrs['prev_version'] == ''
+        assert version1.attrs['prev_version'] == '__first_version__'
         assert_equal(version1['test_data'], data)
 
         ds = f['/_version_data/test_data/raw_data']

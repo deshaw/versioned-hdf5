@@ -22,8 +22,9 @@ def split_chunks(shape):
         yield slice(CHUNK_SIZE*i, CHUNK_SIZE*(i + 1))
 
 def initialize(f):
-    group = f.create_group('_version_data')
-    group.create_group('versions')
+    version_data = f.create_group('_version_data')
+    versions = version_data.create_group('versions')
+    versions.create_group('__first_version__')
 
 def create_base_dataset(f, name, *, shape=None, data=None, dtype=np.float64):
     group = f['/_version_data'].create_group(name)
