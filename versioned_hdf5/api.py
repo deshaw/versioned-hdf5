@@ -24,6 +24,7 @@ class Data:
         if version not in self._versions:
             raise ValueError(f"Version {version!r} not found")
 
+        # TODO: Don't give an in-memory group if the file is read-only
         return InMemoryGroup(self._versions[version]._id)
 
 class Version:
