@@ -1,4 +1,3 @@
-from h5py import File
 from h5py._hl.group import Group
 
 import numpy as np
