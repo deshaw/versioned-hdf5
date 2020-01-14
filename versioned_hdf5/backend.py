@@ -41,6 +41,8 @@ def write_dataset(f, name, data):
         return create_base_dataset(f, name, data=data)
 
     ds = f['/_version_data'][name]['raw_data']
+    if data.dtype != ds.dtype:
+        raise ValueError(f"dtypes do not match ({data.dtype} != {ds.dtype})")
     # TODO: Handle more than one dimension
     old_shape = ds.shape
     h = hashtable(f, name)
