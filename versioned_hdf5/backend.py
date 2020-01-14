@@ -1,5 +1,7 @@
 from h5py import VirtualLayout, VirtualSource
 
+import numpy as np
+
 import math
 
 from .hashtable import hashtable
@@ -23,10 +25,10 @@ def initialize(f):
     group = f.create_group('_version_data')
     group.create_group('versions')
 
-def create_base_dataset(f, name, *, shape=None, data=None):
+def create_base_dataset(f, name, *, shape=None, data=None, dtype=np.float64):
     group = f['/_version_data'].create_group(name)
-    group.create_dataset('raw_data', shape=(0,),
-                              chunks=(CHUNK_SIZE,), maxshape=(None,))
+    group.create_dataset('raw_data', shape=(0,), chunks=(CHUNK_SIZE,),
+                         maxshape=(None,), dtype=dtype)
     return write_dataset(f, name, data)
 
 # Helper functions to workaround slices not being hashable
@@ -69,8 +71,9 @@ def create_virtual_dataset(f, version_name, name, slices):
             raise NotImplementedError("Smaller than chunk size slice is only supported as the last slice.")
     shape = (CHUNK_SIZE*(len(slices) - 1) + slices[-1].stop - slices[-1].start,)
 
-    layout = VirtualLayout(shape)
-    vs = VirtualSource(f['_version_data'][name]['raw_data'])
+    raw_data = f['_version_data'][name]['raw_data']
+    layout = VirtualLayout(shape, dtype=raw_data.dtype)
+    vs = VirtualSource(raw_data)
 
     for i, s in enumerate(slices):
         # TODO: This needs to handle more than one dimension
