@@ -1,4 +1,5 @@
 from h5py._hl.group import Group
+from h5py import Empty
 
 import numpy as np
 
@@ -75,4 +76,49 @@ class InMemoryGroup(Group):
     def __setitem__(self, name, obj):
         self._data[name] = obj
 
+    def create_dataset(self, name, *, shape=None, dtype=None, data=None, **kwds):
+        if kwds:
+            raise NotImplementedError
+
+        data = _make_new_dset(shape, dtype, data)
+
+        self[name] = data
+
     #TODO: override other relevant methods here
+
+# This is adapted from h5py._hl.dataset.make_new_dset(). See the LICENSE file
+# for the h5py license.
+def _make_new_dset(shape, dtype, data):
+    # Convert data to a C-contiguous ndarray
+    if data is not None:
+        if isinstance(data, Empty):
+            raise NotImplementedError("Empty data not yet supported")
+        from h5py._hl import base
+        # normalize strings -> np.dtype objects
+        if dtype is not None:
+            _dtype = np.dtype(dtype)
+        else:
+            _dtype = None
+
+        # if we are going to a f2 datatype, pre-convert in python
+        # to workaround a possible h5py bug in the conversion.
+        is_small_float = (_dtype is not None and
+                          _dtype.kind == 'f' and
+                          _dtype.itemsize == 2)
+        data = np.asarray(data, order="C",
+                             dtype=(_dtype if is_small_float
+                                    else base.guess_dtype(data)))
+
+    # Validate shape
+    if shape is None:
+        if data is None:
+            if dtype is None:
+                raise TypeError("One of data, shape or dtype must be specified")
+            raise NotImplementedError("Empty data not yet supported")
+        shape = data.shape
+    else:
+        shape = (shape,) if isinstance(shape, int) else tuple(shape)
+        if data is not None and (np.product(shape, dtype=np.ulonglong) != np.product(data.shape, dtype=np.ulonglong)):
+            raise ValueError("Shape tuple is incompatible with data")
+
+    return data
