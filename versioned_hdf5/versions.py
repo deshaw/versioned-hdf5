@@ -36,3 +36,18 @@ def create_version(f, version_name, prev_version, datasets,
         create_virtual_dataset(f, version_name, name, slices)
 
     return group
+
+def get_nth_prev_version(f, version_name, n):
+    versions = f['_version_data/versions']
+    if version_name not in versions:
+        raise ValueError(f"Version {version_name!r} not found")
+
+    version = version_name
+    for i in range(n):
+        version = versions[version].attrs['prev_version']
+
+        # __first_version__ is a meta-version and should not be returnable
+        if version == '__first_version__':
+            raise ValueError(f"{version_name!r} has fewer than {n} versions before it")
+
+    return version
