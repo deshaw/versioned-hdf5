@@ -6,7 +6,7 @@ from numpy.testing import assert_equal
 from .test_backend import setup
 
 from ..backend import CHUNK_SIZE
-from ..versions import create_version, get_nth_previous_version
+from ..versions import create_version, get_nth_previous_version, set_current_version
 
 def test_create_version():
     with setup() as f:
@@ -78,3 +78,23 @@ def test_get_nth_prev_version():
         assert get_nth_previous_version(f, 'version2_1', 1) == 'version1'
         with raises(ValueError):
             get_nth_previous_version(f, 'version2_1', 2)
+
+def test_set_current_version():
+    with setup() as f:
+        data = np.concatenate((np.ones((2*CHUNK_SIZE,)),
+                               2*np.ones((CHUNK_SIZE,)),
+                               3*np.ones((CHUNK_SIZE,))))
+
+        create_version(f, 'version1', '', {'test_data': data})
+        versions = f['_version_data/versions']
+        assert versions.attrs['current_version'] == 'version1'
+
+        data[0] = 2.0
+        create_version(f, 'version2', 'version1', {'test_data': data})
+        assert versions.attrs['current_version'] == 'version2'
+
+        set_current_version(f, 'version1')
+        assert versions.attrs['current_version'] == 'version1'
+
+        with raises(ValueError):
+            set_current_version(f, 'version3')

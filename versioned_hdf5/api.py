@@ -5,7 +5,7 @@ import numpy as np
 from contextlib import contextmanager
 import datetime
 
-from .versions import create_version, get_nth_previous_version
+from .versions import create_version, get_nth_previous_version, set_current_version
 
 class VersionedHDF5File:
     def __init__(self, f):
@@ -16,6 +16,10 @@ class VersionedHDF5File:
     @property
     def current_version(self):
         return self._versions.attrs['current_version']
+
+    @current_version.setter
+    def current_version(self, version_name):
+        set_current_version(self.f, version_name)
 
     def get_version_by_name(self, version):
         if not version:

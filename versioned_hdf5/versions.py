@@ -51,3 +51,10 @@ def get_nth_previous_version(f, version_name, n):
             raise ValueError(f"{version_name!r} has fewer than {n} versions before it")
 
     return version
+
+def set_current_version(f, version_name):
+    versions = f['_version_data/versions']
+    if version_name not in versions:
+        raise ValueError(f"Version {version_name!r} not found")
+
+    versions.attrs['current_version'] = version_name
