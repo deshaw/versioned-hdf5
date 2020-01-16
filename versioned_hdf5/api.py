@@ -5,7 +5,7 @@ import numpy as np
 from contextlib import contextmanager
 import datetime
 
-from .versions import create_version
+from .versions import create_version, get_nth_previous_version
 
 class VersionedHDF5File:
     def __init__(self, f):
@@ -30,6 +30,11 @@ class VersionedHDF5File:
     def __getitem__(self, item):
         if isinstance(item, str):
             return self.get_version_by_name(item)
+        elif isinstance(item, (int, np.integer)):
+            if item > 0:
+                raise ValueError("Integer version slice must be negative")
+            return self.get_version_by_name(get_nth_previous_version(self.f,
+                self.current_version, -item))
         elif isinstance(item, (datetime.datetime, np.datetime64)):
             raise NotImplementedError
         else:
