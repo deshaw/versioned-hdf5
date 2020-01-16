@@ -43,16 +43,19 @@ def test_create_version():
 
 def test_get_nth_prev_version():
     with setup() as f:
-        data = np.concatenate((np.zeros((2*CHUNK_SIZE,)),
-                               2*np.zeros((CHUNK_SIZE,)),
-                               3*np.zeros((CHUNK_SIZE,))))
+        data = np.concatenate((np.ones((2*CHUNK_SIZE,)),
+                               2*np.ones((CHUNK_SIZE,)),
+                               3*np.ones((CHUNK_SIZE,))))
 
         create_version(f, 'version1', '', {'test_data': data})
-        data[0] = 1.0
-        create_version(f, 'version2', 'version1', {'test_data': data})
+
         data[0] = 2.0
+        create_version(f, 'version2', 'version1', {'test_data': data})
+
+        data[0] = 3.0
         create_version(f, 'version3', 'version2', {'test_data': data})
-        data[1] = 1.0
+
+        data[1] = 2.0
         create_version(f, 'version2_1', 'version1', {'test_data': data})
 
         assert get_nth_previous_version(f, 'version1', 0) == 'version1'
