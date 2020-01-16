@@ -45,10 +45,11 @@ class VersionedHDF5File:
             raise TypeError(f"Don't know how to get the version for {item!r}")
 
     @contextmanager
-    def stage_version(self, version_name, prev_version, make_current=True):
+    def stage_version(self, version_name, prev_version=None, make_current=True):
         group = self[prev_version]
         yield group
-        create_version(self.f, version_name, prev_version, group._data, make_current=make_current)
+        create_version(self.f, version_name, group._data,
+                       prev_version=prev_version, make_current=make_current)
 
 class InMemoryGroup(Group):
     def __init__(self, bind):

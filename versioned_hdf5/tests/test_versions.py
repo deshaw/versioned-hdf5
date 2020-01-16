@@ -14,7 +14,7 @@ def test_create_version():
                                2*np.ones((CHUNK_SIZE,)),
                                3*np.ones((CHUNK_SIZE,))))
 
-        version1 = create_version(f, 'version1', '', {'test_data': data})
+        version1 = create_version(f, 'version1', {'test_data': data}, '')
         assert version1.attrs['prev_version'] == '__first_version__'
         assert version1.parent.attrs['current_version'] == 'version1'
         assert_equal(version1['test_data'], data)
@@ -26,10 +26,9 @@ def test_create_version():
         assert_equal(ds[1*CHUNK_SIZE:2*CHUNK_SIZE], 2.0)
         assert_equal(ds[2*CHUNK_SIZE:3*CHUNK_SIZE], 3.0)
 
-
         data[0] = 0.0
-        version2 = create_version(f, 'version2', 'version1', {'test_data':
-        data}, make_current=False)
+        version2 = create_version(f, 'version2', {'test_data':
+        data}, 'version1', make_current=False)
         assert version2.attrs['prev_version'] == 'version1'
         assert_equal(version2['test_data'], data)
         assert version2.parent.attrs['current_version'] == 'version1'
@@ -47,16 +46,16 @@ def test_get_nth_prev_version():
                                2*np.ones((CHUNK_SIZE,)),
                                3*np.ones((CHUNK_SIZE,))))
 
-        create_version(f, 'version1', '', {'test_data': data})
+        create_version(f, 'version1', {'test_data': data})
 
         data[0] = 2.0
-        create_version(f, 'version2', 'version1', {'test_data': data})
+        create_version(f, 'version2', {'test_data': data})
 
         data[0] = 3.0
-        create_version(f, 'version3', 'version2', {'test_data': data})
+        create_version(f, 'version3', {'test_data': data})
 
         data[1] = 2.0
-        create_version(f, 'version2_1', 'version1', {'test_data': data})
+        create_version(f, 'version2_1', {'test_data': data}, 'version1')
 
         assert get_nth_previous_version(f, 'version1', 0) == 'version1'
 
@@ -85,12 +84,12 @@ def test_set_current_version():
                                2*np.ones((CHUNK_SIZE,)),
                                3*np.ones((CHUNK_SIZE,))))
 
-        create_version(f, 'version1', '', {'test_data': data})
+        create_version(f, 'version1', {'test_data': data})
         versions = f['_version_data/versions']
         assert versions.attrs['current_version'] == 'version1'
 
         data[0] = 2.0
-        create_version(f, 'version2', 'version1', {'test_data': data})
+        create_version(f, 'version2', {'test_data': data})
         assert versions.attrs['current_version'] == 'version2'
 
         set_current_version(f, 'version1')

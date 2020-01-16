@@ -3,24 +3,31 @@ from uuid import uuid4
 from .backend import write_dataset, create_virtual_dataset
 
 # TODO: Allow version_name to be a version group
-def create_version(f, version_name, prev_version, datasets,
+def create_version(f, version_name, datasets, prev_version=None, *,
                    make_current=True):
     """
     Create a new version
 
-    prev_version should be a pre-existing version name, or ''
+    prev_version should be a pre-existing version name, None, or ''
+    If it is None, it defaults to the current version. If it is '', it creates
+    a version with no parent version.
 
     datasets should be a dictionary mapping {path: dataset}
 
+    If make_current is True, the new version will be set as the current version.
+
     Returns the group for the new version.
     """
-    if not prev_version:
+    versions = f['_version_data/versions']
+
+    if prev_version == '':
         prev_version = '__first_version__'
+    elif prev_version is None:
+        prev_version = versions.attrs['current_version']
 
     if version_name is None:
         version_name = str(uuid4())
 
-    versions = f['_version_data/versions']
     if version_name in versions:
         raise ValueError(f"There is already a version with the name {version_name}")
     if prev_version not in versions:
