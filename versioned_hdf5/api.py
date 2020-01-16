@@ -7,15 +7,13 @@ import datetime
 
 from .versions import create_version
 
-class Data:
+class VersionedHDF5File:
     def __init__(self, f):
         self.f = f
         self._version_data = f['_version_data']
         self._versions = self._version_data['versions']
 
     @property
-    def version(self):
-        return Version(self)
 
     def get_version_by_name(self, version):
         if not version:
@@ -27,14 +25,10 @@ class Data:
         # TODO: Don't give an in-memory group if the file is read-only
         return InMemoryGroup(self._versions[version]._id)
 
-class Version:
-    def __init__(self, data):
-        self.data = data
-
     def __getitem__(self, item):
         if isinstance(item, str):
-            return self.data.get_version_by_name(item)
-        elif isinstance(item, (int, datetime.datetime, np.datetime64)):
+            return self.get_version_by_name(item)
+        elif isinstance(item, (datetime.datetime, np.datetime64)):
             raise NotImplementedError
         else:
             raise TypeError(f"Don't know how to get the version for {item!r}")
@@ -43,7 +37,7 @@ class Version:
     def stage_version(self, version_name, prev_version):
         group = self[prev_version]
         yield group
-        create_version(self.data.f, version_name, prev_version, group._data)
+        create_version(self.f, version_name, prev_version, group._data)
 
 class InMemoryGroup(Group):
     def __init__(self, bind):
