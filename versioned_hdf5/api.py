@@ -14,6 +14,8 @@ class VersionedHDF5File:
         self._versions = self._version_data['versions']
 
     @property
+    def current_version(self):
+        return self._versions.attrs['current_version']
 
     def get_version_by_name(self, version):
         if not version:
