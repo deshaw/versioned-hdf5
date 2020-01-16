@@ -14,6 +14,7 @@ def test_create_version():
 
         version1 = create_version(f, 'version1', '', {'test_data': data})
         assert version1.attrs['prev_version'] == '__first_version__'
+        assert version1.parent.attrs['current_version'] == 'version1'
         assert_equal(version1['test_data'], data)
 
         ds = f['/_version_data/test_data/raw_data']
@@ -25,9 +26,11 @@ def test_create_version():
 
 
         data[0] = 0.0
-        version2 = create_version(f, 'version2', 'version1', {'test_data': data})
+        version2 = create_version(f, 'version2', 'version1', {'test_data':
+        data}, make_current=False)
         assert version2.attrs['prev_version'] == 'version1'
         assert_equal(version2['test_data'], data)
+        assert version2.parent.attrs['current_version'] == 'version1'
 
         assert ds.shape == (4*CHUNK_SIZE,)
         assert_equal(ds[0:1*CHUNK_SIZE], 1.0)

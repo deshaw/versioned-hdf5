@@ -2,7 +2,18 @@ from uuid import uuid4
 
 from .backend import write_dataset, create_virtual_dataset
 
-def create_version(f, version_name, prev_version, datasets):
+# TODO: Allow version_name to be a version group
+def create_version(f, version_name, prev_version, datasets,
+                   make_current=True):
+    """
+    Create a new version
+
+    prev_version should be a pre-existing version name, or ''
+
+    datasets should be a dictionary mapping {path: dataset}
+
+    Returns the group for the new version.
+    """
     if not prev_version:
         prev_version = '__first_version__'
 
@@ -17,6 +28,8 @@ def create_version(f, version_name, prev_version, datasets):
 
     group = versions.create_group(version_name)
     group.attrs['prev_version'] = prev_version
+    if make_current:
+        versions.attrs['current_version'] = version_name
 
     for name, data in datasets.items():
         slices = write_dataset(f, name, data)
