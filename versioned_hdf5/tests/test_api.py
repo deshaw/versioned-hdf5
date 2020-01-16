@@ -73,7 +73,28 @@ def test_version_int_slicing():
 
         assert file[-1]['test_data'][0] == 2.0
         assert file[-2]['test_data'][0] == 1.0, file[-2]
+        with raises(ValueError):
+            file[-3]
 
+        file.current_version = 'version2'
+
+        assert file[0]['test_data'][0] == 2.0
+        assert file[-1]['test_data'][0] == 1.0
+        with raises(ValueError):
+            file[-2]
+
+        file.current_version = 'version2_1'
+
+        assert file[0]['test_data'][0] == 2.0
+        assert file[-1]['test_data'][0] == 1.0
+        with raises(ValueError):
+            file[-2]
+
+        file.current_version = 'version1'
+
+        assert file[0]['test_data'][0] == 1.0
+        with raises(ValueError):
+            file[-1]
 
 def test_version_name_slicing():
     with setup() as f:
