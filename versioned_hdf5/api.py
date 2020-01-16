@@ -5,7 +5,8 @@ import numpy as np
 from contextlib import contextmanager
 import datetime
 
-from .versions import create_version, get_nth_previous_version, set_current_version
+from .versions import (create_version, get_nth_previous_version,
+                       set_current_version, all_versions)
 
 class VersionedHDF5File:
     def __init__(self, f):
@@ -43,6 +44,9 @@ class VersionedHDF5File:
             raise NotImplementedError
         else:
             raise TypeError(f"Don't know how to get the version for {item!r}")
+
+    def __iter__(self):
+        return all_versions(self.f, include_first=False)
 
     @contextmanager
     def stage_version(self, version_name, prev_version=None, make_current=True):

@@ -6,7 +6,8 @@ from numpy.testing import assert_equal
 from .test_backend import setup
 
 from ..backend import CHUNK_SIZE
-from ..versions import create_version, get_nth_previous_version, set_current_version
+from ..versions import (create_version, get_nth_previous_version,
+                        set_current_version, all_versions)
 
 def test_create_version():
     with setup() as f:
@@ -39,6 +40,11 @@ def test_create_version():
         assert_equal(ds[2*CHUNK_SIZE:3*CHUNK_SIZE], 3.0)
         assert_equal(ds[3*CHUNK_SIZE], 0.0)
         assert_equal(ds[3*CHUNK_SIZE+1:4*CHUNK_SIZE], 1.0)
+
+        assert set(all_versions(f)) == {'version1', 'version2'}
+        assert set(all_versions(f, include_first=True)) == {'version1',
+                                                            'version2',
+                                                            '__first_version__'}
 
 def test_get_nth_prev_version():
     with setup() as f:

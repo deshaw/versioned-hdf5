@@ -123,3 +123,23 @@ def test_version_name_slicing():
 
         assert file[-1]['test_data'][0] == 2.0
         assert file[-2]['test_data'][0] == 1.0, file[-2]
+
+def test_iter_versions():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+        test_data = np.concatenate((np.ones((2*CHUNK_SIZE,)),
+                               2*np.ones((CHUNK_SIZE,)),
+                               3*np.ones((CHUNK_SIZE,))))
+
+        with file.stage_version('version1', '') as group:
+            group['test_data'] = test_data
+
+        with file.stage_version('version2', 'version1') as group:
+            group['test_data'][0] = 2.0
+
+        assert set(file) == {'version1', 'version2'}
+
+        # __contains__ is implemented from __iter__ automatically
+        assert 'version1' in file
+        assert 'version2' in file
+        assert 'version3' not in file

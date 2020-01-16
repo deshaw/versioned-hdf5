@@ -65,3 +65,19 @@ def set_current_version(f, version_name):
         raise ValueError(f"Version {version_name!r} not found")
 
     versions.attrs['current_version'] = version_name
+
+def all_versions(f, *, include_first=False):
+    """
+    Return a generator that iterates all versions by name
+
+    If include_first is True, it will include '__first_version__'.
+
+    Note that the order of the versions is completely arbitrary.
+    """
+    versions = f['_version_data/versions']
+    for version in versions:
+        if version == '__first_version__':
+            if include_first:
+                yield version
+        else:
+            yield version
