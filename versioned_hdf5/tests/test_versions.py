@@ -6,7 +6,7 @@ from numpy.testing import assert_equal
 from .test_backend import setup
 
 from ..backend import CHUNK_SIZE
-from ..versions import create_version, get_nth_prev_version
+from ..versions import create_version, get_nth_previous_version
 
 def test_create_version():
     with setup() as f:
@@ -55,23 +55,23 @@ def test_get_nth_prev_version():
         data[1] = 1.0
         create_version(f, 'version2_1', 'version1', {'test_data': data})
 
-        assert get_nth_prev_version(f, 'version1', 0) == 'version1'
+        assert get_nth_previous_version(f, 'version1', 0) == 'version1'
 
         with raises(ValueError):
-            get_nth_prev_version(f, 'version1', 1)
+            get_nth_previous_version(f, 'version1', 1)
 
-        assert get_nth_prev_version(f, 'version2', 0) == 'version2'
-        assert get_nth_prev_version(f, 'version2', 1) == 'version1'
+        assert get_nth_previous_version(f, 'version2', 0) == 'version2'
+        assert get_nth_previous_version(f, 'version2', 1) == 'version1'
         with raises(ValueError):
-            get_nth_prev_version(f, 'version2', 2)
+            get_nth_previous_version(f, 'version2', 2)
 
-        assert get_nth_prev_version(f, 'version3', 0) == 'version3'
-        assert get_nth_prev_version(f, 'version3', 1) == 'version2'
-        assert get_nth_prev_version(f, 'version3', 2) == 'version1'
+        assert get_nth_previous_version(f, 'version3', 0) == 'version3'
+        assert get_nth_previous_version(f, 'version3', 1) == 'version2'
+        assert get_nth_previous_version(f, 'version3', 2) == 'version1'
         with raises(ValueError):
-            get_nth_prev_version(f, 'version3', 3)
+            get_nth_previous_version(f, 'version3', 3)
 
-        assert get_nth_prev_version(f, 'version2_1', 0) == 'version2_1'
-        assert get_nth_prev_version(f, 'version2_1', 1) == 'version1'
+        assert get_nth_previous_version(f, 'version2_1', 0) == 'version2_1'
+        assert get_nth_previous_version(f, 'version2_1', 1) == 'version1'
         with raises(ValueError):
-            get_nth_prev_version(f, 'version2_1', 2)
+            get_nth_previous_version(f, 'version2_1', 2)

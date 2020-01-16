@@ -37,7 +37,7 @@ def create_version(f, version_name, prev_version, datasets,
 
     return group
 
-def get_nth_prev_version(f, version_name, n):
+def get_nth_previous_version(f, version_name, n):
     versions = f['_version_data/versions']
     if version_name not in versions:
         raise ValueError(f"Version {version_name!r} not found")
