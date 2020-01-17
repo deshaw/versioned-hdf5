@@ -1,5 +1,4 @@
-from h5py._hl.group import Group
-from h5py import Empty
+from h5py import Empty, Dataset, Group
 
 import numpy as np
 
@@ -58,7 +57,7 @@ class VersionedHDF5File:
     def stage_version(self, version_name, prev_version=None, make_current=True):
         group = self[prev_version]
         yield group
-        create_version(self.f, version_name, group._data,
+        create_version(self.f, version_name, group.datasets(),
                        prev_version=prev_version, make_current=make_current)
 
 class InMemoryGroup(Group):
@@ -90,6 +89,19 @@ class InMemoryGroup(Group):
         self[name] = data
 
         return data
+
+    def datasets(self):
+        res = self._data.copy()
+
+        def _get(name, item):
+            if name in res:
+                return
+            if isinstance(item, (Dataset, np.ndarray)):
+                res[name] = item
+
+        self.visititems(_get)
+
+        return res
 
     #TODO: override other relevant methods here
 

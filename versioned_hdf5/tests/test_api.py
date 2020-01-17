@@ -167,3 +167,32 @@ def test_create_dataset():
         assert_equal(ds[0:1*CHUNK_SIZE], 1.0)
         assert_equal(ds[1*CHUNK_SIZE:2*CHUNK_SIZE], 2.0)
         assert_equal(ds[2*CHUNK_SIZE:3*CHUNK_SIZE], 3.0)
+
+def test_unmodified():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+
+        test_data = np.concatenate((np.ones((2*CHUNK_SIZE,)),
+                                    2*np.ones((CHUNK_SIZE,)),
+                                    3*np.ones((CHUNK_SIZE,))))
+
+
+        with file.stage_version('version1') as group:
+            group.create_dataset('test_data', data=test_data)
+            group.create_dataset('test_data2', data=test_data)
+
+        assert set(f['_version_data/versions/version1']) == {'test_data', 'test_data2'}
+        assert set(file['version1']) == {'test_data', 'test_data2'}
+        assert_equal(file['version1']['test_data'], test_data)
+        assert_equal(file['version1']['test_data2'], test_data)
+        assert file['version1'].datasets().keys() == {'test_data', 'test_data2'}
+
+        with file.stage_version('version2') as group:
+            group['test_data2'][0] = 0.0
+
+        assert set(f['_version_data/versions/version2']) == {'test_data', 'test_data2'}
+        assert set(file['version2']) == {'test_data', 'test_data2'}
+        assert_equal(file['version2']['test_data'], test_data)
+        assert_equal(file['version2']['test_data2'][0], 0.0)
+        assert_equal(file['version2']['test_data2'][1:], test_data[1:])
