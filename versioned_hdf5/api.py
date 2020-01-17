@@ -6,12 +6,15 @@ import numpy as np
 from contextlib import contextmanager
 import datetime
 
+from .backend import initialize
 from .versions import (create_version, get_nth_previous_version,
                        set_current_version, all_versions)
 
 class VersionedHDF5File:
     def __init__(self, f):
         self.f = f
+        if '_version_data' not in f:
+            initialize(f)
         self._version_data = f['_version_data']
         self._versions = self._version_data['versions']
 
