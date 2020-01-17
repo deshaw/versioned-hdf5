@@ -70,7 +70,7 @@ class hashtable(MutableMapping):
         hash_table_arr = hash_table[:largest_index]
 
         self._d = {bytes(hash_table_arr[i][0]): slice(*hash_table_arr[i][1]) for i in range(largest_index)}
-        self._indices = {bytes(hash_table_arr[i][0]): i for i in range(largest_index)}
+        self._indices = {k: i for i, k in enumerate(self._d)}
 
     def __getitem__(self, key):
         return self._d[key]
