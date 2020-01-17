@@ -76,6 +76,8 @@ class hashtable(MutableMapping):
         return self._d[key]
 
     def __setitem__(self, key, value):
+        from .backend import CHUNK_SIZE
+
         if not isinstance(key, bytes):
             raise TypeError("key must be bytes")
         if len(key) != self.hash_size:
@@ -94,6 +96,8 @@ class hashtable(MutableMapping):
             self.hash_table[self.largest_index] = kv
             self._indices[key] = self.largest_index
             self.largest_index += 1
+            if self.largest_index >= self.hash_table.shape[0]:
+                self.hash_table.resize((self.hash_table.shape[0] + CHUNK_SIZE,))
         self._d[key] = value
 
     def __delitem__(self, key):
