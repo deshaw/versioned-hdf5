@@ -89,6 +89,8 @@ class InMemoryGroup(Group):
 
         self[name] = data
 
+        return data
+
     #TODO: override other relevant methods here
 
 # This is adapted from h5py._hl.dataset.make_new_dset(). See the LICENSE file
