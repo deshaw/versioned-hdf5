@@ -78,6 +78,7 @@ class TestVersionedDatasetPerformance(TestCase):
                 val_ds = group.create_dataset(name + '/val', data=np.random.rand(num_rows_initial),
                                           dtype=(np.dtype('float64')))
             for a in range(num_transactions):
+                print("Transaction", a)
                 tt = datetime.datetime.utcnow()
                 with file.stage_version(str(tt)) as group:
                     cls._modify_dss_sparse(key0_ds, key1_ds, val_ds, num_rows_per_append,
