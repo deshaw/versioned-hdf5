@@ -6,7 +6,7 @@ import math
 
 from .hashtable import hashtable
 
-CHUNK_SIZE = 2**20
+CHUNK_SIZE = 2**12
 
 def get_chunks(shape):
     # TODO: Implement this
