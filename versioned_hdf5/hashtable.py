@@ -68,8 +68,9 @@ class hashtable(MutableMapping):
         hash_table = self.f['/_version_data'][self.name]['hash_table']
         largest_index = hash_table.attrs['largest_index']
         hash_table_arr = hash_table[:largest_index]
-
-        self._d = {bytes(hash_table_arr[i][0]): slice(*hash_table_arr[i][1]) for i in range(largest_index)}
+        hashes = bytes(hash_table_arr['hash'])
+        shapes = hash_table_arr['shape']
+        self._d = {hashes[i*self.hash_size:(i+1)*self.hash_size]: slice(*shapes[i]) for i in range(largest_index)}
         self._indices = {k: i for i, k in enumerate(self._d)}
 
     def __getitem__(self, key):
