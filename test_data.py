@@ -9,6 +9,8 @@ from unittest import TestCase
 import h5py
 import numpy as np
 
+from versioned_hdf5.api import VersionedHDF5File
+
 # from .utils import temp_dir_ctx
 
 
@@ -66,18 +68,26 @@ class TestVersionedDatasetPerformance(TestCase):
         filename = tmp_dir + f'/{name}.h5'
         tts = []
         f = h5py.File(filename, 'w')
+        file = VersionedHDF5File(f)
         try:
-            key0_ds = f.create_dataset(name + '/key0', data=np.random.rand(num_rows_initial),
-                                       dtype=(np.dtype('int64')), maxshape=(None,), chunks=(int(1e4),))
-            key1_ds = f.create_dataset(name + '/key1', data=np.random.rand(num_rows_initial),
-                                       dtype=(np.dtype('int64')), maxshape=(None,), chunks=(int(1e4),))
-            val_ds = f.create_dataset(name + '/val', data=np.random.rand(num_rows_initial),
-                                      dtype=(np.dtype('float64')), maxshape=(None,), chunks=(int(1e4),))
+            with file.stage_version("initial_version") as group:
+                key0_ds = group.create_dataset(name + '/key0', data=np.random.rand(num_rows_initial),
+                                           dtype=(np.dtype('int64')))
+                key1_ds = group.create_dataset(name + '/key1', data=np.random.rand(num_rows_initial),
+                                           dtype=(np.dtype('int64')))
+                val_ds = group.create_dataset(name + '/val', data=np.random.rand(num_rows_initial),
+                                          dtype=(np.dtype('float64')))
             for a in range(num_transactions):
-                tt = cls._modify_dss_sparse(key0_ds, key1_ds, val_ds, num_rows_per_append,
-                                            pct_changes if a > 0 else 0.0, num_changes,
-                                            pct_deletes if a > 0 else 0.0, num_deletes,
-                                            pct_inserts if a > 0 else 0.0, num_inserts)
+                tt = datetime.datetime.utcnow()
+                with file.stage_version(str(tt)) as group:
+                    cls._modify_dss_sparse(key0_ds, key1_ds, val_ds, num_rows_per_append,
+                                                pct_changes if a > 0 else 0.0, num_changes,
+                                                pct_deletes if a > 0 else 0.0, num_deletes,
+                                                pct_inserts if a > 0 else 0.0, num_inserts)
+                    group[name + '/key0'] = key0_ds
+                    group[name + '/key1'] = key1_ds
+                    group[name + '/val'] = val_ds
+
                 tts.append(tt)
                 logger.info('Wrote transaction %d at transaction time %s', a, tt)
         finally:
@@ -99,7 +109,6 @@ class TestVersionedDatasetPerformance(TestCase):
                           pct_changes, num_changes,
                            pct_deletes, num_deletes,
                            pct_inserts, num_inserts):
-        tt = datetime.datetime.utcnow()
         ns = set([len(ds) for ds in [key0_ds, key1_ds, val_ds]])
         assert len(ns) == 1
         n = next(iter(ns))
@@ -118,7 +127,7 @@ class TestVersionedDatasetPerformance(TestCase):
             for ds in [key0_ds, key1_ds, val_ds]:
                 arr = ds[:]
                 arr = np.delete(arr, rs)
-                ds.resize((n,))
+                ds.resize((n,), refcheck=False)
                 ds[:] = arr
         # insert rows
         if random.randrange(0, 100) <= pct_inserts:
@@ -129,7 +138,7 @@ class TestVersionedDatasetPerformance(TestCase):
                 rand_fn = cls._get_rand_fn(ds.dtype)
                 arr = ds[:]
                 arr = np.insert(arr, rs, [rand_fn() for _ in rs])
-                ds.resize((n,))
+                ds.resize((n,), refcheck=False)
                 ds[:] = arr
         # append
         rand_num_apps = int(10 * np.random.randn() + num_rows_per_append)
@@ -137,9 +146,8 @@ class TestVersionedDatasetPerformance(TestCase):
             n += rand_num_apps
             for ds in [key0_ds, key1_ds, val_ds]:
                 rand_fn = cls._get_rand_fn(ds.dtype)
-                ds.resize((n,))
+                ds.resize((n,), refcheck=False)
                 ds[-rand_num_apps:] = rand_fn(rand_num_apps)
-        return tt
 
 
     def test_large_fraction_changes_sparse(self):
@@ -228,19 +236,28 @@ class TestVersionedDatasetPerformance(TestCase):
         filename = tmp_dir + f'/{name}.h5'
         tts = []
         f = h5py.File(filename, 'w')
+        file = VersionedHDF5File(f)
         try:
-            key0_ds = f.create_dataset(name + '/key0', data=np.random.rand(num_rows_initial_0),
-                                       dtype=(np.dtype('int64')), maxshape=(None,), chunks=(int(1e4),))
-            key1_ds = f.create_dataset(name + '/key1', data=np.random.rand(num_rows_initial_1),
-                                       dtype=(np.dtype('int64')), maxshape=(None,), chunks=(int(1e4),))
-            val_ds = f.create_dataset(name + '/val', data=np.random.rand(num_rows_initial_0 * num_rows_initial_1),
-                                      dtype=(np.dtype('float64')), maxshape=(None,), chunks=(int(1e4),))
+            with file.stage_version("initial_version") as group:
+                key0_ds = group.create_dataset(name + '/key0', data=np.random.rand(num_rows_initial_0),
+                                           dtype=(np.dtype('int64')))
+                key1_ds = group.create_dataset(name + '/key1', data=np.random.rand(num_rows_initial_1),
+                                           dtype=(np.dtype('int64')))
+                val_ds = group.create_dataset(name + '/val', data=np.random.rand(num_rows_initial_0 * num_rows_initial_1),
+                                          dtype=(np.dtype('float64')))
             for a in range(num_transactions):
-                tt = cls._modify_dss_dense(key0_ds, key1_ds, val_ds,
-                                           num_rows_per_append_0,
-                                           pct_changes if a > 0 else 0.0, num_changes,
-                                           pct_deletes if a > 0 else 0.0, num_deletes_0, num_deletes_1,
-                                           pct_inserts if a > 0 else 0.0, num_inserts_0, num_inserts_1)
+                tt = datetime.datetime.utcnow()
+                with file.stage_version(str(tt)) as group:
+                    cls._modify_dss_dense(key0_ds, key1_ds, val_ds,
+                                               num_rows_per_append_0,
+                                               pct_changes if a > 0 else 0.0, num_changes,
+                                               pct_deletes if a > 0 else 0.0, num_deletes_0, num_deletes_1,
+                                               pct_inserts if a > 0 else 0.0, num_inserts_0, num_inserts_1)
+                    # TODO: Fake the dataset object itself so this step isn't necessary
+                    group[name + '/key0'] = key0_ds
+                    group[name + '/key1'] = key1_ds
+                    group[name + '/val'] = val_ds
+
                 tts.append(tt)
                 logger.info('Wrote transaction %d at transaction time %s', a, tt)
         finally:
@@ -253,7 +270,6 @@ class TestVersionedDatasetPerformance(TestCase):
                           pct_changes, num_changes,
                           pct_deletes, num_deletes_0, num_deletes_1,
                           pct_inserts, num_inserts_0, num_inserts_1):
-        tt = datetime.datetime.utcnow()
         n_key0 = len(key0_ds)
         n_key1 = len(key1_ds)
         n_val = len(val_ds)
@@ -344,4 +360,3 @@ class TestVersionedDatasetPerformance(TestCase):
             n_val += num_val_apps
             val_ds.resize((n_val,))
             val_ds[-num_val_apps:] = np.random.rand(num_val_apps)
-        return tt
