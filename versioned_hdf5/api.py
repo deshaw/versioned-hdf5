@@ -27,7 +27,7 @@ class VersionedHDF5File:
         set_current_version(self.f, version_name)
 
     def get_version_by_name(self, version):
-        if not version:
+        if version == '':
             version = '__first_version__'
 
         if version not in self._versions:
@@ -37,7 +37,9 @@ class VersionedHDF5File:
         return InMemoryGroup(self._versions[version]._id)
 
     def __getitem__(self, item):
-        if isinstance(item, str):
+        if item is None:
+            return self.get_version_by_name(self.current_version)
+        elif isinstance(item, str):
             return self.get_version_by_name(item)
         elif isinstance(item, (int, np.integer)):
             if item > 0:
