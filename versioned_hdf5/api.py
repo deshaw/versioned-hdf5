@@ -71,7 +71,7 @@ class InMemoryGroup(Group):
 
         res = super().__getitem__(name)
         if isinstance(res, Group):
-            raise NotImplementedError("Groups are not yet supported")
+            return self.__class__(res.id)
 
         res2 = np.array(res)
         self._data[name] = res2
