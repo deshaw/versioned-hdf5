@@ -360,3 +360,6 @@ class TestVersionedDatasetPerformance(TestCase):
             n_val += num_val_apps
             val_ds.resize((n_val,))
             val_ds[-num_val_apps:] = np.random.rand(num_val_apps)
+
+if __name__ == '__main__':
+    TestVersionedDatasetPerformance().test_large_fraction_changes_sparse()
