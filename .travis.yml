@@ -43,6 +43,6 @@ script:
   - if [[ "${DOCS}" == "true" ]]; then
         cd docs;
         make html;
-        cd ..
+        cd ..;
         doctr deploy .;
     fi
