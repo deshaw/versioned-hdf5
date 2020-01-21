@@ -1,0 +1,167 @@
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>Versioned HDF5 &#8212; Versioned HDF5  documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <script type="text/javascript" src="_static/language_data.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <div class="section" id="versioned-hdf5">
+<h1>Versioned HDF5<a class="headerlink" href="#versioned-hdf5" title="Permalink to this headline">¶</a></h1>
+<div class="toctree-wrapper compound">
+</div>
+<p>Versioned HDF5 provides a versioned abstraction on top of h5py. Versioned HDF5
+is still in a pre-alpha development stage.</p>
+<div class="section" id="module-versioned_hdf5">
+<span id="api-documentation"></span><h2>API Documentation<a class="headerlink" href="#module-versioned_hdf5" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="versioned_hdf5.VersionedHDF5File">
+<em class="property">class </em><code class="sig-prename descclassname">versioned_hdf5.</code><code class="sig-name descname">VersionedHDF5File</code><span class="sig-paren">(</span><em class="sig-param">f</em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File" title="Permalink to this definition">¶</a></dt>
+<dd><p>A Versioned HDF5 File</p>
+<p>This is the main entry-point of the library. To use a versioned HDF5 file,
+pass a h5py file to constructor. The methods on the resulting object can
+be used to view and create versions.</p>
+<p>Note that versioned HDF5 files have a special structure and should not be
+modified directly. Also note that once a version is created in the file,
+it should be treated as read-only. Some protections are in place to
+prevent accidental modification, but it is not possible in the HDF5 layer
+to make a dataset or group read-only, so modifications made outside of
+this library could result in breaking things.</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">h5py</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">f</span> <span class="o">=</span> <span class="n">h5py</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="s1">&#39;file.h5&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">versioned_hdf5</span> <span class="kn">import</span> <span class="n">VersionedHDF5File</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">file</span> <span class="o">=</span> <span class="n">VersionedHDF5File</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Access versions using indexing</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">version1</span> <span class="o">=</span> <span class="n">file</span><span class="p">[</span><span class="s1">&#39;version1&#39;</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>This returns a group containing the datasets for that version.</p>
+<p>To create a new version, use <a class="reference internal" href="#versioned_hdf5.VersionedHDF5File.stage_version" title="versioned_hdf5.VersionedHDF5File.stage_version"><code class="xref py py-func docutils literal notranslate"><span class="pre">stage_version()</span></code></a>.</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">file</span><span class="o">.</span><span class="n">stage_version</span><span class="p">(</span><span class="s1">&#39;version2&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">group</span><span class="p">:</span>
+<span class="gp">... </span>    <span class="n">group</span><span class="p">[</span><span class="s1">&#39;dataset&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="o">...</span> <span class="c1"># Modify the group</span>
+<span class="gp">...</span>
+</pre></div>
+</div>
+<p>When the context manager exits, the version will be written to the file.</p>
+<dl class="method">
+<dt id="versioned_hdf5.VersionedHDF5File.current_version">
+<em class="property">property </em><code class="sig-name descname">current_version</code><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.current_version" title="Permalink to this definition">¶</a></dt>
+<dd><p>The current version.</p>
+<p>The current version is used as the default previous version to
+<a class="reference internal" href="#versioned_hdf5.VersionedHDF5File.stage_version" title="versioned_hdf5.VersionedHDF5File.stage_version"><code class="xref py py-func docutils literal notranslate"><span class="pre">stage_version()</span></code></a>, and is also used for negative integer version
+indexing (the current version is <code class="code docutils literal notranslate"><span class="pre">self[0]</span></code>).</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="versioned_hdf5.VersionedHDF5File.stage_version">
+<code class="sig-name descname">stage_version</code><span class="sig-paren">(</span><em class="sig-param">version_name: str</em>, <em class="sig-param">prev_version=None</em>, <em class="sig-param">make_current=True</em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.stage_version" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return a context manager to stage a new version</p>
+<p>The context manager returns a group, which should be modified in-place
+to build the new version. When the context manager exits, the new
+version will be written into the file.</p>
+<p><code class="code docutils literal notranslate"><span class="pre">version_name</span></code> should be the name for the version.</p>
+<p><code class="code docutils literal notranslate"><span class="pre">prev_version</span></code> should be the previous version which this version is
+based on. The group returned by the context manager will mirror this
+previous version. If it is <code class="code docutils literal notranslate"><span class="pre">None</span></code> (the default), the previous
+version will be the current version. If it is <code class="code docutils literal notranslate"><span class="pre">''</span></code>, there will be no
+previous version.</p>
+<p>If <code class="code docutils literal notranslate"><span class="pre">make_current</span></code> is <code class="code docutils literal notranslate"><span class="pre">True</span></code> (the default), the new version will be set
+as the current version. The current version is used as the default
+<code class="code docutils literal notranslate"><span class="pre">prev_version</span></code> for any future <code class="code docutils literal notranslate"><span class="pre">stage_version</span></code> call.</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+</div>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="#">Versioned HDF5</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="#">Documentation overview</a><ul>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2020, Quansight.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.3.1</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="_sources/index.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
