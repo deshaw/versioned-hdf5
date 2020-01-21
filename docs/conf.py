@@ -21,6 +21,9 @@ project = 'Versioned HDF5'
 copyright = '2020, Quansight'
 author = 'Quansight'
 
+# Enable warnings for all bad cross references. These are turned into errors
+# with the -W flag in the Makefile.
+nitpicky = True
 
 # -- General configuration ---------------------------------------------------
 
