@@ -12,6 +12,11 @@ python:
   - 3.7
   - 3.8
 
+matrix:
+  include:
+    - env:
+        - DOCS=True
+
 install:
   - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh;
   - bash miniconda.sh -b -p $HOME/miniconda
@@ -31,6 +36,8 @@ script:
   - pytest
   # # Make sure it installs
   # - python setup.py install
-  - cd docs
-  - make html
-  - doctr deploy .
+  - if [[ "${DOCS}" == "true" ]]; then
+        cd docs;
+        make html;
+        doctr deploy .;
+    fi
