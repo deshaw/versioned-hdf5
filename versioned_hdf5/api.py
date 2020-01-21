@@ -10,6 +10,40 @@ from .versions import (create_version, get_nth_previous_version,
                        set_current_version, all_versions)
 
 class VersionedHDF5File:
+    """
+    A Versioned HDF5 File
+
+    This is the main entry-point of the library. To use a versioned HDF5 file,
+    pass a h5py file to constructor. The methods on the resulting object can
+    be used to view and create versions.
+
+    Note that versioned HDF5 files have a special structure and should not be
+    modified directly. Also note that once a version is created in the file,
+    it should be treated as read-only. Some protections are in place to
+    prevent accidental modification, but it is not possible in the HDF5 layer
+    to make a dataset or group read-only, so modifications made outside of
+    this library could result in breaking things.
+
+    >>> import h5py
+    >>> f = h5py.File('file.h5')
+    >>> from versioned_hdf5 import VersionedHDF5File
+    >>> file = VersionedHDF5File(f)
+
+    Access versions using indexing
+
+    >>> version1 = file['version1']
+
+    This returns a group containing the datasets for that version.
+
+    To create a new version, use :func:`stage_version`.
+
+    >>> with file.stage_version('version2') as group:
+    ...     group['dataset'] = ... # Modify the group
+    ...
+
+    When the context manager exits, the version will be written to the file.
+
+    """
     def __init__(self, f):
         self.f = f
         if '_version_data' not in f:
@@ -19,6 +53,13 @@ class VersionedHDF5File:
 
     @property
     def current_version(self):
+        """
+        The current version.
+
+        The current version is used as the default previous version to
+        :func:`stage_version`, and is also used for negative integer version
+        indexing (the current version is `self[0]`).
+        """
         return self._versions.attrs['current_version']
 
     @current_version.setter
@@ -54,7 +95,27 @@ class VersionedHDF5File:
         return all_versions(self.f, include_first=False)
 
     @contextmanager
-    def stage_version(self, version_name, prev_version=None, make_current=True):
+    def stage_version(self, version_name: str, prev_version=None, make_current=True):
+        """
+        Return a context manager to stage a new version
+
+        The context manager returns a group, which should be modified in-place
+        to build the new version. When the context manager exits, the new
+        version will be written into the file.
+
+        `version_name` should be the name for the version.
+
+        `prev_version` should be the previous version which this version is
+        based on. The group returned by the context manager will mirror this
+        previous version. If it is `None` (the default), the previous
+        version will be the current version. If it is `''`, there will be no
+        previous version.
+
+        If `make_current` is `True` (the default), the new version will be set
+        as the current version. The current version is used as the default
+        `prev_version` for any future `stage_version` call.
+
+        """
         group = self[prev_version]
         yield group
         create_version(self.f, version_name, group.datasets(),
