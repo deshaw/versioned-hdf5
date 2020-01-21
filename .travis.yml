@@ -7,14 +7,18 @@ language: python
 
 sudo: false
 dist: xenial
-python:
-  - 3.6
-  - 3.7
-  - 3.8
 
 matrix:
   include:
-    - env:
+    - python: 3.6
+      env:
+        - TESTS=True
+    - python: 3.7
+      env:
+        - TESTS=True
+    - python: 3.8
+      env:
+        - TESTS=True
         - DOCS=True
 
 install:
