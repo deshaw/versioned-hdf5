@@ -1,20 +1,15 @@
-.. Versioned HDF5 documentation master file, created by
-   sphinx-quickstart on Tue Jan 21 15:01:25 2020.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
-
-Welcome to Versioned HDF5's documentation!
-==========================================
+Versioned HDF5
+==============
 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
+Versioned HDF5 provides a versioned abstraction on top of h5py. Versioned HDF5
+is still in a pre-alpha development stage.
 
+API Documentation
+-----------------
 
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+.. automodule:: versioned_hdf5
+   :members:
