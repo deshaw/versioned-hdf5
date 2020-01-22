@@ -81,13 +81,13 @@ class TestVersionedDatasetPerformance(TestCase):
                 print("Transaction", a)
                 tt = datetime.datetime.utcnow()
                 with file.stage_version(str(tt)) as group:
+                    key0_ds = group[name + '/key0']
+                    key1_ds = group[name + '/key1']
+                    val_ds = group[name + '/val']
                     cls._modify_dss_sparse(key0_ds, key1_ds, val_ds, num_rows_per_append,
                                                 pct_changes if a > 0 else 0.0, num_changes,
                                                 pct_deletes if a > 0 else 0.0, num_deletes,
                                                 pct_inserts if a > 0 else 0.0, num_inserts)
-                    group[name + '/key0'] = key0_ds
-                    group[name + '/key1'] = key1_ds
-                    group[name + '/val'] = val_ds
 
                 tts.append(tt)
                 logger.info('Wrote transaction %d at transaction time %s', a, tt)
@@ -249,15 +249,14 @@ class TestVersionedDatasetPerformance(TestCase):
             for a in range(num_transactions):
                 tt = datetime.datetime.utcnow()
                 with file.stage_version(str(tt)) as group:
+                    key0_ds = group[name + '/key0']
+                    key1_ds = group[name + '/key1']
+                    val_ds = group[name + '/val']
                     cls._modify_dss_dense(key0_ds, key1_ds, val_ds,
                                                num_rows_per_append_0,
                                                pct_changes if a > 0 else 0.0, num_changes,
                                                pct_deletes if a > 0 else 0.0, num_deletes_0, num_deletes_1,
                                                pct_inserts if a > 0 else 0.0, num_inserts_0, num_inserts_1)
-                    # TODO: Fake the dataset object itself so this step isn't necessary
-                    group[name + '/key0'] = key0_ds
-                    group[name + '/key1'] = key1_ds
-                    group[name + '/val'] = val_ds
 
                 tts.append(tt)
                 logger.info('Wrote transaction %d at transaction time %s', a, tt)
