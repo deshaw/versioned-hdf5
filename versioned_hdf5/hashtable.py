@@ -36,10 +36,11 @@ class Hashtable(MutableMapping):
 
         self.hash_table = f['/_version_data'][name]['hash_table']
 
-    hash_size = 32 # hash_size = hashlib.sha256().digest_size
+    hash_function = hashlib.sha256
+    hash_size = hash_function().digest_size
 
     def hash(self, data):
-        return hashlib.sha256(data.data).digest()
+        return self.hash_function(data.data).digest()
 
     @property
     def largest_index(self):
