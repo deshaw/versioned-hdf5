@@ -49,15 +49,15 @@ def write_dataset(f, name, data):
         raise ValueError(f"dtypes do not match ({data.dtype} != {ds.dtype})")
     # TODO: Handle more than one dimension
     old_shape = ds.shape
-    h = Hashtable(f, name)
+    hashtable = Hashtable(f, name)
     slices = []
     slices_to_write = {}
     for s in split_chunks(data.shape):
-        idx = h.largest_index
+        idx = hashtable.largest_index
         data_s = data[s]
         raw_slice = slice(idx*CHUNK_SIZE, idx*CHUNK_SIZE + data_s.shape[0])
-        data_hash = h.hash(data_s)
-        raw_slice2 = h.setdefault(data_hash, raw_slice)
+        data_hash = hashtable.hash(data_s)
+        raw_slice2 = hashtable.setdefault(data_hash, raw_slice)
         if raw_slice2 == raw_slice:
             slices_to_write[s2t(raw_slice)] = s
         slices.append(raw_slice2)
