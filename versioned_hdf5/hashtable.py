@@ -2,7 +2,9 @@ import numpy as np
 
 import hashlib
 from collections.abc import MutableMapping
+from functools import lru_cache
 
+@lru_cache()
 class Hashtable(MutableMapping):
     """
     A proxy class representing the hash table for an array
