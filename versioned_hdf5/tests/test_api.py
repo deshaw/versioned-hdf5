@@ -172,11 +172,9 @@ def test_unmodified():
     with setup() as f:
         file = VersionedHDF5File(f)
 
-
         test_data = np.concatenate((np.ones((2*CHUNK_SIZE,)),
                                     2*np.ones((CHUNK_SIZE,)),
                                     3*np.ones((CHUNK_SIZE,))))
-
 
         with file.stage_version('version1') as group:
             group.create_dataset('test_data', data=test_data)
@@ -196,3 +194,23 @@ def test_unmodified():
         assert_equal(file['version2']['test_data'], test_data)
         assert_equal(file['version2']['test_data2'][0], 0.0)
         assert_equal(file['version2']['test_data2'][1:], test_data[1:])
+
+def test_delete():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        test_data = np.concatenate((np.ones((2*CHUNK_SIZE,)),
+                                    2*np.ones((CHUNK_SIZE,)),
+                                    3*np.ones((CHUNK_SIZE,))))
+
+        with file.stage_version('version1') as group:
+            group.create_dataset('test_data', data=test_data)
+            group.create_dataset('test_data2', data=test_data)
+
+        with file.stage_version('version2') as group:
+            del group['test_data2']
+
+        assert set(f['_version_data/versions/version2']) == {'test_data'}
+        assert set(file['version2']) == {'test_data'}
+        assert_equal(file['version2']['test_data'], test_data)
+        assert file['version2'].datasets().keys() == {'test_data'}

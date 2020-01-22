@@ -141,6 +141,11 @@ class InMemoryGroup(Group):
     def __setitem__(self, name, obj):
         self._data[name] = obj
 
+    def __delitem__(self, name):
+        if name in self._data:
+            del self._data
+        super().__delitem__(name)
+
     def create_dataset(self, name, *, shape=None, dtype=None, data=None, **kwds):
         if kwds:
             raise NotImplementedError
