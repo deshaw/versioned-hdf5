@@ -30,6 +30,7 @@ class hashtable(MutableMapping):
             self._load_hashtable()
         else:
             self._create_hashtable()
+        self._largest_index = None
 
         self.hash_table = f['/_version_data'][name]['hash_table']
 
@@ -40,10 +41,13 @@ class hashtable(MutableMapping):
 
     @property
     def largest_index(self):
-        return self.hash_table.attrs['largest_index']
+        if self._largest_index is None:
+            self._largest_index = self.hash_table.attrs['largest_index']
+        return self._largest_index
 
     @largest_index.setter
     def largest_index(self, value):
+        self._largest_index = value
         self.hash_table.attrs['largest_index'] = value
 
     def _create_hashtable(self):
