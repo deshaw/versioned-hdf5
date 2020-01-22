@@ -8,7 +8,7 @@ from .hashtable import Hashtable
 
 CHUNK_SIZE = 2**12
 
-def get_chunks(shape):
+def get_chunks(shape, dtype):
     # TODO: Implement this
     if len(shape) > 1:
         raise NotImplementedError
