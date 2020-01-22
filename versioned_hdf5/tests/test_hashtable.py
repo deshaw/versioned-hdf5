@@ -1,12 +1,12 @@
 from pytest import raises
 
-from ..hashtable import hashtable
+from ..hashtable import Hashtable
 
 from .test_backend import setup
 
 def test_hashtable():
     with setup('test_data') as f:
-        h = hashtable(f, 'test_data')
+        h = Hashtable(f, 'test_data')
         assert len(h) == 0
         h[b'\xff'*32] = slice(0, 1)
         assert len(h) == 1

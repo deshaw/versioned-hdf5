@@ -4,7 +4,7 @@ import numpy as np
 
 import math
 
-from .hashtable import hashtable
+from .hashtable import Hashtable
 
 CHUNK_SIZE = 2**12
 
@@ -49,7 +49,7 @@ def write_dataset(f, name, data):
         raise ValueError(f"dtypes do not match ({data.dtype} != {ds.dtype})")
     # TODO: Handle more than one dimension
     old_shape = ds.shape
-    h = hashtable(f, name)
+    h = Hashtable(f, name)
     slices = []
     slices_to_write = {}
     for s in split_chunks(data.shape):

@@ -3,7 +3,7 @@ import numpy as np
 import hashlib
 from collections.abc import MutableMapping
 
-class hashtable(MutableMapping):
+class Hashtable(MutableMapping):
     """
     A proxy class representing the hash table for an array
 
@@ -12,7 +12,7 @@ class hashtable(MutableMapping):
 
     General usage should look like
 
-        h = hashtable(f, name)
+        h = Hashtable(f, name)
         data_hash = h.hash(data[raw_slice])
         raw_slice = h.setdefault(data_hash, raw_slice)
 
