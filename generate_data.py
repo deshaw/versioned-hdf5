@@ -296,7 +296,7 @@ class TestVersionedDatasetPerformance(TestCase):
             n_key0 -= r_num_dels_0
             arr_key0 = key0_ds[:]
             arr_key0 = np.delete(arr_key0, rs_0)
-            key0_ds.resize((n_key0,))
+            key0_ds.resize((n_key0,), refcheck=False)
             key0_ds[:] = arr_key0
 
             # 2. delete from key1 and associated vals
@@ -306,13 +306,13 @@ class TestVersionedDatasetPerformance(TestCase):
             rs_val = [r0 * n_key1 + r1 for r0 in range(n_key0) for r1 in rs_1]
             n_val -= len(rs_val)
             arr_val = np.delete(arr_val, rs_val)
-            val_ds.resize((n_val,))
+            val_ds.resize((n_val,), refcheck=False)
             val_ds[:] = arr_val
 
             n_key1 -= r_num_dels_1
             arr_key1 = key1_ds[:]
             arr_key1 = np.delete(arr_key1, rs_1)
-            key1_ds.resize((n_key1,))
+            key1_ds.resize((n_key1,), refcheck=False)
             key1_ds[:] = arr_key1
         # insert rows
         if random.randrange(0, 100) <= pct_inserts:
@@ -330,7 +330,7 @@ class TestVersionedDatasetPerformance(TestCase):
             arr_key0 = key0_ds[:]
             arr_key0 = np.insert(arr_key0, rs_0, np.random.randint(0, int(1e6), size=len(rs_0)))
             n_key0 += rand_num_inss_0
-            key0_ds.resize((n_key0,))
+            key0_ds.resize((n_key0,), refcheck=False)
             key0_ds[:] = arr_key0
 
             # 2. insert into key1 and associated vals
@@ -340,25 +340,25 @@ class TestVersionedDatasetPerformance(TestCase):
             rs_val = [r0 * n_key1 + r1 for r0 in range(n_key0) for r1 in rs_1]
             n_val += len(rs_val)
             arr_val = np.insert(arr_val, rs_val, np.random.rand(len(rs_val)))
-            val_ds.resize((n_val,))
+            val_ds.resize((n_val,), refcheck=False)
             val_ds[:] = arr_val
 
             arr_key1 = key1_ds[:]
             arr_key1 = np.insert(arr_key1, rs_1, np.random.randint(0, int(1e6), size=len(rs_1)))
             n_key1 += rand_num_inss_1
-            key1_ds.resize((n_key1,))
+            key1_ds.resize((n_key1,), refcheck=False)
             key1_ds[:] = arr_key1
         # append
         rand_num_apps_0 = int(np.random.randn() + num_rows_per_append_0)
         if rand_num_apps_0 > 0:
             # append to key0 and associated vals
             n_key0 += rand_num_apps_0
-            key0_ds.resize((n_key0,))
+            key0_ds.resize((n_key0,), refcheck=False)
             key0_ds[-rand_num_apps_0:] = np.random.randint(0, int(1e6), size=rand_num_apps_0)
 
             num_val_apps = n_key1 * rand_num_apps_0
             n_val += num_val_apps
-            val_ds.resize((n_val,))
+            val_ds.resize((n_val,), refcheck=False)
             val_ds[-num_val_apps:] = np.random.rand(num_val_apps)
 
 if __name__ == '__main__':
