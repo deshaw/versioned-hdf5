@@ -67,6 +67,46 @@ def write_dataset(f, name, data):
         ds[t2s(raw_slice)] = data[s]
     return slices
 
+def write_dataset_chunks(f, name, data_dict):
+    """
+    data_dict should be a dictionary mapping chunk_size index to either an
+    array for that chunk, or a slice into the raw data for that chunk
+
+    """
+    if name not in f['/_version_data']:
+        raise NotImplementedError("Use write_dataset() if the dataset does not yet exist")
+
+    ds = f['/_version_data'][name]['raw_data']
+    # TODO: Handle more than one dimension
+    nchunks = max(data_dict)
+    if any(i not in data_dict for i in range(nchunks)):
+        raise ValueError("data_dict does not include all chunks")
+
+    hashtable = Hashtable(f, name)
+    slices = [None for i in range(len(data_dict))]
+    data_to_write = {}
+    for chunk, data_s in data_dict.items():
+        if not isinstance(data_s, (slice, tuple)) and data_s.dtype != ds.dtype:
+            raise ValueError(f"dtypes do not match ({data_s.dtype} != {ds.dtype})")
+
+        idx = hashtable.largest_index
+        if isinstance(data_s, (slice, tuple)):
+            slices[chunk] = data_s
+        else:
+            raw_slice = slice(idx*CHUNK_SIZE, idx*CHUNK_SIZE + data_s.shape[0])
+            data_hash = hashtable.hash(data_s)
+            raw_slice2 = hashtable.setdefault(data_hash, raw_slice)
+            if raw_slice2 == raw_slice:
+                data_to_write[s2t(raw_slice)] = data_s
+            slices[chunk] = raw_slice2
+
+    assert None not in slices
+    old_shape = ds.shape
+    ds.resize((old_shape[0] + len(data_to_write)*CHUNK_SIZE,))
+    for raw_slice, data_s in data_to_write.items():
+        ds[t2s(raw_slice)] = data_s
+    return slices
+
 def create_virtual_dataset(f, version_name, name, slices):
     for s in slices[:-1]:
         if s.stop - s.start != CHUNK_SIZE:
