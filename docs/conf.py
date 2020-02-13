@@ -53,7 +53,7 @@ html_theme = 'alabaster'
 html_theme_options = {
     'github_user': 'Quansight',
     'github_repo': 'versioned-hdf5',
-    'github_banner': True,
+    'github_banner': False, # https://github.com/bitprophet/alabaster/issues/166
     'github_button': False,
     # 'logo_name': True,
     'travis_button': True,
@@ -63,7 +63,7 @@ html_theme_options = {
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-# html_static_path = ['_static']
+html_static_path = ['_static']
 
 # Lets us use single backticks for code
-default_role='code'
+default_role = 'code'
