@@ -65,23 +65,23 @@ def test_get_nth_prev_version():
 
         assert get_nth_previous_version(f, 'version1', 0) == 'version1'
 
-        with raises(ValueError):
+        with raises(IndexError):
             get_nth_previous_version(f, 'version1', 1)
 
         assert get_nth_previous_version(f, 'version2', 0) == 'version2'
         assert get_nth_previous_version(f, 'version2', 1) == 'version1'
-        with raises(ValueError):
+        with raises(IndexError):
             get_nth_previous_version(f, 'version2', 2)
 
         assert get_nth_previous_version(f, 'version3', 0) == 'version3'
         assert get_nth_previous_version(f, 'version3', 1) == 'version2'
         assert get_nth_previous_version(f, 'version3', 2) == 'version1'
-        with raises(ValueError):
+        with raises(IndexError):
             get_nth_previous_version(f, 'version3', 3)
 
         assert get_nth_previous_version(f, 'version2_1', 0) == 'version2_1'
         assert get_nth_previous_version(f, 'version2_1', 1) == 'version1'
-        with raises(ValueError):
+        with raises(IndexError):
             get_nth_previous_version(f, 'version2_1', 2)
 
 def test_set_current_version():

@@ -47,7 +47,7 @@ def create_version(f, version_name, datasets, prev_version=None, *,
 def get_nth_previous_version(f, version_name, n):
     versions = f['_version_data/versions']
     if version_name not in versions:
-        raise ValueError(f"Version {version_name!r} not found")
+        raise IndexError(f"Version {version_name!r} not found")
 
     version = version_name
     for i in range(n):
@@ -55,7 +55,7 @@ def get_nth_previous_version(f, version_name, n):
 
         # __first_version__ is a meta-version and should not be returnable
         if version == '__first_version__':
-            raise ValueError(f"{version_name!r} has fewer than {n} versions before it")
+            raise IndexError(f"{version_name!r} has fewer than {n} versions before it")
 
     return version
 

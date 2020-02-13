@@ -71,28 +71,25 @@ class VersionedHDF5File:
             version = '__first_version__'
 
         if version not in self._versions:
-            raise ValueError(f"Version {version!r} not found")
+            raise KeyError(f"Version {version!r} not found")
 
         # TODO: Don't give an in-memory group if the file is read-only
         return InMemoryGroup(self._versions[version]._id)
 
     def __getitem__(self, item):
-        try:
-            if item is None:
-                return self.get_version_by_name(self.current_version)
-            elif isinstance(item, str):
-                return self.get_version_by_name(item)
-            elif isinstance(item, (int, np.integer)):
-                if item > 0:
-                    raise KeyError("Integer version slice must be negative")
-                return self.get_version_by_name(get_nth_previous_version(self.f,
-                    self.current_version, -item))
-            elif isinstance(item, (datetime.datetime, np.datetime64)):
-                raise NotImplementedError
-            else:
-                raise KeyError(f"Don't know how to get the version for {item!r}")
-        except ValueError as e:
-            raise KeyError(e.args[0]) from e
+        if item is None:
+            return self.get_version_by_name(self.current_version)
+        elif isinstance(item, str):
+            return self.get_version_by_name(item)
+        elif isinstance(item, (int, np.integer)):
+            if item > 0:
+                raise IndexError("Integer version slice must be negative")
+            return self.get_version_by_name(get_nth_previous_version(self.f,
+                self.current_version, -item))
+        elif isinstance(item, (datetime.datetime, np.datetime64)):
+            raise NotImplementedError
+        else:
+            raise KeyError(f"Don't know how to get the version for {item!r}")
 
     def __iter__(self):
         return all_versions(self.f, include_first=False)
