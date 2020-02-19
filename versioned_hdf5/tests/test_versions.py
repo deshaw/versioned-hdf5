@@ -46,6 +46,63 @@ def test_create_version():
                                                             'version2',
                                                             '__first_version__'}
 
+def test_create_version_chunks():
+    with setup() as f:
+        data = np.concatenate((np.ones((2*CHUNK_SIZE,)),
+                               2*np.ones((CHUNK_SIZE,)),
+                               3*np.ones((CHUNK_SIZE,))))
+        # TODO: Support creating the initial version with chunks
+        version1 = create_version(f, 'version1', {'test_data': data})
+        assert_equal(version1['test_data'], data)
+
+        ds = f['/_version_data/test_data/raw_data']
+
+        assert ds.shape == (3*CHUNK_SIZE,)
+        assert_equal(ds[0:1*CHUNK_SIZE], 1.0)
+        assert_equal(ds[1*CHUNK_SIZE:2*CHUNK_SIZE], 2.0)
+        assert_equal(ds[2*CHUNK_SIZE:3*CHUNK_SIZE], 3.0)
+
+        data2_chunks = {0: np.ones((CHUNK_SIZE,)),
+                        1: np.ones((CHUNK_SIZE,)),
+                        2: 2*np.ones((CHUNK_SIZE,)),
+                        3: 3*np.ones((CHUNK_SIZE,)),
+        }
+        data2_chunks[0][0] = 0.0
+        data[0] = 0.0
+
+        version2 = create_version(f, 'version2', {'test_data':  data2_chunks})
+        assert_equal(version2['test_data'], data)
+
+        assert ds.shape == (4*CHUNK_SIZE,)
+        assert_equal(ds[0:1*CHUNK_SIZE], 1.0)
+        assert_equal(ds[1*CHUNK_SIZE:2*CHUNK_SIZE], 2.0)
+        assert_equal(ds[2*CHUNK_SIZE:3*CHUNK_SIZE], 3.0)
+        assert_equal(ds[3*CHUNK_SIZE], 0.0)
+        assert_equal(ds[3*CHUNK_SIZE+1:4*CHUNK_SIZE], 1.0)
+
+
+        data3_chunks = {0: np.ones((CHUNK_SIZE,)),
+                        1: slice(0*CHUNK_SIZE, 1*CHUNK_SIZE),
+                        2: slice(1*CHUNK_SIZE, 2*CHUNK_SIZE),
+                        3: slice(2*CHUNK_SIZE, 3*CHUNK_SIZE),
+        }
+        data3_chunks[0][0] = 2.0
+        data[0] = 2.0
+
+        version3 = create_version(f, 'version3', {'test_data':  data3_chunks})
+        assert_equal(version3['test_data'], data)
+
+        assert ds.shape == (5*CHUNK_SIZE,)
+        assert_equal(ds[0:1*CHUNK_SIZE], 1.0)
+        assert_equal(ds[1*CHUNK_SIZE:2*CHUNK_SIZE], 2.0)
+        assert_equal(ds[2*CHUNK_SIZE:3*CHUNK_SIZE], 3.0)
+        assert_equal(ds[3*CHUNK_SIZE], 0.0)
+        assert_equal(ds[3*CHUNK_SIZE+1:4*CHUNK_SIZE], 1.0)
+        assert_equal(ds[4*CHUNK_SIZE], 2.0)
+        assert_equal(ds[4*CHUNK_SIZE+1:5*CHUNK_SIZE], 1.0)
+
+        assert set(all_versions(f)) == {'version1', 'version2', 'version3'}
+
 def test_get_nth_prev_version():
     with setup() as f:
         data = np.concatenate((np.ones((2*CHUNK_SIZE,)),

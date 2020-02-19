@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from .backend import write_dataset, create_virtual_dataset
+from .backend import write_dataset, write_dataset_chunks, create_virtual_dataset
 
 # TODO: Allow version_name to be a version group
 def create_version(f, version_name, datasets, prev_version=None, *,
@@ -12,7 +12,10 @@ def create_version(f, version_name, datasets, prev_version=None, *,
     If it is None, it defaults to the current version. If it is '', it creates
     a version with no parent version.
 
-    datasets should be a dictionary mapping {path: dataset}
+    datasets should be a dictionary mapping {path: dataset}, where `dataset`
+    is either a numpy array, or a dictionary mapping {chunk_index:
+    data_or_slice}, where `data_or_slice` is either an array or a slice
+    pointing into the raw data for that chunk.
 
     If make_current is True, the new version will be set as the current version.
 
@@ -39,7 +42,10 @@ def create_version(f, version_name, datasets, prev_version=None, *,
         versions.attrs['current_version'] = version_name
 
     for name, data in datasets.items():
-        slices = write_dataset(f, name, data)
+        if isinstance(data, dict):
+            slices = write_dataset_chunks(f, name, data)
+        else:
+            slices = write_dataset(f, name, data)
         create_virtual_dataset(f, version_name, name, slices)
 
     return group
