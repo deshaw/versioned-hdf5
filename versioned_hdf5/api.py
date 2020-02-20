@@ -1,11 +1,13 @@
-from h5py import Empty, Dataset, Group
+from h5py import Empty, Dataset, Group, h5d, h5s
+from h5py._hl.vds import VDSmap
 
 import numpy as np
 
 from contextlib import contextmanager
 import datetime
+import math
 
-from .backend import initialize
+from .backend import initialize, CHUNK_SIZE
 from .versions import (create_version, get_nth_previous_version,
                        set_current_version, all_versions)
 
@@ -170,6 +172,60 @@ class InMemoryGroup(Group):
         return res
 
     #TODO: override other relevant methods here
+
+class InMemoryDataset(Dataset):
+    def __setitem__(self, item, value):
+        pass
+
+class InMemoryDatasetID(h5d.DatasetID):
+    def write(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
+        dcpl = self.get_create_plist()
+
+        # Same as dataset.get_virtual_sources
+        virtual_sources = [
+                VDSmap(dcpl.get_virtual_vspace(j),
+                       dcpl.get_virtual_filename(j),
+                       dcpl.get_virtual_dsetname(j),
+                       dcpl.get_virtual_srcspace(j))
+                for j in range(dcpl.get_virtual_count())]
+
+        if mtype is not None:
+            raise NotImplementedError("mtype != None")
+        mslice = spaceid_to_slice(mspace)
+        fslice = spaceid_to_slice(fspace)
+        if len(fslice) > 1 or len(self.shape) > 1:
+            raise NotImplementedError("More than one dimension is not yet supported")
+        # TODO: Get the chunk size from the dataset
+        start, stop = fslice.start, fslice.stop
+        chunks = range(math.floor(start/CHUNK_SIZE), math.ceil(stop/CHUNK_SIZE))
+        data_dict = {}
+        arr = arr_obj[mslice]
+        for i in range(len(chunks)):
+            data_dict[i] = arr[i*CHUNK_SIZE:(i+1)*CHUNK_SIZE]
+
+        for i in range(math.ceil(self.shape[0]/CHUNK_SIZE)):
+            if i not in chunks:
+                data_dict[i] = None
+
+
+def spaceid_to_slice(space):
+    sel_type = space.get_select_type()
+
+    if sel_type == h5s.SEL_ALL:
+        return slice(None)
+    elif sel_type == h5s.SEL_HYPERSLABS:
+        slices = []
+        starts, strides, counts, blocks = space.get_regular_hyperslab()
+        for _start, _stride, count, block in zip(starts, strides, counts, blocks):
+            start = _start
+            stride = _stride
+            end = _start + stride*count
+            if block != 1:
+                raise NotImplementedError("Nontrivial blocks are not yet supported")
+            slices.append(slice(start, stride, end))
+        return tuple(slices)
+    else:
+        raise NotImplementedError("Empty and points selections are not yet supported")
 
 # This is adapted from h5py._hl.dataset.make_new_dset(). See the LICENSE file
 # for the h5py license.
