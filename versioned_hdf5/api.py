@@ -224,8 +224,10 @@ def spaceid_to_slice(space):
                 raise NotImplementedError("Nontrivial blocks are not yet supported")
             slices.append(slice(start, stride, end))
         return tuple(slices)
+    elif sel_type == h5s.SEL_NONE:
+        return slice(0, 0)
     else:
-        raise NotImplementedError("Empty and points selections are not yet supported")
+        raise NotImplementedError("Point selections are not yet supported")
 
 # This is adapted from h5py._hl.dataset.make_new_dset(). See the LICENSE file
 # for the h5py license.
