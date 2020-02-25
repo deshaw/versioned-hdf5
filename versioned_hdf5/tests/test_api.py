@@ -222,7 +222,7 @@ def test_delete():
 
 def test_spaceid_to_slice():
     with setup() as f:
-        shape = 100
+        shape = 10
         a = f.create_dataset('a', data=np.arange(shape))
 
         for start in range(0, shape):
@@ -230,15 +230,26 @@ def test_spaceid_to_slice():
                 for stride in range(1, shape):
                     for block in range(0, shape):
                         if count != 1 and block != 1:
-                            # Not yet supported
+                            # Not yet supported. Doesn't seem to be supported
+                            # by HDF5 either (?)
                             continue
+
                         spaceid = a.id.get_space()
+                        spaceid.select_hyperslab((start,), (count,),
+                                                 (stride,), (block,))
+                        sel = Selection((shape,), spaceid)
                         try:
-                            spaceid.select_hyperslab((start,), (count,),
-                                                     (stride,), (block,))
+                            a[sel]
+                        except ValueError:
+                            # HDF5 doesn't allow stride/count combinations
+                            # that are impossible (the count must be the exact
+                            # number of elements in the selected block).
+                            # Rather than trying to enumerate those here, we
+                            # just check what doesn't give an error.
+                            continue
+                        try:
                             s = spaceid_to_slice(spaceid)
                         except:
                             print(start, count, stride, block)
                             raise
-                        sel = Selection((shape,), spaceid)
                         assert_equal(a[s], a[sel], f"{(start, count, stride, block)}")
