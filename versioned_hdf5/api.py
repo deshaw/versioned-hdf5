@@ -211,7 +211,7 @@ def spaceid_to_slice(space):
     sel_type = space.get_select_type()
 
     if sel_type == h5s.SEL_ALL:
-        return slice(None)
+        return ()
     elif sel_type == h5s.SEL_HYPERSLABS:
         slices = []
         starts, strides, counts, blocks = space.get_regular_hyperslab()
