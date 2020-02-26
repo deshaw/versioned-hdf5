@@ -1,4 +1,5 @@
 from h5py import Empty, Dataset, Group, h5d, h5s
+from h5py._hl.selections import select
 from h5py._hl.vds import VDSmap
 
 import numpy as np
@@ -7,7 +8,7 @@ from contextlib import contextmanager
 import datetime
 import math
 
-from .backend import initialize, CHUNK_SIZE
+from .backend import initialize, CHUNK_SIZE, s2t
 from .versions import (create_version, get_nth_previous_version,
                        set_current_version, all_versions)
 
@@ -189,6 +190,10 @@ class InMemoryDatasetID(h5d.DatasetID):
                        dcpl.get_virtual_srcspace(j))
                 for j in range(dcpl.get_virtual_count())]
 
+        slice_map = {s2t(spaceid_to_slice(i.vspace)): spaceid_to_slice(i.src_space)
+                     for i in virtual_sources}
+        if any(len(i) > 1 for i in slice_map):
+            raise NotImplementedError("More than one dimension is not yet supported")
         if mtype is not None:
             raise NotImplementedError("mtype != None")
         mslice = spaceid_to_slice(mspace)
@@ -196,16 +201,35 @@ class InMemoryDatasetID(h5d.DatasetID):
         if len(fslice) > 1 or len(self.shape) > 1:
             raise NotImplementedError("More than one dimension is not yet supported")
         # TODO: Get the chunk size from the dataset
-        start, stop = fslice.start, fslice.stop
+        start, stop = fslice[0].start, fslice[0].stop
         chunks = range(math.floor(start/CHUNK_SIZE), math.ceil(stop/CHUNK_SIZE))
         data_dict = {}
         arr = arr_obj[mslice]
-        for i in range(len(chunks)):
-            data_dict[i] = arr[i*CHUNK_SIZE:(i+1)*CHUNK_SIZE]
+        # Chunks that are modified
+        for i in chunks:
+            # Based on Dataset.__getitem__
+            selection = select(self.shape, (slice(i*CHUNK_SIZE, (i+1)*CHUNK_SIZE),), dsid=self)
+
+            assert selection.nselect != 0
+
+            a = np.ndarray(selection.mshape, self.dtype, order='C')
+
+            # Perform the actual read
+            mspace = h5s.create_simple(selection.mshape)
+            fspace = selection.id
+            self.read(mspace, fspace, a, mtype, dxpl=dxpl)
+
+            data_dict[i] = a
+            # data_dict[i] = arr[i*CHUNK_SIZE:(i+1)*CHUNK_SIZE]
 
         for i in range(math.ceil(self.shape[0]/CHUNK_SIZE)):
             if i not in chunks:
-                data_dict[i] = None
+                for t in slice_map:
+                    r = range(*t[0])
+                    if i*CHUNK_SIZE in r:
+                        data_dict[i] = slice_map[t]
+
+        return data_dict
 
 def spaceid_to_slice(space):
     sel_type = space.get_select_type()
