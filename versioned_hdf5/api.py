@@ -231,6 +231,29 @@ class InMemoryDatasetID(h5d.DatasetID):
 
         return data_dict
 
+def split_slice(s, chunk=CHUNK_SIZE):
+    """
+    Split a slice into multiple slices along 0:chunk, chunk:2*chunk, etc.
+
+    Yields tuples, (i, slice), where i is the chunk that should be sliced.
+    """
+    start, stop, step = s.start, s.stop, s.step
+    if stop == start:
+        # Empty slice
+        return
+    for i in range(math.floor(start/chunk), math.ceil(stop/chunk)):
+        if i == 0:
+            new_start = start
+        elif i*chunk < start:
+            new_start = start - i*chunk
+        else:
+            new_start = (i*chunk - start) % step
+            if new_start:
+                new_start = step - new_start
+        new_stop = stop - i*chunk
+        new_step = step
+        yield i, slice(new_start, new_stop, new_step)
+
 def spaceid_to_slice(space):
     sel_type = space.get_select_type()
 
