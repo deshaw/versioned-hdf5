@@ -35,9 +35,13 @@ def create_base_dataset(f, name, *, shape=None, data=None, dtype=np.float64):
 
 # Helper functions to workaround slices not being hashable
 def s2t(s):
+    if isinstance(s, tuple):
+        return tuple(s2t(i) for i in s)
     return (s.start, s.stop)
 
 def t2s(t):
+    if isinstance(t[0], tuple):
+        return tuple(slice(*i) for i in t)
     return slice(*t)
 
 def write_dataset(f, name, data):
