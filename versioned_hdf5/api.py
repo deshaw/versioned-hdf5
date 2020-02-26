@@ -174,8 +174,8 @@ class InMemoryGroup(Group):
     #TODO: override other relevant methods here
 
 class InMemoryDataset(Dataset):
-    def __setitem__(self, item, value):
-        pass
+    def __init__(self, bind, **kwargs):
+        super().__init__(InMemoryDatasetID(bind), **kwargs)
 
 class InMemoryDatasetID(h5d.DatasetID):
     def write(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
