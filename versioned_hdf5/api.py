@@ -253,6 +253,14 @@ def split_slice(s, chunk=CHUNK_SIZE):
         new_step = step
         yield i, slice(new_start, new_stop, new_step)
 
+def slice_size(s):
+    start, stop, step = s.start, s.stop, s.step
+    if step == None:
+        step = 1
+    if start == None:
+        start = 0
+    return len(range(start, stop, step))
+
 def spaceid_to_slice(space):
     sel_type = space.get_select_type()
 
