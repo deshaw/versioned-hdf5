@@ -33,18 +33,9 @@ def create_base_dataset(f, name, *, shape=None, data=None, dtype=np.float64):
                          maxshape=(None,), dtype=dtype)
     return write_dataset(f, name, data)
 
-# Helper functions to workaround slices not being hashable
-def s2t(s):
-    if isinstance(s, tuple):
-        return tuple(s2t(i) for i in s)
-    return (s.start, s.stop)
-
-def t2s(t):
-    if isinstance(t[0], tuple):
-        return tuple(slice(*i) for i in t)
-    return slice(*t)
-
 def write_dataset(f, name, data):
+    from .slicetools import s2t, t2s
+
     if name not in f['/_version_data']:
         return create_base_dataset(f, name, data=data)
 
@@ -77,6 +68,8 @@ def write_dataset_chunks(f, name, data_dict):
     array for that chunk, or a slice into the raw data for that chunk
 
     """
+    from .slicetools import s2t, t2s
+
     if name not in f['/_version_data']:
         raise NotImplementedError("Use write_dataset() if the dataset does not yet exist")
 

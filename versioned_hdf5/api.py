@@ -8,9 +8,10 @@ from contextlib import contextmanager
 import datetime
 import math
 
-from .backend import initialize, CHUNK_SIZE, s2t
+from .backend import initialize, CHUNK_SIZE
 from .versions import (create_version, get_nth_previous_version,
                        set_current_version, all_versions)
+from .slicetools import s2t, slice_size, split_slice
 
 class VersionedHDF5File:
     """
@@ -235,43 +236,6 @@ class InMemoryDatasetID(h5d.DatasetID):
                         data_dict[i] = slice_map[t]
 
         return data_dict
-
-def split_slice(s, chunk=CHUNK_SIZE):
-    """
-    Split a slice into multiple slices along 0:chunk, chunk:2*chunk, etc.
-
-    Yields tuples, (i, slice), where i is the chunk that should be sliced.
-    """
-    start, stop, step = s.start, s.stop, s.step
-    if any(i < 0 for i in [start, stop, step]):
-        raise NotImplementedError("slices with negative values are not yet supported")
-    for i in range(math.floor(start/chunk), math.ceil(stop/chunk)):
-        if i == 0:
-            new_start = start
-        elif i*chunk < start:
-            new_start = start - i*chunk
-        else:
-            new_start = (i*chunk - start) % step
-            if new_start:
-                new_start = step - new_start
-        new_stop = min(stop - i*chunk, chunk)
-        new_step = step
-        yield i, slice(new_start, new_stop, new_step)
-
-def slice_size(s):
-    """
-    Give the maximum size of an array axis sliced by slice s
-
-    The true size could be smaller if the slice extends beyond the bounds of
-    the array.
-
-    """
-    start, stop, step = s.start, s.stop, s.step
-    if step == None:
-        step = 1
-    if start == None:
-        start = 0
-    return len(range(start, stop, step))
 
 def spaceid_to_slice(space):
     sel_type = space.get_select_type()
