@@ -205,8 +205,11 @@ class InMemoryDatasetID(h5d.DatasetID):
         chunks = range(math.floor(start/CHUNK_SIZE), math.ceil(stop/CHUNK_SIZE))
         data_dict = {}
         arr = arr_obj[mslice]
+        if np.isscalar(arr):
+            arr = arr.reshape((1,))
         # Chunks that are modified
-        for i in chunks:
+        N0 = 0
+        for i, s_ in split_slice(fslice[0]):
             # Based on Dataset.__getitem__
             selection = select(self.shape, (slice(i*CHUNK_SIZE, (i+1)*CHUNK_SIZE),), dsid=self)
 
@@ -214,13 +217,15 @@ class InMemoryDatasetID(h5d.DatasetID):
 
             a = np.ndarray(selection.mshape, self.dtype, order='C')
 
-            # Perform the actual read
+            # Read the data into the array a
             mspace = h5s.create_simple(selection.mshape)
             fspace = selection.id
             self.read(mspace, fspace, a, mtype, dxpl=dxpl)
 
             data_dict[i] = a
-            # data_dict[i] = arr[i*CHUNK_SIZE:(i+1)*CHUNK_SIZE]
+            N = N0 + slice_size(s_)
+            data_dict[i][s_] = arr[N0:N]
+            N0 = N
 
         for i in range(math.ceil(self.shape[0]/CHUNK_SIZE)):
             if i not in chunks:
