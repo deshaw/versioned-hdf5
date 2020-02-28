@@ -6,7 +6,7 @@ from numpy.testing import assert_equal
 from h5py._hl.selections import Selection
 
 from ..backend import CHUNK_SIZE
-from ..api import VersionedHDF5File, spaceid_to_slice, split_slice
+from ..api import VersionedHDF5File, spaceid_to_slice, split_slice, slice_size
 
 from .test_backend import setup
 
@@ -268,3 +268,16 @@ def test_split_slice():
                 for p in pieces:
                     extended.extend(p)
                 assert base == extended, (s, slices)
+
+def test_slice_size():
+    r = range(1000)
+    for start in range(20):
+        for stop in range(30):
+            for step in range(1, 10):
+                s = slice(start, stop, step)
+                assert len(r[s]) == slice_size(s)
+
+    s = slice(10)
+    assert len(r[s]) == slice_size(s)
+    s = slice(1, 10)
+    assert len(r[s]) == slice_size(s)
