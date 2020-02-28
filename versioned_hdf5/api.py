@@ -249,7 +249,7 @@ def split_slice(s, chunk=CHUNK_SIZE):
             new_start = (i*chunk - start) % step
             if new_start:
                 new_start = step - new_start
-        new_stop = stop - i*chunk
+        new_stop = min(stop - i*chunk, chunk)
         new_step = step
         yield i, slice(new_start, new_stop, new_step)
 

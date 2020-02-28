@@ -262,6 +262,8 @@ def test_split_slice():
                 s = slice(start, stop, step)
                 slices = list(split_slice(s, chunk))
                 base = list(range(100)[s])
+                assert sum([slice_size(s_) for i, s_ in slices]) ==\
+                    slice_size(s), (s, slices)
                 pieces = [list(range(i*chunk, (i+1)*chunk)[s_]) for i, s_ in
                           slices]
                 extended = []
