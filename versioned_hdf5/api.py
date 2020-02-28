@@ -238,6 +238,8 @@ def split_slice(s, chunk=CHUNK_SIZE):
     Yields tuples, (i, slice), where i is the chunk that should be sliced.
     """
     start, stop, step = s.start, s.stop, s.step
+    if any(i < 0 for i in [start, stop, step]):
+        raise NotImplementedError("slices with negative values are not yet supported")
     for i in range(math.floor(start/chunk), math.ceil(stop/chunk)):
         if i == 0:
             new_start = start
