@@ -254,6 +254,13 @@ def split_slice(s, chunk=CHUNK_SIZE):
         yield i, slice(new_start, new_stop, new_step)
 
 def slice_size(s):
+    """
+    Give the maximum size of an array axis sliced by slice s
+
+    The true size could be smaller if the slice extends beyond the bounds of
+    the array.
+
+    """
     start, stop, step = s.start, s.stop, s.step
     if step == None:
         step = 1
