@@ -180,9 +180,11 @@ class InMemoryDataset(Dataset):
         super().__init__(InMemoryDatasetID(bind), **kwargs)
 
 class InMemoryDatasetID(h5d.DatasetID):
-    def write(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
-        dcpl = self.get_create_plist()
+    def __init__(self, _id):
+        super().__init__(_id)
+        self.data_dict = {}
 
+        dcpl = self.get_create_plist()
         # Same as dataset.get_virtual_sources
         virtual_sources = [
                 VDSmap(dcpl.get_virtual_vspace(j),
@@ -195,45 +197,48 @@ class InMemoryDatasetID(h5d.DatasetID):
                      for i in virtual_sources}
         if any(len(i) > 1 for i in slice_map):
             raise NotImplementedError("More than one dimension is not yet supported")
+
+        # TODO: Get the chunk size from the dataset
+        for i in range(math.ceil(self.shape[0]/CHUNK_SIZE)):
+            for t in slice_map:
+                r = range(*t[0])
+                if i*CHUNK_SIZE in r:
+                    self.data_dict[i] = slice_map[t]
+
+    def write(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
+
         if mtype is not None:
             raise NotImplementedError("mtype != None")
         mslice = spaceid_to_slice(mspace)
         fslice = spaceid_to_slice(fspace)
         if len(fslice) > 1 or len(self.shape) > 1:
             raise NotImplementedError("More than one dimension is not yet supported")
-        # TODO: Get the chunk size from the dataset
-        start, stop = fslice[0].start, fslice[0].stop
-        chunks = range(math.floor(start/CHUNK_SIZE), math.ceil(stop/CHUNK_SIZE))
-        data_dict = {}
+        data_dict = self.data_dict
         arr = arr_obj[mslice]
         if np.isscalar(arr):
             arr = arr.reshape((1,))
+
         # Chunks that are modified
         N0 = 0
         for i, s_ in split_slice(fslice[0]):
             # Based on Dataset.__getitem__
-            selection = select(self.shape, (slice(i*CHUNK_SIZE, (i+1)*CHUNK_SIZE),), dsid=self)
+            if isinstance(self.data_dict[i], slice):
+                selection = select(self.shape, (slice(i*CHUNK_SIZE, (i+1)*CHUNK_SIZE),), dsid=self)
 
-            assert selection.nselect != 0
+                assert selection.nselect != 0
 
-            a = np.ndarray(selection.mshape, self.dtype, order='C')
+                a = np.ndarray(selection.mshape, self.dtype, order='C')
 
-            # Read the data into the array a
-            mspace = h5s.create_simple(selection.mshape)
-            fspace = selection.id
-            self.read(mspace, fspace, a, mtype, dxpl=dxpl)
+                # Read the data into the array a
+                mspace = h5s.create_simple(selection.mshape)
+                fspace = selection.id
+                self.read(mspace, fspace, a, mtype, dxpl=dxpl)
 
-            data_dict[i] = a
+                data_dict[i] = a
+
             N = N0 + slice_size(s_)
             data_dict[i][s_] = arr[N0:N]
             N0 = N
-
-        for i in range(math.ceil(self.shape[0]/CHUNK_SIZE)):
-            if i not in chunks:
-                for t in slice_map:
-                    r = range(*t[0])
-                    if i*CHUNK_SIZE in r:
-                        data_dict[i] = slice_map[t]
 
         return data_dict
 
