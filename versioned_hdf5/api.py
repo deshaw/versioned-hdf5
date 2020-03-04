@@ -149,10 +149,10 @@ class InMemoryGroup(Group):
         res = super().__getitem__(name)
         if isinstance(res, Group):
             return self.__class__(res.id)
-
-        res2 = np.array(res)
-        self._data[name] = res2
-        return res2
+        elif isinstance(res, Dataset):
+            return InMemoryDataset(res.id)
+        else:
+            raise NotImplementedError(f"Cannot handle {type(res)!r}")
 
     def __setitem__(self, name, obj):
         self._data[name] = obj
@@ -162,14 +162,9 @@ class InMemoryGroup(Group):
             del self._data
         super().__delitem__(name)
 
-    def create_dataset(self, name, *, shape=None, dtype=None, data=None, **kwds):
-        if kwds:
-            raise NotImplementedError
-
-        data = _make_new_dset(shape, dtype, data)
-
+    def create_dataset(self, name, **kwds):
+        data = super().create_dataset(name, **kwds)
         self[name] = data
-
         return data
 
     def datasets(self):
@@ -189,11 +184,11 @@ class InMemoryGroup(Group):
 
 class InMemoryDataset(Dataset):
     def __init__(self, bind, **kwargs):
-        super().__init__(InMemoryDatasetID(bind), **kwargs)
+        super().__init__(InMemoryDatasetID(bind.id), **kwargs)
 
 class InMemoryDatasetID(h5d.DatasetID):
     def __init__(self, _id):
-        super().__init__(_id)
+        # super __init__ is handled by DatasetID.__cinit__ automatically
         self.data_dict = {}
 
         dcpl = self.get_create_plist()
@@ -218,7 +213,6 @@ class InMemoryDatasetID(h5d.DatasetID):
                     self.data_dict[i] = slice_map[t]
 
     def write(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
-
         if mtype is not None:
             raise NotImplementedError("mtype != None")
         mslice = spaceid_to_slice(mspace)

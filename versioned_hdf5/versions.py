@@ -21,6 +21,8 @@ def create_version(f, version_name, datasets, prev_version=None, *,
 
     Returns the group for the new version.
     """
+    from .api import InMemoryDataset
+
     versions = f['_version_data/versions']
 
     if prev_version == '':
@@ -42,6 +44,8 @@ def create_version(f, version_name, datasets, prev_version=None, *,
         versions.attrs['current_version'] = version_name
 
     for name, data in datasets.items():
+        if isinstance(data, InMemoryDataset):
+            data = data.id.data_dict
         if isinstance(data, dict):
             slices = write_dataset_chunks(f, name, data)
         else:
