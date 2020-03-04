@@ -130,6 +130,18 @@ class InMemoryGroup(Group):
         self._data = {}
         super().__init__(bind)
 
+    # Based on Group.__repr__
+    def __repr__(self):
+        if not self:
+            r = u"<Closed InMemoryGroup>"
+        else:
+            namestr = (
+                '"%s"' % self.name
+            ) if self.name is not None else u"(anonymous)"
+            r = '<InMemoryGroup %s (%d members)>' % (namestr, len(self))
+
+        return r
+
     def __getitem__(self, name):
         if name in self._data:
             return self._data[name]
