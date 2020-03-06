@@ -211,13 +211,15 @@ class InMemoryDatasetID(h5d.DatasetID):
 
         slice_map = {s2t(spaceid_to_slice(i.vspace)): spaceid_to_slice(i.src_space)
                      for i in virtual_sources}
-        if any(len(i) > 1 for i in slice_map):
+        if any(len(i) != 1 for i in slice_map) or any(len(i) != 1 for i in slice_map.values()):
+
             raise NotImplementedError("More than one dimension is not yet supported")
 
+        slice_map = {i[0]: j[0] for i, j in slice_map.items()}
         # TODO: Get the chunk size from the dataset
         for i in range(math.ceil(self.shape[0]/CHUNK_SIZE)):
             for t in slice_map:
-                r = range(*t[0])
+                r = range(*t)
                 if i*CHUNK_SIZE in r:
                     self.data_dict[i] = slice_map[t]
 
