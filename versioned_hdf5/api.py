@@ -128,6 +128,7 @@ class VersionedHDF5File:
 class InMemoryGroup(Group):
     def __init__(self, bind):
         self._data = {}
+        self._subgroups = {}
         super().__init__(bind)
 
     # Based on Group.__repr__
@@ -145,12 +146,16 @@ class InMemoryGroup(Group):
     def __getitem__(self, name):
         if name in self._data:
             return self._data[name]
+        if name in self._subgroups:
+            return self._subgroups[name]
 
         res = super().__getitem__(name)
         if isinstance(res, Group):
-            return self.__class__(res.id)
+            self._subgroups[name] = self.__class__(res.id)
+            return self._subgroups[name]
         elif isinstance(res, Dataset):
-            return InMemoryDataset(res.id)
+            self._data[name] = InMemoryDataset(res.id)
+            return self._data[name]
         else:
             raise NotImplementedError(f"Cannot handle {type(res)!r}")
 
