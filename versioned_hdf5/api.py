@@ -184,6 +184,10 @@ class InMemoryGroup(Group):
 
 class InMemoryDataset(Dataset):
     def __init__(self, bind, **kwargs):
+        # Hold a reference to the original bind so h5py doesn't invalidate the id
+        # XXX: We need to handle deallocation here properly when our object
+        # gets deleted or closed.
+        self.orig_bind = bind
         super().__init__(InMemoryDatasetID(bind.id), **kwargs)
 
 class InMemoryDatasetID(h5d.DatasetID):
