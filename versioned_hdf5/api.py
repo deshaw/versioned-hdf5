@@ -269,7 +269,7 @@ def spaceid_to_slice(space):
             slices.append(slice(start, end, stride))
         return tuple(slices)
     elif sel_type == h5s.SEL_NONE:
-        return slice(0, 0)
+        return (slice(0, 0),)
     else:
         raise NotImplementedError("Point selections are not yet supported")
 
