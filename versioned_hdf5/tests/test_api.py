@@ -253,3 +253,13 @@ def test_spaceid_to_slice():
                             print(start, count, stride, block)
                             raise
                         assert_equal(a[s], a[sel], f"{(start, count, stride, block)}")
+
+def test_large_dataset():
+    # Test that large datasets aren't read into memory.
+    with setup() as f:
+        # A dataset of zeros that would take 80 GB if put into memory.
+        # However, since the dataset is empty, hdf5 is able to represent it
+        # without storing very much data on disk.
+        file = VersionedHDF5File(f)
+        with file.stage_version('version1') as group:
+            group.create_dataset('large', shape=(10000000000,), dtype=np.float64)
