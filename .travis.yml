@@ -10,6 +10,9 @@ dist: xenial
 
 matrix:
   include:
+    - python: 2.7
+      env:
+        - TESTS=true
     - python: 3.6
       env:
         - TESTS=true
@@ -30,7 +33,7 @@ install:
   - conda config --add channels conda-forge
   - conda update -q conda
   - conda info -a
-  - conda create -n test-environment python=$TRAVIS_PYTHON_VERSION pyflakes pytest pytest-doctestplus h5py doctr sphinx
+  - conda create -n test-environment python=$TRAVIS_PYTHON_VERSION pyflakes pytest pytest-doctestplus h5py doctr sphinx fastcache
   - source activate test-environment
 
 script:
