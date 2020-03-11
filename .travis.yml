@@ -35,7 +35,7 @@ install:
   - conda info -a
   - conda create -n test-environment python=$TRAVIS_PYTHON_VERSION pyflakes pytest pytest-doctestplus h5py fastcache
   - if [[ "${DOCS}" == "true" ]]; then
-        conda install -n test-environment doctr sphinx
+        conda install -n test-environment doctr sphinx;
     fi
   - source activate test-environment
 
