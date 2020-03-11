@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 from pytest import raises
 
 import numpy as np
@@ -189,7 +191,7 @@ def test_unmodified():
         assert set(file['version1']) == {'test_data', 'test_data2'}
         assert_equal(file['version1']['test_data'], test_data)
         assert_equal(file['version1']['test_data2'], test_data)
-        assert file['version1'].datasets().keys() == {'test_data', 'test_data2'}
+        assert set(file['version1'].datasets().keys()) == {'test_data', 'test_data2'}
 
         with file.stage_version('version2') as group:
             group['test_data2'][0] = 0.0
@@ -218,7 +220,7 @@ def test_delete():
         assert set(f['_version_data/versions/version2']) == {'test_data'}
         assert set(file['version2']) == {'test_data'}
         assert_equal(file['version2']['test_data'], test_data)
-        assert file['version2'].datasets().keys() == {'test_data'}
+        assert set(file['version2'].datasets().keys()) == {'test_data'}
 
 def test_spaceid_to_slice():
     with setup() as f:
@@ -252,4 +254,4 @@ def test_spaceid_to_slice():
                         except:
                             print(start, count, stride, block)
                             raise
-                        assert_equal(a[s], a[sel], f"{(start, count, stride, block)}")
+                        assert_equal(a[s], a[sel], str((start, count, stride, block)))

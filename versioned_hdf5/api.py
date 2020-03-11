@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 from h5py import Empty, Dataset, Group, h5d, h5s
 from h5py._hl.selections import select
 from h5py._hl.vds import VDSmap
@@ -75,7 +77,7 @@ class VersionedHDF5File:
             version = '__first_version__'
 
         if version not in self._versions:
-            raise KeyError(f"Version {version!r} not found")
+            raise KeyError("Version {version!r} not found".format(version=version))
 
         # TODO: Don't give an in-memory group if the file is read-only
         return InMemoryGroup(self._versions[version]._id)
@@ -93,13 +95,13 @@ class VersionedHDF5File:
         elif isinstance(item, (datetime.datetime, np.datetime64)):
             raise NotImplementedError
         else:
-            raise KeyError(f"Don't know how to get the version for {item!r}")
+            raise KeyError("Don't know how to get the version for {item!r}".format(item=item))
 
     def __iter__(self):
         return all_versions(self.f, include_first=False)
 
     @contextmanager
-    def stage_version(self, version_name: str, prev_version=None, make_current=True):
+    def stage_version(self, version_name, prev_version=None, make_current=True):
         """
         Return a context manager to stage a new version
 
@@ -129,7 +131,7 @@ class InMemoryGroup(Group):
     def __init__(self, bind):
         self._data = {}
         self._subgroups = {}
-        super().__init__(bind)
+        super(InMemoryGroup, self).__init__(bind)
 
     # Based on Group.__repr__
     def __repr__(self):
@@ -149,7 +151,7 @@ class InMemoryGroup(Group):
         if name in self._subgroups:
             return self._subgroups[name]
 
-        res = super().__getitem__(name)
+        res = super(InMemoryGroup, self).__getitem__(name)
         if isinstance(res, Group):
             self._subgroups[name] = self.__class__(res.id)
             return self._subgroups[name]
@@ -157,7 +159,7 @@ class InMemoryGroup(Group):
             self._data[name] = InMemoryDataset(res.id)
             return self._data[name]
         else:
-            raise NotImplementedError(f"Cannot handle {type(res)!r}")
+            raise NotImplementedError("Cannot handle %r" % type(res))
 
     def __setitem__(self, name, obj):
         self._data[name] = obj
@@ -165,10 +167,10 @@ class InMemoryGroup(Group):
     def __delitem__(self, name):
         if name in self._data:
             del self._data
-        super().__delitem__(name)
+        super(InMemoryGroup, self).__delitem__(name)
 
     def create_dataset(self, name, **kwds):
-        data = super().create_dataset(name, **kwds)
+        data = super(InMemoryGroup, self).create_dataset(name, **kwds)
         self[name] = data
         return data
 
@@ -193,7 +195,7 @@ class InMemoryDataset(Dataset):
         # XXX: We need to handle deallocation here properly when our object
         # gets deleted or closed.
         self.orig_bind = bind
-        super().__init__(InMemoryDatasetID(bind.id), **kwargs)
+        super(InMemoryDataset, self).__init__(InMemoryDatasetID(bind.id), **kwargs)
 
 class InMemoryDatasetID(h5d.DatasetID):
     def __init__(self, _id):
@@ -217,7 +219,7 @@ class InMemoryDatasetID(h5d.DatasetID):
 
         slice_map = {i[0]: j[0] for i, j in slice_map.items()}
         # TODO: Get the chunk size from the dataset
-        for i in range(math.ceil(self.shape[0]/CHUNK_SIZE)):
+        for i in range(int(math.ceil(self.shape[0]/CHUNK_SIZE))):
             for t in slice_map:
                 r = range(*t)
                 if i*CHUNK_SIZE in r:

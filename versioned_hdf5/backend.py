@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 from h5py import VirtualLayout, VirtualSource
 
 import numpy as np
@@ -18,7 +20,7 @@ def split_chunks(shape):
     if len(shape) > 1:
         raise NotImplementedError
 
-    for i in range(math.ceil(shape[0]/CHUNK_SIZE)):
+    for i in range(int(math.ceil(shape[0]/CHUNK_SIZE))):
         yield slice(CHUNK_SIZE*i, CHUNK_SIZE*(i + 1))
 
 def initialize(f):
@@ -27,7 +29,7 @@ def initialize(f):
     versions.create_group('__first_version__')
     versions.attrs['current_version'] = '__first_version__'
 
-def create_base_dataset(f, name, *, shape=None, data=None, dtype=np.float64):
+def create_base_dataset(f, name, shape=None, data=None, dtype=np.float64):
     group = f['/_version_data'].create_group(name)
     group.create_dataset('raw_data', shape=(0,), chunks=(CHUNK_SIZE,),
                          maxshape=(None,), dtype=dtype)
@@ -41,7 +43,7 @@ def write_dataset(f, name, data):
 
     ds = f['/_version_data'][name]['raw_data']
     if data.dtype != ds.dtype:
-        raise ValueError(f"dtypes do not match ({data.dtype} != {ds.dtype})")
+        raise ValueError("dtypes do not match ({data.dtype} != {ds.dtype})".format(data=data, ds=ds))
     # TODO: Handle more than one dimension
     old_shape = ds.shape
     hashtable = Hashtable(f, name)
@@ -84,7 +86,7 @@ def write_dataset_chunks(f, name, data_dict):
     data_to_write = {}
     for chunk, data_s in data_dict.items():
         if not isinstance(data_s, (slice, tuple)) and data_s.dtype != ds.dtype:
-            raise ValueError(f"dtypes do not match ({data_s.dtype} != {ds.dtype})")
+            raise ValueError("dtypes do not match ({data_s.dtype} != {ds.dtype})".format(data_s=data_s, ds=ds))
 
         idx = hashtable.largest_index
         if isinstance(data_s, (slice, tuple)):

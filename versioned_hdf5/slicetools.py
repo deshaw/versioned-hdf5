@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 import math
 
 from .backend import CHUNK_SIZE
@@ -22,7 +24,7 @@ def split_slice(s, chunk=CHUNK_SIZE):
     start, stop, step = s.start, s.stop, s.step
     if any(i < 0 for i in [start, stop, step]):
         raise NotImplementedError("slices with negative values are not yet supported")
-    for i in range(math.floor(start/chunk), math.ceil(stop/chunk)):
+    for i in range(int(math.floor(start/chunk)), int(math.ceil(stop/chunk))):
         if i == 0:
             new_start = start
         elif i*chunk < start:

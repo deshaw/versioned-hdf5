@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 from ..slicetools import split_slice, slice_size
 
 def test_split_slice():

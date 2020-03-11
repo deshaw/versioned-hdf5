@@ -1,8 +1,20 @@
+from __future__ import print_function, division
+
 import numpy as np
 
+import sys
+
 import hashlib
-from collections.abc import MutableMapping
-from functools import lru_cache
+try:
+    from collections.abc import MutableMapping
+except ImportError:
+    # Python 2
+    from collections import MutableMapping
+
+try:
+    from functools import lru_cache
+except ImportError:
+    from fastcache import lru_cache
 
 @lru_cache()
 class Hashtable(MutableMapping):
@@ -95,7 +107,7 @@ class Hashtable(MutableMapping):
         if value.step not in [1, None]:
             raise ValueError("only step-1 slices are supported")
 
-        kv = (list(key), (value.start, value.stop))
+        kv = (bytestolist(key), (value.start, value.stop))
         if key in self._d:
             if bytes(self.hash_table[self._indices[key]])[0] != key:
                 raise ValueError("The key %s is already in the hashtable under another index.")
@@ -116,3 +128,9 @@ class Hashtable(MutableMapping):
 
     def __len__(self):
         return len(self._d)
+
+def bytestolist(b):
+    # For Python 2/3 compatibility
+    if sys.version_info[0] == 2:
+        return [ord(i) for i in b]
+    return list(b)

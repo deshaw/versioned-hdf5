@@ -1,9 +1,11 @@
+from __future__ import print_function, division
+
 from uuid import uuid4
 
 from .backend import write_dataset, write_dataset_chunks, create_virtual_dataset
 
 # TODO: Allow version_name to be a version group
-def create_version(f, version_name, datasets, prev_version=None, *,
+def create_version(f, version_name, datasets, prev_version=None,
                    make_current=True):
     """
     Create a new version
@@ -34,9 +36,9 @@ def create_version(f, version_name, datasets, prev_version=None, *,
         version_name = str(uuid4())
 
     if version_name in versions:
-        raise ValueError(f"There is already a version with the name {version_name}")
+        raise ValueError("There is already a version with the name {version_name}".format(version_name=version_name))
     if prev_version not in versions:
-        raise ValueError(f"Previous version {prev_version!r} not found")
+        raise ValueError("Previous version {prev_version!r} not found".format(prev_version=prev_version))
 
     group = versions.create_group(version_name)
     group.attrs['prev_version'] = prev_version
@@ -57,7 +59,7 @@ def create_version(f, version_name, datasets, prev_version=None, *,
 def get_nth_previous_version(f, version_name, n):
     versions = f['_version_data/versions']
     if version_name not in versions:
-        raise IndexError(f"Version {version_name!r} not found")
+        raise IndexError("Version {version_name!r} not found".format(version_name=version_name))
 
     version = version_name
     for i in range(n):
@@ -65,18 +67,18 @@ def get_nth_previous_version(f, version_name, n):
 
         # __first_version__ is a meta-version and should not be returnable
         if version == '__first_version__':
-            raise IndexError(f"{version_name!r} has fewer than {n} versions before it")
+            raise IndexError("{version_name!r} has fewer than {n} versions before it".format(version_name=version_name, n=n))
 
     return version
 
 def set_current_version(f, version_name):
     versions = f['_version_data/versions']
     if version_name not in versions:
-        raise ValueError(f"Version {version_name!r} not found")
+        raise ValueError("Version {version_name!r} not found".format(version_name=version_name))
 
     versions.attrs['current_version'] = version_name
 
-def all_versions(f, *, include_first=False):
+def all_versions(f, include_first=False):
     """
     Return a generator that iterates all versions by name
 

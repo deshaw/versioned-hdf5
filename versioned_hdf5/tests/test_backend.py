@@ -1,4 +1,5 @@
-# TODO: Use a fixture for the test file
+from __future__ import print_function, division
+
 import h5py
 import numpy as np
 from numpy.testing import assert_equal
@@ -7,6 +8,7 @@ from ..backend import (create_base_dataset, initialize, write_dataset,
                        create_virtual_dataset, CHUNK_SIZE,
                        write_dataset_chunks)
 
+# TODO: Use a fixture for the test file
 def setup(name=None, version_name=None):
     f = h5py.File('test.hdf5', 'w')
     initialize(f)
