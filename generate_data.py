@@ -65,7 +65,7 @@ class TestVersionedDatasetPerformance(TestCase):
         logger = logging.getLogger(__name__)
 
         tmp_dir = '.'
-        filename = tmp_dir + f'/{name}_sparse.h5'
+        filename = tmp_dir + '/' + name + '_sparse.h5'
         tts = []
         f = h5py.File(filename, 'w')
         file = VersionedHDF5File(f)
@@ -234,7 +234,7 @@ class TestVersionedDatasetPerformance(TestCase):
         logger = logging.getLogger(__name__)
 
         tmp_dir = '.'
-        filename = tmp_dir + f'/{name}_dense.h5'
+        filename = tmp_dir + '/' + name + '_dense.h5'
         tts = []
         f = h5py.File(filename, 'w')
         file = VersionedHDF5File(f)

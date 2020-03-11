@@ -63,7 +63,7 @@ class TestVersionedDatasetPerformance(TestCase):
         logger = logging.getLogger(__name__)
 
         tmp_dir = '.'
-        filename = tmp_dir + f'/{name}_sparse_no_versions.h5'
+        filename = tmp_dir + '/' + name + '_sparse_no_versions.h5'
         tts = []
         f = h5py.File(filename, 'w')
         try:
@@ -226,7 +226,7 @@ class TestVersionedDatasetPerformance(TestCase):
         logger = logging.getLogger(__name__)
 
         tmp_dir = '.'
-        filename = tmp_dir + f'/{name}_dense_no_versions.h5'
+        filename = tmp_dir + '/' + name + '_dense_no_versions.h5'
         tts = []
         f = h5py.File(filename, 'w')
         try:
