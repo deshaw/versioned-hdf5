@@ -381,6 +381,7 @@ class TestVersionedDatasetPerformance(TestCase):
 
 if __name__ == '__main__':
 
-    num_transactions = [50, 100, 500, 1000, 5000, 7500, 10000, 12000, 15000]#, 20000, 30000]
+    #num_transactions = [50, 100, 500, 1000, 5000, 7500, 10000, 12000, 15000]#, 20000, 30000]
+    num_transactions = [30000]
     for t in num_transactions:
-        TestVersionedDatasetPerformance().test_large_fraction_changes_sparse(t)
+        TestVersionedDatasetPerformance().test_small_fraction_changes_sparse(t)
