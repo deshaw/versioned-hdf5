@@ -35,7 +35,7 @@ class TestVersionedDatasetPerformance(TestCase):
         val0[i], val1[i], ...
       TODO: check the math!
     """
-    def test_mostly_appends_sparse(self, num_transactions=250):
+    def test_mostly_appends_sparse(self, num_transactions=250, print_transactions=False):
 
         num_rows_initial = 1000
 
@@ -52,7 +52,7 @@ class TestVersionedDatasetPerformance(TestCase):
 
         name = f"test_mostly_appends_sparse_{num_transactions}"
 
-        self._write_transactions_sparse(name,
+        self._write_transactions_sparse(name, print_transactions,
                                         num_rows_initial,
                                         num_transactions,
                                         num_rows_per_append,
@@ -62,7 +62,7 @@ class TestVersionedDatasetPerformance(TestCase):
         
 
     @classmethod
-    def _write_transactions_sparse(cls, name,
+    def _write_transactions_sparse(cls, name, print_transactions,
                                    num_rows_initial,
                                    num_transactions,
                                    num_rows_per_append,
@@ -84,7 +84,8 @@ class TestVersionedDatasetPerformance(TestCase):
                 val_ds = group.create_dataset(name + '/val', data=np.random.rand(num_rows_initial),
                                               dtype=(np.dtype('float64')))
             for a in range(num_transactions):
-                print("Transaction", a)
+                if print_transactions:
+                    print("Transaction", a)
                 tt = datetime.datetime.utcnow()
                 with file.stage_version(str(tt)) as group:
                     key0_ds = group[name + '/key0']
@@ -160,7 +161,7 @@ class TestVersionedDatasetPerformance(TestCase):
             ds[-num_rows_per_append:] = rand_fn(num_rows_per_append)
 
 
-    def test_large_fraction_changes_sparse(self, num_transactions=250):
+    def test_large_fraction_changes_sparse(self, num_transactions=250, print_transactions=False):
 
         num_rows_initial = 5000
 
@@ -178,7 +179,7 @@ class TestVersionedDatasetPerformance(TestCase):
         
         name = f"test_large_fraction_changes_sparse_{num_transactions}"
 
-        self._write_transactions_sparse(name,
+        self._write_transactions_sparse(name, print_transactions,
                                         num_rows_initial,
                                         num_transactions,
                                         num_rows_per_append,
@@ -187,7 +188,7 @@ class TestVersionedDatasetPerformance(TestCase):
                                         pct_inserts, num_inserts)
 
 
-    def test_small_fraction_changes_sparse(self, num_transactions=250):
+    def test_small_fraction_changes_sparse(self, num_transactions=250, print_transactions=False):
 
         num_rows_initial = 5000
 
@@ -204,7 +205,7 @@ class TestVersionedDatasetPerformance(TestCase):
 
         name = f"test_small_fraction_changes_sparse_{num_transactions}"
 
-        self._write_transactions_sparse(name,
+        self._write_transactions_sparse(name, print_transactions,
                                         num_rows_initial,
                                         num_transactions,
                                         num_rows_per_append,
@@ -213,7 +214,7 @@ class TestVersionedDatasetPerformance(TestCase):
                                         pct_inserts, num_inserts)
 
 
-    def test_mostly_appends_dense(self, num_transactions=250):
+    def test_mostly_appends_dense(self, num_transactions=250, print_transactions=False):
 
         num_rows_initial_0 = 30
         num_rows_initial_1 = 30
@@ -255,7 +256,7 @@ class TestVersionedDatasetPerformance(TestCase):
         logger = logging.getLogger(__name__)
 
         tmp_dir = '.'
-        filename = tmp_dir + f'/{name}_dense.h5'
+        filename = tmp_dir + f'/{name}.h5'
         tts = []
         f = h5py.File(filename, 'w')
         file = VersionedHDF5File(f)
@@ -274,7 +275,7 @@ class TestVersionedDatasetPerformance(TestCase):
                     key0_ds = group[name + '/key0']
                     key1_ds = group[name + '/key1']
                     val_ds = group[name + '/val']
-                    cls._modify_dss_dense(key0_ds, key1_ds, val_ds,
+                    cls._modify_dss_dense_deterministic(key0_ds, key1_ds, val_ds,
                                           num_rows_per_append_0,
                                           pct_changes if a > 0 else 0.0, num_changes,
                                           pct_deletes if a > 0 else 0.0, num_deletes_0, num_deletes_1,
@@ -380,8 +381,6 @@ class TestVersionedDatasetPerformance(TestCase):
 
 if __name__ == '__main__':
 
-    #num_transactions = [50, 100, 500, 1000, 5000, 7500, 10000]
-    num_transactions = [30000]
+    num_transactions = [50, 100, 500, 1000, 5000, 7500, 10000, 12000, 15000]#, 20000, 30000]
     for t in num_transactions:
-        print(f"{t} transactions:")
         TestVersionedDatasetPerformance().test_large_fraction_changes_sparse(t)
