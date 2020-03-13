@@ -15,7 +15,7 @@ from .versions import (create_version, get_nth_previous_version,
                        set_current_version, all_versions)
 from .slicetools import s2t, slice_size, split_slice
 
-class VersionedHDF5File:
+class VersionedHDF5File(object):
     """
     A Versioned HDF5 File
 
