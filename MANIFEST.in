@@ -1,0 +1,2 @@
+include versioneer.py
+include versioned_hdf5/_version.py
