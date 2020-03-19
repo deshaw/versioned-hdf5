@@ -15,14 +15,14 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/Quansight/versioned-hdf5",
     packages=['versioned_hdf5', 'versioned_hdf5.tests'],
-    license="MIT",
+    license="BSD",
     install_requires=[
         "h5py",
         "numpy",
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
+        "License :: OSI Approved :: BSD License",
         "Operating System :: OS Independent",
     ],
     python_requires='>=3.6',
