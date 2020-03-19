@@ -1,11 +1,15 @@
 from pytest import raises
 
+import numpy as np
+
+from ..backend import create_base_dataset
 from ..hashtable import Hashtable
 
 from .test_backend import setup
 
 def test_hashtable():
-    with setup('test_data') as f:
+    with setup() as f:
+        create_base_dataset(f, 'test_data', data=np.empty((0,)))
         h = Hashtable(f, 'test_data')
         assert len(h) == 0
         h[b'\xff'*32] = slice(0, 1)

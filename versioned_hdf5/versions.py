@@ -4,7 +4,7 @@ from .backend import write_dataset, write_dataset_chunks, create_virtual_dataset
 
 # TODO: Allow version_name to be a version group
 def create_version(f, version_name, datasets, prev_version=None, *,
-                   make_current=True):
+                   make_current=True, chunk_size=None):
     """
     Create a new version
 
@@ -47,9 +47,11 @@ def create_version(f, version_name, datasets, prev_version=None, *,
         if isinstance(data, InMemoryDataset):
             data = data.id.data_dict
         if isinstance(data, dict):
+            if chunk_size is not None:
+                raise NotImplementedError("Specifying chunk size with dict data")
             slices = write_dataset_chunks(f, name, data)
         else:
-            slices = write_dataset(f, name, data)
+            slices = write_dataset(f, name, data, chunk_size=chunk_size)
         create_virtual_dataset(f, version_name, name, slices)
 
     return group

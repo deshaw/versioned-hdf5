@@ -1,7 +1,5 @@
 import math
 
-from .backend import CHUNK_SIZE
-
 # Helper functions to workaround slices not being hashable
 def s2t(s):
     if isinstance(s, tuple):
@@ -13,7 +11,7 @@ def t2s(t):
         return tuple(slice(*i) for i in t)
     return slice(*t)
 
-def split_slice(s, chunk=CHUNK_SIZE):
+def split_slice(s, chunk):
     """
     Split a slice into multiple slices along 0:chunk, chunk:2*chunk, etc.
 
