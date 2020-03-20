@@ -81,7 +81,7 @@ indexing (the current version is <code class="code docutils literal notranslate"
 
 <dl class="method">
 <dt id="versioned_hdf5.VersionedHDF5File.stage_version">
-<code class="sig-name descname">stage_version</code><span class="sig-paren">(</span><em class="sig-param">version_name: str</em>, <em class="sig-param">prev_version=None</em>, <em class="sig-param">make_current=True</em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.stage_version" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">stage_version</code><span class="sig-paren">(</span><em class="sig-param">version_name: str</em>, <em class="sig-param">prev_version=None</em>, <em class="sig-param">make_current=True</em>, <em class="sig-param">chunk_size=None</em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.stage_version" title="Permalink to this definition">¶</a></dt>
 <dd><p>Return a context manager to stage a new version</p>
 <p>The context manager returns a group, which should be modified in-place
 to build the new version. When the context manager exits, the new
