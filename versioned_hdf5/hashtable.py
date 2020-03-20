@@ -28,6 +28,7 @@ class Hashtable(MutableMapping):
     def __init__(self, f, name):
         self.f = f
         self.name = name
+        self.chunk_size = f['_version_data'][name]['raw_data'].attrs['chunk_size']
         if 'hash_table' in f['_version_data'][name]:
             self._load_hashtable()
         else:
@@ -54,8 +55,6 @@ class Hashtable(MutableMapping):
         self.hash_table.attrs['largest_index'] = value
 
     def _create_hashtable(self):
-        from .backend import CHUNK_SIZE
-
         f = self.f
         name = self.name
 
@@ -63,8 +62,8 @@ class Hashtable(MutableMapping):
         # bytes, not number of elements)
         dtype = np.dtype([('hash', 'B', (self.hash_size,)), ('shape', 'i8', (2,))])
         hash_table = f['/_version_data'][name].create_dataset('hash_table',
-                                                 shape=(CHUNK_SIZE,), dtype=dtype,
-                                                 chunks=(CHUNK_SIZE,),
+                                                 shape=(self.chunk_size,), dtype=dtype,
+                                                 chunks=(self.chunk_size,),
                                                  maxshape=(None,))
         hash_table.attrs['largest_index'] = 0
         self.hash_table = hash_table
@@ -84,8 +83,6 @@ class Hashtable(MutableMapping):
         return self._d[key]
 
     def __setitem__(self, key, value):
-        from .backend import CHUNK_SIZE
-
         if not isinstance(key, bytes):
             raise TypeError("key must be bytes")
         if len(key) != self.hash_size:
@@ -105,7 +102,7 @@ class Hashtable(MutableMapping):
             self._indices[key] = self.largest_index
             self.largest_index += 1
             if self.largest_index >= self.hash_table.shape[0]:
-                self.hash_table.resize((self.hash_table.shape[0] + CHUNK_SIZE,))
+                self.hash_table.resize((self.hash_table.shape[0] + self.chunk_size,))
         self._d[key] = value
 
     def __delitem__(self, key):

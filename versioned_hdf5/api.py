@@ -1,4 +1,4 @@
-from h5py import Empty, Dataset, Group, h5d, h5s
+from h5py import Empty, Dataset, Group, h5d, h5i, h5s
 from h5py._hl.selections import select
 from h5py._hl.vds import VDSmap
 
@@ -8,7 +8,7 @@ from contextlib import contextmanager
 import datetime
 import math
 
-from .backend import initialize, CHUNK_SIZE
+from .backend import initialize
 from .versions import (create_version, get_nth_previous_version,
                        set_current_version, all_versions)
 from .slicetools import s2t, slice_size, split_slice
@@ -99,7 +99,8 @@ class VersionedHDF5File:
         return all_versions(self.f, include_first=False)
 
     @contextmanager
-    def stage_version(self, version_name: str, prev_version=None, make_current=True):
+    def stage_version(self, version_name: str, prev_version=None,
+                      make_current=True, chunk_size=None):
         """
         Return a context manager to stage a new version
 
@@ -123,7 +124,8 @@ class VersionedHDF5File:
         group = self[prev_version]
         yield group
         create_version(self.f, version_name, group.datasets(),
-                       prev_version=prev_version, make_current=make_current)
+                       prev_version=prev_version, make_current=make_current,
+                       chunk_size=chunk_size)
 
 class InMemoryGroup(Group):
     def __init__(self, bind):
@@ -212,15 +214,16 @@ class InMemoryDatasetID(h5d.DatasetID):
         slice_map = {s2t(spaceid_to_slice(i.vspace)): spaceid_to_slice(i.src_space)
                      for i in virtual_sources}
         if any(len(i) != 1 for i in slice_map) or any(len(i) != 1 for i in slice_map.values()):
-
             raise NotImplementedError("More than one dimension is not yet supported")
 
         slice_map = {i[0]: j[0] for i, j in slice_map.items()}
-        # TODO: Get the chunk size from the dataset
-        for i in range(math.ceil(self.shape[0]/CHUNK_SIZE)):
+        fid = h5i.get_file_id(self)
+        g = Group(fid)
+        self.chunk_size = g[virtual_sources[0].dset_name].attrs['chunk_size']
+        for i in range(math.ceil(self.shape[0]/self.chunk_size)):
             for t in slice_map:
                 r = range(*t)
-                if i*CHUNK_SIZE in r:
+                if i*self.chunk_size in r:
                     self.data_dict[i] = slice_map[t]
 
     def write(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
@@ -237,10 +240,10 @@ class InMemoryDatasetID(h5d.DatasetID):
 
         # Chunks that are modified
         N0 = 0
-        for i, s_ in split_slice(fslice[0]):
+        for i, s_ in split_slice(fslice[0], chunk=self.chunk_size):
             # Based on Dataset.__getitem__
             if isinstance(self.data_dict[i], slice):
-                selection = select(self.shape, (slice(i*CHUNK_SIZE, (i+1)*CHUNK_SIZE),), dsid=self)
+                selection = select(self.shape, (slice(i*self.chunk_size, (i+1)*self.chunk_size),), dsid=self)
 
                 assert selection.nselect != 0
 

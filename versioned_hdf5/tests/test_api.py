@@ -5,7 +5,7 @@ from numpy.testing import assert_equal
 
 from h5py._hl.selections import Selection
 
-from ..backend import CHUNK_SIZE
+from ..backend import DEFAULT_CHUNK_SIZE
 from ..api import VersionedHDF5File, spaceid_to_slice
 
 from .test_backend import setup
@@ -14,9 +14,9 @@ def test_stage_version():
     with setup() as f:
         file = VersionedHDF5File(f)
 
-        test_data = np.concatenate((np.ones((2*CHUNK_SIZE,)),
-                                    2*np.ones((CHUNK_SIZE,)),
-                                    3*np.ones((CHUNK_SIZE,))))
+        test_data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
+                                    2*np.ones((DEFAULT_CHUNK_SIZE,)),
+                                    3*np.ones((DEFAULT_CHUNK_SIZE,))))
 
 
         with file.stage_version('version1', '') as group:
@@ -28,10 +28,10 @@ def test_stage_version():
 
         ds = f['/_version_data/test_data/raw_data']
 
-        assert ds.shape == (3*CHUNK_SIZE,)
-        assert_equal(ds[0:1*CHUNK_SIZE], 1.0)
-        assert_equal(ds[1*CHUNK_SIZE:2*CHUNK_SIZE], 2.0)
-        assert_equal(ds[2*CHUNK_SIZE:3*CHUNK_SIZE], 3.0)
+        assert ds.shape == (3*DEFAULT_CHUNK_SIZE,)
+        assert_equal(ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
+        assert_equal(ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
+        assert_equal(ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
 
         with file.stage_version('version2', 'version1') as group:
             group['test_data'][0] = 0.0
@@ -41,19 +41,62 @@ def test_stage_version():
         test_data[0] = 0.0
         assert_equal(version2['test_data'], test_data)
 
-        assert ds.shape == (4*CHUNK_SIZE,)
-        assert_equal(ds[0:1*CHUNK_SIZE], 1.0)
-        assert_equal(ds[1*CHUNK_SIZE:2*CHUNK_SIZE], 2.0)
-        assert_equal(ds[2*CHUNK_SIZE:3*CHUNK_SIZE], 3.0)
-        assert_equal(ds[3*CHUNK_SIZE], 0.0)
-        assert_equal(ds[3*CHUNK_SIZE+1:4*CHUNK_SIZE], 1.0)
+        assert ds.shape == (4*DEFAULT_CHUNK_SIZE,)
+        assert_equal(ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
+        assert_equal(ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
+        assert_equal(ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
+        assert_equal(ds[3*DEFAULT_CHUNK_SIZE], 0.0)
+        assert_equal(ds[3*DEFAULT_CHUNK_SIZE+1:4*DEFAULT_CHUNK_SIZE], 1.0)
+
+def test_stage_version_chunk_size():
+    with setup() as f:
+        chunk_size = 2**10
+        file = VersionedHDF5File(f)
+
+        test_data = np.concatenate((np.ones((2*chunk_size,)),
+                                    2*np.ones((chunk_size,)),
+                                    3*np.ones((chunk_size,))))
+
+
+        with file.stage_version('version1', '', chunk_size=chunk_size) as group:
+            group['test_data'] = test_data
+
+        with raises(ValueError):
+            with file.stage_version('version_bad', chunk_size=2**9) as group:
+                group['test_data'] = test_data
+
+        version1 = file['version1']
+        assert version1.attrs['prev_version'] == '__first_version__'
+        assert_equal(version1['test_data'], test_data)
+
+        ds = f['/_version_data/test_data/raw_data']
+
+        assert ds.shape == (3*chunk_size,)
+        assert_equal(ds[0:1*chunk_size], 1.0)
+        assert_equal(ds[1*chunk_size:2*chunk_size], 2.0)
+        assert_equal(ds[2*chunk_size:3*chunk_size], 3.0)
+
+        with file.stage_version('version2', 'version1') as group:
+            group['test_data'][0] = 0.0
+
+        version2 = file['version2']
+        assert version2.attrs['prev_version'] == 'version1'
+        test_data[0] = 0.0
+        assert_equal(version2['test_data'], test_data)
+
+        assert ds.shape == (4*chunk_size,)
+        assert_equal(ds[0:1*chunk_size], 1.0)
+        assert_equal(ds[1*chunk_size:2*chunk_size], 2.0)
+        assert_equal(ds[2*chunk_size:3*chunk_size], 3.0)
+        assert_equal(ds[3*chunk_size], 0.0)
+        assert_equal(ds[3*chunk_size+1:4*chunk_size], 1.0)
 
 def test_version_int_slicing():
     with setup() as f:
         file = VersionedHDF5File(f)
-        test_data = np.concatenate((np.ones((2*CHUNK_SIZE,)),
-                               2*np.ones((CHUNK_SIZE,)),
-                               3*np.ones((CHUNK_SIZE,))))
+        test_data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
+                               2*np.ones((DEFAULT_CHUNK_SIZE,)),
+                               3*np.ones((DEFAULT_CHUNK_SIZE,))))
 
         with file.stage_version('version1', '') as group:
             group['test_data'] = test_data
@@ -104,9 +147,9 @@ def test_version_int_slicing():
 def test_version_name_slicing():
     with setup() as f:
         file = VersionedHDF5File(f)
-        test_data = np.concatenate((np.ones((2*CHUNK_SIZE,)),
-                               2*np.ones((CHUNK_SIZE,)),
-                               3*np.ones((CHUNK_SIZE,))))
+        test_data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
+                               2*np.ones((DEFAULT_CHUNK_SIZE,)),
+                               3*np.ones((DEFAULT_CHUNK_SIZE,))))
 
         with file.stage_version('version1', '') as group:
             group['test_data'] = test_data
@@ -132,9 +175,9 @@ def test_version_name_slicing():
 def test_iter_versions():
     with setup() as f:
         file = VersionedHDF5File(f)
-        test_data = np.concatenate((np.ones((2*CHUNK_SIZE,)),
-                               2*np.ones((CHUNK_SIZE,)),
-                               3*np.ones((CHUNK_SIZE,))))
+        test_data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
+                               2*np.ones((DEFAULT_CHUNK_SIZE,)),
+                               3*np.ones((DEFAULT_CHUNK_SIZE,))))
 
         with file.stage_version('version1', '') as group:
             group['test_data'] = test_data
@@ -154,9 +197,9 @@ def test_create_dataset():
         file = VersionedHDF5File(f)
 
 
-        test_data = np.concatenate((np.ones((2*CHUNK_SIZE,)),
-                                    2*np.ones((CHUNK_SIZE,)),
-                                    3*np.ones((CHUNK_SIZE,))))
+        test_data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
+                                    2*np.ones((DEFAULT_CHUNK_SIZE,)),
+                                    3*np.ones((DEFAULT_CHUNK_SIZE,))))
 
 
         with file.stage_version('version1', '') as group:
@@ -168,18 +211,18 @@ def test_create_dataset():
 
         ds = f['/_version_data/test_data/raw_data']
 
-        assert ds.shape == (3*CHUNK_SIZE,)
-        assert_equal(ds[0:1*CHUNK_SIZE], 1.0)
-        assert_equal(ds[1*CHUNK_SIZE:2*CHUNK_SIZE], 2.0)
-        assert_equal(ds[2*CHUNK_SIZE:3*CHUNK_SIZE], 3.0)
+        assert ds.shape == (3*DEFAULT_CHUNK_SIZE,)
+        assert_equal(ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
+        assert_equal(ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
+        assert_equal(ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
 
 def test_unmodified():
     with setup() as f:
         file = VersionedHDF5File(f)
 
-        test_data = np.concatenate((np.ones((2*CHUNK_SIZE,)),
-                                    2*np.ones((CHUNK_SIZE,)),
-                                    3*np.ones((CHUNK_SIZE,))))
+        test_data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
+                                    2*np.ones((DEFAULT_CHUNK_SIZE,)),
+                                    3*np.ones((DEFAULT_CHUNK_SIZE,))))
 
         with file.stage_version('version1') as group:
             group.create_dataset('test_data', data=test_data)
@@ -204,9 +247,9 @@ def test_delete():
     with setup() as f:
         file = VersionedHDF5File(f)
 
-        test_data = np.concatenate((np.ones((2*CHUNK_SIZE,)),
-                                    2*np.ones((CHUNK_SIZE,)),
-                                    3*np.ones((CHUNK_SIZE,))))
+        test_data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
+                                    2*np.ones((DEFAULT_CHUNK_SIZE,)),
+                                    3*np.ones((DEFAULT_CHUNK_SIZE,))))
 
         with file.stage_version('version1') as group:
             group.create_dataset('test_data', data=test_data)
