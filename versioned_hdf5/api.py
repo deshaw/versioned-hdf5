@@ -1,4 +1,5 @@
 from h5py import Empty, Dataset, Group, h5d, h5i, h5s
+from h5py._hl.base import phil
 from h5py._hl.selections import select
 from h5py._hl.vds import VDSmap
 
@@ -197,10 +198,17 @@ class InMemoryDataset(Dataset):
         self.orig_bind = bind
         super().__init__(InMemoryDatasetID(bind.id), **kwargs)
 
+    @property
+    def chunks(self):
+        return (self.id.chunk_size,)
+
 class InMemoryDatasetID(h5d.DatasetID):
     def __init__(self, _id):
         # super __init__ is handled by DatasetID.__cinit__ automatically
         self.data_dict = {}
+        with phil:
+            sid = self.get_space()
+            self._shape = sid.get_simple_extent_dims()
 
         dcpl = self.get_create_plist()
         # Same as dataset.get_virtual_sources
@@ -225,6 +233,37 @@ class InMemoryDatasetID(h5d.DatasetID):
                 r = range(*t)
                 if i*self.chunk_size in r:
                     self.data_dict[i] = slice_map[t]
+
+    def set_extent(self, shape):
+        if len(shape) > 1:
+            raise NotImplementedError("More than one dimension is not yet supported")
+
+        old_shape = self.shape
+        data_dict = self.data_dict
+        chunk_size = self.chunk_size
+        if shape[0] < old_shape[0]:
+            for i in list(data_dict):
+                if i*chunk_size > shape[0]:
+                    if (i - 1)*chunk_size > shape[0]:
+                        del data_dict[i]
+                    elif isinstance(data_dict[i], slice):
+                        raise NotImplementedError("Resizing an array by a non-chunk multiple")
+                    else:
+                        data_dict[i] = data_dict[i][:i*chunk_size - shape[0]]
+        elif shape[0] > old_shape[0]:
+            if shape[0] % chunk_size != 0 or old_shape[0] % chunk_size != 0:
+                raise NotImplementedError("Resizing an array by a non-chunk multiple")
+            for i in range(old_shape[0]//chunk_size, shape[0]//chunk_size):
+                data_dict[i] = np.zeros((self.chunk_size,), self.dtype)
+        self.shape = shape
+
+    @property
+    def shape(self):
+        return self._shape
+
+    @shape.setter
+    def shape(self, size):
+        self._shape = size
 
     def write(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
         if mtype is not None:
