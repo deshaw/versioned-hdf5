@@ -32,6 +32,7 @@ def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
     chunk_size = chunk_size or DEFAULT_CHUNK_SIZE
     group = f['/_version_data'].create_group(name)
     if dtype is None:
+        # https://github.com/h5py/h5py/issues/1474
         dtype = data.dtype
     dataset = group.create_dataset('raw_data', shape=(0,), chunks=(chunk_size,),
                          maxshape=(None,), dtype=dtype)
