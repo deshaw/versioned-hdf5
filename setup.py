@@ -1,5 +1,5 @@
 import setuptools
-import versioneer
+import _versioneer
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
@@ -7,8 +7,8 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="versioned-hdf5",
-    version=versioneer.get_version(),
-    cmdclass=versioneer.get_cmdclass(),
+    version=_versioneer.get_version(),
+    cmdclass=_versioneer.get_cmdclass(),
     author="Quansight",
     description="Versioned HDF5",
     long_description=long_description,
