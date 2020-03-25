@@ -409,3 +409,28 @@ def test_resize():
         assert group['offset'].shape == (DEFAULT_CHUNK_SIZE,)
         assert_equal(group['no_offset'][:], 1.0)
         assert_equal(group['offset'][:], 1.0)
+
+def test_getitem():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = np.arange(2*DEFAULT_CHUNK_SIZE)
+
+        with file.stage_version('version1') as group:
+            group.create_dataset('test_data', data=data)
+
+            test_data = group['test_data']
+            assert test_data.shape == (2*DEFAULT_CHUNK_SIZE,)
+            assert_equal(test_data[0], 0)
+            assert test_data[0].dtype == np.int64
+            assert_equal(test_data[:], data)
+            assert_equal(test_data[:DEFAULT_CHUNK_SIZE+1], data[:DEFAULT_CHUNK_SIZE+1])
+
+
+        with file.stage_version('version2') as group:
+            test_data = group['test_data']
+            assert test_data.shape == (2*DEFAULT_CHUNK_SIZE,)
+            assert_equal(test_data[0], 0)
+            assert test_data[0].dtype == np.int64
+            assert_equal(test_data[:], data)
+            assert_equal(test_data[:DEFAULT_CHUNK_SIZE+1], data[:DEFAULT_CHUNK_SIZE+1])

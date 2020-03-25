@@ -281,6 +281,7 @@ class InMemoryDatasetID(h5d.DatasetID):
         self._shape = size
 
     def _read_chunk(self, i, mtype=None, dxpl=None):
+        # Based on Dataset.__getitem__
         s = slice(i*self.chunk_size, (i+1)*self.chunk_size)
         selection = select(self.shape, (s,), dsid=self)
 
@@ -306,10 +307,11 @@ class InMemoryDatasetID(h5d.DatasetID):
         if np.isscalar(arr):
             arr = arr.reshape((1,))
 
+        if fslice == ():
+            fslice = (slice(0, arr_obj.shape[0], 1),)
         # Chunks that are modified
         N0 = 0
         for i, s_ in split_slice(fslice[0], chunk=self.chunk_size):
-            # Based on Dataset.__getitem__
             if isinstance(self.data_dict[i], slice):
                 a = self._read_chunk(i, mtype=mtype, dxpl=dxpl)
                 data_dict[i] = a
@@ -319,6 +321,29 @@ class InMemoryDatasetID(h5d.DatasetID):
             N0 = N
 
         return data_dict
+
+    def read(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
+        mslice = spaceid_to_slice(mspace)
+        fslice = spaceid_to_slice(fspace)
+        if len(fslice) > 1 or len(self.shape) > 1:
+            raise NotImplementedError("More than one dimension is not yet supported")
+        data_dict = self.data_dict
+        arr = arr_obj[mslice]
+        if np.isscalar(arr):
+            arr = arr.reshape((1,))
+
+        if fslice == ():
+            fslice = (slice(0, arr_obj.shape[0], 1),)
+        # Chunks that are modified
+        N0 = 0
+        for i, s_ in split_slice(fslice[0], chunk=self.chunk_size):
+            if isinstance(self.data_dict[i], slice):
+                a = self._read_chunk(i, mtype=mtype, dxpl=dxpl)
+                data_dict[i] = a
+
+            N = N0 + slice_size(s_)
+            arr[N0:N] = data_dict[i][s_]
+            N0 = N
 
 def spaceid_to_slice(space):
     sel_type = space.get_select_type()
