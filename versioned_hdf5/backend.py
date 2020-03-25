@@ -1,7 +1,5 @@
 from h5py import VirtualLayout, VirtualSource
 
-import numpy as np
-
 import math
 
 from .hashtable import Hashtable
