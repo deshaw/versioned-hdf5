@@ -368,6 +368,9 @@ def test_resize():
 
         # Resize after creation
         with file.stage_version('version2', 'version1') as group:
+            # Cover the case where some data is already read in
+            group['offset'][-1] = 2.0
+
             group['no_offset'].resize((3*DEFAULT_CHUNK_SIZE + 2,))
             group['offset'].resize((3*DEFAULT_CHUNK_SIZE + 2,))
 
@@ -375,7 +378,8 @@ def test_resize():
             assert group['offset'].shape == (3*DEFAULT_CHUNK_SIZE + 2,)
             assert_equal(group['no_offset'][:2*DEFAULT_CHUNK_SIZE], 1.0)
             assert_equal(group['no_offset'][2*DEFAULT_CHUNK_SIZE:], 0.0)
-            assert_equal(group['offset'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
+            assert_equal(group['offset'][:DEFAULT_CHUNK_SIZE + 1], 1.0)
+            assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 1], 2.0)
             assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 2:], 0.0)
 
             group['no_offset'].resize((3*DEFAULT_CHUNK_SIZE,))
@@ -385,7 +389,8 @@ def test_resize():
             assert group['offset'].shape == (3*DEFAULT_CHUNK_SIZE,)
             assert_equal(group['no_offset'][:2*DEFAULT_CHUNK_SIZE], 1.0)
             assert_equal(group['no_offset'][2*DEFAULT_CHUNK_SIZE:], 0.0)
-            assert_equal(group['offset'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
+            assert_equal(group['offset'][:DEFAULT_CHUNK_SIZE + 1], 1.0)
+            assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 1], 2.0)
             assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 2:], 0.0)
 
             group['no_offset'].resize((DEFAULT_CHUNK_SIZE + 2,))
@@ -394,7 +399,8 @@ def test_resize():
             assert group['no_offset'].shape == (DEFAULT_CHUNK_SIZE + 2,)
             assert group['offset'].shape == (DEFAULT_CHUNK_SIZE + 2,)
             assert_equal(group['no_offset'][:], 1.0)
-            assert_equal(group['offset'][:], 1.0)
+            assert_equal(group['offset'][:DEFAULT_CHUNK_SIZE + 1], 1.0)
+            assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 1], 2.0)
 
             group['no_offset'].resize((DEFAULT_CHUNK_SIZE,))
             group['offset'].resize((DEFAULT_CHUNK_SIZE,))
