@@ -243,18 +243,33 @@ class InMemoryDatasetID(h5d.DatasetID):
         chunk_size = self.chunk_size
         if shape[0] < old_shape[0]:
             for i in list(data_dict):
-                if i*chunk_size > shape[0]:
-                    if (i - 1)*chunk_size > shape[0]:
+                if (i + 1)*chunk_size > shape[0]:
+                    if i*chunk_size >= shape[0]:
                         del data_dict[i]
-                    elif isinstance(data_dict[i], slice):
-                        raise NotImplementedError("Resizing an array by a non-chunk multiple")
                     else:
-                        data_dict[i] = data_dict[i][:i*chunk_size - shape[0]]
+                        if isinstance(data_dict[i], slice):
+                            # Non-chunk multiple
+                            a = self._read_chunk(i)
+                        else:
+                            a = data_dict[i]
+                        data_dict[i] = a[:shape[0] - i*chunk_size]
         elif shape[0] > old_shape[0]:
-            if shape[0] % chunk_size != 0 or old_shape[0] % chunk_size != 0:
-                raise NotImplementedError("Resizing an array by a non-chunk multiple")
-            for i in range(old_shape[0]//chunk_size, shape[0]//chunk_size):
-                data_dict[i] = np.zeros((self.chunk_size,), self.dtype)
+            if old_shape[0] % chunk_size != 0:
+                i = max(data_dict)
+                if isinstance(data_dict[i], slice):
+                    a = self._read_chunk(i)
+                else:
+                    a = data_dict[i]
+                assert a.shape[0] == old_shape % chunk_size
+                data_dict[i] = np.concatenate([a, np.zeros((chunk_size -
+                    a.shape[0],), dtype=self.dtype)])
+            quo, rem = divmod(shape[0], chunk_size)
+            if rem != 0:
+                # Zeros along the chunks are added in the for loop below, but
+                # we have to add a sub-chunk zeros here
+                data_dict[quo] = np.zeros((rem,), dtype=self.dtype)
+            for i in range(math.ceil(old_shape[0]/chunk_size), quo):
+                data_dict[i] = np.zeros((chunk_size,), dtype=self.dtype)
         self.shape = shape
 
     @property
@@ -264,6 +279,20 @@ class InMemoryDatasetID(h5d.DatasetID):
     @shape.setter
     def shape(self, size):
         self._shape = size
+
+    def _read_chunk(self, i, mtype=None, dxpl=None):
+        s = slice(i*self.chunk_size, (i+1)*self.chunk_size)
+        selection = select(self.shape, (s,), dsid=self)
+
+        assert selection.nselect != 0
+
+        a = np.ndarray(selection.mshape, self.dtype, order='C')
+
+        # Read the data into the array a
+        mspace = h5s.create_simple(selection.mshape)
+        fspace = selection.id
+        super().read(mspace, fspace, a, mtype, dxpl=dxpl)
+        return a
 
     def write(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
         if mtype is not None:
@@ -282,17 +311,7 @@ class InMemoryDatasetID(h5d.DatasetID):
         for i, s_ in split_slice(fslice[0], chunk=self.chunk_size):
             # Based on Dataset.__getitem__
             if isinstance(self.data_dict[i], slice):
-                selection = select(self.shape, (slice(i*self.chunk_size, (i+1)*self.chunk_size),), dsid=self)
-
-                assert selection.nselect != 0
-
-                a = np.ndarray(selection.mshape, self.dtype, order='C')
-
-                # Read the data into the array a
-                mspace = h5s.create_simple(selection.mshape)
-                fspace = selection.id
-                self.read(mspace, fspace, a, mtype, dxpl=dxpl)
-
+                a = self._read_chunk(i, mtype=mtype, dxpl=dxpl)
                 data_dict[i] = a
 
             N = N0 + slice_size(s_)
