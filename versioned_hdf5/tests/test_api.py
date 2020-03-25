@@ -296,3 +296,116 @@ def test_spaceid_to_slice():
                             print(start, count, stride, block)
                             raise
                         assert_equal(a[s], a[sel], f"{(start, count, stride, block)}")
+
+def test_resize():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        no_offset_data = np.ones((2*DEFAULT_CHUNK_SIZE,))
+
+        offset_data = np.concatenate((np.ones((DEFAULT_CHUNK_SIZE,)),
+                                      np.ones((2,))))
+
+        with file.stage_version('version1') as group:
+            group.create_dataset('no_offset', data=no_offset_data)
+            group.create_dataset('offset', data=offset_data)
+
+        group = file['version1']
+        assert group['no_offset'].shape == (2*DEFAULT_CHUNK_SIZE,)
+        assert group['offset'].shape == (DEFAULT_CHUNK_SIZE + 2,)
+        assert_equal(group['no_offset'][:2*DEFAULT_CHUNK_SIZE], 1.0)
+        assert_equal(group['offset'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
+
+        # Resize larger, chunk multiple
+        with file.stage_version('larger_chunk_multiple') as group:
+            group['no_offset'].resize((3*DEFAULT_CHUNK_SIZE,))
+            group['offset'].resize((3*DEFAULT_CHUNK_SIZE,))
+
+        group = file['larger_chunk_multiple']
+        assert group['no_offset'].shape == (3*DEFAULT_CHUNK_SIZE,)
+        assert group['offset'].shape == (3*DEFAULT_CHUNK_SIZE,)
+        assert_equal(group['no_offset'][:2*DEFAULT_CHUNK_SIZE], 1.0)
+        assert_equal(group['no_offset'][2*DEFAULT_CHUNK_SIZE:], 0.0)
+        assert_equal(group['offset'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
+        assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 2:], 0.0)
+
+
+        # Resize larger, non-chunk multiple
+        with file.stage_version('larger_chunk_non_multiple', 'version1') as group:
+            group['no_offset'].resize((3*DEFAULT_CHUNK_SIZE + 2,))
+            group['offset'].resize((3*DEFAULT_CHUNK_SIZE + 2,))
+
+        group = file['larger_chunk_non_multiple']
+        assert group['no_offset'].shape == (3*DEFAULT_CHUNK_SIZE + 2,)
+        assert group['offset'].shape == (3*DEFAULT_CHUNK_SIZE + 2,)
+        assert_equal(group['no_offset'][:2*DEFAULT_CHUNK_SIZE], 1.0)
+        assert_equal(group['no_offset'][2*DEFAULT_CHUNK_SIZE:], 0.0)
+        assert_equal(group['offset'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
+        assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 2:], 0.0)
+
+        # Resize smaller, chunk multiple
+        with file.stage_version('smaller_chunk_multiple', 'version1') as group:
+            group['no_offset'].resize((DEFAULT_CHUNK_SIZE,))
+            group['offset'].resize((DEFAULT_CHUNK_SIZE,))
+
+        group = file['smaller_chunk_multiple']
+        assert group['no_offset'].shape == (DEFAULT_CHUNK_SIZE,)
+        assert group['offset'].shape == (DEFAULT_CHUNK_SIZE,)
+        assert_equal(group['no_offset'][:], 1.0)
+        assert_equal(group['offset'][:], 1.0)
+
+
+        # Resize smaller, chunk non-multiple
+        with file.stage_version('smaller_chunk_non_multiple', 'version1') as group:
+            group['no_offset'].resize((DEFAULT_CHUNK_SIZE + 2,))
+            group['offset'].resize((DEFAULT_CHUNK_SIZE + 2,))
+
+        group = file['smaller_chunk_non_multiple']
+        assert group['no_offset'].shape == (DEFAULT_CHUNK_SIZE + 2,)
+        assert group['offset'].shape == (DEFAULT_CHUNK_SIZE + 2,)
+        assert_equal(group['no_offset'][:], 1.0)
+        assert_equal(group['offset'][:], 1.0)
+
+        # Resize after creation
+        with file.stage_version('version2', 'version1') as group:
+            group['no_offset'].resize((3*DEFAULT_CHUNK_SIZE + 2,))
+            group['offset'].resize((3*DEFAULT_CHUNK_SIZE + 2,))
+
+            assert group['no_offset'].shape == (3*DEFAULT_CHUNK_SIZE + 2,)
+            assert group['offset'].shape == (3*DEFAULT_CHUNK_SIZE + 2,)
+            assert_equal(group['no_offset'][:2*DEFAULT_CHUNK_SIZE], 1.0)
+            assert_equal(group['no_offset'][2*DEFAULT_CHUNK_SIZE:], 0.0)
+            assert_equal(group['offset'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
+            assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 2:], 0.0)
+
+            group['no_offset'].resize((3*DEFAULT_CHUNK_SIZE,))
+            group['offset'].resize((3*DEFAULT_CHUNK_SIZE,))
+
+            assert group['no_offset'].shape == (3*DEFAULT_CHUNK_SIZE,)
+            assert group['offset'].shape == (3*DEFAULT_CHUNK_SIZE,)
+            assert_equal(group['no_offset'][:2*DEFAULT_CHUNK_SIZE], 1.0)
+            assert_equal(group['no_offset'][2*DEFAULT_CHUNK_SIZE:], 0.0)
+            assert_equal(group['offset'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
+            assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 2:], 0.0)
+
+            group['no_offset'].resize((DEFAULT_CHUNK_SIZE + 2,))
+            group['offset'].resize((DEFAULT_CHUNK_SIZE + 2,))
+
+            assert group['no_offset'].shape == (DEFAULT_CHUNK_SIZE + 2,)
+            assert group['offset'].shape == (DEFAULT_CHUNK_SIZE + 2,)
+            assert_equal(group['no_offset'][:], 1.0)
+            assert_equal(group['offset'][:], 1.0)
+
+            group['no_offset'].resize((DEFAULT_CHUNK_SIZE,))
+            group['offset'].resize((DEFAULT_CHUNK_SIZE,))
+
+            assert group['no_offset'].shape == (DEFAULT_CHUNK_SIZE,)
+            assert group['offset'].shape == (DEFAULT_CHUNK_SIZE,)
+            assert_equal(group['no_offset'][:], 1.0)
+            assert_equal(group['offset'][:], 1.0)
+
+        group = file['version2']
+        assert group['no_offset'].shape == (DEFAULT_CHUNK_SIZE,)
+        assert group['offset'].shape == (DEFAULT_CHUNK_SIZE,)
+        assert_equal(group['no_offset'][:], 1.0)
+        assert_equal(group['offset'][:], 1.0)
