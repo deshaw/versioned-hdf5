@@ -26,22 +26,26 @@ def initialize(f):
     versions.attrs['current_version'] = '__first_version__'
 
 def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
-    chunk_size=None):
+    chunk_size=None, compression=None, compression_opts=None):
     chunk_size = chunk_size or DEFAULT_CHUNK_SIZE
     group = f['/_version_data'].create_group(name)
     if dtype is None:
         # https://github.com/h5py/h5py/issues/1474
         dtype = data.dtype
-    dataset = group.create_dataset('raw_data', shape=(0,), chunks=(chunk_size,),
-                         maxshape=(None,), dtype=dtype)
+    dataset = group.create_dataset('raw_data', shape=(0,),
+                                   chunks=(chunk_size,), maxshape=(None,),
+                                   dtype=dtype, compression=compression,
+                                   compression_opts=compression_opts)
     dataset.attrs['chunk_size'] = chunk_size
     return write_dataset(f, name, data, chunk_size=chunk_size)
 
-def write_dataset(f, name, data, chunk_size=None):
+def write_dataset(f, name, data, chunk_size=None, compression=None,
+                  compression_opts=None):
     from .slicetools import s2t, t2s
 
     if name not in f['/_version_data']:
-        return create_base_dataset(f, name, data=data, chunk_size=chunk_size)
+        return create_base_dataset(f, name, data=data, chunk_size=chunk_size,
+            compression=compression, compression_opts=compression_opts)
 
     ds = f['/_version_data'][name]['raw_data']
     if chunk_size is None:
@@ -50,6 +54,8 @@ def write_dataset(f, name, data, chunk_size=None):
         if chunk_size != ds.attrs['chunk_size']:
             raise ValueError("Chunk size specified but doesn't match already existing chunk size")
 
+    if compression or compression_opts:
+        raise ValueError("Compression options can only be specified for the first version of a dataset")
     if data.dtype != ds.dtype:
         raise ValueError(f"dtypes do not match ({data.dtype} != {ds.dtype})")
     # TODO: Handle more than one dimension

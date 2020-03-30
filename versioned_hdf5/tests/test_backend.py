@@ -178,3 +178,23 @@ def test_write_dataset_offset_chunk_size():
         assert_equal(ds[1*chunk_size:2*chunk_size], 2.0)
         assert_equal(ds[2*chunk_size:3*chunk_size - 2], 3.0)
         assert_equal(ds[3*chunk_size-2:4*chunk_size], 0.0)
+
+def test_write_dataset_compression():
+    with setup() as f:
+        slices1 = write_dataset(f, 'test_data',
+                                np.ones((2*DEFAULT_CHUNK_SIZE,)),
+                                compression='gzip', compression_opts=3)
+        raises(ValueError, lambda: write_dataset(f, 'test_data',
+            np.ones((DEFAULT_CHUNK_SIZE,)), compression='lzf'))
+        raises(ValueError, lambda: write_dataset(f, 'test_data',
+            np.ones((DEFAULT_CHUNK_SIZE,)), compression='gzip', compression_opts=4))
+
+        assert slices1 == [slice(0*DEFAULT_CHUNK_SIZE, 1*DEFAULT_CHUNK_SIZE),
+                           slice(0*DEFAULT_CHUNK_SIZE, 1*DEFAULT_CHUNK_SIZE)]
+
+        ds = f['/_version_data/test_data/raw_data']
+        assert ds.shape == (1*DEFAULT_CHUNK_SIZE,)
+        assert_equal(ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
+        assert ds.dtype == np.float64
+        assert ds.compression == 'gzip'
+        assert ds.compression_opts == 3

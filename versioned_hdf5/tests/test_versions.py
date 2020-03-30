@@ -17,9 +17,18 @@ def test_create_version():
                                3*np.ones((chunk_size,))))
 
         version1 = create_version(f, 'version1', {'test_data': data}, '',
-                                  chunk_size=chunk_size)
+                                  chunk_size={'test_data': chunk_size},
+                                  compression={'test_data': 'gzip'},
+                                  compression_opts={'test_data': 3})
         raises(ValueError, lambda: create_version(f, 'version_bad',
-                                  {'test_data': data}, chunk_size=2**9))
+                                  {'test_data': data},
+                                  chunk_size={'test_data': 2**9}))
+        raises(ValueError, lambda: create_version(f, 'version_bad',
+                                  {'test_data': data},
+                                  compression={'test_data': 'lzf'}))
+        raises(ValueError, lambda: create_version(f, 'version_bad',
+                                  {'test_data': data},
+                                  compression_opts={'test_data': 4}))
         assert version1.attrs['prev_version'] == '__first_version__'
         assert version1.parent.attrs['current_version'] == 'version1'
         assert_equal(version1['test_data'], data)
@@ -30,6 +39,8 @@ def test_create_version():
         assert_equal(ds[0:1*chunk_size], 1.0)
         assert_equal(ds[1*chunk_size:2*chunk_size], 2.0)
         assert_equal(ds[2*chunk_size:3*chunk_size], 3.0)
+        assert ds.compression == 'gzip'
+        assert ds.compression_opts == 3
 
         data[0] = 0.0
         version2 = create_version(f, 'version2', {'test_data':
@@ -44,6 +55,8 @@ def test_create_version():
         assert_equal(ds[2*chunk_size:3*chunk_size], 3.0)
         assert_equal(ds[3*chunk_size], 0.0)
         assert_equal(ds[3*chunk_size+1:4*chunk_size], 1.0)
+        assert ds.compression == 'gzip'
+        assert ds.compression_opts == 3
 
         assert set(all_versions(f)) == {'version1', 'version2'}
         assert set(all_versions(f, include_first=True)) == {'version1',
@@ -58,9 +71,18 @@ def test_create_version_chunks():
                                3*np.ones((chunk_size,))))
         # TODO: Support creating the initial version with chunks
         version1 = create_version(f, 'version1', {'test_data': data},
-                                  chunk_size=chunk_size)
+                                  chunk_size={'test_data': chunk_size},
+                                  compression={'test_data': 'gzip'},
+                                  compression_opts={'test_data': 3})
         raises(ValueError, lambda: create_version(f, 'version_bad',
-                                  {'test_data': data}, chunk_size=2**9))
+                                                  {'test_data': data},
+                                                  chunk_size={'test_data':2**9}))
+        raises(ValueError, lambda: create_version(f, 'version_bad',
+                                                  {'test_data': data},
+                                                  compression={'test_data':'lzf'}))
+        raises(ValueError, lambda: create_version(f, 'version_bad',
+                                                  {'test_data': data},
+                                                  compression_opts={'test_data':4}))
         assert_equal(version1['test_data'], data)
 
         ds = f['/_version_data/test_data/raw_data']
@@ -69,6 +91,8 @@ def test_create_version_chunks():
         assert_equal(ds[0:1*chunk_size], 1.0)
         assert_equal(ds[1*chunk_size:2*chunk_size], 2.0)
         assert_equal(ds[2*chunk_size:3*chunk_size], 3.0)
+        assert ds.compression == 'gzip'
+        assert ds.compression_opts == 3
 
         data2_chunks = {0: np.ones((chunk_size,)),
                         1: np.ones((chunk_size,)),
@@ -87,6 +111,8 @@ def test_create_version_chunks():
         assert_equal(ds[2*chunk_size:3*chunk_size], 3.0)
         assert_equal(ds[3*chunk_size], 0.0)
         assert_equal(ds[3*chunk_size+1:4*chunk_size], 1.0)
+        assert ds.compression == 'gzip'
+        assert ds.compression_opts == 3
 
 
         data3_chunks = {0: np.ones((chunk_size,)),
