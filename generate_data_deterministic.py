@@ -35,7 +35,11 @@ class TestVersionedDatasetPerformance(TestCase):
         val0[i], val1[i], ...
       TODO: check the math!
     """
-    def test_mostly_appends_sparse(self, num_transactions=250, print_transactions=False):
+    def test_mostly_appends_sparse(self,
+                                   num_transactions=250,
+                                   filename="test_mostly_appends_sparse",
+                                   chunk_size=None,
+                                   print_transactions=False):
 
         num_rows_initial = 1000
 
@@ -50,9 +54,10 @@ class TestVersionedDatasetPerformance(TestCase):
         pct_changes = 5
         num_changes = 10
 
-        name = f"test_mostly_appends_sparse_{num_transactions}"
+        #name = f"test_mostly_appends_sparse_{num_transactions}"
 
-        self._write_transactions_sparse(name, print_transactions,
+        self._write_transactions_sparse(filename, print_transactions,
+                                        chunk_size,
                                         num_rows_initial,
                                         num_transactions,
                                         num_rows_per_append,
@@ -63,6 +68,7 @@ class TestVersionedDatasetPerformance(TestCase):
 
     @classmethod
     def _write_transactions_sparse(cls, name, print_transactions,
+                                   chunk_size,
                                    num_rows_initial,
                                    num_transactions,
                                    num_rows_per_append,
@@ -76,7 +82,7 @@ class TestVersionedDatasetPerformance(TestCase):
         f = h5py.File(filename, 'w')
         file = VersionedHDF5File(f)
         try:
-            with file.stage_version("initial_version") as group:
+            with file.stage_version("initial_version", chunk_size=chunk_size) as group:
                 key0_ds = group.create_dataset(name + '/key0', data=np.random.rand(num_rows_initial),
                                                dtype=(np.dtype('int64')))
                 key1_ds = group.create_dataset(name + '/key1', data=np.random.rand(num_rows_initial),
@@ -140,7 +146,7 @@ class TestVersionedDatasetPerformance(TestCase):
         for ds in [key0_ds, key1_ds, val_ds]:
             arr = ds[:]
             arr = np.delete(arr, rs)
-            ds.resize((n,), refcheck=False)
+            ds.resize((n,))
             ds[:] = arr
 
         # insert rows
@@ -150,18 +156,22 @@ class TestVersionedDatasetPerformance(TestCase):
             rand_fn = cls._get_rand_fn(ds.dtype)
             arr = ds[:]
             arr = np.insert(arr, rs, [rand_fn() for _ in rs])
-            ds.resize((n,), refcheck=False)
+            ds.resize((n,))
             ds[:] = arr
 
         # append
         n += num_rows_per_append
         for ds in [key0_ds, key1_ds, val_ds]:
             rand_fn = cls._get_rand_fn(ds.dtype)
-            ds.resize((n,), refcheck=False)
+            ds.resize((n,))
             ds[-num_rows_per_append:] = rand_fn(num_rows_per_append)
 
 
-    def test_large_fraction_changes_sparse(self, num_transactions=250, print_transactions=False):
+    def test_large_fraction_changes_sparse(self,
+                                           num_transactions=250,
+                                           filename="test_large_fraction_changes_sparse",
+                                           chunk_size=None,
+                                           print_transactions=False):
 
         num_rows_initial = 5000
 
@@ -177,9 +187,10 @@ class TestVersionedDatasetPerformance(TestCase):
 
         num_changes = 1000
         
-        name = f"test_large_fraction_changes_sparse_{num_transactions}"
+        #name = f"test_large_fraction_changes_sparse_{num_transactions}"
 
-        self._write_transactions_sparse(name, print_transactions,
+        self._write_transactions_sparse(filename, print_transactions,
+                                        chunk_size,
                                         num_rows_initial,
                                         num_transactions,
                                         num_rows_per_append,
@@ -188,7 +199,11 @@ class TestVersionedDatasetPerformance(TestCase):
                                         pct_inserts, num_inserts)
 
 
-    def test_small_fraction_changes_sparse(self, num_transactions=250, print_transactions=False):
+    def test_small_fraction_changes_sparse(self,
+                                           num_transactions=250,
+                                           filename="test_small_fraction_changes_sparse",
+                                           chunk_size=None,
+                                           print_transactions=False):
 
         num_rows_initial = 5000
 
@@ -203,9 +218,10 @@ class TestVersionedDatasetPerformance(TestCase):
         pct_changes = 90
         num_changes = 10
 
-        name = f"test_small_fraction_changes_sparse_{num_transactions}"
+        #name = f"test_small_fraction_changes_sparse_{num_transactions}"
 
-        self._write_transactions_sparse(name, print_transactions,
+        self._write_transactions_sparse(filename, print_transactions,
+                                        chunk_size,
                                         num_rows_initial,
                                         num_transactions,
                                         num_rows_per_append,
@@ -214,7 +230,11 @@ class TestVersionedDatasetPerformance(TestCase):
                                         pct_inserts, num_inserts)
 
 
-    def test_mostly_appends_dense(self, num_transactions=250, print_transactions=False):
+    def test_mostly_appends_dense(self,
+                                  num_transactions=250,
+                                  filename="test_mostly_appends_dense",
+                                  chunk_size=None,
+                                  print_transactions=False):
 
         num_rows_initial_0 = 30
         num_rows_initial_1 = 30
@@ -232,9 +252,10 @@ class TestVersionedDatasetPerformance(TestCase):
         pct_changes = 5
         num_changes = 10
 
-        name = f"test_mostly_appends_dense_{num_transactions}"
+        #name = f"test_mostly_appends_dense_{num_transactions}"
 
-        self._write_transactions_dense(name,
+        self._write_transactions_dense(filename,
+                                       chunk_size,
                                        num_rows_initial_0,
                                        num_rows_initial_1,
                                        num_transactions,
@@ -245,7 +266,7 @@ class TestVersionedDatasetPerformance(TestCase):
         
 
     @classmethod
-    def _write_transactions_dense(cls, name,
+    def _write_transactions_dense(cls, name, chunk_size,
                                   num_rows_initial_0, num_rows_initial_1,
                                   num_transactions,
                                   num_rows_per_append_0,
@@ -256,12 +277,14 @@ class TestVersionedDatasetPerformance(TestCase):
         logger = logging.getLogger(__name__)
 
         tmp_dir = '.'
+        
         filename = tmp_dir + f'/{name}.h5'
+        
         tts = []
         f = h5py.File(filename, 'w')
         file = VersionedHDF5File(f)
         try:
-            with file.stage_version("initial_version") as group:
+            with file.stage_version("initial_version", chunk_size=chunk_size) as group:
                 key0_ds = group.create_dataset(name + '/key0', data=np.random.rand(num_rows_initial_0),
                                                dtype=(np.dtype('int64')))
                 key1_ds = group.create_dataset(name + '/key1', data=np.random.rand(num_rows_initial_1),
@@ -318,7 +341,7 @@ class TestVersionedDatasetPerformance(TestCase):
         n_key0 -= num_deletes_0
         arr_key0 = key0_ds[:]
         arr_key0 = np.delete(arr_key0, rs_0)
-        key0_ds.resize((n_key0,), refcheck=False)
+        key0_ds.resize((n_key0,))
         key0_ds[:] = arr_key0
 
         # 2. delete from key1 and associated vals
@@ -327,13 +350,13 @@ class TestVersionedDatasetPerformance(TestCase):
         rs_val = [r0 * n_key1 + r1 for r0 in range(n_key0) for r1 in rs_1]
         n_val -= len(rs_val)
         arr_val = np.delete(arr_val, rs_val)
-        val_ds.resize((n_val,), refcheck=False)
+        val_ds.resize((n_val,))
         val_ds[:] = arr_val
 
         n_key1 -= num_deletes_1
         arr_key1 = key1_ds[:]
         arr_key1 = np.delete(arr_key1, rs_1)
-        key1_ds.resize((n_key1,), refcheck=False)
+        key1_ds.resize((n_key1,))
         key1_ds[:] = arr_key1
 
         # insert rows =====================
@@ -350,7 +373,7 @@ class TestVersionedDatasetPerformance(TestCase):
         arr_key0 = key0_ds[:]
         arr_key0 = np.insert(arr_key0, rs_0, np.random.randint(0, int(1e6), size=len(rs_0)))
         n_key0 += num_inserts_0
-        key0_ds.resize((n_key0,), refcheck=False)
+        key0_ds.resize((n_key0,))
         key0_ds[:] = arr_key0
 
         # 2. insert into key1 and associated vals
@@ -359,29 +382,29 @@ class TestVersionedDatasetPerformance(TestCase):
         rs_val = [r0 * n_key1 + r1 for r0 in range(n_key0) for r1 in rs_1]
         n_val += len(rs_val)
         arr_val = np.insert(arr_val, rs_val, np.random.rand(len(rs_val)))
-        val_ds.resize((n_val,), refcheck=False)
+        val_ds.resize((n_val,))
         val_ds[:] = arr_val
 
         arr_key1 = key1_ds[:]
         arr_key1 = np.insert(arr_key1, rs_1, np.random.randint(0, int(1e6), size=len(rs_1)))
         n_key1 += num_inserts_1
-        key1_ds.resize((n_key1,), refcheck=False)
+        key1_ds.resize((n_key1,))
         key1_ds[:] = arr_key1
 
         # append ======================
         # append to key0 and associated vals
         n_key0 += num_rows_per_append_0
-        key0_ds.resize((n_key0,), refcheck=False)
+        key0_ds.resize((n_key0,))
         key0_ds[-num_rows_per_append_0:] = np.random.randint(0, int(1e6), size=num_rows_per_append_0)
         
         num_val_apps = n_key1 * num_rows_per_append_0
         n_val += num_val_apps
-        val_ds.resize((n_val,), refcheck=False)
+        val_ds.resize((n_val,))
         val_ds[-num_val_apps:] = np.random.rand(num_val_apps)
 
 if __name__ == '__main__':
 
     #num_transactions = [50, 100, 500, 1000, 2000]#, 5000, 10000]
-    num_transactions = [5000]
+    num_transactions = [50]
     for t in num_transactions:
-        TestVersionedDatasetPerformance().test_mostly_appends_sparse(t)
+        TestVersionedDatasetPerformance().test_large_fraction_changes_sparse(t, chunk_size=2**10)
