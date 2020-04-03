@@ -1,10 +1,12 @@
 from uuid import uuid4
+from collections import defaultdict
 
 from .backend import write_dataset, write_dataset_chunks, create_virtual_dataset
 
 # TODO: Allow version_name to be a version group
 def create_version(f, version_name, datasets, prev_version=None, *,
-                   make_current=True, chunk_size=None):
+                   make_current=True, chunk_size=None,
+                   compression=None, compression_opts=None):
     """
     Create a new version
 
@@ -24,6 +26,10 @@ def create_version(f, version_name, datasets, prev_version=None, *,
     from .api import InMemoryDataset
 
     versions = f['_version_data/versions']
+
+    chunk_size = chunk_size or defaultdict(type(None))
+    compression = compression or defaultdict(type(None))
+    compression_opts = compression_opts or defaultdict(type(None))
 
     if prev_version == '':
         prev_version = '__first_version__'
@@ -49,11 +55,13 @@ def create_version(f, version_name, datasets, prev_version=None, *,
             if isinstance(data, InMemoryDataset):
                 data = data.id.data_dict
             if isinstance(data, dict):
-                if chunk_size is not None:
+                if chunk_size[name] is not None:
                     raise NotImplementedError("Specifying chunk size with dict data")
                 slices = write_dataset_chunks(f, name, data)
             else:
-                slices = write_dataset(f, name, data, chunk_size=chunk_size)
+                slices = write_dataset(f, name, data,
+                                       chunk_size=chunk_size[name], compression=compression[name],
+                                       compression_opts=compression_opts[name])
             create_virtual_dataset(f, version_name, name, slices)
     except Exception:
         del versions[version_name]

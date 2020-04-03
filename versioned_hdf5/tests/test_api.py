@@ -58,12 +58,12 @@ def test_stage_version_chunk_size():
                                     3*np.ones((chunk_size,))))
 
 
-        with file.stage_version('version1', '', chunk_size=chunk_size) as group:
-            group['test_data'] = test_data
+        with file.stage_version('version1', '') as group:
+            group.create_dataset('test_data', data=test_data, chunks=(chunk_size,))
 
         with raises(ValueError):
-            with file.stage_version('version_bad', chunk_size=2**9) as group:
-                group['test_data'] = test_data
+            with file.stage_version('version_bad') as group:
+                group.create_dataset('test_data', data=test_data, chunks=(2**9,))
 
         version1 = file['version1']
         assert version1.attrs['prev_version'] == '__first_version__'
@@ -90,6 +90,47 @@ def test_stage_version_chunk_size():
         assert_equal(ds[2*chunk_size:3*chunk_size], 3.0)
         assert_equal(ds[3*chunk_size], 0.0)
         assert_equal(ds[3*chunk_size+1:4*chunk_size], 1.0)
+
+def test_stage_version_compression():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        test_data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
+                                    2*np.ones((DEFAULT_CHUNK_SIZE,)),
+                                    3*np.ones((DEFAULT_CHUNK_SIZE,))))
+
+
+        with file.stage_version('version1', '') as group:
+            group.create_dataset('test_data', data=test_data,
+                                 compression='gzip', compression_opts=3)
+
+        with raises(ValueError):
+            with file.stage_version('version_bad') as group:
+                group.create_dataset('test_data', data=test_data, compression='lzf')
+
+        with raises(ValueError):
+            with file.stage_version('version_bad') as group:
+                group.create_dataset('test_data', data=test_data,
+                                     compression='gzip', compression_opts=4)
+
+        version1 = file['version1']
+        assert version1.attrs['prev_version'] == '__first_version__'
+        assert_equal(version1['test_data'], test_data)
+
+        ds = f['/_version_data/test_data/raw_data']
+        assert ds.compression == 'gzip'
+        assert ds.compression_opts == 3
+
+        with file.stage_version('version2', 'version1') as group:
+            group['test_data'][0] = 0.0
+
+        version2 = file['version2']
+        assert version2.attrs['prev_version'] == 'version1'
+        test_data[0] = 0.0
+        assert_equal(version2['test_data'], test_data)
+
+        assert ds.compression == 'gzip'
+        assert ds.compression_opts == 3
 
 def test_version_int_slicing():
     with setup() as f:
@@ -368,6 +409,9 @@ def test_resize():
 
         # Resize after creation
         with file.stage_version('version2', 'version1') as group:
+            # Cover the case where some data is already read in
+            group['offset'][-1] = 2.0
+
             group['no_offset'].resize((3*DEFAULT_CHUNK_SIZE + 2,))
             group['offset'].resize((3*DEFAULT_CHUNK_SIZE + 2,))
 
@@ -375,7 +419,8 @@ def test_resize():
             assert group['offset'].shape == (3*DEFAULT_CHUNK_SIZE + 2,)
             assert_equal(group['no_offset'][:2*DEFAULT_CHUNK_SIZE], 1.0)
             assert_equal(group['no_offset'][2*DEFAULT_CHUNK_SIZE:], 0.0)
-            assert_equal(group['offset'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
+            assert_equal(group['offset'][:DEFAULT_CHUNK_SIZE + 1], 1.0)
+            assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 1], 2.0)
             assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 2:], 0.0)
 
             group['no_offset'].resize((3*DEFAULT_CHUNK_SIZE,))
@@ -385,7 +430,8 @@ def test_resize():
             assert group['offset'].shape == (3*DEFAULT_CHUNK_SIZE,)
             assert_equal(group['no_offset'][:2*DEFAULT_CHUNK_SIZE], 1.0)
             assert_equal(group['no_offset'][2*DEFAULT_CHUNK_SIZE:], 0.0)
-            assert_equal(group['offset'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
+            assert_equal(group['offset'][:DEFAULT_CHUNK_SIZE + 1], 1.0)
+            assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 1], 2.0)
             assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 2:], 0.0)
 
             group['no_offset'].resize((DEFAULT_CHUNK_SIZE + 2,))
@@ -394,7 +440,8 @@ def test_resize():
             assert group['no_offset'].shape == (DEFAULT_CHUNK_SIZE + 2,)
             assert group['offset'].shape == (DEFAULT_CHUNK_SIZE + 2,)
             assert_equal(group['no_offset'][:], 1.0)
-            assert_equal(group['offset'][:], 1.0)
+            assert_equal(group['offset'][:DEFAULT_CHUNK_SIZE + 1], 1.0)
+            assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 1], 2.0)
 
             group['no_offset'].resize((DEFAULT_CHUNK_SIZE,))
             group['offset'].resize((DEFAULT_CHUNK_SIZE,))
@@ -409,3 +456,28 @@ def test_resize():
         assert group['offset'].shape == (DEFAULT_CHUNK_SIZE,)
         assert_equal(group['no_offset'][:], 1.0)
         assert_equal(group['offset'][:], 1.0)
+
+def test_getitem():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = np.arange(2*DEFAULT_CHUNK_SIZE)
+
+        with file.stage_version('version1') as group:
+            group.create_dataset('test_data', data=data)
+
+            test_data = group['test_data']
+            assert test_data.shape == (2*DEFAULT_CHUNK_SIZE,)
+            assert_equal(test_data[0], 0)
+            assert test_data[0].dtype == np.int64
+            assert_equal(test_data[:], data)
+            assert_equal(test_data[:DEFAULT_CHUNK_SIZE+1], data[:DEFAULT_CHUNK_SIZE+1])
+
+
+        with file.stage_version('version2') as group:
+            test_data = group['test_data']
+            assert test_data.shape == (2*DEFAULT_CHUNK_SIZE,)
+            assert_equal(test_data[0], 0)
+            assert test_data[0].dtype == np.int64
+            assert_equal(test_data[:], data)
+            assert_equal(test_data[:DEFAULT_CHUNK_SIZE+1], data[:DEFAULT_CHUNK_SIZE+1])

@@ -6,6 +6,7 @@ from h5py._hl.vds import VDSmap
 import numpy as np
 
 from contextlib import contextmanager
+from collections import defaultdict
 import datetime
 import math
 
@@ -101,7 +102,7 @@ class VersionedHDF5File:
 
     @contextmanager
     def stage_version(self, version_name: str, prev_version=None,
-                      make_current=True, chunk_size=None):
+                      make_current=True):
         """
         Return a context manager to stage a new version
 
@@ -126,12 +127,17 @@ class VersionedHDF5File:
         yield group
         create_version(self.f, version_name, group.datasets(),
                        prev_version=prev_version, make_current=make_current,
-                       chunk_size=chunk_size)
+                       chunk_size=group.chunk_size,
+                       compression=group.compression,
+                       compression_opts=group.compression_opts)
 
 class InMemoryGroup(Group):
     def __init__(self, bind):
         self._data = {}
         self._subgroups = {}
+        self.chunk_size = defaultdict(type(None))
+        self.compression = defaultdict(type(None))
+        self.compression_opts = defaultdict(type(None))
         super().__init__(bind)
 
     # Based on Group.__repr__
@@ -172,6 +178,16 @@ class InMemoryGroup(Group):
 
     def create_dataset(self, name, **kwds):
         data = super().create_dataset(name, **kwds)
+        chunk_size = kwds.get('chunks')
+        if isinstance(chunk_size, tuple):
+            if len(chunk_size) > 1:
+                raise NotImplementedError("Multiple dimensions")
+            chunk_size = chunk_size[0]
+        if chunk_size is True:
+            raise NotImplementedError("auto-chunking is not yet supported")
+        self.chunk_size[name] = chunk_size
+        self.compression[name] = kwds.get('compression')
+        self.compression_opts[name] = kwds.get('compression_opts')
         self[name] = data
         return data
 
@@ -281,6 +297,7 @@ class InMemoryDatasetID(h5d.DatasetID):
         self._shape = size
 
     def _read_chunk(self, i, mtype=None, dxpl=None):
+        # Based on Dataset.__getitem__
         s = slice(i*self.chunk_size, (i+1)*self.chunk_size)
         selection = select(self.shape, (s,), dsid=self)
 
@@ -306,10 +323,11 @@ class InMemoryDatasetID(h5d.DatasetID):
         if np.isscalar(arr):
             arr = arr.reshape((1,))
 
+        if fslice == ():
+            fslice = (slice(0, arr_obj.shape[0], 1),)
         # Chunks that are modified
         N0 = 0
         for i, s_ in split_slice(fslice[0], chunk=self.chunk_size):
-            # Based on Dataset.__getitem__
             if isinstance(self.data_dict[i], slice):
                 a = self._read_chunk(i, mtype=mtype, dxpl=dxpl)
                 data_dict[i] = a
@@ -319,6 +337,29 @@ class InMemoryDatasetID(h5d.DatasetID):
             N0 = N
 
         return data_dict
+
+    def read(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
+        mslice = spaceid_to_slice(mspace)
+        fslice = spaceid_to_slice(fspace)
+        if len(fslice) > 1 or len(self.shape) > 1:
+            raise NotImplementedError("More than one dimension is not yet supported")
+        data_dict = self.data_dict
+        arr = arr_obj[mslice]
+        if np.isscalar(arr):
+            arr = arr.reshape((1,))
+
+        if fslice == ():
+            fslice = (slice(0, arr_obj.shape[0], 1),)
+        # Chunks that are modified
+        N0 = 0
+        for i, s_ in split_slice(fslice[0], chunk=self.chunk_size):
+            if isinstance(self.data_dict[i], slice):
+                a = self._read_chunk(i, mtype=mtype, dxpl=dxpl)
+                data_dict[i] = a
+
+            N = N0 + slice_size(s_)
+            arr[N0:N] = data_dict[i][s_]
+            N0 = N
 
 def spaceid_to_slice(space):
     sel_type = space.get_select_type()
