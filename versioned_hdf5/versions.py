@@ -33,7 +33,7 @@ def create_version_group(f, version_name, prev_version=None):
     prev_group.visititems(_get)
     return group
 
-def create_version(version_group, datasets, *,
+def commit_version(version_group, datasets, *,
                    make_current=True, chunk_size=None,
                    compression=None, compression_opts=None):
     """
@@ -84,7 +84,6 @@ def create_version(version_group, datasets, *,
         if make_current:
             versions.attrs['current_version'] = old_current
         raise
-    return version_group
 
 def get_nth_previous_version(f, version_name, n):
     versions = f['_version_data/versions']

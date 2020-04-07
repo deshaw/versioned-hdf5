@@ -14,7 +14,7 @@ import datetime
 import math
 
 from .backend import initialize
-from .versions import (create_version_group, create_version,
+from .versions import (create_version_group, commit_version,
                        get_nth_previous_version, set_current_version,
                        all_versions)
 from .slicetools import s2t, slice_size, split_slice
@@ -130,7 +130,7 @@ class VersionedHDF5File:
         group = create_version_group(self.f, version_name,
                                      prev_version=prev_version)
         yield group
-        create_version(group, group.datasets(), make_current=make_current,
+        commit_version(group, group.datasets(), make_current=make_current,
                        chunk_size=group.chunk_size,
                        compression=group.compression,
                        compression_opts=group.compression_opts)
