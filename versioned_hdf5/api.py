@@ -1,7 +1,10 @@
-from h5py import Empty, Dataset, Group, h5d, h5i, h5s
-from h5py._hl.base import phil
+from h5py import Empty, Dataset, Datatype, Group, h5d, h5i, h5p, h5s, h5t
+from h5py._hl.base import guess_dtype, phil
+from h5py._hl.dataset import _LEGACY_GZIP_COMPRESSION_VALS
+from h5py._hl import filters
 from h5py._hl.selections import select
 from h5py._hl.vds import VDSmap
+
 
 import numpy as np
 
@@ -11,8 +14,9 @@ import datetime
 import math
 
 from .backend import initialize
-from .versions import (create_version, get_nth_previous_version,
-                       set_current_version, all_versions)
+from .versions import (create_version_group, create_version,
+                       get_nth_previous_version, set_current_version,
+                       all_versions)
 from .slicetools import s2t, slice_size, split_slice
 
 class VersionedHDF5File:
@@ -123,10 +127,10 @@ class VersionedHDF5File:
         `prev_version` for any future `stage_version` call.
 
         """
-        group = self[prev_version]
+        group = create_version_group(self.f, version_name,
+                                     prev_version=prev_version)
         yield group
-        create_version(self.f, version_name, group.datasets(),
-                       prev_version=prev_version, make_current=make_current,
+        create_version(group, group.datasets(), make_current=make_current,
                        chunk_size=group.chunk_size,
                        compression=group.compression,
                        compression_opts=group.compression_opts)
@@ -169,6 +173,9 @@ class InMemoryGroup(Group):
             raise NotImplementedError(f"Cannot handle {type(res)!r}")
 
     def __setitem__(self, name, obj):
+        # TODO: Support groups, arrays, and lists
+        if isinstance(obj, Dataset):
+            obj = InMemoryDataset(obj.id)
         self._data[name] = obj
 
     def __delitem__(self, name):
@@ -176,8 +183,12 @@ class InMemoryGroup(Group):
             del self._data
         super().__delitem__(name)
 
+    def create_group(self, name, track_order=None):
+        g = super().create_group(name, track_order=track_order)
+        return type(self)(g.id)
+
     def create_dataset(self, name, **kwds):
-        data = super().create_dataset(name, **kwds)
+        data = make_new_dset(**kwds)
         chunk_size = kwds.get('chunks')
         if isinstance(chunk_size, tuple):
             if len(chunk_size) > 1:
@@ -205,6 +216,118 @@ class InMemoryGroup(Group):
         return res
 
     #TODO: override other relevant methods here
+
+
+# Based on h5py._hl.dataset.make_new_dset(), except it doesn't actually create
+# the dataset, it just canoncalizes the arguments.
+def make_new_dset(shape=None, dtype=None, data=None, chunks=None,
+                  compression=None, shuffle=None, fletcher32=None,
+                  maxshape=None, compression_opts=None, fillvalue=None,
+                  scaleoffset=None, track_times=None, external=None,
+                  track_order=None, dcpl=None):
+    """ Return a new low-level dataset identifier """
+
+    # Convert data to a C-contiguous ndarray
+    if data is not None and not isinstance(data, Empty):
+        # normalize strings -> np.dtype objects
+        if dtype is not None:
+            _dtype = np.dtype(dtype)
+        else:
+            _dtype = None
+
+        # if we are going to a f2 datatype, pre-convert in python
+        # to workaround a possible h5py bug in the conversion.
+        is_small_float = (_dtype is not None and
+                          _dtype.kind == 'f' and
+                          _dtype.itemsize == 2)
+        data = np.asarray(data, order="C",
+                             dtype=(_dtype if is_small_float
+                                    else guess_dtype(data)))
+
+    # Validate shape
+    if shape is None:
+        if data is None:
+            if dtype is None:
+                raise TypeError("One of data, shape or dtype must be specified")
+            data = Empty(dtype)
+        shape = data.shape
+    else:
+        shape = (shape,) if isinstance(shape, int) else tuple(shape)
+        if data is not None and (np.product(shape, dtype=np.ulonglong) != np.product(data.shape, dtype=np.ulonglong)):
+            raise ValueError("Shape tuple is incompatible with data")
+
+    if isinstance(maxshape, int):
+        maxshape = (maxshape,)
+    tmp_shape = maxshape if maxshape is not None else shape
+
+    # Validate chunk shape
+    if isinstance(chunks, int) and not isinstance(chunks, bool):
+        chunks = (chunks,)
+    if isinstance(chunks, tuple) and any(
+        chunk > dim for dim, chunk in zip(tmp_shape, chunks) if dim is not None
+    ):
+        errmsg = "Chunk shape must not be greater than data shape in any dimension. "\
+                 "{} is not compatible with {}".format(chunks, shape)
+        raise ValueError(errmsg)
+
+    if isinstance(dtype, Datatype):
+        # Named types are used as-is
+        tid = dtype.id
+        dtype = tid.dtype  # Following code needs this
+    else:
+        # Validate dtype
+        if dtype is None and data is None:
+            dtype = np.dtype("=f4")
+        elif dtype is None and data is not None:
+            dtype = data.dtype
+        else:
+            dtype = np.dtype(dtype)
+        tid = h5t.py_create(dtype, logical=1)
+
+    # Legacy
+    if any((compression, shuffle, fletcher32, maxshape, scaleoffset)) and chunks is False:
+        raise ValueError("Chunked format required for given storage options")
+
+    # Legacy
+    if compression is True:
+        if compression_opts is None:
+            compression_opts = 4
+        compression = 'gzip'
+
+    # Legacy
+    if compression in _LEGACY_GZIP_COMPRESSION_VALS:
+        if compression_opts is not None:
+            raise TypeError("Conflict in compression options")
+        compression_opts = compression
+        compression = 'gzip'
+    dcpl = filters.fill_dcpl(
+        dcpl or h5p.create(h5p.DATASET_CREATE), shape, dtype,
+        chunks, compression, compression_opts, shuffle, fletcher32,
+        maxshape, scaleoffset, external)
+
+    if fillvalue is not None:
+        fillvalue = np.array(fillvalue)
+        dcpl.set_fill_value(fillvalue)
+
+    if track_times in (True, False):
+        dcpl.set_obj_track_times(track_times)
+    elif track_times is not None:
+        raise TypeError("track_times must be either True or False")
+    if track_order == True:
+        dcpl.set_attr_creation_order(
+            h5p.CRT_ORDER_TRACKED | h5p.CRT_ORDER_INDEXED)
+    elif track_order == False:
+        dcpl.set_attr_creation_order(0)
+    elif track_order is not None:
+        raise TypeError("track_order must be either True or False")
+
+    if maxshape is not None:
+        maxshape = tuple(m if m is not None else h5s.UNLIMITED for m in maxshape)
+
+
+    if isinstance(data, Empty):
+        raise NotImplementedError("Empty datasets")
+    return data
 
 class InMemoryDataset(Dataset):
     def __init__(self, bind, **kwargs):
