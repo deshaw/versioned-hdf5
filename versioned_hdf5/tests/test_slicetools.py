@@ -3,7 +3,7 @@ from numpy.testing import assert_equal
 
 from h5py._hl.selections import Selection
 
-from .test_backend import setup
+from .helpers import setup
 from ..slicetools import split_slice, slice_size, spaceid_to_slice
 
 def test_split_slice():

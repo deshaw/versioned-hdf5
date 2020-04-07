@@ -6,7 +6,7 @@ from numpy.testing import assert_equal
 from ..backend import DEFAULT_CHUNK_SIZE
 from ..api import VersionedHDF5File
 
-from .test_backend import setup
+from .helpers import setup
 
 def test_stage_version():
     with setup() as f:
