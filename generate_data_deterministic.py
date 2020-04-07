@@ -81,14 +81,15 @@ class TestVersionedDatasetPerformance(TestCase):
         filename = tmp_dir + f'/{name}.h5'
         f = h5py.File(filename, 'w')
         file = VersionedHDF5File(f)
+        chunks = (chunk_size,)
         try:
-            with file.stage_version("initial_version", chunk_size=chunk_size) as group:
+            with file.stage_version("initial_version") as group:
                 key0_ds = group.create_dataset(name + '/key0', data=np.random.rand(num_rows_initial),
-                                               dtype=(np.dtype('int64')))
+                                               dtype=(np.dtype('int64')), chunks=chunks)
                 key1_ds = group.create_dataset(name + '/key1', data=np.random.rand(num_rows_initial),
-                                               dtype=(np.dtype('int64')))
+                                               dtype=(np.dtype('int64')), chunks=chunks)
                 val_ds = group.create_dataset(name + '/val', data=np.random.rand(num_rows_initial),
-                                              dtype=(np.dtype('float64')))
+                                              dtype=(np.dtype('float64')), chunks=chunks)
             for a in range(num_transactions):
                 if print_transactions:
                     print("Transaction", a)
@@ -284,13 +285,13 @@ class TestVersionedDatasetPerformance(TestCase):
         f = h5py.File(filename, 'w')
         file = VersionedHDF5File(f)
         try:
-            with file.stage_version("initial_version", chunk_size=chunk_size) as group:
+            with file.stage_version("initial_version") as group:
                 key0_ds = group.create_dataset(name + '/key0', data=np.random.rand(num_rows_initial_0),
-                                               dtype=(np.dtype('int64')))
+                                               dtype=(np.dtype('int64')), chunks=chunk_size)
                 key1_ds = group.create_dataset(name + '/key1', data=np.random.rand(num_rows_initial_1),
-                                               dtype=(np.dtype('int64')))
+                                               dtype=(np.dtype('int64')), chunks=chunk_size)
                 val_ds = group.create_dataset(name + '/val', data=np.random.rand(num_rows_initial_0 * num_rows_initial_1),
-                                              dtype=(np.dtype('float64')))
+                                              dtype=(np.dtype('float64')), chunks=chunk_size)
             for a in range(num_transactions):
                 #print(f"Transaction {a} of {num_transactions}")
                 tt = datetime.datetime.utcnow()
@@ -407,4 +408,4 @@ if __name__ == '__main__':
     #num_transactions = [50, 100, 500, 1000, 2000]#, 5000, 10000]
     num_transactions = [50]
     for t in num_transactions:
-        TestVersionedDatasetPerformance().test_large_fraction_changes_sparse(t, chunk_size=2**10)
+        TestVersionedDatasetPerformance().test_large_fraction_changes_sparse(t, chunk_size=2**14)
