@@ -23,6 +23,7 @@ def create_version_group(f, version_name, prev_version=None):
 
     group = InMemoryGroup(versions.create_group(version_name).id)
     group.attrs['prev_version'] = prev_version
+    group.attrs['committed'] = False
 
     # Copy everything over from the previous version
     prev_group = versions[prev_version]
@@ -54,6 +55,10 @@ def commit_version(version_group, datasets, *,
     """
     from .api import InMemoryDataset
 
+    if 'committed' not in version_group.attrs:
+        raise ValueError("version_group must be a group created by create_version_group()")
+    if version_group.attrs['committed']:
+        raise ValueError("This version group has already been committed")
     f = version_group.file
     version_name = version_group.name.rsplit('/', 1)[1]
     versions = f['_version_data/versions']
@@ -79,6 +84,7 @@ def commit_version(version_group, datasets, *,
                                        chunk_size=chunk_size[name], compression=compression[name],
                                        compression_opts=compression_opts[name])
             create_virtual_dataset(f, version_name, name, slices)
+        version_group.attrs['committed'] = True
     except Exception:
         del versions[version_name]
         if make_current:
