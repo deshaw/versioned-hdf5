@@ -3,7 +3,7 @@ from pytest import raises
 import numpy as np
 from numpy.testing import assert_equal
 
-from .test_backend import setup
+from .helpers import setup
 
 from ..backend import DEFAULT_CHUNK_SIZE
 from ..versions import (create_version_group, commit_version,
