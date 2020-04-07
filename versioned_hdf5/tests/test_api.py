@@ -457,6 +457,23 @@ def test_resize():
         assert_equal(group['no_offset'][:], 1.0)
         assert_equal(group['offset'][:], 1.0)
 
+        # Resize smaller than a chunk
+        small_data = np.array([1, 2, 3])
+
+        with file.stage_version('version1_small', '') as group:
+            group.create_dataset('small', data=small_data)
+
+        with file.stage_version('version2_small', 'version1_small') as group:
+            group['small'].resize((5,))
+            assert_equal(group['small'], np.array([1, 2, 3, 0, 0]))
+            group['small'][3:] = np.array([4, 5])
+            assert_equal(group['small'], np.array([1, 2, 3, 4, 5]))
+
+        group = file['version1_small']
+        assert_equal(group['small'], np.array([1, 2, 3]))
+        group = file['version2_small']
+        assert_equal(group['small'], np.array([1, 2, 3, 4, 5]))
+
 def test_getitem():
     with setup() as f:
         file = VersionedHDF5File(f)
