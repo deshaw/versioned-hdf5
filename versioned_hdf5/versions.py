@@ -2,10 +2,9 @@ from uuid import uuid4
 from collections import defaultdict
 
 from .backend import write_dataset, write_dataset_chunks, create_virtual_dataset
-
+from .wrappers import InMemoryGroup, InMemoryDataset
 
 def create_version_group(f, version_name, prev_version=None):
-    from .api import InMemoryGroup
     versions = f['_version_data/versions']
 
     if prev_version == '':
@@ -53,8 +52,6 @@ def commit_version(version_group, datasets, *,
 
     Returns the group for the new version.
     """
-    from .api import InMemoryDataset
-
     if 'committed' not in version_group.attrs:
         raise ValueError("version_group must be a group created by create_version_group()")
     if version_group.attrs['committed']:
