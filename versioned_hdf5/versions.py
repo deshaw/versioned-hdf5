@@ -3,8 +3,38 @@ from collections import defaultdict
 
 from .backend import write_dataset, write_dataset_chunks, create_virtual_dataset
 
-# TODO: Allow version_name to be a version group
-def create_version(f, version_name, datasets, prev_version=None, *,
+
+def create_version_group(f, version_name, prev_version=None):
+    from .api import InMemoryGroup
+    versions = f['_version_data/versions']
+
+    if prev_version == '':
+        prev_version = '__first_version__'
+    elif prev_version is None:
+        prev_version = versions.attrs['current_version']
+
+    if version_name is None:
+        version_name = str(uuid4())
+
+    if version_name in versions:
+        raise ValueError(f"There is already a version with the name {version_name}")
+    if prev_version not in versions:
+        raise ValueError(f"Previous version {prev_version!r} not found")
+
+    group = InMemoryGroup(versions.create_group(version_name).id)
+    group.attrs['prev_version'] = prev_version
+    group.attrs['committed'] = False
+
+    # Copy everything over from the previous version
+    prev_group = versions[prev_version]
+
+    def _get(name, item):
+        group[name] = item
+
+    prev_group.visititems(_get)
+    return group
+
+def commit_version(version_group, datasets, *,
                    make_current=True, chunk_size=None,
                    compression=None, compression_opts=None):
     """
@@ -25,27 +55,18 @@ def create_version(f, version_name, datasets, prev_version=None, *,
     """
     from .api import InMemoryDataset
 
+    if 'committed' not in version_group.attrs:
+        raise ValueError("version_group must be a group created by create_version_group()")
+    if version_group.attrs['committed']:
+        raise ValueError("This version group has already been committed")
+    f = version_group.file
+    version_name = version_group.name.rsplit('/', 1)[1]
     versions = f['_version_data/versions']
 
     chunk_size = chunk_size or defaultdict(type(None))
     compression = compression or defaultdict(type(None))
     compression_opts = compression_opts or defaultdict(type(None))
 
-    if prev_version == '':
-        prev_version = '__first_version__'
-    elif prev_version is None:
-        prev_version = versions.attrs['current_version']
-
-    if version_name is None:
-        version_name = str(uuid4())
-
-    if version_name in versions:
-        raise ValueError(f"There is already a version with the name {version_name}")
-    if prev_version not in versions:
-        raise ValueError(f"Previous version {prev_version!r} not found")
-
-    group = versions.create_group(version_name)
-    group.attrs['prev_version'] = prev_version
     if make_current:
         old_current = versions.attrs['current_version']
         versions.attrs['current_version'] = version_name
@@ -63,12 +84,12 @@ def create_version(f, version_name, datasets, prev_version=None, *,
                                        chunk_size=chunk_size[name], compression=compression[name],
                                        compression_opts=compression_opts[name])
             create_virtual_dataset(f, version_name, name, slices)
+        version_group.attrs['committed'] = True
     except Exception:
         del versions[version_name]
         if make_current:
             versions.attrs['current_version'] = old_current
         raise
-    return group
 
 def get_nth_previous_version(f, version_name, n):
     versions = f['_version_data/versions']
