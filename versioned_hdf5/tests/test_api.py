@@ -250,12 +250,37 @@ def test_create_dataset():
         assert version1.attrs['prev_version'] == '__first_version__'
         assert_equal(version1['test_data'], test_data)
 
-        ds = f['/_version_data/test_data/raw_data']
 
+        with file.stage_version('version2') as group:
+            group.create_dataset('test_data2', data=test_data)
+
+        ds = f['/_version_data/test_data/raw_data']
         assert ds.shape == (3*DEFAULT_CHUNK_SIZE,)
         assert_equal(ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
         assert_equal(ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
         assert_equal(ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
+
+        ds = f['/_version_data/test_data2/raw_data']
+        assert ds.shape == (3*DEFAULT_CHUNK_SIZE,)
+        assert_equal(ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
+        assert_equal(ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
+        assert_equal(ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
+
+        assert list(f['/_version_data/versions/__first_version__']) == []
+        assert list(f['/_version_data/versions/version1']) == list(file['version1']) == ['test_data']
+        assert list(f['/_version_data/versions/version2']) == list(file['version2']) == ['test_data', 'test_data2']
+
+def test_small_dataset():
+    # Test creating a dataset that is smaller than the chunk size
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = np.ones((100,))
+
+        with file.stage_version("version1") as group:
+            group.create_dataset("test", data=data, chunks=(2**14,))
+
+        assert_equal(file['version1']['test'], data)
 
 def test_unmodified():
     with setup() as f:
