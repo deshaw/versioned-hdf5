@@ -187,7 +187,7 @@ class InMemoryGroup(Group):
         return type(self)(g.id)
 
     def create_dataset(self, name, **kwds):
-        data = make_new_dset(**kwds)
+        data = _make_new_dset(**kwds)
         chunk_size = kwds.get('chunks')
         if isinstance(chunk_size, tuple):
             if len(chunk_size) > 1:
@@ -218,8 +218,9 @@ class InMemoryGroup(Group):
 
 
 # Based on h5py._hl.dataset.make_new_dset(), except it doesn't actually create
-# the dataset, it just canoncalizes the arguments.
-def make_new_dset(shape=None, dtype=None, data=None, chunks=None,
+# the dataset, it just canoncalizes the arguments. See the LICENSE file for
+# the h5py license.
+def _make_new_dset(shape=None, dtype=None, data=None, chunks=None,
                   compression=None, shuffle=None, fletcher32=None,
                   maxshape=None, compression_opts=None, fillvalue=None,
                   scaleoffset=None, track_times=None, external=None,
@@ -499,40 +500,3 @@ def spaceid_to_slice(space):
         return (slice(0, 0),)
     else:
         raise NotImplementedError("Point selections are not yet supported")
-
-# This is adapted from h5py._hl.dataset.make_new_dset(). See the LICENSE file
-# for the h5py license.
-def _make_new_dset(shape, dtype, data):
-    # Convert data to a C-contiguous ndarray
-    if data is not None:
-        if isinstance(data, Empty):
-            raise NotImplementedError("Empty data not yet supported")
-        from h5py._hl import base
-        # normalize strings -> np.dtype objects
-        if dtype is not None:
-            _dtype = np.dtype(dtype)
-        else:
-            _dtype = None
-
-        # if we are going to a f2 datatype, pre-convert in python
-        # to workaround a possible h5py bug in the conversion.
-        is_small_float = (_dtype is not None and
-                          _dtype.kind == 'f' and
-                          _dtype.itemsize == 2)
-        data = np.asarray(data, order="C",
-                             dtype=(_dtype if is_small_float
-                                    else base.guess_dtype(data)))
-
-    # Validate shape
-    if shape is None:
-        if data is None:
-            if dtype is None:
-                raise TypeError("One of data, shape or dtype must be specified")
-            raise NotImplementedError("Empty data not yet supported")
-        shape = data.shape
-    else:
-        shape = (shape,) if isinstance(shape, int) else tuple(shape)
-        if data is not None and (np.product(shape, dtype=np.ulonglong) != np.product(data.shape, dtype=np.ulonglong)):
-            raise ValueError("Shape tuple is incompatible with data")
-
-    return data
