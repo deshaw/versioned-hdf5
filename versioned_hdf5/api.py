@@ -257,17 +257,13 @@ def make_new_dset(shape=None, dtype=None, data=None, chunks=None,
 
     if isinstance(maxshape, int):
         maxshape = (maxshape,)
-    # tmp_shape = maxshape if maxshape is not None else shape
 
     # Validate chunk shape
     if isinstance(chunks, int) and not isinstance(chunks, bool):
         chunks = (chunks,)
-    # if isinstance(chunks, tuple) and any(
-    #     chunk > dim for dim, chunk in zip(tmp_shape, chunks) if dim is not None
-    # ):
-    #     errmsg = "Chunk shape must not be greater than data shape in any dimension. "\
-    #              "{} is not compatible with {}".format(chunks, shape)
-    #     raise ValueError(errmsg)
+    # The original make_new_dset errors here if the shape is less than the
+    # chunk size, but we avoid doing that as we cannot change the chunk size
+    # for a dataset for any version once it is created. See #34.
 
     if isinstance(dtype, Datatype):
         # Named types are used as-is
