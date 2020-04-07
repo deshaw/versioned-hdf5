@@ -446,6 +446,40 @@ def test_resize():
         assert_equal(group['no_offset'][:], 1.0)
         assert_equal(group['offset'][:], 1.0)
 
+        # Resize smaller than a chunk
+        small_data = np.array([1, 2, 3])
+
+        with file.stage_version('version1_small', '') as group:
+            group.create_dataset('small', data=small_data)
+
+        with file.stage_version('version2_small', 'version1_small') as group:
+            group['small'].resize((5,))
+            assert_equal(group['small'], np.array([1, 2, 3, 0, 0]))
+            group['small'][3:] = np.array([4, 5])
+            assert_equal(group['small'], np.array([1, 2, 3, 4, 5]))
+
+        group = file['version1_small']
+        assert_equal(group['small'], np.array([1, 2, 3]))
+        group = file['version2_small']
+        assert_equal(group['small'], np.array([1, 2, 3, 4, 5]))
+
+
+def test_resize_unaligned():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+        ds_name = 'test_resize_unaligned'
+        with file.stage_version('0') as group:
+            group.create_dataset(ds_name, data=np.arange(1000))
+
+        for i in range(1, 10):
+            with file.stage_version(str(i)) as group:
+                l = len(group[ds_name])
+                assert_equal(group[ds_name][:], np.arange(i * 1000))
+                group[ds_name].resize((l + 1000,))
+                group[ds_name][-1000:] = np.arange(l, l + 1000)
+                assert_equal(group[ds_name][:], np.arange((i + 1) * 1000))
+
+
 def test_getitem():
     with setup() as f:
         file = VersionedHDF5File(f)

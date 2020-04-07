@@ -16,6 +16,7 @@ import math
 
 from .slicetools import s2t, slice_size, split_slice, spaceid_to_slice
 
+
 class InMemoryGroup(Group):
     def __init__(self, bind):
         self._data = {}
@@ -270,6 +271,7 @@ class InMemoryDatasetID(h5d.DatasetID):
                             a = data_dict[i]
                         data_dict[i] = a[:shape[0] - i*chunk_size]
         elif shape[0] > old_shape[0]:
+            quo, rem = divmod(shape[0], chunk_size)
             if old_shape[0] % chunk_size != 0:
                 i = max(data_dict)
                 if isinstance(data_dict[i], slice):
@@ -277,10 +279,13 @@ class InMemoryDatasetID(h5d.DatasetID):
                 else:
                     a = data_dict[i]
                 assert a.shape[0] == old_shape % chunk_size
-                data_dict[i] = np.concatenate([a, np.zeros((chunk_size -
-                    a.shape[0],), dtype=self.dtype)])
-            quo, rem = divmod(shape[0], chunk_size)
-            if rem != 0:
+                if i == quo:
+                    data_dict[i] = np.concatenate([a, np.zeros((rem -
+                        a.shape[0]), dtype=self.dtype)])
+                else:
+                    data_dict[i] = np.concatenate([a, np.zeros((chunk_size -
+                        a.shape[0],), dtype=self.dtype)])
+            if rem != 0 and quo not in data_dict:
                 # Zeros along the chunks are added in the for loop below, but
                 # we have to add a sub-chunk zeros here
                 data_dict[quo] = np.zeros((rem,), dtype=self.dtype)
