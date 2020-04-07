@@ -180,8 +180,7 @@ class InMemoryGroup(Group):
 
     def __delitem__(self, name):
         if name in self._data:
-            del self._data
-        super().__delitem__(name)
+            del self._data[name]
 
     def create_group(self, name, track_order=None):
         g = super().create_group(name, track_order=track_order)
