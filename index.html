@@ -39,9 +39,9 @@
 is still in a pre-alpha development stage.</p>
 <div class="section" id="module-versioned_hdf5">
 <span id="api-documentation"></span><h2>API Documentation<a class="headerlink" href="#module-versioned_hdf5" title="Permalink to this headline">¶</a></h2>
-<dl class="class">
+<dl class="py class">
 <dt id="versioned_hdf5.VersionedHDF5File">
-<em class="property">class </em><code class="sig-prename descclassname">versioned_hdf5.</code><code class="sig-name descname">VersionedHDF5File</code><span class="sig-paren">(</span><em class="sig-param">f</em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">versioned_hdf5.</code><code class="sig-name descname">VersionedHDF5File</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">f</span></em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File" title="Permalink to this definition">¶</a></dt>
 <dd><p>A Versioned HDF5 File</p>
 <p>This is the main entry-point of the library. To use a versioned HDF5 file,
 pass a h5py file to constructor. The methods on the resulting object can
@@ -70,7 +70,7 @@ this library could result in breaking things.</p>
 </pre></div>
 </div>
 <p>When the context manager exits, the version will be written to the file.</p>
-<dl class="method">
+<dl class="py method">
 <dt id="versioned_hdf5.VersionedHDF5File.current_version">
 <em class="property">property </em><code class="sig-name descname">current_version</code><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.current_version" title="Permalink to this definition">¶</a></dt>
 <dd><p>The current version.</p>
@@ -79,9 +79,9 @@ this library could result in breaking things.</p>
 indexing (the current version is <code class="code docutils literal notranslate"><span class="pre">self[0]</span></code>).</p>
 </dd></dl>
 
-<dl class="method">
+<dl class="py method">
 <dt id="versioned_hdf5.VersionedHDF5File.stage_version">
-<code class="sig-name descname">stage_version</code><span class="sig-paren">(</span><em class="sig-param">version_name: str</em>, <em class="sig-param">prev_version=None</em>, <em class="sig-param">make_current=True</em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.stage_version" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">stage_version</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">version_name</span><span class="p">:</span> <span class="n">str</span></em>, <em class="sig-param"><span class="n">prev_version</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">make_current</span><span class="o">=</span><span class="default_value">True</span></em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.stage_version" title="Permalink to this definition">¶</a></dt>
 <dd><p>Return a context manager to stage a new version</p>
 <p>The context manager returns a group, which should be modified in-place
 to build the new version. When the context manager exits, the new
@@ -173,7 +173,7 @@ The code is licensed under the <a class="reference external" href="https://githu
       &copy;2020, Quansight.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.4.4</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.0.0</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |
