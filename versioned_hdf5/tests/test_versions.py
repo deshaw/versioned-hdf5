@@ -3,11 +3,12 @@ from pytest import raises
 import numpy as np
 from numpy.testing import assert_equal
 
-from .test_backend import setup
+from .helpers import setup
 
 from ..backend import DEFAULT_CHUNK_SIZE
-from ..versions import (create_version, get_nth_previous_version,
-                        set_current_version, all_versions)
+from ..versions import (create_version_group, commit_version,
+                        get_nth_previous_version, set_current_version,
+                        all_versions)
 
 def test_create_version():
     with setup() as f:
@@ -16,22 +17,27 @@ def test_create_version():
                                2*np.ones((chunk_size,)),
                                3*np.ones((chunk_size,))))
 
-        version1 = create_version(f, 'version1', {'test_data': data}, '',
-                                  chunk_size={'test_data': chunk_size},
-                                  compression={'test_data': 'gzip'},
-                                  compression_opts={'test_data': 3})
-        raises(ValueError, lambda: create_version(f, 'version_bad',
-                                  {'test_data': data},
-                                  chunk_size={'test_data': 2**9}))
-        raises(ValueError, lambda: create_version(f, 'version_bad',
-                                  {'test_data': data},
-                                  compression={'test_data': 'lzf'}))
-        raises(ValueError, lambda: create_version(f, 'version_bad',
-                                  {'test_data': data},
-                                  compression_opts={'test_data': 4}))
+        version1 = create_version_group(f, 'version1', '')
+        commit_version(version1, {'test_data': data},
+                       chunk_size={'test_data': chunk_size},
+                       compression={'test_data': 'gzip'},
+                       compression_opts={'test_data': 3})
+        version_bad = create_version_group(f, 'version_bad', '')
+        raises(ValueError, lambda: commit_version(version_bad, {'test_data': data},
+                                                  chunk_size={'test_data': 2**9}))
+        version_bad = create_version_group(f, 'version_bad', '')
+        raises(ValueError, lambda: commit_version(version_bad, {'test_data': data},
+                                                  compression={'test_data': 'lzf'}))
+        version_bad = create_version_group(f, 'version_bad', '')
+        raises(ValueError, lambda: commit_version(version_bad,
+                                                        {'test_data': data},
+                                                        compression_opts={'test_data': 4}))
         assert version1.attrs['prev_version'] == '__first_version__'
         assert version1.parent.attrs['current_version'] == 'version1'
-        assert_equal(version1['test_data'], data)
+        # Test against the file here, not version1, since version1 is the
+        # InMemoryGroup returned from create_version_group, but we did not add
+        # the datasets to it directly.
+        assert_equal(f['_version_data/versions/version1/test_data'], data)
 
         ds = f['/_version_data/test_data/raw_data']
 
@@ -43,10 +49,15 @@ def test_create_version():
         assert ds.compression_opts == 3
 
         data[0] = 0.0
-        version2 = create_version(f, 'version2', {'test_data':
-        data}, 'version1', make_current=False)
+        version2 = create_version_group(f, 'version2', 'version1')
+
+        raises(ValueError,
+               lambda: commit_version(version1, {'test_data': data},
+                                      make_current=False))
+        commit_version(version2, {'test_data': data},
+                       make_current=False)
         assert version2.attrs['prev_version'] == 'version1'
-        assert_equal(version2['test_data'], data)
+        assert_equal(f['_version_data/versions/version2/test_data'], data)
         assert version2.parent.attrs['current_version'] == 'version1'
 
         assert ds.shape == (4*chunk_size,)
@@ -70,20 +81,24 @@ def test_create_version_chunks():
                                2*np.ones((chunk_size,)),
                                3*np.ones((chunk_size,))))
         # TODO: Support creating the initial version with chunks
-        version1 = create_version(f, 'version1', {'test_data': data},
-                                  chunk_size={'test_data': chunk_size},
-                                  compression={'test_data': 'gzip'},
-                                  compression_opts={'test_data': 3})
-        raises(ValueError, lambda: create_version(f, 'version_bad',
+        version1 = create_version_group(f, 'version1')
+        commit_version(version1, {'test_data': data},
+                       chunk_size={'test_data': chunk_size},
+                       compression={'test_data': 'gzip'},
+                       compression_opts={'test_data': 3})
+        version_bad = create_version_group(f, 'version_bad', '')
+        raises(ValueError, lambda: commit_version(version_bad,
                                                   {'test_data': data},
                                                   chunk_size={'test_data':2**9}))
-        raises(ValueError, lambda: create_version(f, 'version_bad',
+        version_bad = create_version_group(f, 'version_bad', '')
+        raises(ValueError, lambda: commit_version(version_bad,
                                                   {'test_data': data},
                                                   compression={'test_data':'lzf'}))
-        raises(ValueError, lambda: create_version(f, 'version_bad',
+        version_bad = create_version_group(f, 'version_bad', '')
+        raises(ValueError, lambda: commit_version(version_bad,
                                                   {'test_data': data},
                                                   compression_opts={'test_data':4}))
-        assert_equal(version1['test_data'], data)
+        assert_equal(f['_version_data/versions/version1/test_data'], data)
 
         ds = f['/_version_data/test_data/raw_data']
 
@@ -102,8 +117,9 @@ def test_create_version_chunks():
         data2_chunks[0][0] = 0.0
         data[0] = 0.0
 
-        version2 = create_version(f, 'version2', {'test_data':  data2_chunks})
-        assert_equal(version2['test_data'], data)
+        version2 = create_version_group(f, 'version2')
+        commit_version(version2, {'test_data':  data2_chunks})
+        assert_equal(f['_version_data/versions/version2/test_data'], data)
 
         assert ds.shape == (4*chunk_size,)
         assert_equal(ds[0:1*chunk_size], 1.0)
@@ -123,8 +139,9 @@ def test_create_version_chunks():
         data3_chunks[0][0] = 2.0
         data[0] = 2.0
 
-        version3 = create_version(f, 'version3', {'test_data':  data3_chunks})
-        assert_equal(version3['test_data'], data)
+        version3 = create_version_group(f, 'version3')
+        commit_version(version3, {'test_data':  data3_chunks})
+        assert_equal(f['_version_data/versions/version3/test_data'], data)
 
         assert ds.shape == (5*chunk_size,)
         assert_equal(ds[0:1*chunk_size], 1.0)
@@ -143,16 +160,20 @@ def test_get_nth_prev_version():
                                2*np.ones((DEFAULT_CHUNK_SIZE,)),
                                3*np.ones((DEFAULT_CHUNK_SIZE,))))
 
-        create_version(f, 'version1', {'test_data': data})
+        version1 = create_version_group(f, 'version1')
+        commit_version(version1, {'test_data': data})
 
         data[0] = 2.0
-        create_version(f, 'version2', {'test_data': data})
+        version2 = create_version_group(f, 'version2')
+        commit_version(version2, {'test_data': data})
 
         data[0] = 3.0
-        create_version(f, 'version3', {'test_data': data})
+        version3 = create_version_group(f, 'version3')
+        commit_version(version3, {'test_data': data})
 
         data[1] = 2.0
-        create_version(f, 'version2_1', {'test_data': data}, 'version1')
+        version2_1 = create_version_group(f, 'version2_1', 'version1')
+        commit_version(version2_1, {'test_data': data})
 
         assert get_nth_previous_version(f, 'version1', 0) == 'version1'
 
@@ -181,12 +202,14 @@ def test_set_current_version():
                                2*np.ones((DEFAULT_CHUNK_SIZE,)),
                                3*np.ones((DEFAULT_CHUNK_SIZE,))))
 
-        create_version(f, 'version1', {'test_data': data})
+        version1 = create_version_group(f, 'version1')
+        commit_version(version1, {'test_data': data})
         versions = f['_version_data/versions']
         assert versions.attrs['current_version'] == 'version1'
 
         data[0] = 2.0
-        create_version(f, 'version2', {'test_data': data})
+        version2 = create_version_group(f, 'version2')
+        commit_version(version2, {'test_data': data})
         assert versions.attrs['current_version'] == 'version2'
 
         set_current_version(f, 'version1')
