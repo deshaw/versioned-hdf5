@@ -58,7 +58,8 @@ class InMemoryGroup(Group):
         # TODO: Support groups, arrays, and lists
         if isinstance(obj, Dataset):
             obj = InMemoryDataset(obj.id)
-        self._data[name] = obj
+        if not isinstance(obj, (Group, InMemoryGroup)):
+            self._data[name] = obj
 
     def __delitem__(self, name):
         if name in self._data:
