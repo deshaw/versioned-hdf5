@@ -1,22 +1,12 @@
-# TODO: Use a fixture for the test file
-import h5py
 import numpy as np
 from numpy.testing import assert_equal
 
 from pytest import raises
 
-from ..backend import (create_base_dataset, initialize, write_dataset,
+from .helpers import setup
+from ..backend import (create_base_dataset, write_dataset,
                        create_virtual_dataset, DEFAULT_CHUNK_SIZE,
                        write_dataset_chunks)
-
-def setup(name=None, version_name=None):
-    f = h5py.File('test.hdf5', 'w')
-    initialize(f)
-    if name:
-        f['_version_data'].create_group(name)
-    if version_name:
-        f['_version_data/versions'].create_group(version_name)
-    return f
 
 def test_initialize():
     with setup():

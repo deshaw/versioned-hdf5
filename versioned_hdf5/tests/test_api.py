@@ -3,12 +3,10 @@ from pytest import raises
 import numpy as np
 from numpy.testing import assert_equal
 
-from h5py._hl.selections import Selection
-
 from ..backend import DEFAULT_CHUNK_SIZE
-from ..api import VersionedHDF5File, spaceid_to_slice
+from ..api import VersionedHDF5File
 
-from .test_backend import setup
+from .helpers import setup
 
 def test_stage_version():
     with setup() as f:
@@ -250,12 +248,37 @@ def test_create_dataset():
         assert version1.attrs['prev_version'] == '__first_version__'
         assert_equal(version1['test_data'], test_data)
 
-        ds = f['/_version_data/test_data/raw_data']
 
+        with file.stage_version('version2') as group:
+            group.create_dataset('test_data2', data=test_data)
+
+        ds = f['/_version_data/test_data/raw_data']
         assert ds.shape == (3*DEFAULT_CHUNK_SIZE,)
         assert_equal(ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
         assert_equal(ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
         assert_equal(ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
+
+        ds = f['/_version_data/test_data2/raw_data']
+        assert ds.shape == (3*DEFAULT_CHUNK_SIZE,)
+        assert_equal(ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
+        assert_equal(ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
+        assert_equal(ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
+
+        assert list(f['/_version_data/versions/__first_version__']) == []
+        assert list(f['/_version_data/versions/version1']) == list(file['version1']) == ['test_data']
+        assert list(f['/_version_data/versions/version2']) == list(file['version2']) == ['test_data', 'test_data2']
+
+def test_small_dataset():
+    # Test creating a dataset that is smaller than the chunk size
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = np.ones((100,))
+
+        with file.stage_version("version1") as group:
+            group.create_dataset("test", data=data, chunks=(2**14,))
+
+        assert_equal(file['version1']['test'], data)
 
 def test_unmodified():
     with setup() as f:
@@ -303,40 +326,6 @@ def test_delete():
         assert set(file['version2']) == {'test_data'}
         assert_equal(file['version2']['test_data'], test_data)
         assert file['version2'].datasets().keys() == {'test_data'}
-
-def test_spaceid_to_slice():
-    with setup() as f:
-        shape = 10
-        a = f.create_dataset('a', data=np.arange(shape))
-
-        for start in range(0, shape):
-            for count in range(0, shape):
-                for stride in range(1, shape):
-                    for block in range(0, shape):
-                        if count != 1 and block != 1:
-                            # Not yet supported. Doesn't seem to be supported
-                            # by HDF5 either (?)
-                            continue
-
-                        spaceid = a.id.get_space()
-                        spaceid.select_hyperslab((start,), (count,),
-                                                 (stride,), (block,))
-                        sel = Selection((shape,), spaceid)
-                        try:
-                            a[sel]
-                        except ValueError:
-                            # HDF5 doesn't allow stride/count combinations
-                            # that are impossible (the count must be the exact
-                            # number of elements in the selected block).
-                            # Rather than trying to enumerate those here, we
-                            # just check what doesn't give an error.
-                            continue
-                        try:
-                            s = spaceid_to_slice(spaceid)
-                        except:
-                            print(start, count, stride, block)
-                            raise
-                        assert_equal(a[s], a[sel], f"{(start, count, stride, block)}")
 
 def test_resize():
     with setup() as f:
@@ -473,6 +462,23 @@ def test_resize():
         assert_equal(group['small'], np.array([1, 2, 3]))
         group = file['version2_small']
         assert_equal(group['small'], np.array([1, 2, 3, 4, 5]))
+
+
+def test_resize_unaligned():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+        ds_name = 'test_resize_unaligned'
+        with file.stage_version('0') as group:
+            group.create_dataset(ds_name, data=np.arange(1000))
+
+        for i in range(1, 10):
+            with file.stage_version(str(i)) as group:
+                l = len(group[ds_name])
+                assert_equal(group[ds_name][:], np.arange(i * 1000))
+                group[ds_name].resize((l + 1000,))
+                group[ds_name][-1000:] = np.arange(l, l + 1000)
+                assert_equal(group[ds_name][:], np.arange((i + 1) * 1000))
+
 
 def test_getitem():
     with setup() as f:

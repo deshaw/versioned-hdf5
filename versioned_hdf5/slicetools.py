@@ -47,3 +47,27 @@ def slice_size(s):
     if start == None:
         start = 0
     return len(range(start, stop, step))
+
+
+def spaceid_to_slice(space):
+    from h5py import h5s
+
+    sel_type = space.get_select_type()
+
+    if sel_type == h5s.SEL_ALL:
+        return ()
+    elif sel_type == h5s.SEL_HYPERSLABS:
+        slices = []
+        starts, strides, counts, blocks = space.get_regular_hyperslab()
+        for _start, _stride, count, block in zip(starts, strides, counts, blocks):
+            start = _start
+            if not (block == 1 or count == 1):
+                raise NotImplementedError("Nontrivial blocks are not yet supported")
+            end = _start + (_stride*(count - 1) + 1)*block
+            stride = _stride if block == 1 else 1
+            slices.append(slice(start, end, stride))
+        return tuple(slices)
+    elif sel_type == h5s.SEL_NONE:
+        return (slice(0, 0),)
+    else:
+        raise NotImplementedError("Point selections are not yet supported")

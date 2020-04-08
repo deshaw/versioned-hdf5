@@ -5,7 +5,7 @@ import numpy as np
 from ..backend import create_base_dataset
 from ..hashtable import Hashtable
 
-from .test_backend import setup
+from .helpers import setup
 
 def test_hashtable():
     with setup() as f:
