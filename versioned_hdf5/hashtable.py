@@ -35,7 +35,7 @@ class Hashtable(MutableMapping):
             self._create_hashtable()
         self._largest_index = None
 
-        self.hash_table = f['/_version_data'][name]['hash_table']
+        self.hash_table = f['_version_data'][name]['hash_table']
 
     hash_function = hashlib.sha256
     hash_size = hash_function().digest_size
@@ -61,7 +61,7 @@ class Hashtable(MutableMapping):
         # TODO: Use get_chunks() here (the real chunk size should be based on
         # bytes, not number of elements)
         dtype = np.dtype([('hash', 'B', (self.hash_size,)), ('shape', 'i8', (2,))])
-        hash_table = f['/_version_data'][name].create_dataset('hash_table',
+        hash_table = f['_version_data'][name].create_dataset('hash_table',
                                                  shape=(self.chunk_size,), dtype=dtype,
                                                  chunks=(self.chunk_size,),
                                                  maxshape=(None,))
@@ -71,7 +71,7 @@ class Hashtable(MutableMapping):
         self._indices = {}
 
     def _load_hashtable(self):
-        hash_table = self.f['/_version_data'][self.name]['hash_table']
+        hash_table = self.f['_version_data'][self.name]['hash_table']
         largest_index = hash_table.attrs['largest_index']
         hash_table_arr = hash_table[:largest_index]
         hashes = bytes(hash_table_arr['hash'])

@@ -125,6 +125,7 @@ class VersionedHDF5File:
         """
         group = create_version_group(self.f, version_name,
                                      prev_version=prev_version)
+
         yield group
         commit_version(group, group.datasets(), make_current=make_current,
                        chunk_size=group.chunk_size,

@@ -56,9 +56,11 @@ def commit_version(version_group, datasets, *,
         raise ValueError("version_group must be a group created by create_version_group()")
     if version_group.attrs['committed']:
         raise ValueError("This version group has already been committed")
-    f = version_group.file
+    #f = version_group.file
     version_name = version_group.name.rsplit('/', 1)[1]
-    versions = f['_version_data/versions']
+    #versions = f['_version_data/versions']
+    versions = version_group.parent
+    f = versions.parent.parent
 
     chunk_size = chunk_size or defaultdict(type(None))
     compression = compression or defaultdict(type(None))
@@ -70,6 +72,9 @@ def commit_version(version_group, datasets, *,
 
     try:
         for name, data in datasets.items():
+            
+            #print(f"name={name}, data={data}")
+
             if isinstance(data, InMemoryDataset):
                 data = data.id.data_dict
             if isinstance(data, dict):

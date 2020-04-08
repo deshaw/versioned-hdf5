@@ -39,6 +39,7 @@ class TestVersionedDatasetPerformance(TestCase):
                                    num_transactions=250,
                                    filename="test_mostly_appends_sparse",
                                    chunk_size=None,
+                                   compression=None,
                                    print_transactions=False):
 
         num_rows_initial = 1000
@@ -56,8 +57,10 @@ class TestVersionedDatasetPerformance(TestCase):
 
         #name = f"test_mostly_appends_sparse_{num_transactions}"
 
-        self._write_transactions_sparse(filename, print_transactions,
+        self._write_transactions_sparse(filename,
+                                        print_transactions,
                                         chunk_size,
+                                        compression,
                                         num_rows_initial,
                                         num_transactions,
                                         num_rows_per_append,
@@ -69,6 +72,7 @@ class TestVersionedDatasetPerformance(TestCase):
     @classmethod
     def _write_transactions_sparse(cls, name, print_transactions,
                                    chunk_size,
+                                   compression,
                                    num_rows_initial,
                                    num_transactions,
                                    num_rows_per_append,
@@ -81,15 +85,23 @@ class TestVersionedDatasetPerformance(TestCase):
         filename = tmp_dir + f'/{name}.h5'
         f = h5py.File(filename, 'w')
         file = VersionedHDF5File(f)
-        chunks = (chunk_size,)
         try:
             with file.stage_version("initial_version") as group:
-                key0_ds = group.create_dataset(name + '/key0', data=np.random.rand(num_rows_initial),
-                                               dtype=(np.dtype('int64')), chunks=chunks)
-                key1_ds = group.create_dataset(name + '/key1', data=np.random.rand(num_rows_initial),
-                                               dtype=(np.dtype('int64')), chunks=chunks)
-                val_ds = group.create_dataset(name + '/val', data=np.random.rand(num_rows_initial),
-                                              dtype=(np.dtype('float64')), chunks=chunks)
+                key0_ds = group.create_dataset(name + '/key0',
+                                               data=np.random.rand(num_rows_initial),
+                                               dtype=(np.dtype('int64')),
+                                               chunks=chunk_size,
+                                               compression=compression)
+                key1_ds = group.create_dataset(name + '/key1',
+                                               data=np.random.rand(num_rows_initial),
+                                               dtype=(np.dtype('int64')),
+                                               chunks=chunk_size,
+                                               compression=compression)
+                val_ds = group.create_dataset(name + '/val',
+                                              data=np.random.rand(num_rows_initial),
+                                              dtype=(np.dtype('float64')),
+                                              chunks=chunk_size,
+                                              compression=compression)
             for a in range(num_transactions):
                 if print_transactions:
                     print("Transaction", a)
@@ -98,10 +110,16 @@ class TestVersionedDatasetPerformance(TestCase):
                     key0_ds = group[name + '/key0']
                     key1_ds = group[name + '/key1']
                     val_ds = group[name + '/val']
-                    cls._modify_dss_sparse_deterministic(key0_ds, key1_ds, val_ds, num_rows_per_append,
-                                                         pct_changes if a > 0 else 0.0, num_changes,
-                                                         pct_deletes if a > 0 else 0.0, num_deletes,
-                                                         pct_inserts if a > 0 else 0.0, num_inserts)
+                    cls._modify_dss_sparse_deterministic(key0_ds,
+                                                         key1_ds,
+                                                         val_ds,
+                                                         num_rows_per_append,
+                                                         pct_changes if a > 0 else 0.0,
+                                                         num_changes,
+                                                         pct_deletes if a > 0 else 0.0,
+                                                         num_deletes,
+                                                         pct_inserts if a > 0 else 0.0,
+                                                         num_inserts)
 
                 #tts.append(tt)
                 logger.info('Wrote transaction %d at transaction time %s', a, tt)
@@ -172,6 +190,7 @@ class TestVersionedDatasetPerformance(TestCase):
                                            num_transactions=250,
                                            filename="test_large_fraction_changes_sparse",
                                            chunk_size=None,
+                                           compression=None,
                                            print_transactions=False):
 
         num_rows_initial = 5000
@@ -192,6 +211,7 @@ class TestVersionedDatasetPerformance(TestCase):
 
         self._write_transactions_sparse(filename, print_transactions,
                                         chunk_size,
+                                        compression,
                                         num_rows_initial,
                                         num_transactions,
                                         num_rows_per_append,
@@ -223,6 +243,7 @@ class TestVersionedDatasetPerformance(TestCase):
 
         self._write_transactions_sparse(filename, print_transactions,
                                         chunk_size,
+                                        compression,
                                         num_rows_initial,
                                         num_transactions,
                                         num_rows_per_append,
@@ -408,4 +429,4 @@ if __name__ == '__main__':
     #num_transactions = [50, 100, 500, 1000, 2000]#, 5000, 10000]
     num_transactions = [50]
     for t in num_transactions:
-        TestVersionedDatasetPerformance().test_large_fraction_changes_sparse(t, chunk_size=2**14)
+        TestVersionedDatasetPerformance().test_large_fraction_changes_sparse(t)
