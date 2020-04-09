@@ -224,6 +224,7 @@ class TestVersionedDatasetPerformance(TestCase):
                                            num_transactions=250,
                                            filename="test_small_fraction_changes_sparse",
                                            chunk_size=None,
+                                           compression=None,
                                            print_transactions=False):
 
         num_rows_initial = 5000
@@ -256,6 +257,7 @@ class TestVersionedDatasetPerformance(TestCase):
                                   num_transactions=250,
                                   filename="test_mostly_appends_dense",
                                   chunk_size=None,
+                                  compression=None,
                                   print_transactions=False):
 
         num_rows_initial_0 = 30
@@ -278,6 +280,7 @@ class TestVersionedDatasetPerformance(TestCase):
 
         self._write_transactions_dense(filename,
                                        chunk_size,
+                                       compression,
                                        num_rows_initial_0,
                                        num_rows_initial_1,
                                        num_transactions,
@@ -288,7 +291,7 @@ class TestVersionedDatasetPerformance(TestCase):
         
 
     @classmethod
-    def _write_transactions_dense(cls, name, chunk_size,
+    def _write_transactions_dense(cls, name, chunk_size, compression,
                                   num_rows_initial_0, num_rows_initial_1,
                                   num_transactions,
                                   num_rows_per_append_0,
@@ -307,12 +310,21 @@ class TestVersionedDatasetPerformance(TestCase):
         file = VersionedHDF5File(f)
         try:
             with file.stage_version("initial_version") as group:
-                key0_ds = group.create_dataset(name + '/key0', data=np.random.rand(num_rows_initial_0),
-                                               dtype=(np.dtype('int64')), chunks=chunk_size)
-                key1_ds = group.create_dataset(name + '/key1', data=np.random.rand(num_rows_initial_1),
-                                               dtype=(np.dtype('int64')), chunks=chunk_size)
-                val_ds = group.create_dataset(name + '/val', data=np.random.rand(num_rows_initial_0 * num_rows_initial_1),
-                                              dtype=(np.dtype('float64')), chunks=chunk_size)
+                key0_ds = group.create_dataset(name + '/key0',
+                                               data=np.random.rand(num_rows_initial_0),
+                                               dtype=(np.dtype('int64')),
+                                               chunks=chunk_size,
+                                               compression=compression)
+                key1_ds = group.create_dataset(name + '/key1',
+                                               data=np.random.rand(num_rows_initial_1),
+                                               dtype=(np.dtype('int64')),
+                                               chunks=chunk_size,
+                                               compression=compression)
+                val_ds = group.create_dataset(name + '/val',
+                                              data=np.random.rand(num_rows_initial_0 * num_rows_initial_1),
+                                              dtype=(np.dtype('float64')),
+                                              chunks=chunk_size,
+                                              compression=compression)
             for a in range(num_transactions):
                 #print(f"Transaction {a} of {num_transactions}")
                 tt = datetime.datetime.utcnow()
