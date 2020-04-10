@@ -463,6 +463,31 @@ def test_resize():
         group = file['version2_small']
         assert_equal(group['small'], np.array([1, 2, 3, 4, 5]))
 
+        # Resize after calling create_dataset, larger
+        with file.stage_version('resize_after_create_larger', '') as group:
+            group.create_dataset('data', data=offset_data)
+            group['data'].resize((DEFAULT_CHUNK_SIZE + 4,))
+
+            assert group['data'].shape == (DEFAULT_CHUNK_SIZE + 4,)
+            assert_equal(group['data'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
+            assert_equal(group['data'][DEFAULT_CHUNK_SIZE + 2:], 0.0)
+
+        group = file['resize_after_create_larger']
+        assert group['data'].shape == (DEFAULT_CHUNK_SIZE + 4,)
+        assert_equal(group['data'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
+        assert_equal(group['data'][DEFAULT_CHUNK_SIZE + 2:], 0.0)
+
+        # Resize after calling create_dataset, smaller
+        with file.stage_version('resize_after_create_smaller', '') as group:
+            group.create_dataset('data', data=offset_data)
+            group['data'].resize((DEFAULT_CHUNK_SIZE - 4,))
+
+            assert group['data'].shape == (DEFAULT_CHUNK_SIZE - 4,)
+            assert_equal(group['data'][:], 1.0)
+
+        group = file['resize_after_create_smaller']
+        assert group['data'].shape == (DEFAULT_CHUNK_SIZE - 4,)
+        assert_equal(group['data'][:], 1.0)
 
 def test_resize_unaligned():
     with setup() as f:
