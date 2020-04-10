@@ -20,6 +20,7 @@ matrix:
       env:
         - TESTS=true
         - DOCS=true
+        - COVERAGE=true
 
 install:
   - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh;
@@ -30,14 +31,17 @@ install:
   - conda config --add channels conda-forge
   - conda update -q conda
   - conda info -a
-  - conda create -n test-environment python=$TRAVIS_PYTHON_VERSION pyflakes pytest pytest-doctestplus h5py doctr sphinx
+  - conda create -n test-environment python=$TRAVIS_PYTHON_VERSION pyflakes pytest pytest-doctestplus h5py doctr sphinx pytest-cov
   - source activate test-environment
 
 script:
   - set -e
   - pyflakes .
   - python -We:invalid -We::SyntaxWarning -m compileall -f -q versioned_hdf5/
-  - pytest
+  - if [[ "${TEST_COVERAGE}" == "true" ]]; then
+        PYTEST_FLAGS="--cov=./";
+    fi
+  - pytest $PYTEST_FLAGS
   # # Make sure it installs
   # - python setup.py install
   - if [[ "${DOCS}" == "true" ]]; then
@@ -45,4 +49,7 @@ script:
         make html;
         cd ..;
         doctr deploy .;
+    fi
+  - if [[ "${TEST_COVERAGE}" == "true" ]]; then
+        bash <(curl -s https://codecov.io/bash) || echo "Codecov did not collect coverage reports";
     fi
