@@ -268,6 +268,60 @@ def test_create_dataset():
         assert list(f['/_version_data/versions/version1']) == list(file['version1']) == ['test_data']
         assert list(f['/_version_data/versions/version2']) == list(file['version2']) == ['test_data', 'test_data2']
 
+
+def test_changes_dataset():
+    # Testcase similar to those on generate_data.py
+    test_data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
+                                2*np.ones((DEFAULT_CHUNK_SIZE,)),
+                                3*np.ones((DEFAULT_CHUNK_SIZE,))))
+    name = "testname"
+    
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        with file.stage_version('version1', '') as group:
+            group.create_dataset(f'{name}/key', data=test_data)
+            group.create_dataset(f'{name}/val', data=test_data)
+
+        version1 = file['version1']
+        assert version1.attrs['prev_version'] == '__first_version__'
+        assert_equal(version1[f'{name}/key'], test_data)
+        assert_equal(version1[f'{name}/val'], test_data)
+            
+        with file.stage_version('version2') as group:
+            key_ds = group[f'{name}/key']
+            val_ds = group[f'{name}/val']
+            val_ds[0] = -1
+            key_ds[0] = 0
+            print(key_ds[0:10])
+
+        key_ds = f[f'_version_data/{name}/key/raw_data']
+        val_ds = f[f'_version_data/{name}/val/raw_data']
+        assert key_ds.shape == (3*DEFAULT_CHUNK_SIZE,)
+        #assert val_ds.shape == (3*DEFAULT_CHUNK_SIZE,)
+        # assert_equal(key_ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
+        # assert_equal(val_ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
+        # assert_equal(key_ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
+        # assert_equal(val_ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
+        # assert_equal(key_ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
+        # assert_equal(val_ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
+
+        # key_ds = f['_version_data/{name}/key/raw_data']
+        # val_ds = f['_version_data/{name}/val/raw_data']
+        # assert key_ds.shape == (3*DEFAULT_CHUNK_SIZE,)
+        # assert val_ds.shape == (3*DEFAULT_CHUNK_SIZE,)
+        # assert_equal(key_ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
+        # assert_equal(val_ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
+        # assert_equal(key_ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
+        # assert_equal(val_ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
+        # assert_equal(key_ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
+        # assert_equal(val_ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
+
+        # assert list(f['_version_data/versions/__first_version__']) == []
+        # assert list(f['_version_data/versions/version1']) == list(file['version1']) == [name]
+        # assert list(f['_version_data/versions/version2']) == list(file['version2']) == [name]
+
+        
 def test_small_dataset():
     # Test creating a dataset that is smaller than the chunk size
     with setup() as f:
@@ -504,3 +558,28 @@ def test_getitem():
             assert test_data[0].dtype == np.int64
             assert_equal(test_data[:], data)
             assert_equal(test_data[:DEFAULT_CHUNK_SIZE+1], data[:DEFAULT_CHUNK_SIZE+1])
+
+
+def test_nonroot():
+    with setup() as f:
+        g = f.create_group('subgroup')
+        file = VersionedHDF5File(g)
+
+        test_data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
+                                    2*np.ones((DEFAULT_CHUNK_SIZE,)),
+                                    3*np.ones((DEFAULT_CHUNK_SIZE,))))
+
+
+        with file.stage_version('version1', '') as group:
+            group['test_data'] = test_data
+
+        version1 = file['version1']
+        assert version1.attrs['prev_version'] == '__first_version__'
+        assert_equal(version1['test_data'], test_data)
+
+        ds = f['/subgroup/_version_data/test_data/raw_data']
+
+        assert ds.shape == (3*DEFAULT_CHUNK_SIZE,)
+        assert_equal(ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
+        assert_equal(ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
+        assert_equal(ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)

@@ -151,7 +151,7 @@ class TestVersionedDatasetPerformance(TestCase):
 
 
     def test_large_fraction_changes_sparse(self):
-        num_transactions = 250 * 10
+        num_transactions = 25
 
         num_rows_initial = 5000
 
@@ -361,7 +361,7 @@ class TestVersionedDatasetPerformance(TestCase):
             val_ds[-num_val_apps:] = np.random.rand(num_val_apps)
 
     def test_mostly_appends_dense(self):
-        num_transactions = 250 * 10
+        num_transactions = 25
 
         num_rows_initial_0 = 30
         num_rows_initial_1 = 30
@@ -517,4 +517,4 @@ class TestVersionedDatasetPerformance(TestCase):
 
 
 if __name__ == '__main__':
-    TestVersionedDatasetPerformance().test_mostly_appends_dense()
+    TestVersionedDatasetPerformance().test_large_fraction_changes_sparse()
