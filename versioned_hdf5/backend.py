@@ -121,7 +121,7 @@ def write_dataset_chunks(f, name, data_dict):
         ds[t2s(raw_slice)] = data_s
     return slices
 
-def create_virtual_dataset(f, version_name, name, slices):
+def create_virtual_dataset(f, version_name, name, slices, attrs=None):
     raw_data = f['_version_data'][name]['raw_data']
     chunk_size = raw_data.attrs['chunk_size']
     for s in slices[:-1]:
@@ -137,4 +137,8 @@ def create_virtual_dataset(f, version_name, name, slices):
         layout[i*chunk_size:i*chunk_size + s.stop - s.start] = vs[s]
 
     virtual_data = f['_version_data/versions'][version_name].create_virtual_dataset(name, layout)
+
+    if attrs:
+        for k, v in attrs.items():
+            virtual_data.attrs[k] = v
     return virtual_data

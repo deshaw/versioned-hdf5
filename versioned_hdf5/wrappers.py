@@ -106,7 +106,7 @@ class InMemoryGroup(Group):
 
 
 # Based on h5py._hl.dataset.make_new_dset(), except it doesn't actually create
-# the dataset, it just canoncalizes the arguments. See the LICENSE file for
+# the dataset, it just canonicalizes the arguments. See the LICENSE file for
 # the h5py license.
 def _make_new_dset(shape=None, dtype=None, data=None, chunks=None,
                   compression=None, shuffle=None, fletcher32=None,
@@ -226,10 +226,15 @@ class InMemoryDataset(Dataset):
         # gets deleted or closed.
         self.orig_bind = bind
         super().__init__(InMemoryDatasetID(bind.id), **kwargs)
+        self._attrs = dict(super().attrs)
 
     @property
     def chunks(self):
         return (self.id.chunk_size,)
+
+    @property
+    def attrs(self):
+        return self._attrs
 
 class InMemoryArrayDataset:
     """
@@ -238,6 +243,7 @@ class InMemoryArrayDataset:
     def __init__(self, name, array):
         self.name = name
         self._array = array
+        self.attrs = {}
 
     @property
     def array(self):

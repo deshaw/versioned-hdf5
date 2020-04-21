@@ -529,3 +529,33 @@ def test_getitem():
             assert test_data[0].dtype == np.int64
             assert_equal(test_data[:], data)
             assert_equal(test_data[:DEFAULT_CHUNK_SIZE+1], data[:DEFAULT_CHUNK_SIZE+1])
+
+def test_attrs():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = np.arange(2*DEFAULT_CHUNK_SIZE)
+
+        with file.stage_version('version1') as group:
+            group.create_dataset('test_data', data=data)
+
+            test_data = group['test_data']
+            assert test_data.attrs == {}
+            test_data.attrs['test_attr'] = 0
+
+        assert file['version1']['test_data'].attrs == \
+            dict(f['_version_data']['versions']['version1']['test_data'].attrs) == \
+                {'test_attr': 0}
+
+        with file.stage_version('version2') as group:
+            test_data = group['test_data']
+            assert test_data.attrs == {'test_attr': 0}
+            test_data.attrs['test_attr'] = 1
+
+        assert file['version1']['test_data'].attrs == \
+            dict(f['_version_data']['versions']['version1']['test_data'].attrs) == \
+                {'test_attr': 0}
+
+        assert file['version2']['test_data'].attrs == \
+            dict(f['_version_data']['versions']['version2']['test_data'].attrs) == \
+                {'test_attr': 1}
