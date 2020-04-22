@@ -271,9 +271,8 @@ def test_create_dataset():
 
 def test_changes_dataset():
     # Testcase similar to those on generate_data.py
-    test_data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
-                                2*np.ones((DEFAULT_CHUNK_SIZE,)),
-                                3*np.ones((DEFAULT_CHUNK_SIZE,))))
+    test_data = np.ones((2*DEFAULT_CHUNK_SIZE,))
+
     name = "testname"
     
     with setup() as f:
@@ -293,33 +292,20 @@ def test_changes_dataset():
             val_ds = group[f'{name}/val']
             val_ds[0] = -1
             key_ds[0] = 0
-            print(key_ds[0:10])
 
-        key_ds = f[f'_version_data/{name}/key/raw_data']
-        val_ds = f[f'_version_data/{name}/val/raw_data']
-        assert key_ds.shape == (3*DEFAULT_CHUNK_SIZE,)
-        #assert val_ds.shape == (3*DEFAULT_CHUNK_SIZE,)
-        # assert_equal(key_ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
-        # assert_equal(val_ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
-        # assert_equal(key_ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
-        # assert_equal(val_ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
-        # assert_equal(key_ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
-        # assert_equal(val_ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
+        key = file['version2'][f'{name}/key']
+        assert key.shape == (2*DEFAULT_CHUNK_SIZE,)
+        assert_equal(key[0], 0)
+        assert_equal(key[1:2*DEFAULT_CHUNK_SIZE], 1.0)
 
-        # key_ds = f['_version_data/{name}/key/raw_data']
-        # val_ds = f['_version_data/{name}/val/raw_data']
-        # assert key_ds.shape == (3*DEFAULT_CHUNK_SIZE,)
-        # assert val_ds.shape == (3*DEFAULT_CHUNK_SIZE,)
-        # assert_equal(key_ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
-        # assert_equal(val_ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
-        # assert_equal(key_ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
-        # assert_equal(val_ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
-        # assert_equal(key_ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
-        # assert_equal(val_ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
+        val = file['version2'][f'{name}/val']
+        assert val.shape == (2*DEFAULT_CHUNK_SIZE,)
+        assert_equal(val[0], -1.0)
+        assert_equal(val[1:2*DEFAULT_CHUNK_SIZE], 1.0)
 
-        # assert list(f['_version_data/versions/__first_version__']) == []
-        # assert list(f['_version_data/versions/version1']) == list(file['version1']) == [name]
-        # assert list(f['_version_data/versions/version2']) == list(file['version2']) == [name]
+        assert list(f['_version_data/versions/__first_version__']) == []
+        assert list(f['_version_data/versions/version1']) == list(file['version1']) == [name]
+        assert list(f['_version_data/versions/version2']) == list(file['version2']) == [name]
 
         
 def test_small_dataset():
