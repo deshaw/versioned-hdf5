@@ -1,4 +1,8 @@
 ./_sources/index.rst.txt
+./_sources/installation.rst.txt
+./_sources/quickstart.rst.txt
+./_sources/reference.rst.txt
+./_sources/usage.rst.txt
 ./_static/alabaster.css
 ./_static/basic.css
 ./_static/custom.css
@@ -16,7 +20,11 @@
 ./_static/underscore.js
 ./genindex.html
 ./index.html
+./installation.html
 ./objects.inv
 ./py-modindex.html
+./quickstart.html
+./reference.html
 ./search.html
 ./searchindex.js
+./usage.html
