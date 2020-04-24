@@ -2,7 +2,7 @@ from uuid import uuid4
 from collections import defaultdict
 
 from .backend import write_dataset, write_dataset_chunks, create_virtual_dataset
-from .wrappers import InMemoryGroup, InMemoryDataset
+from .wrappers import InMemoryGroup, InMemoryDataset, InMemoryArrayDataset
 
 def create_version_group(f, version_name, prev_version=None):
     versions = f['_version_data/versions']
@@ -29,6 +29,8 @@ def create_version_group(f, version_name, prev_version=None):
 
     def _get(name, item):
         group[name] = item
+        for k, v in item.attrs.items():
+            group[name].attrs[k] = v
 
     prev_group.visititems(_get)
     return group
@@ -71,6 +73,11 @@ def commit_version(version_group, datasets, *,
 
     try:
         for name, data in datasets.items():
+            if isinstance(data, (InMemoryDataset, InMemoryArrayDataset)):
+                attrs = data.attrs
+            else:
+                attrs = {}
+
             if isinstance(data, InMemoryDataset):
                 data = data.id.data_dict
             if isinstance(data, dict):
@@ -81,7 +88,7 @@ def commit_version(version_group, datasets, *,
                 slices = write_dataset(f, name, data,
                                        chunk_size=chunk_size[name], compression=compression[name],
                                        compression_opts=compression_opts[name])
-            create_virtual_dataset(f, version_name, name, slices)
+            create_virtual_dataset(f, version_name, name, slices, attrs=attrs)
         version_group.attrs['committed'] = True
     except Exception:
         del versions[version_name]

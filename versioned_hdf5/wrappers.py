@@ -1,5 +1,8 @@
 """
 Wrappers of h5py objects that work in memory
+
+Much of this code is modified from code in h5py. See the LICENSE file for the
+h5py license.
 """
 
 from h5py import Empty, Dataset, Datatype, Group, h5d, h5i, h5p, h5s, h5t
@@ -13,6 +16,7 @@ import numpy as np
 
 from collections import defaultdict
 import math
+import posixpath as pp
 
 from .slicetools import s2t, slice_size, split_slice, spaceid_to_slice
 
@@ -58,9 +62,10 @@ class InMemoryGroup(Group):
         # TODO: Support groups, arrays, and lists
         if isinstance(obj, Dataset):
             obj = InMemoryDataset(obj.id)
-        if not isinstance(obj, (Group, InMemoryGroup)):
-            self._data[name] = obj
-
+        else:
+            obj = InMemoryArrayDataset(name, np.asarray(obj))
+        self._data[name] = obj
+           
     def __delitem__(self, name):
         if name in self._data:
             del self._data[name]
@@ -82,7 +87,7 @@ class InMemoryGroup(Group):
         self.compression[name] = kwds.get('compression')
         self.compression_opts[name] = kwds.get('compression_opts')
         self[name] = data
-        return data
+        return self[name]
 
     def datasets(self):
         res = self._data.copy()
@@ -101,7 +106,7 @@ class InMemoryGroup(Group):
 
 
 # Based on h5py._hl.dataset.make_new_dset(), except it doesn't actually create
-# the dataset, it just canoncalizes the arguments. See the LICENSE file for
+# the dataset, it just canonicalizes the arguments. See the LICENSE file for
 # the h5py license.
 def _make_new_dset(shape=None, dtype=None, data=None, chunks=None,
                   compression=None, shuffle=None, fletcher32=None,
@@ -209,16 +214,116 @@ def _make_new_dset(shape=None, dtype=None, data=None, chunks=None,
     return data
 
 class InMemoryDataset(Dataset):
+    """
+    Class that looks like a h5py.Dataset but is backed by a versioned dataset
+
+    The versioned dataset can be modified, which performs modifications
+    in-memory only.
+    """
     def __init__(self, bind, **kwargs):
         # Hold a reference to the original bind so h5py doesn't invalidate the id
         # XXX: We need to handle deallocation here properly when our object
         # gets deleted or closed.
         self.orig_bind = bind
         super().__init__(InMemoryDatasetID(bind.id), **kwargs)
+        self._attrs = dict(super().attrs)
 
     @property
     def chunks(self):
         return (self.id.chunk_size,)
+
+    @property
+    def attrs(self):
+        return self._attrs
+
+class InMemoryArrayDataset:
+    """
+    Class that looks like a h5py.Dataset but is backed by an array
+    """
+    def __init__(self, name, array):
+        self.name = name
+        self._array = array
+        self.attrs = {}
+
+    @property
+    def array(self):
+        return self._array
+
+    @array.setter
+    def array(self, array):
+        self._array = array
+
+    @property
+    def shape(self):
+        return self._array.shape
+
+    @property
+    def dtype(self):
+        return self._array.dtype
+
+    @property
+    def ndim(self):
+        return len(self._array.shape)
+
+    def __getitem__(self, item):
+        return self.array.__getitem__(item)
+
+    def __setitem__(self, item, value):
+        self.array.__setitem__(item, value)
+
+    def __len__(self):
+        return self.len()
+
+    def len(self):
+        """
+        Length of the first axis
+        """
+        shape = self.shape
+        if len(shape) == 0:
+            raise TypeError("Attempt to take len() of scalar dataset")
+        return shape[0]
+
+    def __array__(self, dtype=None):
+        return self.array
+
+    def __repr__(self):
+        name = pp.basename(pp.normpath(self.name))
+        namestr = '"%s"' % (name if name != '' else '/')
+        return '<InMemoryArrayDataset %s: shape %s, type "%s">' % (
+                namestr, self.shape, self.dtype.str
+            )
+
+    def __iter__(self):
+        """ Iterate over the first axis.  TypeError if scalar.
+
+        BEWARE: Modifications to the yielded data are *NOT* written to file.
+        """
+        shape = self.shape
+        if len(shape) == 0:
+            raise TypeError("Can't iterate over a scalar dataset")
+        for i in range(shape[0]):
+            yield self[i]
+
+    def resize(self, size, axis=None):
+        if axis is not None:
+            if not (axis >=0 and axis < self.ndim):
+                raise ValueError("Invalid axis (0 to %s allowed)" % (self.ndim-1))
+            try:
+                newlen = int(size)
+            except TypeError:
+                raise TypeError("Argument must be a single int if axis is specified")
+            size = list(self.shape)
+            size[axis] = newlen
+
+        size = tuple(size)
+        if len(size) > 1:
+            raise NotImplementedError("More than one dimension is not yet supported")
+        if size[0] > self.shape[0]:
+            self.array = np.concatenate((self.array,
+                                         np.zeros(size[0] - self.shape[0],
+                                                  dtype=self.dtype)))
+        else:
+            self.array = self.array[:size[0]]
 
 class InMemoryDatasetID(h5d.DatasetID):
     def __init__(self, _id):
