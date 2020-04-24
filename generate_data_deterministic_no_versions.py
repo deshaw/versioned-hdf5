@@ -57,7 +57,7 @@ class TestVersionedDatasetPerformance(TestCase):
 
         #name = 'test_mostly_appends'
 
-        self._write_transactions_sparse(filename,
+        times = self._write_transactions_sparse(filename,
                                         print_transactions,
                                         chunk_size,
                                         compression,
@@ -67,6 +67,9 @@ class TestVersionedDatasetPerformance(TestCase):
                                         pct_changes, num_changes,
                                         pct_deletes, num_deletes,
                                         pct_inserts, num_inserts)
+        print(times)
+        return times
+    
 
 
     @classmethod
@@ -84,6 +87,9 @@ class TestVersionedDatasetPerformance(TestCase):
         tmp_dir = '.'
         filename = tmp_dir + f'/{name}.h5'
         f = h5py.File(filename, 'w')
+        told = time.time()
+        t0 = told
+        times = []
         try:
             key0_ds = f.create_dataset(name + '/key0',
                                        data=np.random.rand(num_rows_initial),
@@ -114,9 +120,14 @@ class TestVersionedDatasetPerformance(TestCase):
                                                      num_deletes,
                                                      pct_inserts if a > 0 else 0.0,
                                                      num_inserts)
+                t = time.time()
+                times.append(t-told)
+                told = t
                 #logger.info('Wrote transaction %d at transaction time %s', a, tt)
+            times.append(t-t0)
         finally:
             f.close()
+        return times
 
 
     @classmethod
@@ -198,7 +209,7 @@ class TestVersionedDatasetPerformance(TestCase):
 
         #name = 'test_large_fraction_changes'
 
-        self._write_transactions_sparse(filename,
+        times = self._write_transactions_sparse(filename,
                                         print_transactions,
                                         chunk_size,
                                         compression,
@@ -208,6 +219,8 @@ class TestVersionedDatasetPerformance(TestCase):
                                         pct_changes, num_changes,
                                         pct_deletes, num_deletes,
                                         pct_inserts, num_inserts)
+        print(times)
+        return times
 
 
     def test_small_fraction_changes_sparse(self):
@@ -228,7 +241,7 @@ class TestVersionedDatasetPerformance(TestCase):
 
         name = 'test_small_fraction_changes'
 
-        self._write_transactions_sparse(name, num_rows_initial, num_transactions, num_rows_per_append, pct_changes,
+        times = self._write_transactions_sparse(name, num_rows_initial, num_transactions, num_rows_per_append, pct_changes,
                                         num_changes, pct_deletes, num_deletes, pct_inserts, num_inserts)
 
 

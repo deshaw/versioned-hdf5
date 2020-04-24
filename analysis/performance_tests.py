@@ -5,7 +5,7 @@ import json
 import h5py
 import time
 from versioned_hdf5 import VersionedHDF5File
-from generate_data_deterministic import TestVersionedDatasetPerformance as TVDP
+from generate_data_deterministic_timing import TestVersionedDatasetPerformance as TVDP
 
 # auxiliary code to format file sizes 
 def format_size(size):
@@ -48,58 +48,65 @@ class PerformanceTests:
             self.verbose = options["verbose"]
         else:
             self.verbose = False
+        if "versions" in keys:
+            self.versions = options["versions"]
+        else:
+            self.versions = False
             
     def create_files(self):        
         tests = []
+        msg = ""
         for c in self.compression:
             for p in self.exponents:
                 for n in self.num_transactions:
                     chunk_size = 2**p
                     name = f"{self.testname}_{n}_{p}_{c}"
                     filename = os.path.join(self.path, f"{name}.h5")
-                    if self.verbose:
-                        print(name)
-                        print("File with\n" \
-                              f"- {n} transactions\n" \
-                              f"- chunk size 2**{p}\n"\
-                              f"- compression filter {c}")
+                    msg += f"{name} with {n} transactions, chunk size 2**{p} and compression filter {c}"
                     try:
                         h5pyfile = h5py.File(filename, 'r')
-                        if self.verbose:
-                            print("already exists - unable to compute creation time.")
+                        msg += " already exists - unable to compute creation time.\n"
                         t = 0
                     except:
-                        if self.verbose:
-                            print("not available. Creating new file.")
-                        t0 = time.time()
-                        self.testfun(n, name, chunk_size, c)
-                        t = time.time()-t0
+                        msg += " not available. Creating new file.\n"
+                        #t0 = time.time()
+                        t = self.testfun(n, name, chunk_size, c, versions=self.versions)
+                        #t = time.time()-t0
                         h5pyfile = h5py.File(filename, 'r')
-                    data = VersionedHDF5File(h5pyfile)
-                    tests.append(dict(num_transactions=n,
-                                      chunk_size=chunk_size,
-                                      compression=c,
-                                      filename=filename,
-                                      h5pyfile=h5pyfile,
-                                      data=data,
-                                      t_write=t))
+                    if self.versions:
+                        data = VersionedHDF5File(h5pyfile)
+                        tests.append(dict(num_transactions=n,
+                                          chunk_size=chunk_size,
+                                          compression=c,
+                                          filename=filename,
+                                          h5pyfile=h5pyfile,
+                                          data=data,
+                                          t_write=t))
+                    else:
+                        tests.append(dict(num_transactions=n,
+                                          chunk_size=chunk_size,
+                                          compression=c,
+                                          filename=filename,
+                                          h5pyfile=h5pyfile,
+                                          t_write=t))
 
         for test in tests:
             test['size'] = os.path.getsize(test['filename'])
             test['size_label'] = format_size(test['size'])
 
-        nt = len(self.num_transactions)
-        for test in tests[-nt:]:
-            lengths = []
-            total_size = 0
-            for vname in test['data']._versions:
-                if vname != '__first_version__':
-                    version = test['data'][vname]
-                    group_key = list(version.keys())[0]
-                    lengths.append(len(version[group_key]['val']))
-                    total_size += len(version[group_key]['val'])
-            test['theoretical_sizes'] = 24*total_size
-            test['h5pyfile'].close()        
+        if self.versions:
+            nt = len(self.num_transactions)
+            for test in tests[-nt:]:
+                lengths = []
+                total_size = 0
+                for vname in test['data']._versions:
+                    if vname != '__first_version__':
+                        version = test['data'][vname]
+                        group_key = list(version.keys())[0]
+                        lengths.append(len(version[group_key]['val']))
+                        total_size += len(version[group_key]['val'])
+                test['theoretical_sizes'] = 24*total_size
+                test['h5pyfile'].close()        
 
         # Removing some irrelevant info from the dictionary 
         summary =[]
@@ -107,7 +114,7 @@ class PerformanceTests:
             summary.append(dict((k, test[k]) for k in ['num_transactions', 'filename', 'size', 'size_label', 't_write', 'chunk_size', 'compression']))
             
         self.tests = tests
-        return summary
+        return summary, msg
 
     def save(self, summary):
         with open(f"{self.testname}.json", "w") as json_out:
@@ -172,12 +179,14 @@ class test_mostly_appends_dense(PerformanceTests):
         
 if __name__ == "__main__":
     
-    tests = [test_large_fraction_changes_sparse,
-             test_small_fraction_changes_sparse,
-             test_mostly_appends_sparse,
-             test_mostly_appends_dense]
+    tests = [#test_large_fraction_changes_sparse]#,
+             test_small_fraction_changes_sparse]#,
+             #test_mostly_appends_sparse]#,
+             #test_mostly_appends_dense]
 
     for test in tests:
-        testcase = test()
-        summary = testcase.create_files()
-        testcase.save(summary) 
+        testcase = test(num_transactions=[5000], exponents=[12, 14], compression=[None, 'gzip', 'lzf'], versions=False)
+        summary, msg = testcase.create_files()
+        #print(msg)
+        #print(summary)
+        #testcase.save(summary) 
