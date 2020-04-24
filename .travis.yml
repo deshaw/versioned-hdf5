@@ -38,7 +38,7 @@ script:
   - set -e
   - pyflakes .
   - python -We:invalid -We::SyntaxWarning -m compileall -f -q versioned_hdf5/
-  - if [[ "${TEST_COVERAGE}" == "true" ]]; then
+  - if [[ "${COVERAGE}" == "true" ]]; then
         PYTEST_FLAGS="--cov=./";
     fi
   - pytest $PYTEST_FLAGS
@@ -50,6 +50,6 @@ script:
         cd ..;
         doctr deploy .;
     fi
-  - if [[ "${TEST_COVERAGE}" == "true" ]]; then
+  - if [[ "${COVERAGE}" == "true" ]]; then
         bash <(curl -s https://codecov.io/bash) || echo "Codecov did not collect coverage reports";
     fi
