@@ -28,7 +28,7 @@ def initialize(f):
 def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
     chunk_size=None, compression=None, compression_opts=None):
     chunk_size = chunk_size or DEFAULT_CHUNK_SIZE
-    group = f['/_version_data'].create_group(name)
+    group = f['_version_data'].create_group(name)
     if dtype is None:
         # https://github.com/h5py/h5py/issues/1474
         dtype = data.dtype
@@ -43,11 +43,11 @@ def write_dataset(f, name, data, chunk_size=None, compression=None,
                   compression_opts=None):
     from .slicetools import s2t, t2s
 
-    if name not in f['/_version_data']:
+    if name not in f['_version_data']:
         return create_base_dataset(f, name, data=data, chunk_size=chunk_size,
             compression=compression, compression_opts=compression_opts)
 
-    ds = f['/_version_data'][name]['raw_data']
+    ds = f['_version_data'][name]['raw_data']
     if chunk_size is None:
         chunk_size = ds.attrs['chunk_size']
     else:
@@ -86,10 +86,10 @@ def write_dataset_chunks(f, name, data_dict):
     """
     from .slicetools import s2t, t2s
 
-    if name not in f['/_version_data']:
+    if name not in f['_version_data']:
         raise NotImplementedError("Use write_dataset() if the dataset does not yet exist")
 
-    ds = f['/_version_data'][name]['raw_data']
+    ds = f['_version_data'][name]['raw_data']
     chunk_size = ds.attrs['chunk_size']
     # TODO: Handle more than one dimension
     nchunks = max(data_dict)
@@ -121,7 +121,7 @@ def write_dataset_chunks(f, name, data_dict):
         ds[t2s(raw_slice)] = data_s
     return slices
 
-def create_virtual_dataset(f, version_name, name, slices):
+def create_virtual_dataset(f, version_name, name, slices, attrs=None):
     raw_data = f['_version_data'][name]['raw_data']
     chunk_size = raw_data.attrs['chunk_size']
     for s in slices[:-1]:
@@ -137,4 +137,8 @@ def create_virtual_dataset(f, version_name, name, slices):
         layout[i*chunk_size:i*chunk_size + s.stop - s.start] = vs[s]
 
     virtual_data = f['_version_data/versions'][version_name].create_virtual_dataset(name, layout)
+
+    if attrs:
+        for k, v in attrs.items():
+            virtual_data.attrs[k] = v
     return virtual_data

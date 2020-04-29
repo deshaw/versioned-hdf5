@@ -463,6 +463,31 @@ def test_resize():
         group = file['version2_small']
         assert_equal(group['small'], np.array([1, 2, 3, 4, 5]))
 
+        # Resize after calling create_dataset, larger
+        with file.stage_version('resize_after_create_larger', '') as group:
+            group.create_dataset('data', data=offset_data)
+            group['data'].resize((DEFAULT_CHUNK_SIZE + 4,))
+
+            assert group['data'].shape == (DEFAULT_CHUNK_SIZE + 4,)
+            assert_equal(group['data'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
+            assert_equal(group['data'][DEFAULT_CHUNK_SIZE + 2:], 0.0)
+
+        group = file['resize_after_create_larger']
+        assert group['data'].shape == (DEFAULT_CHUNK_SIZE + 4,)
+        assert_equal(group['data'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
+        assert_equal(group['data'][DEFAULT_CHUNK_SIZE + 2:], 0.0)
+
+        # Resize after calling create_dataset, smaller
+        with file.stage_version('resize_after_create_smaller', '') as group:
+            group.create_dataset('data', data=offset_data)
+            group['data'].resize((DEFAULT_CHUNK_SIZE - 4,))
+
+            assert group['data'].shape == (DEFAULT_CHUNK_SIZE - 4,)
+            assert_equal(group['data'][:], 1.0)
+
+        group = file['resize_after_create_smaller']
+        assert group['data'].shape == (DEFAULT_CHUNK_SIZE - 4,)
+        assert_equal(group['data'][:], 1.0)
 
 def test_resize_unaligned():
     with setup() as f:
@@ -504,3 +529,57 @@ def test_getitem():
             assert test_data[0].dtype == np.int64
             assert_equal(test_data[:], data)
             assert_equal(test_data[:DEFAULT_CHUNK_SIZE+1], data[:DEFAULT_CHUNK_SIZE+1])
+
+def test_nonroot():
+    with setup() as f:
+        g = f.create_group('subgroup')
+        file = VersionedHDF5File(g)
+
+        test_data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
+                                    2*np.ones((DEFAULT_CHUNK_SIZE,)),
+                                    3*np.ones((DEFAULT_CHUNK_SIZE,))))
+
+
+        with file.stage_version('version1', '') as group:
+            group['test_data'] = test_data
+
+        version1 = file['version1']
+        assert version1.attrs['prev_version'] == '__first_version__'
+        assert_equal(version1['test_data'], test_data)
+
+        ds = f['/subgroup/_version_data/test_data/raw_data']
+
+        assert ds.shape == (3*DEFAULT_CHUNK_SIZE,)
+        assert_equal(ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
+        assert_equal(ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
+        assert_equal(ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
+
+def test_attrs():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = np.arange(2*DEFAULT_CHUNK_SIZE)
+
+        with file.stage_version('version1') as group:
+            group.create_dataset('test_data', data=data)
+
+            test_data = group['test_data']
+            assert test_data.attrs == {}
+            test_data.attrs['test_attr'] = 0
+
+        assert file['version1']['test_data'].attrs == \
+            dict(f['_version_data']['versions']['version1']['test_data'].attrs) == \
+                {'test_attr': 0}
+
+        with file.stage_version('version2') as group:
+            test_data = group['test_data']
+            assert test_data.attrs == {'test_attr': 0}
+            test_data.attrs['test_attr'] = 1
+
+        assert file['version1']['test_data'].attrs == \
+            dict(f['_version_data']['versions']['version1']['test_data'].attrs) == \
+                {'test_attr': 0}
+
+        assert file['version2']['test_data'].attrs == \
+            dict(f['_version_data']['versions']['version2']['test_data'].attrs) == \
+                {'test_attr': 1}
