@@ -1,8 +1,3 @@
-env:
-  global:
-    # Doctr deploy key for Quansight/versioned-hdf5
-    - secure: "jg/COrBzXofBRQF++aWI6LkOGzsB1BcnGLd6zsCdk8lhg1Av1csO4nToGne8YPPAcDTjo16p71i4WaJmhyBd3+wuQmonjXLXMj3+Go7KsnZ6xbRtecqL/kW2AbHyxmlo6zILxrIUnFeYfAYOock+E0LDtelZJrKvbt2p+4B4zitE0cTt8Gabs/eb1fmZiNPYkbVOPqeF6W82NJ0enTBz0l1k7pNlBv60nU0sGOohzr6chx8wNrqcln9Uet7DR0NrMvTrEWQaBK4pydCT/f4BGJyBtQOv87spee+HCsWFJtJbx1XCR2oeiFijsnvUtN52BwyJiRQmCUE8+5Wmk31BhrlAu9O8C1w6j3MJWj9B7HAsNO0NOG+hPcro9CsTzMOTYmlHebtXVKB/m2qSYv5/LWW8995MAErzT2HXfIdJAZYlWmIUUfDQ39sFez4g7RCzTks14CCSgtiRxbFtw8VWLqnmcv0+K8KAtEXu+JixuA9FNLxyt4C/+TGfgt/iJqV/I5qh4zg5CmG9ePqE2A2AhX6gIA+1L7wI+ogRg7QwjaA8B+rZNFShJDusF2aJuSiy32ofhiD1KaAC6U1c+G0Lmq0hN3F4ZifaJSYycxgS5SCmELt0zhSOWXPPsrf1XY+SoWpHun+FW4q8Pb57zA6JLsOhK+4230b8V+xNLksAZ+8="
-
 language: python
 
 sudo: false
@@ -21,6 +16,8 @@ matrix:
         - TESTS=true
         - DOCS=true
         - COVERAGE=true
+        # Doctr deploy key for Quansight/versioned-hdf5
+        - secure: "jg/COrBzXofBRQF++aWI6LkOGzsB1BcnGLd6zsCdk8lhg1Av1csO4nToGne8YPPAcDTjo16p71i4WaJmhyBd3+wuQmonjXLXMj3+Go7KsnZ6xbRtecqL/kW2AbHyxmlo6zILxrIUnFeYfAYOock+E0LDtelZJrKvbt2p+4B4zitE0cTt8Gabs/eb1fmZiNPYkbVOPqeF6W82NJ0enTBz0l1k7pNlBv60nU0sGOohzr6chx8wNrqcln9Uet7DR0NrMvTrEWQaBK4pydCT/f4BGJyBtQOv87spee+HCsWFJtJbx1XCR2oeiFijsnvUtN52BwyJiRQmCUE8+5Wmk31BhrlAu9O8C1w6j3MJWj9B7HAsNO0NOG+hPcro9CsTzMOTYmlHebtXVKB/m2qSYv5/LWW8995MAErzT2HXfIdJAZYlWmIUUfDQ39sFez4g7RCzTks14CCSgtiRxbFtw8VWLqnmcv0+K8KAtEXu+JixuA9FNLxyt4C/+TGfgt/iJqV/I5qh4zg5CmG9ePqE2A2AhX6gIA+1L7wI+ogRg7QwjaA8B+rZNFShJDusF2aJuSiy32ofhiD1KaAC6U1c+G0Lmq0hN3F4ZifaJSYycxgS5SCmELt0zhSOWXPPsrf1XY+SoWpHun+FW4q8Pb57zA6JLsOhK+4230b8V+xNLksAZ+8="
 
 install:
   - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh;
