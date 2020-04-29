@@ -1,6 +1,5 @@
 from __future__ import (absolute_import, division, print_function, with_statement)
 
-
 import datetime
 import logging
 import random
@@ -9,10 +8,9 @@ from unittest import TestCase
 
 import h5py
 import numpy as np
+import scipy.stats
 
 from versioned_hdf5.api import VersionedHDF5File
-
-# from .utils import temp_dir_ctx
 
 
 class TestVersionedDatasetPerformance(TestCase):
@@ -36,35 +34,9 @@ class TestVersionedDatasetPerformance(TestCase):
         val0[i], val1[i], ...
       TODO: check the math!
     """
-    def test_mostly_appends_sparse(self,
-                                   num_transactions=250,
-                                   filename="test_mostly_appends_sparse",
-                                   chunk_size=None,
-                                   compression=None,
-                                   versions=True,
-                                   print_transactions=False):
 
-        num_rows_initial = 1000
-        num_rows_per_append = 1000
-        num_inserts = 10
-        num_deletes = 10
-        num_changes = 10
-
-        # name = f"test_mostly_appends_sparse_{num_transactions}"
-
-        times = self._write_transactions_sparse(filename,
-                                                chunk_size,
-                                                compression,
-                                                versions,
-                                                print_transactions,
-                                                num_rows_initial,
-                                                num_transactions,
-                                                num_rows_per_append,
-                                                num_changes,
-                                                num_deletes,
-                                                num_inserts)
-        return times
-
+    # models
+    RECENCTNESS_POWERLAW_SHAPE = 20.0
 
     @classmethod
     def _write_transactions_sparse(cls, name,
@@ -158,6 +130,38 @@ class TestVersionedDatasetPerformance(TestCase):
             f.close()
         return times
 
+
+    def test_mostly_appends_sparse(self,
+                                   num_transactions=250,
+                                   filename="test_mostly_appends_sparse",
+                                   chunk_size=None,
+                                   compression=None,
+                                   versions=True,
+                                   print_transactions=False):
+
+        num_rows_initial = 1000
+        num_rows_per_append = 1000
+        num_inserts = 10
+        num_deletes = 10
+        num_changes = 10
+
+        # name = f"test_mostly_appends_sparse_{num_transactions}"
+
+        times = self._write_transactions_sparse(filename,
+                                                chunk_size,
+                                                compression,
+                                                versions,
+                                                print_transactions,
+                                                num_rows_initial,
+                                                num_transactions,
+                                                num_rows_per_append,
+                                                num_changes,
+                                                num_deletes,
+                                                num_inserts)
+        return times
+
+
+
     @classmethod
     def _get_rand_fn(cls, dtype):
         if dtype == np.dtype('int64'):
@@ -181,7 +185,7 @@ class TestVersionedDatasetPerformance(TestCase):
         assert len(ns) == 1
 
         n = next(iter(ns))
-        
+
         # change values
         rand_fn = cls._get_rand_fn(val_ds.dtype)
         for b in range(num_changes):
@@ -189,25 +193,27 @@ class TestVersionedDatasetPerformance(TestCase):
             val_ds[r] = rand_fn()
 
         # delete rows
-        rs = [random.randrange(0, n) for _ in range(num_deletes)]
-        while len(set(rs)) < num_deletes:
-            rs.append(random.randrange(0,n))
-        n -= num_deletes
+        pdf = scipy.stats.powerlaw.rvs(TestVersionedDatasetPerformance.RECENCTNESS_POWERLAW_SHAPE, size=num_deletes)
+        rs = np.unique((pdf * n).astype('int64'))
+        minr = min(rs)
+        n -= len(rs)
         for ds in [key0_ds, key1_ds, val_ds]:
-            arr = ds[:]
-            arr = np.delete(arr, rs)
+            arr = ds[minr:]
+            arr = np.delete(arr, rs - minr)
             ds.resize((n,))
-            ds[:] = arr
+            ds[minr:] = arr
 
         # insert rows
-        rs = [random.randrange(0, n) for _ in range(num_inserts)]
-        n += num_inserts
+        pdf = scipy.stats.powerlaw.rvs(TestVersionedDatasetPerformance.RECENCTNESS_POWERLAW_SHAPE, size=num_inserts)
+        rs = np.unique((pdf * n).astype('int64'))
+        minr = min(rs)
+        n += len(rs)
         for ds in [key0_ds, key1_ds, val_ds]:
             rand_fn = cls._get_rand_fn(ds.dtype)
-            arr = ds[:]
-            arr = np.insert(arr, rs, [rand_fn() for _ in rs])
+            arr = ds[minr:]
+            arr = np.insert(arr, rs - minr, [rand_fn() for _ in rs])
             ds.resize((n,))
-            ds[:] = arr
+            ds[minr:] = arr
 
         # append
         n += num_rows_per_append
@@ -319,7 +325,7 @@ class TestVersionedDatasetPerformance(TestCase):
                                   num_changes,
                                   num_deletes_0, num_deletes_1,
                                   num_inserts_0, num_inserts_1):
-        
+
         logger = logging.getLogger(__name__)
 
         tmp_dir = '.'
@@ -419,67 +425,83 @@ class TestVersionedDatasetPerformance(TestCase):
 
         # delete rows ============================
         # delete from values in two steps
-        arr_val = val_ds[:]
 
         # 1. delete from key0 and associated vals
-        rs_0 = [random.randrange(0, n_key0) for _ in range(num_deletes_0)]
+        pdf = scipy.stats.powerlaw.rvs(TestVersionedDatasetPerformance.RECENCTNESS_POWERLAW_SHAPE, size=num_deletes_0)
+        rs_0 = np.unique((pdf * n_key0).astype('int64'))
+        minr_0 = min(rs_0)
+
+        arr_key0 = key0_ds[minr_0:]
+        arr_key0 = np.delete(arr_key0, rs_0 - minr_0)
+        n_key0 -= len(rs_0)
+        key0_ds.resize((n_key0,))
+        key0_ds[minr_0:] = arr_key0
 
         rs_val = [r0 * n_key1 + r1 for r0 in rs_0 for r1 in range(n_key1)]
         n_val -= len(rs_val)
-        arr_val = np.delete(arr_val, rs_val)
+        arr_val = val_ds[minr_0:]
+        arr_val = np.delete(arr_val, rs_val - minr_0)
 
-        n_key0 -= num_deletes_0
-        arr_key0 = key0_ds[:]
-        arr_key0 = np.delete(arr_key0, rs_0)
-        key0_ds.resize((n_key0,))
-        key0_ds[:] = arr_key0
+        val_ds.resize((n_val,))
+        val_ds[minr_0:] = arr_val
 
         # 2. delete from key1 and associated vals
-        rs_1 = [random.randrange(0, n_key1) for _ in range(num_deletes_1)]
+        pdf = scipy.stats.powerlaw.rvs(TestVersionedDatasetPerformance.RECENCTNESS_POWERLAW_SHAPE, size=num_deletes_1)
+        rs_1 = np.unique((pdf * n_key1).astype('int64'))
+        minr_1 = min(rs_1)
+
+        arr_key1 = key1_ds[minr_1:]
+        arr_key1 = np.delete(arr_key1, rs_1 - minr_1)
+        n_key1 -= len(rs_1)
+        key1_ds.resize((n_key1,))
+        key1_ds[minr_1:] = arr_key1
 
         rs_val = [r0 * n_key1 + r1 for r0 in range(n_key0) for r1 in rs_1]
         n_val -= len(rs_val)
-        arr_val = np.delete(arr_val, rs_val)
-        val_ds.resize((n_val,))
-        val_ds[:] = arr_val
+        arr_val = val_ds[minr_1:]
+        arr_val = np.delete(arr_val, rs_val - minr_1)
 
-        n_key1 -= num_deletes_1
-        arr_key1 = key1_ds[:]
-        arr_key1 = np.delete(arr_key1, rs_1)
-        key1_ds.resize((n_key1,))
-        key1_ds[:] = arr_key1
+        val_ds.resize((n_val,))
+        val_ds[minr_1:] = arr_val
 
         # insert rows =====================
         # insert into values in two steps
-        arr_val = val_ds[:]
 
         # 1. insert into key0 and associated vals
-        rs_0 = [random.randrange(0, n_key0) for _ in range(num_inserts_0)]
+        pdf = scipy.stats.powerlaw.rvs(TestVersionedDatasetPerformance.RECENCTNESS_POWERLAW_SHAPE, size=num_inserts_0)
+        rs_0 = np.unique((pdf * n_key0).astype('int64'))
+        minr_0 = min(rs_0)
 
-        rs_val = [r0 * n_key1 + r1 for r0 in rs_0 for r1 in range(n_key1)]
-        n_val += len(rs_val)
-        arr_val = np.insert(arr_val, rs_val, [np.random.rand() for _ in rs_val])
-
-        arr_key0 = key0_ds[:]
-        arr_key0 = np.insert(arr_key0, rs_0, np.random.randint(0, int(1e6), size=len(rs_0)))
-        n_key0 += num_inserts_0
+        arr_key0 = key0_ds[minr_0:]
+        arr_key0 = np.insert(arr_key0, rs_0 - minr_0, np.random.randint(0, int(1e6), size=len(rs_0)))
+        n_key0 += len(rs_0)
         key0_ds.resize((n_key0,))
-        key0_ds[:] = arr_key0
+        key0_ds[minr_0:] = arr_key0
 
-        # 2. insert into key1 and associated vals
-        rs_1 = [random.randrange(0, n_key1) for _ in range(num_inserts_1)]
-
-        rs_val = [r0 * n_key1 + r1 for r0 in range(n_key0) for r1 in rs_1]
+        arr_val = val_ds[minr_0:]
+        rs_val = [r0 * n_key0 + r1 for r0 in rs_0-minr_0 for r1 in range(n_key1)]
         n_val += len(rs_val)
         arr_val = np.insert(arr_val, rs_val, np.random.rand(len(rs_val)))
         val_ds.resize((n_val,))
-        val_ds[:] = arr_val
+        val_ds[minr_0:] = arr_val
 
-        arr_key1 = key1_ds[:]
-        arr_key1 = np.insert(arr_key1, rs_1, np.random.randint(0, int(1e6), size=len(rs_1)))
-        n_key1 += num_inserts_1
+        # 2. insert into key1 and associated vals
+        pdf = scipy.stats.powerlaw.rvs(TestVersionedDatasetPerformance.RECENCTNESS_POWERLAW_SHAPE, size=num_inserts_1)
+        rs_1 = np.unique((pdf * n_key1).astype('int64'))
+        minr_1 = min(rs_1)
+
+        arr_key1 = key1_ds[minr_1:]
+        arr_key1 = np.insert(arr_key1, rs_1 - minr_1, np.random.randint(0, int(1e6), size=len(rs_1)))
+        n_key1 += len(rs_1)
         key1_ds.resize((n_key1,))
-        key1_ds[:] = arr_key1
+        key1_ds[minr_1:] = arr_key1
+
+        arr_val = val_ds[minr_1:]
+        rs_val = [r1 * n_key1 + r0 for r0 in range(n_key0) for r1 in rs_1-minr_1]
+        n_val += len(rs_val)
+        val_ds.resize((n_val,))
+        arr_val = np.insert(arr_val, rs_val, np.random.rand(len(rs_val)))
+        val_ds[minr_1:] = arr_val
 
         # append ======================
         # append to key0 and associated vals
@@ -495,6 +517,6 @@ class TestVersionedDatasetPerformance(TestCase):
 if __name__ == '__main__':
 
     #num_transactions = [50, 100, 500, 1000, 2000]#, 5000, 10000]
-    num_transactions = [50]
+    num_transactions = [10]
     for t in num_transactions:
-        times = TestVersionedDatasetPerformance().test_large_fraction_changes_sparse(t)
+        times = TestVersionedDatasetPerformance().test_mostly_appends_dense(t)
