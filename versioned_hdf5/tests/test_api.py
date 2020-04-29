@@ -583,3 +583,26 @@ def test_attrs():
         assert file['version2']['test_data'].attrs == \
             dict(f['_version_data']['versions']['version2']['test_data'].attrs) == \
                 {'test_attr': 1}
+
+def test_auto_delete():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = np.arange(2*DEFAULT_CHUNK_SIZE)
+
+        try:
+            with file.stage_version('version1') as group:
+                raise RuntimeError
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("did not raise")
+
+        # Make sure the version got deleted so that we can make it again
+
+        data = np.arange(2*DEFAULT_CHUNK_SIZE)
+
+        with file.stage_version('version1') as group:
+            group.create_dataset('test_data', data=data)
+
+        assert_equal(file['version1']['test_data'], data)
