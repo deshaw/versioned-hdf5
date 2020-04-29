@@ -97,6 +97,20 @@ class VersionedHDF5File:
         else:
             raise KeyError(f"Don't know how to get the version for {item!r}")
 
+    def __delitem__(self, item):
+        """
+        Delete a version
+
+        If the version is the current version, the new current version will be
+        set to the previous version.
+        """
+        if not isinstance(item, str):
+            raise NotImplementedError("del is only supported for string keys")
+        if item not in self._versions:
+            raise KeyError(item)
+        new_current = self.current_version if item != self.current_version else self[item].attrs['prev_version']
+        delete_version(self.f, item, new_current)
+
     def __iter__(self):
         return all_versions(self.f, include_first=False)
 

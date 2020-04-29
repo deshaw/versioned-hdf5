@@ -587,9 +587,6 @@ def test_attrs():
 def test_auto_delete():
     with setup() as f:
         file = VersionedHDF5File(f)
-
-        data = np.arange(2*DEFAULT_CHUNK_SIZE)
-
         try:
             with file.stage_version('version1') as group:
                 raise RuntimeError
@@ -606,3 +603,28 @@ def test_auto_delete():
             group.create_dataset('test_data', data=data)
 
         assert_equal(file['version1']['test_data'], data)
+
+def test_delitem():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = np.arange(2*DEFAULT_CHUNK_SIZE)
+
+        with file.stage_version('version1') as group:
+            group.create_dataset('test_data', data=data)
+
+        with file.stage_version('version2') as group:
+            group.create_dataset('test_data2', data=data)
+
+        del file['version2']
+
+        assert list(file) == ['version1']
+        assert file.current_version == 'version1'
+
+        with raises(KeyError):
+            del file['version2']
+
+        del file['version1']
+
+        assert list(file) == []
+        assert file.current_version == '__first_version__'
