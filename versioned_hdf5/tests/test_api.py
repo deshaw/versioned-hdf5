@@ -530,6 +530,30 @@ def test_getitem():
             assert_equal(test_data[:], data)
             assert_equal(test_data[:DEFAULT_CHUNK_SIZE+1], data[:DEFAULT_CHUNK_SIZE+1])
 
+def test_nonroot():
+    with setup() as f:
+        g = f.create_group('subgroup')
+        file = VersionedHDF5File(g)
+
+        test_data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
+                                    2*np.ones((DEFAULT_CHUNK_SIZE,)),
+                                    3*np.ones((DEFAULT_CHUNK_SIZE,))))
+
+
+        with file.stage_version('version1', '') as group:
+            group['test_data'] = test_data
+
+        version1 = file['version1']
+        assert version1.attrs['prev_version'] == '__first_version__'
+        assert_equal(version1['test_data'], test_data)
+
+        ds = f['/subgroup/_version_data/test_data/raw_data']
+
+        assert ds.shape == (3*DEFAULT_CHUNK_SIZE,)
+        assert_equal(ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
+        assert_equal(ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
+        assert_equal(ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
+
 def test_attrs():
     with setup() as f:
         file = VersionedHDF5File(f)
