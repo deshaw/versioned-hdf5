@@ -108,7 +108,6 @@ class PerformanceTests:
                         lengths.append(len(version[group_key]['val']))
                         total_size += len(version[group_key]['val'])
                 test['theoretical_sizes'] = 24 * total_size
-                test['h5pyfile'].close()
 
         # Removing some irrelevant info from the dictionary
         summary = []
@@ -118,6 +117,7 @@ class PerformanceTests:
                                                        'size_label', 't_write',
                                                        'chunk_size',
                                                        'compression']))
+            test['h5pyfile'].close()
 
         self.tests = tests
         return summary, msg
@@ -183,18 +183,34 @@ class test_mostly_appends_dense(PerformanceTests):
         super().save(summary, filename)
 
 
+class test_large_fraction_constant_sparse(PerformanceTests):
+
+    def __init__(self, **kwargs):
+        self.testname = "test_large_fraction_constant_sparse"
+        self.testfun = TVDP().test_large_fraction_constant_sparse
+        super()._setoptions(options=kwargs)
+
+    def create_files(self, versions=True):
+        return super().create_files(versions=versions)
+
+    def save(self, summary, filename):
+        super().save(summary, filename)
+
+
 if __name__ == "__main__":
 
-    tests = [  # test_large_fraction_changes_sparse]#,
-        test_small_fraction_changes_sparse]  # ,
+    #tests = [  # test_large_fraction_changes_sparse]#,
+        # test_small_fraction_changes_sparse]  # ,
     # test_mostly_appends_sparse]#,
     # test_mostly_appends_dense]
 
+    tests = [ test_large_fraction_constant_sparse ]
+
     for test in tests:
-        testcase = test(num_transactions=[50],
-                        exponents=[12, 14],
-                        compression=[None, 'gzip', 'lzf'])
-        summary, msg = testcase.create_files(versions=False)
+        testcase = test(num_transactions=[500],
+                        exponents=[14],
+                        compression=[None])
+        summary, msg = testcase.create_files(versions=True)
         # print(msg)
         # print(summary)
         # testcase.save(summary)

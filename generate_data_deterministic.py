@@ -130,7 +130,6 @@ class TestVersionedDatasetPerformance(TestCase):
             f.close()
         return times
 
-
     def test_mostly_appends_sparse(self,
                                    num_transactions=250,
                                    filename="test_mostly_appends_sparse",
@@ -192,35 +191,40 @@ class TestVersionedDatasetPerformance(TestCase):
             r = random.randrange(0, n)
             val_ds[r] = rand_fn()
 
-        # delete rows
-        pdf = scipy.stats.powerlaw.rvs(TestVersionedDatasetPerformance.RECENCTNESS_POWERLAW_SHAPE, size=num_deletes)
-        rs = np.unique((pdf * n).astype('int64'))
-        minr = min(rs)
-        n -= len(rs)
-        for ds in [key0_ds, key1_ds, val_ds]:
-            arr = ds[minr:]
-            arr = np.delete(arr, rs - minr)
-            ds.resize((n,))
-            ds[minr:] = arr
-
         # insert rows
-        pdf = scipy.stats.powerlaw.rvs(TestVersionedDatasetPerformance.RECENCTNESS_POWERLAW_SHAPE, size=num_inserts)
-        rs = np.unique((pdf * n).astype('int64'))
-        minr = min(rs)
-        n += len(rs)
-        for ds in [key0_ds, key1_ds, val_ds]:
-            rand_fn = cls._get_rand_fn(ds.dtype)
-            arr = ds[minr:]
-            arr = np.insert(arr, rs - minr, [rand_fn() for _ in rs])
-            ds.resize((n,))
-            ds[minr:] = arr
+        if num_inserts > 0:
+            pdf = scipy.stats.powerlaw.rvs(TestVersionedDatasetPerformance.RECENCTNESS_POWERLAW_SHAPE, size=num_inserts)
+            rs = np.unique((pdf * n).astype('int64'))
+            minr = min(rs)
+            n += len(rs)
+            for ds in [key0_ds, key1_ds, val_ds]:
+                rand_fn = cls._get_rand_fn(ds.dtype)
+                arr = ds[minr:]
+                arr = np.insert(arr, rs - minr, [rand_fn() for _ in rs])
+                ds.resize((n,))
+                ds[minr:] = arr
+
+        # delete rows
+        if num_deletes > 0:
+            if num_rows_per_append != 0:
+                pdf = scipy.stats.powerlaw.rvs(TestVersionedDatasetPerformance.RECENCTNESS_POWERLAW_SHAPE, size=num_deletes)
+                rs = np.unique((pdf * n).astype('int64'))
+                minr = min(rs)
+            n -= len(rs)
+            for ds in [key0_ds, key1_ds, val_ds]:
+                arr = ds[minr:]
+                arr = np.delete(arr, rs - minr)
+                ds.resize((n,))
+                ds[minr:] = arr
+
 
         # append
-        n += num_rows_per_append
-        for ds in [key0_ds, key1_ds, val_ds]:
-            rand_fn = cls._get_rand_fn(ds.dtype)
-            ds.resize((n,))
-            ds[-num_rows_per_append:] = rand_fn(num_rows_per_append)
+        if num_rows_per_append > 0:
+            n += num_rows_per_append
+            for ds in [key0_ds, key1_ds, val_ds]:
+                rand_fn = cls._get_rand_fn(ds.dtype)
+                ds.resize((n,))
+                ds[-num_rows_per_append:] = rand_fn(num_rows_per_append)
 
     def test_large_fraction_changes_sparse(self,
                                            num_transactions=250,
@@ -235,7 +239,7 @@ class TestVersionedDatasetPerformance(TestCase):
         num_inserts = 10
         num_deletes = 10
         num_changes = 1000
-        
+
         # name = f"test_large_fraction_changes_sparse_{num_transactions}"
 
         times = self._write_transactions_sparse(filename,
@@ -514,9 +518,37 @@ class TestVersionedDatasetPerformance(TestCase):
         val_ds.resize((n_val,))
         val_ds[-num_val_apps:] = np.random.rand(num_val_apps)
 
+    def test_large_fraction_constant_sparse(self,
+                                            num_transactions=250,
+                                            filename="test_large_fraction_constant_sparse",
+                                            chunk_size=None,
+                                            compression=None,
+                                            versions=True,
+                                            print_transactions=False):
+
+        num_rows_initial = 5000
+        num_rows_per_append = 0 # triggers the constant size test (FIXME)
+        num_inserts = 10        
+        num_deletes = 10        
+        num_changes = 1000
+
+        times = self._write_transactions_sparse(filename,
+                                                chunk_size,
+                                                compression,
+                                                versions,
+                                                print_transactions,
+                                                num_rows_initial,
+                                                num_transactions,
+                                                num_rows_per_append,
+                                                num_changes,
+                                                num_deletes,
+                                                num_inserts)
+        return times
+
+
 if __name__ == '__main__':
 
     #num_transactions = [50, 100, 500, 1000, 2000]#, 5000, 10000]
-    num_transactions = [10]
+    num_transactions = [500]
     for t in num_transactions:
-        times = TestVersionedDatasetPerformance().test_mostly_appends_dense(t)
+        times = TestVersionedDatasetPerformance().test_large_fraction_constant_sparse(t)
