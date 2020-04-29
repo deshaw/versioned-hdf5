@@ -12,7 +12,7 @@ import datetime
 from .backend import initialize
 from .versions import (create_version_group, commit_version,
                        get_nth_previous_version, set_current_version,
-                       all_versions)
+                       all_versions, delete_version)
 from .wrappers import InMemoryGroup
 
 class VersionedHDF5File:
@@ -123,10 +123,16 @@ class VersionedHDF5File:
         `prev_version` for any future `stage_version` call.
 
         """
+        old_current = self.current_version
         group = create_version_group(self.f, version_name,
                                      prev_version=prev_version)
-        yield group
-        commit_version(group, group.datasets(), make_current=make_current,
-                       chunk_size=group.chunk_size,
-                       compression=group.compression,
-                       compression_opts=group.compression_opts)
+
+        try:
+            yield group
+            commit_version(group, group.datasets(), make_current=make_current,
+                           chunk_size=group.chunk_size,
+                           compression=group.compression,
+                           compression_opts=group.compression_opts)
+        except:
+            delete_version(self.f, version_name, old_current)
+            raise
