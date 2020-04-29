@@ -43,6 +43,10 @@ class InMemoryGroup(Group):
         return r
 
     def __getitem__(self, name):
+        parts = name.split('/')
+        if len(parts) > 1:
+            return self.__getitem__(parts[0])['/'.join(parts[1:])]
+
         if name in self._data:
             return self._data[name]
         if name in self._subgroups:
@@ -59,14 +63,19 @@ class InMemoryGroup(Group):
             raise NotImplementedError(f"Cannot handle {type(res)!r}")
 
     def __setitem__(self, name, obj):
-        # TODO: Support groups, arrays, and lists
-        if isinstance(obj, Dataset):
-            obj = InMemoryDataset(obj.id)
-        elif isinstance(obj, (Group, InMemoryGroup)):
+        parts = name.split('/')
+        if len(parts) > 1:
+            self[parts[0]]['/'.join(parts[1:])] = obj
             return
+
+        if isinstance(obj, Dataset):
+            self._data[name] = InMemoryDataset(obj.id)
+        elif isinstance(obj, Group):
+            self._subgroups[name] = InMemoryGroup(obj.id)
+        elif isinstance(obj, InMemoryGroup):
+            self._subgroups[name] = obj
         else:
-            obj = InMemoryArrayDataset(name, np.asarray(obj))
-        self._data[name] = obj
+            self._data[name] = InMemoryArrayDataset(name, np.asarray(obj))
 
     def __delitem__(self, name):
         if name in self._data:
@@ -74,9 +83,13 @@ class InMemoryGroup(Group):
 
     def create_group(self, name, track_order=None):
         g = super().create_group(name, track_order=track_order)
-        return type(self)(g.id)
+        group = type(self)(g.id)
+        self._subgroups[name.split('/')[0]] = group
+        return group
 
     def create_dataset(self, name, **kwds):
+        *path, data_name = name.split('/')
+        self.create_group('/'.join(path))
         data = _make_new_dset(**kwds)
         chunk_size = kwds.get('chunks')
         if isinstance(chunk_size, tuple):
@@ -91,21 +104,38 @@ class InMemoryGroup(Group):
         self[name] = data
         return self[name]
 
+    def __iter__(self):
+        names = list(self._data) + list(self._subgroups)
+        for i in super().__iter__():
+            if i in names:
+                names.remove(i)
+            yield i
+        for i in names:
+            yield i
+
     def datasets(self):
         res = self._data.copy()
 
         def _get(name, item):
             if name in res:
                 return
-            if isinstance(item, (Dataset, np.ndarray)):
+            if isinstance(item, (Dataset, InMemoryArrayDataset, np.ndarray)):
                 res[name] = item
 
         self.visititems(_get)
 
         return res
 
-    #TODO: override other relevant methods here
+    def visititems(self, func):
+        self._visit('', func)
 
+    def _visit(self, prefix, func):
+        for name in self:
+            func(prefix + name, self[name])
+            if isinstance(self[name], InMemoryGroup):
+                self[name]._visit(name + '/', func)
+
+    #TODO: override other relevant methods here
 
 # Based on h5py._hl.dataset.make_new_dset(), except it doesn't actually create
 # the dataset, it just canonicalizes the arguments. See the LICENSE file for
