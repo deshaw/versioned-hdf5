@@ -89,7 +89,8 @@ class InMemoryGroup(Group):
 
     def create_dataset(self, name, **kwds):
         *path, data_name = name.split('/')
-        self.create_group('/'.join(path))
+        if path:
+            self.create_group('/'.join(path))
         data = _make_new_dset(**kwds)
         chunk_size = kwds.get('chunks')
         if isinstance(chunk_size, tuple):
