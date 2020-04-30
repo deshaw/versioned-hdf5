@@ -28,6 +28,7 @@ class InMemoryGroup(Group):
         self.chunk_size = defaultdict(type(None))
         self.compression = defaultdict(type(None))
         self.compression_opts = defaultdict(type(None))
+        self._parent = None
         super().__init__(bind)
 
     # Based on Group.__repr__
@@ -43,9 +44,9 @@ class InMemoryGroup(Group):
         return r
 
     def __getitem__(self, name):
-        parts = name.split('/')
-        if len(parts) > 1:
-            return self.__getitem__(parts[0])['/'.join(parts[1:])]
+        dirname, basename = pp.split(name)
+        if dirname:
+            return self.__getitem__(dirname)[basename]
 
         if name in self._data:
             return self._data[name]
@@ -63,9 +64,9 @@ class InMemoryGroup(Group):
             raise NotImplementedError(f"Cannot handle {type(res)!r}")
 
     def __setitem__(self, name, obj):
-        parts = name.split('/')
-        if len(parts) > 1:
-            self[parts[0]]['/'.join(parts[1:])] = obj
+        dirname, basename = pp.split(name)
+        if dirname:
+            self[dirname][basename] = obj
             return
 
         if isinstance(obj, Dataset):
@@ -81,16 +82,39 @@ class InMemoryGroup(Group):
         if name in self._data:
             del self._data[name]
 
+    @property
+    def parent(self):
+        if self._parent is None:
+            return super().parent
+        return self._parent
+
+    @parent.setter
+    def parent(self, p):
+        self._parent = p
+
     def create_group(self, name, track_order=None):
-        g = super().create_group(name, track_order=track_order)
-        group = type(self)(g.id)
-        self._subgroups[name.split('/')[0]] = group
+        if name.startswith('/'):
+            raise ValueError("Root level groups cannot be created inside of versioned groups")
+        group = type(self)(
+            super().create_group(name, track_order=track_order).id)
+        g = group
+        n = name
+        while n:
+            dirname, basename = pp.split(n)
+            if not dirname:
+                parent = self
+            else:
+                parent = type(self)(g.parent.id)
+            parent._subgroups[basename] = g
+            g.parent = parent
+            g = parent
+            n = dirname
         return group
 
     def create_dataset(self, name, **kwds):
-        *path, data_name = name.split('/')
-        if path and '/'.join(path) not in self:
-            self.create_group('/'.join(path))
+        dirname, data_name = pp.split(name)
+        if dirname and dirname not in self:
+            self.create_group(dirname)
         data = _make_new_dset(**kwds)
         chunk_size = kwds.get('chunks')
         if isinstance(chunk_size, tuple):
@@ -132,9 +156,9 @@ class InMemoryGroup(Group):
 
     def _visit(self, prefix, func):
         for name in self:
-            func(prefix + name, self[name])
+            func(pp.join(prefix, name), self[name])
             if isinstance(self[name], InMemoryGroup):
-                self[name]._visit(name + '/', func)
+                self[name]._visit(pp.join(prefix, name), func)
 
     #TODO: override other relevant methods here
 
