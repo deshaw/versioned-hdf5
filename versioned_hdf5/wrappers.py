@@ -18,8 +18,7 @@ from collections import defaultdict
 import math
 import posixpath as pp
 
-from .slicetools import s2t, t2s, slice_size, split_slice, spaceid_to_slice
-
+from .slicetools import s2t, slice_size, split_slice, spaceid_to_slice
 
 class InMemoryGroup(Group):
     def __init__(self, bind):
