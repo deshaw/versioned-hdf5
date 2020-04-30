@@ -18,7 +18,7 @@ from collections import defaultdict
 import math
 import posixpath as pp
 
-from .slicetools import s2t, slice_size, split_slice, spaceid_to_slice
+from .slicetools import s2t, t2s, slice_size, split_slice, spaceid_to_slice
 
 
 class InMemoryGroup(Group):
@@ -351,11 +351,9 @@ class InMemoryDatasetID(h5d.DatasetID):
         fid = h5i.get_file_id(self)
         g = Group(fid)
         self.chunk_size = g[virtual_sources[0].dset_name].attrs['chunk_size']
-        for i in range(math.ceil(self.shape[0]/self.chunk_size)):
-            for t in slice_map:
-                r = range(*t)
-                if i*self.chunk_size in r:
-                    self.data_dict[i] = slice_map[t]
+
+        for t in slice_map:
+            self.data_dict[t[0]//self.chunk_size] = slice_map[t]
 
     def set_extent(self, shape):
         if len(shape) > 1:
