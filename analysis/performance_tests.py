@@ -204,13 +204,13 @@ if __name__ == "__main__":
     # test_mostly_appends_sparse]#,
     # test_mostly_appends_dense]
 
-    tests = [ test_large_fraction_constant_sparse ]
+    tests = [ test_mostly_appends_dense ]
 
     for test in tests:
-        testcase = test(num_transactions=[500],
-                        exponents=[14],
-                        compression=[None])
+        testcase = test(num_transactions=[25],
+                        exponents=[12],
+                        compression=[None, "gzip", "lzf"])
         summary, msg = testcase.create_files(versions=True)
         # print(msg)
         # print(summary)
-        # testcase.save(summary)
+        testcase.save(summary, f"{testcase.testname}")
