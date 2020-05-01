@@ -58,7 +58,6 @@ def commit_version(version_group, datasets, *,
         raise ValueError("version_group must be a group created by create_version_group()")
     if version_group.attrs['committed']:
         raise ValueError("This version group has already been committed")
-    
     version_name = version_group.name.rsplit('/', 1)[1]
     versions = version_group.parent
     f = versions.parent.parent
