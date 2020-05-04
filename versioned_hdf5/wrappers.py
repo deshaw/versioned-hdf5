@@ -28,6 +28,7 @@ class InMemoryGroup(Group):
         self.chunk_size = defaultdict(type(None))
         self.compression = defaultdict(type(None))
         self.compression_opts = defaultdict(type(None))
+        self._parent = None
         super().__init__(bind)
 
     # Based on Group.__repr__
@@ -43,6 +44,10 @@ class InMemoryGroup(Group):
         return r
 
     def __getitem__(self, name):
+        dirname, basename = pp.split(name)
+        if dirname:
+            return self.__getitem__(dirname)[basename]
+
         if name in self._data:
             return self._data[name]
         if name in self._subgroups:
@@ -59,22 +64,57 @@ class InMemoryGroup(Group):
             raise NotImplementedError(f"Cannot handle {type(res)!r}")
 
     def __setitem__(self, name, obj):
-        # TODO: Support groups, arrays, and lists
+        dirname, basename = pp.split(name)
+        if dirname:
+            self[dirname][basename] = obj
+            return
+
         if isinstance(obj, Dataset):
-            obj = InMemoryDataset(obj.id)
+            self._data[name] = InMemoryDataset(obj.id)
+        elif isinstance(obj, Group):
+            self._subgroups[name] = InMemoryGroup(obj.id)
+        elif isinstance(obj, InMemoryGroup):
+            self._subgroups[name] = obj
         else:
-            obj = InMemoryArrayDataset(name, np.asarray(obj))
-        self._data[name] = obj
+            self._data[name] = InMemoryArrayDataset(name, np.asarray(obj))
 
     def __delitem__(self, name):
         if name in self._data:
             del self._data[name]
 
+    @property
+    def parent(self):
+        if self._parent is None:
+            return super().parent
+        return self._parent
+
+    @parent.setter
+    def parent(self, p):
+        self._parent = p
+
     def create_group(self, name, track_order=None):
-        g = super().create_group(name, track_order=track_order)
-        return type(self)(g.id)
+        if name.startswith('/'):
+            raise ValueError("Root level groups cannot be created inside of versioned groups")
+        group = type(self)(
+            super().create_group(name, track_order=track_order).id)
+        g = group
+        n = name
+        while n:
+            dirname, basename = pp.split(n)
+            if not dirname:
+                parent = self
+            else:
+                parent = type(self)(g.parent.id)
+            parent._subgroups[basename] = g
+            g.parent = parent
+            g = parent
+            n = dirname
+        return group
 
     def create_dataset(self, name, **kwds):
+        dirname, data_name = pp.split(name)
+        if dirname and dirname not in self:
+            self.create_group(dirname)
         data = _make_new_dset(**kwds)
         chunk_size = kwds.get('chunks')
         if isinstance(chunk_size, tuple):
@@ -89,21 +129,38 @@ class InMemoryGroup(Group):
         self[name] = data
         return self[name]
 
+    def __iter__(self):
+        names = list(self._data) + list(self._subgroups)
+        for i in super().__iter__():
+            if i in names:
+                names.remove(i)
+            yield i
+        for i in names:
+            yield i
+
     def datasets(self):
         res = self._data.copy()
 
         def _get(name, item):
             if name in res:
                 return
-            if isinstance(item, (Dataset, np.ndarray)):
+            if isinstance(item, (Dataset, InMemoryArrayDataset, np.ndarray)):
                 res[name] = item
 
         self.visititems(_get)
 
         return res
 
-    #TODO: override other relevant methods here
+    def visititems(self, func):
+        self._visit('', func)
 
+    def _visit(self, prefix, func):
+        for name in self:
+            func(pp.join(prefix, name), self[name])
+            if isinstance(self[name], InMemoryGroup):
+                self[name]._visit(pp.join(prefix, name), func)
+
+    #TODO: override other relevant methods here
 
 # Based on h5py._hl.dataset.make_new_dset(), except it doesn't actually create
 # the dataset, it just canonicalizes the arguments. See the LICENSE file for
