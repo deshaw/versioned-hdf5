@@ -1,5 +1,8 @@
 """
 Wrappers of h5py objects that work in memory
+
+Much of this code is modified from code in h5py. See the LICENSE file for the
+h5py license.
 """
 
 from h5py import Empty, Dataset, Datatype, Group, h5d, h5i, h5p, h5s, h5t
@@ -13,6 +16,7 @@ import numpy as np
 
 from collections import defaultdict
 import math
+import posixpath as pp
 
 from .slicetools import s2t, slice_size, split_slice, spaceid_to_slice
 
@@ -24,6 +28,7 @@ class InMemoryGroup(Group):
         self.chunk_size = defaultdict(type(None))
         self.compression = defaultdict(type(None))
         self.compression_opts = defaultdict(type(None))
+        self._parent = None
         super().__init__(bind)
 
     # Based on Group.__repr__
@@ -39,6 +44,10 @@ class InMemoryGroup(Group):
         return r
 
     def __getitem__(self, name):
+        dirname, basename = pp.split(name)
+        if dirname:
+            return self.__getitem__(dirname)[basename]
+
         if name in self._data:
             return self._data[name]
         if name in self._subgroups:
@@ -55,21 +64,57 @@ class InMemoryGroup(Group):
             raise NotImplementedError(f"Cannot handle {type(res)!r}")
 
     def __setitem__(self, name, obj):
-        # TODO: Support groups, arrays, and lists
+        dirname, basename = pp.split(name)
+        if dirname:
+            self[dirname][basename] = obj
+            return
+
         if isinstance(obj, Dataset):
-            obj = InMemoryDataset(obj.id)
-        if not isinstance(obj, (Group, InMemoryGroup)):
-            self._data[name] = obj
+            self._data[name] = InMemoryDataset(obj.id)
+        elif isinstance(obj, Group):
+            self._subgroups[name] = InMemoryGroup(obj.id)
+        elif isinstance(obj, InMemoryGroup):
+            self._subgroups[name] = obj
+        else:
+            self._data[name] = InMemoryArrayDataset(name, np.asarray(obj))
 
     def __delitem__(self, name):
         if name in self._data:
             del self._data[name]
 
+    @property
+    def parent(self):
+        if self._parent is None:
+            return super().parent
+        return self._parent
+
+    @parent.setter
+    def parent(self, p):
+        self._parent = p
+
     def create_group(self, name, track_order=None):
-        g = super().create_group(name, track_order=track_order)
-        return type(self)(g.id)
+        if name.startswith('/'):
+            raise ValueError("Root level groups cannot be created inside of versioned groups")
+        group = type(self)(
+            super().create_group(name, track_order=track_order).id)
+        g = group
+        n = name
+        while n:
+            dirname, basename = pp.split(n)
+            if not dirname:
+                parent = self
+            else:
+                parent = type(self)(g.parent.id)
+            parent._subgroups[basename] = g
+            g.parent = parent
+            g = parent
+            n = dirname
+        return group
 
     def create_dataset(self, name, **kwds):
+        dirname, data_name = pp.split(name)
+        if dirname and dirname not in self:
+            self.create_group(dirname)
         data = _make_new_dset(**kwds)
         chunk_size = kwds.get('chunks')
         if isinstance(chunk_size, tuple):
@@ -82,7 +127,16 @@ class InMemoryGroup(Group):
         self.compression[name] = kwds.get('compression')
         self.compression_opts[name] = kwds.get('compression_opts')
         self[name] = data
-        return data
+        return self[name]
+
+    def __iter__(self):
+        names = list(self._data) + list(self._subgroups)
+        for i in super().__iter__():
+            if i in names:
+                names.remove(i)
+            yield i
+        for i in names:
+            yield i
 
     def datasets(self):
         res = self._data.copy()
@@ -90,18 +144,26 @@ class InMemoryGroup(Group):
         def _get(name, item):
             if name in res:
                 return
-            if isinstance(item, (Dataset, np.ndarray)):
+            if isinstance(item, (Dataset, InMemoryArrayDataset, np.ndarray)):
                 res[name] = item
 
         self.visititems(_get)
 
         return res
 
+    def visititems(self, func):
+        self._visit('', func)
+
+    def _visit(self, prefix, func):
+        for name in self:
+            func(pp.join(prefix, name), self[name])
+            if isinstance(self[name], InMemoryGroup):
+                self[name]._visit(pp.join(prefix, name), func)
+
     #TODO: override other relevant methods here
 
-
 # Based on h5py._hl.dataset.make_new_dset(), except it doesn't actually create
-# the dataset, it just canoncalizes the arguments. See the LICENSE file for
+# the dataset, it just canonicalizes the arguments. See the LICENSE file for
 # the h5py license.
 def _make_new_dset(shape=None, dtype=None, data=None, chunks=None,
                   compression=None, shuffle=None, fletcher32=None,
@@ -209,16 +271,116 @@ def _make_new_dset(shape=None, dtype=None, data=None, chunks=None,
     return data
 
 class InMemoryDataset(Dataset):
+    """
+    Class that looks like a h5py.Dataset but is backed by a versioned dataset
+
+    The versioned dataset can be modified, which performs modifications
+    in-memory only.
+    """
     def __init__(self, bind, **kwargs):
         # Hold a reference to the original bind so h5py doesn't invalidate the id
         # XXX: We need to handle deallocation here properly when our object
         # gets deleted or closed.
         self.orig_bind = bind
         super().__init__(InMemoryDatasetID(bind.id), **kwargs)
+        self._attrs = dict(super().attrs)
 
     @property
     def chunks(self):
         return (self.id.chunk_size,)
+
+    @property
+    def attrs(self):
+        return self._attrs
+
+class InMemoryArrayDataset:
+    """
+    Class that looks like a h5py.Dataset but is backed by an array
+    """
+    def __init__(self, name, array):
+        self.name = name
+        self._array = array
+        self.attrs = {}
+
+    @property
+    def array(self):
+        return self._array
+
+    @array.setter
+    def array(self, array):
+        self._array = array
+
+    @property
+    def shape(self):
+        return self._array.shape
+
+    @property
+    def dtype(self):
+        return self._array.dtype
+
+    @property
+    def ndim(self):
+        return len(self._array.shape)
+
+    def __getitem__(self, item):
+        return self.array.__getitem__(item)
+
+    def __setitem__(self, item, value):
+        self.array.__setitem__(item, value)
+
+    def __len__(self):
+        return self.len()
+
+    def len(self):
+        """
+        Length of the first axis
+        """
+        shape = self.shape
+        if len(shape) == 0:
+            raise TypeError("Attempt to take len() of scalar dataset")
+        return shape[0]
+
+    def __array__(self, dtype=None):
+        return self.array
+
+    def __repr__(self):
+        name = pp.basename(pp.normpath(self.name))
+        namestr = '"%s"' % (name if name != '' else '/')
+        return '<InMemoryArrayDataset %s: shape %s, type "%s">' % (
+                namestr, self.shape, self.dtype.str
+            )
+
+    def __iter__(self):
+        """ Iterate over the first axis.  TypeError if scalar.
+
+        BEWARE: Modifications to the yielded data are *NOT* written to file.
+        """
+        shape = self.shape
+        if len(shape) == 0:
+            raise TypeError("Can't iterate over a scalar dataset")
+        for i in range(shape[0]):
+            yield self[i]
+
+    def resize(self, size, axis=None):
+        if axis is not None:
+            if not (axis >=0 and axis < self.ndim):
+                raise ValueError("Invalid axis (0 to %s allowed)" % (self.ndim-1))
+            try:
+                newlen = int(size)
+            except TypeError:
+                raise TypeError("Argument must be a single int if axis is specified")
+            size = list(self.shape)
+            size[axis] = newlen
+
+        size = tuple(size)
+        if len(size) > 1:
+            raise NotImplementedError("More than one dimension is not yet supported")
+        if size[0] > self.shape[0]:
+            self.array = np.concatenate((self.array,
+                                         np.zeros(size[0] - self.shape[0],
+                                                  dtype=self.dtype)))
+        else:
+            self.array = self.array[:size[0]]
 
 class InMemoryDatasetID(h5d.DatasetID):
     def __init__(self, _id):

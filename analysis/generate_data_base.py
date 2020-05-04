@@ -283,7 +283,6 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
             key0_ds.resize((n_key0,))
             key0_ds[minr_0:] = arr_key0
 
-            # HERE
             arr_val = val_ds[minr_0:, :]
             val_shape = (val_shape[0] + len(rs_0), val_shape[1])
             val_ds.resize(val_shape)
