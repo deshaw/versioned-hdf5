@@ -2,17 +2,7 @@ from ndindex import Slice, Tuple
 
 import math
 
-# Helper functions to workaround slices not being hashable
-def s2t(s):
-    if isinstance(s, tuple):
-        return tuple(s2t(i) for i in s)
-    return (s.start, s.stop)
-
-def t2s(t):
-    if isinstance(t[0], tuple):
-        return tuple(slice(*i) for i in t)
-    return slice(*t)
-
+# TODO: Move this into ndindex
 def split_slice(s, chunk):
     """
     Split a slice into multiple slices along 0:chunk, chunk:2*chunk, etc.
@@ -34,22 +24,6 @@ def split_slice(s, chunk):
         new_stop = min(stop - i*chunk, chunk)
         new_step = step
         yield i, Slice(new_start, new_stop, new_step)
-
-def slice_size(s):
-    """
-    Give the maximum size of an array axis sliced by slice s
-
-    The true size could be smaller if the slice extends beyond the bounds of
-    the array.
-
-    """
-    start, stop, step = s.start, s.stop, s.step
-    if step == None:
-        step = 1
-    if start == None:
-        start = 0
-    return len(range(start, stop, step))
-
 
 def spaceid_to_slice(space):
     from h5py import h5s
