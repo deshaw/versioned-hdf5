@@ -67,33 +67,42 @@ def commit_version(version_group, datasets, *,
     compression_opts = compression_opts or defaultdict(type(None))
 
     if make_current:
-        old_current = versions.attrs['current_version']
         versions.attrs['current_version'] = version_name
 
-    try:
-        for name, data in datasets.items():
-            if isinstance(data, (InMemoryDataset, InMemoryArrayDataset)):
-                attrs = data.attrs
-            else:
-                attrs = {}
+    for name, data in datasets.items():
+        if isinstance(data, (InMemoryDataset, InMemoryArrayDataset)):
+            attrs = data.attrs
+        else:
+            attrs = {}
 
-            if isinstance(data, InMemoryDataset):
-                data = data.id.data_dict
-            if isinstance(data, dict):
-                if chunk_size[name] is not None:
-                    raise NotImplementedError("Specifying chunk size with dict data")
-                slices = write_dataset_chunks(f, name, data)
-            else:
-                slices = write_dataset(f, name, data,
-                                       chunk_size=chunk_size[name], compression=compression[name],
-                                       compression_opts=compression_opts[name])
-            create_virtual_dataset(f, version_name, name, slices, attrs=attrs)
-        version_group.attrs['committed'] = True
-    except Exception:
-        del versions[version_name]
-        if make_current:
-            versions.attrs['current_version'] = old_current
-        raise
+        if isinstance(data, InMemoryDataset):
+            data = data.id.data_dict
+        if isinstance(data, dict):
+            if chunk_size[name] is not None:
+                raise NotImplementedError("Specifying chunk size with dict data")
+            slices = write_dataset_chunks(f, name, data)
+        else:
+            slices = write_dataset(f, name, data,
+                                   chunk_size=chunk_size[name], compression=compression[name],
+                                   compression_opts=compression_opts[name])
+        create_virtual_dataset(f, version_name, name, slices, attrs=attrs)
+    version_group.attrs['committed'] = True
+
+def delete_version(f, version_name, new_current=None):
+    """
+    Delete version `version_name`.
+    """
+    versions = f['_version_data/versions']
+
+    if version_name not in versions:
+        raise ValueError(f"version {version_name!r} does not exist")
+    if not new_current:
+        new_current = '__first_version__'
+    if new_current not in versions:
+        raise ValueError(f"version {new_current!r} does not exist")
+
+    del versions[version_name]
+    versions.attrs['current_version'] = new_current
 
 def get_nth_previous_version(f, version_name, n):
     versions = f['_version_data/versions']
