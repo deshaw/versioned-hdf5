@@ -1,3 +1,5 @@
+from ndindex import Slice, Tuple
+
 import math
 
 # Helper functions to workaround slices not being hashable
@@ -31,7 +33,7 @@ def split_slice(s, chunk):
                 new_start = step - new_start
         new_stop = min(stop - i*chunk, chunk)
         new_step = step
-        yield i, slice(new_start, new_stop, new_step)
+        yield i, Slice(new_start, new_stop, new_step)
 
 def slice_size(s):
     """
@@ -55,7 +57,7 @@ def spaceid_to_slice(space):
     sel_type = space.get_select_type()
 
     if sel_type == h5s.SEL_ALL:
-        return ()
+        return Tuple()
     elif sel_type == h5s.SEL_HYPERSLABS:
         slices = []
         starts, strides, counts, blocks = space.get_regular_hyperslab()
@@ -65,9 +67,9 @@ def spaceid_to_slice(space):
                 raise NotImplementedError("Nontrivial blocks are not yet supported")
             end = _start + (_stride*(count - 1) + 1)*block
             stride = _stride if block == 1 else 1
-            slices.append(slice(start, end, stride))
-        return tuple(slices)
+            slices.append(Slice(start, end, stride))
+        return Tuple(*slices)
     elif sel_type == h5s.SEL_NONE:
-        return (slice(0, 0),)
+        return Tuple(Slice(0, 0),)
     else:
         raise NotImplementedError("Point selections are not yet supported")

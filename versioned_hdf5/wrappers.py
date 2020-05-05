@@ -12,13 +12,15 @@ from h5py._hl import filters
 from h5py._hl.selections import select
 from h5py._hl.vds import VDSmap
 
+from ndindex import Tuple, Slice
+
 import numpy as np
 
 from collections import defaultdict
 import math
 import posixpath as pp
 
-from .slicetools import s2t, slice_size, split_slice, spaceid_to_slice
+from .slicetools import split_slice, spaceid_to_slice
 
 class InMemoryGroup(Group):
     def __init__(self, bind):
@@ -398,18 +400,18 @@ class InMemoryDatasetID(h5d.DatasetID):
                        dcpl.get_virtual_srcspace(j))
                 for j in range(dcpl.get_virtual_count())]
 
-        slice_map = {s2t(spaceid_to_slice(i.vspace)): spaceid_to_slice(i.src_space)
+        slice_map = {spaceid_to_slice(i.vspace): spaceid_to_slice(i.src_space)
                      for i in virtual_sources}
-        if any(len(i) != 1 for i in slice_map) or any(len(i) != 1 for i in slice_map.values()):
+        if any(len(i.args) != 1 for i in slice_map) or any(len(i.args) != 1 for i in slice_map.values()):
             raise NotImplementedError("More than one dimension is not yet supported")
 
-        slice_map = {i[0]: j[0] for i, j in slice_map.items()}
+        slice_map = {i.args[0]: j.args[0] for i, j in slice_map.items()}
         fid = h5i.get_file_id(self)
         g = Group(fid)
         self.chunk_size = g[virtual_sources[0].dset_name].attrs['chunk_size']
 
-        for t in slice_map:
-            self.data_dict[t[0]//self.chunk_size] = slice_map[t]
+        for s in slice_map:
+            self.data_dict[s.start//self.chunk_size] = slice_map[s]
 
     def set_extent(self, shape):
         if len(shape) > 1:
@@ -424,7 +426,7 @@ class InMemoryDatasetID(h5d.DatasetID):
                     if i*chunk_size >= shape[0]:
                         del data_dict[i]
                     else:
-                        if isinstance(data_dict[i], slice):
+                        if isinstance(data_dict[i], (Slice, slice)):
                             # Non-chunk multiple
                             a = self._read_chunk(i)
                         else:
@@ -434,7 +436,7 @@ class InMemoryDatasetID(h5d.DatasetID):
             quo, rem = divmod(shape[0], chunk_size)
             if old_shape[0] % chunk_size != 0:
                 i = max(data_dict)
-                if isinstance(data_dict[i], slice):
+                if isinstance(data_dict[i], (Slice, slice)):
                     a = self._read_chunk(i)
                 else:
                     a = data_dict[i]
@@ -481,24 +483,28 @@ class InMemoryDatasetID(h5d.DatasetID):
             raise NotImplementedError("mtype != None")
         mslice = spaceid_to_slice(mspace)
         fslice = spaceid_to_slice(fspace)
-        if len(fslice) > 1 or len(self.shape) > 1:
+        if len(fslice.args) > 1 or len(self.shape) > 1:
             raise NotImplementedError("More than one dimension is not yet supported")
         data_dict = self.data_dict
-        arr = arr_obj[mslice]
+        arr = arr_obj[mslice.raw]
         if np.isscalar(arr):
             arr = arr.reshape((1,))
 
-        if fslice == ():
-            fslice = (slice(0, arr_obj.shape[0], 1),)
+        # Once https://github.com/Quansight/ndindex/issues/18 is fixed,
+        # replace this with
+        #
+        # fslice = fslice.reduce(arr_obj.shape)
+        if fslice == Tuple():
+            fslice = Tuple(Slice(0, arr_obj.shape[0], 1),)
         # Chunks that are modified
         N0 = 0
-        for i, s_ in split_slice(fslice[0], chunk=self.chunk_size):
-            if isinstance(self.data_dict[i], slice):
+        for i, s_ in split_slice(fslice.args[0], chunk=self.chunk_size):
+            if isinstance(self.data_dict[i], (Slice, slice)):
                 a = self._read_chunk(i, mtype=mtype, dxpl=dxpl)
                 data_dict[i] = a
 
-            N = N0 + slice_size(s_)
-            data_dict[i][s_] = arr[N0:N]
+            N = N0 + len(s_)
+            data_dict[i][s_.raw] = arr[N0:N]
             N0 = N
 
         return data_dict
@@ -506,22 +512,26 @@ class InMemoryDatasetID(h5d.DatasetID):
     def read(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
         mslice = spaceid_to_slice(mspace)
         fslice = spaceid_to_slice(fspace)
-        if len(fslice) > 1 or len(self.shape) > 1:
+        if len(fslice.args) > 1 or len(self.shape) > 1:
             raise NotImplementedError("More than one dimension is not yet supported")
         data_dict = self.data_dict
-        arr = arr_obj[mslice]
+        arr = arr_obj[mslice.raw]
         if np.isscalar(arr):
             arr = arr.reshape((1,))
 
-        if fslice == ():
-            fslice = (slice(0, arr_obj.shape[0], 1),)
+        # Once https://github.com/Quansight/ndindex/issues/18 is fixed,
+        # replace this with
+        #
+        # fslice = fslice.reduce(arr_obj.shape)
+        if fslice == Tuple():
+            fslice = Tuple(Slice(0, arr_obj.shape[0], 1),)
         # Chunks that are modified
         N0 = 0
-        for i, s_ in split_slice(fslice[0], chunk=self.chunk_size):
-            if isinstance(self.data_dict[i], slice):
+        for i, s_ in split_slice(fslice.args[0], chunk=self.chunk_size):
+            if isinstance(self.data_dict[i], (slice, Slice)):
                 a = self._read_chunk(i, mtype=mtype, dxpl=dxpl)
                 data_dict[i] = a
 
-            N = N0 + slice_size(s_)
-            arr[N0:N] = data_dict[i][s_]
+            N = N0 + len(s_)
+            arr[N0:N] = data_dict[i][s_.raw]
             N0 = N

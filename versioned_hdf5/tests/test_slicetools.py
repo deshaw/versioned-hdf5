@@ -16,7 +16,7 @@ def test_split_slice():
                 base = list(range(100)[s])
                 assert sum([slice_size(s_) for i, s_ in slices]) ==\
                     slice_size(s), (s, slices)
-                pieces = [list(range(i*chunk, (i+1)*chunk)[s_]) for i, s_ in
+                pieces = [list(range(i*chunk, (i+1)*chunk)[s_.raw]) for i, s_ in
                           slices]
                 extended = []
                 for p in pieces:
@@ -69,4 +69,4 @@ def test_spaceid_to_slice():
                         except:
                             print(start, count, stride, block)
                             raise
-                        assert_equal(a[s], a[sel], f"{(start, count, stride, block)}")
+                        assert_equal(a[s.raw], a[sel], f"{(start, count, stride, block)}")
