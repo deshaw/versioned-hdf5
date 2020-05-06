@@ -714,3 +714,16 @@ def test_groups():
         with file.stage_version('version-bad', '') as group:
             raises(ValueError, lambda: group.create_dataset('/group1/test_data', data=data))
             raises(ValueError, lambda: group.create_group('/group1'))
+
+def test_list_assign():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = [1, 2, 3]
+
+        with file.stage_version('version1') as group:
+            group['dataset'] = data
+
+            assert_equal(group['dataset'][:], data)
+
+        assert_equal(file['version1']['dataset'][:], data)
