@@ -427,6 +427,47 @@ class TestVersionedDatasetPerformance(TestCase):
             r = random.randrange(0, n_val)
             val_ds[r] = np.random.rand()
 
+        # delete rows ============================
+        # delete from values in two steps
+
+        # 1. delete from key0 and associated vals
+        pdf = scipy.stats.powerlaw.rvs(TestVersionedDatasetPerformance.RECENCTNESS_POWERLAW_SHAPE, size=num_deletes_0)
+        rs_0 = np.unique((pdf * n_key0).astype('int64'))
+        minr_0 = min(rs_0)
+
+        arr_key0 = key0_ds[minr_0:]
+        arr_key0 = np.delete(arr_key0, rs_0 - minr_0)
+        n_key0 -= len(rs_0)
+        key0_ds.resize((n_key0,))
+        key0_ds[minr_0:] = arr_key0
+
+        rs_val = [r0 * n_key1 + r1 for r0 in rs_0-minr_0 for r1 in range(n_key1)]
+        n_val -= len(rs_val)
+        arr_val = val_ds[minr_0:]
+        arr_val = np.delete(arr_val, rs_val)
+
+        val_ds.resize((n_val,))
+        val_ds[minr_0:] = arr_val
+
+        # 2. delete from key1 and associated vals
+        pdf = scipy.stats.powerlaw.rvs(TestVersionedDatasetPerformance.RECENCTNESS_POWERLAW_SHAPE, size=num_deletes_1)
+        rs_1 = np.unique((pdf * n_key1).astype('int64'))
+        minr_1 = min(rs_1)
+
+        arr_key1 = key1_ds[minr_1:]
+        arr_key1 = np.delete(arr_key1, rs_1 - minr_1)
+        n_key1 -= len(rs_1)
+        key1_ds.resize((n_key1,))
+        key1_ds[minr_1:] = arr_key1
+
+        rs_val = [r0 * n_key1 + r1 for r0 in range(n_key0) for r1 in rs_1-minr_1]
+        n_val -= len(rs_val)
+        arr_val = val_ds[minr_1:]
+        arr_val = np.delete(arr_val, rs_val)
+
+        val_ds.resize((n_val,))
+        val_ds[minr_1:] = arr_val
+
         # insert rows =====================
         # insert into values in two steps
 
@@ -441,13 +482,9 @@ class TestVersionedDatasetPerformance(TestCase):
         key0_ds.resize((n_key0,))
         key0_ds[minr_0:] = arr_key0
 
-        # PROBLEM STARTS HERE
         arr_val = val_ds[minr_0:]
-        print(f"len(arr_val) = {len(arr_val)}")
-        print(f"minr_0 = {minr_0}")
         rs_val = [r0 * n_key1 + r1 for r0 in rs_0-minr_0 for r1 in range(n_key1)]
         n_val += len(rs_val)
-        print(rs_val)
         arr_val = np.insert(arr_val, rs_val, np.random.rand(len(rs_val)))
         val_ds.resize((n_val,))
         val_ds[minr_0:] = arr_val
@@ -457,63 +494,18 @@ class TestVersionedDatasetPerformance(TestCase):
         rs_1 = np.unique((pdf * n_key1).astype('int64'))
         minr_1 = min(rs_1)
 
+        arr_val = val_ds[minr_1:]
+        rs_val = [r0 * n_key1 + r1 for r0 in range(n_key0) for r1 in rs_1-minr_1]
+        n_val += len(rs_val)
+        val_ds.resize((n_val,))
+        arr_val = np.insert(arr_val, rs_val, np.random.rand(len(rs_val)))
+        val_ds[minr_1:] = arr_val
+
         arr_key1 = key1_ds[minr_1:]
         arr_key1 = np.insert(arr_key1, rs_1 - minr_1, np.random.randint(0, int(1e6), size=len(rs_1)))
         n_key1 += len(rs_1)
         key1_ds.resize((n_key1,))
         key1_ds[minr_1:] = arr_key1
-
-        arr_val = val_ds[minr_1:]
-        print(f"len(arr_val) = {len(arr_val)}")
-        print(f"minr_1 = {minr_1}")
-        rs_val = [r0 * n_key1 + r1 for r0 in range(n_key0) for r1 in rs_1-minr_1]
-        n_val += len(rs_val)
-        print(rs_val)
-        val_ds.resize((n_val,))
-        print(len(val_ds))
-        arr_val = np.insert(arr_val, rs_val, np.random.rand(len(rs_val)))
-        val_ds[minr_1:] = arr_val
-
-        # delete rows ============================
-        # delete from values in two steps
-
-        # 1. delete from key0 and associated vals
-        # pdf = scipy.stats.powerlaw.rvs(TestVersionedDatasetPerformance.RECENCTNESS_POWERLAW_SHAPE, size=num_deletes_0)
-        # rs_0 = np.unique((pdf * n_key0).astype('int64'))
-        # minr_0 = min(rs_0)
-
-        # arr_key0 = key0_ds[minr_0:]
-        # arr_key0 = np.delete(arr_key0, rs_0 - minr_0)
-        # n_key0 -= len(rs_0)
-        # key0_ds.resize((n_key0,))
-        # key0_ds[minr_0:] = arr_key0
-
-        # rs_val = [r0 * n_key1 + r1 for r0 in rs_0 for r1 in range(n_key1)]
-        # n_val -= len(rs_val)
-        # arr_val = val_ds[minr_0:]
-        # arr_val = np.delete(arr_val, rs_val - minr_0)
-
-        # val_ds.resize((n_val,))
-        # val_ds[minr_0:] = arr_val
-
-        # # 2. delete from key1 and associated vals
-        # pdf = scipy.stats.powerlaw.rvs(TestVersionedDatasetPerformance.RECENCTNESS_POWERLAW_SHAPE, size=num_deletes_1)
-        # rs_1 = np.unique((pdf * n_key1).astype('int64'))
-        # minr_1 = min(rs_1)
-
-        # arr_key1 = key1_ds[minr_1:]
-        # arr_key1 = np.delete(arr_key1, rs_1 - minr_1)
-        # n_key1 -= len(rs_1)
-        # key1_ds.resize((n_key1,))
-        # key1_ds[minr_1:] = arr_key1
-
-        # rs_val = [r0 * n_key1 + r1 for r0 in range(n_key0) for r1 in rs_1]
-        # n_val -= len(rs_val)
-        # arr_val = val_ds[minr_1:]
-        # arr_val = np.delete(arr_val, rs_val - minr_1)
-
-        # val_ds.resize((n_val,))
-        # val_ds[minr_1:] = arr_val
 
         # append ======================
         # append to key0 and associated vals
@@ -559,4 +551,4 @@ if __name__ == '__main__':
     #num_transactions = [50, 100, 500, 1000, 2000]#, 5000, 10000]
     num_transactions = [500]
     for t in num_transactions:
-        times = TestVersionedDatasetPerformance().test_large_fraction_constant_sparse(t)
+        times = TestVersionedDatasetPerformance().test_mostly_appends_dense(t, print_transactions=True)
