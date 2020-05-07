@@ -199,18 +199,26 @@ class test_large_fraction_constant_sparse(PerformanceTests):
 
 if __name__ == "__main__":
 
-    #tests = [  # test_large_fraction_changes_sparse]#,
-        # test_small_fraction_changes_sparse]  # ,
-    # test_mostly_appends_sparse]#,
-    # test_mostly_appends_dense]
+#    tests = [test_small_fraction_changes_sparse,
+#             test_large_fraction_constant_sparse]
 
-    tests = [ test_mostly_appends_dense ]
+#    for test in tests:
+#        testcase = test(num_transactions=[50, 100, 500, 1000, 5000, 10000],
+#                        exponents=[14],
+#                        compression=[None,])
+#        summary, msg = testcase.create_files(versions=True)
+#        testcase.save(summary, f"{testcase.testname}")
+#        summary, msg = testcase.create_files(versions=False)
+#        testcase.save(summary, f"{testcase.testname}_no_versions")
+
+    tests = [test_mostly_appends_dense]
 
     for test in tests:
-        testcase = test(num_transactions=[25],
-                        exponents=[12],
-                        compression=[None, "gzip", "lzf"])
+        testcase = test(num_transactions=[1000],
+                        exponents=[14],
+                        compression=[None,])
         summary, msg = testcase.create_files(versions=True)
-        # print(msg)
-        # print(summary)
         testcase.save(summary, f"{testcase.testname}")
+        summary, msg = testcase.create_files(versions=False)
+        testcase.save(summary, f"{testcase.testname}_no_versions")
+
