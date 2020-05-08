@@ -20,14 +20,30 @@ import posixpath as pp
 
 from .slicetools import s2t, slice_size, split_slice, spaceid_to_slice
 
+_groups = {}
 class InMemoryGroup(Group):
+    def __new__(cls, bind):
+        # Make sure each group only corresponds to one InMemoryGroup instance.
+        # Otherwise a new instance would lose track of any datasets or
+        # subgroups created in the old one.
+        # TODO: Garbage collect closed groups.
+        if bind in _groups:
+            return _groups[bind]
+        obj = super().__new__(cls)
+        obj._initialized = False
+        _groups[bind] = obj
+        return obj
+
     def __init__(self, bind):
+        if self._initialized:
+            return
         self._data = {}
         self._subgroups = {}
         self.chunk_size = defaultdict(type(None))
         self.compression = defaultdict(type(None))
         self.compression_opts = defaultdict(type(None))
         self._parent = None
+        self._initialized = True
         super().__init__(bind)
 
     # Based on Group.__repr__
