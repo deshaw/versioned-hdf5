@@ -3,7 +3,6 @@ import sys
 sys.path.append('..')
 import json
 import h5py
-import time
 from versioned_hdf5 import VersionedHDF5File
 from generate_data_deterministic import TestVersionedDatasetPerformance as TVDP
 
