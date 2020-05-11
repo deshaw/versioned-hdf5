@@ -1,41 +1,29 @@
 import numpy as np
 from numpy.testing import assert_equal
 
+from ndindex import Slice
+
 from h5py._hl.selections import Selection
 
 from .helpers import setup
-from ..slicetools import split_slice, slice_size, spaceid_to_slice
+from ..slicetools import split_slice, spaceid_to_slice
 
 def test_split_slice():
     chunk = 10
     for start in range(20):
         for stop in range(30):
             for step in range(1, 10):
-                s = slice(start, stop, step)
+                s = Slice(start, stop, step)
                 slices = list(split_slice(s, chunk))
-                base = list(range(100)[s])
-                assert sum([slice_size(s_) for i, s_ in slices]) ==\
-                    slice_size(s), (s, slices)
-                pieces = [list(range(i*chunk, (i+1)*chunk)[s_]) for i, s_ in
+                base = list(range(100)[s.raw])
+                assert sum([len(s_) for i, s_ in slices]) ==\
+                    len(s), (s, slices)
+                pieces = [list(range(i*chunk, (i+1)*chunk)[s_.raw]) for i, s_ in
                           slices]
                 extended = []
                 for p in pieces:
                     extended.extend(p)
                 assert base == extended, (s, slices)
-
-def test_slice_size():
-    r = range(1000)
-    for start in range(20):
-        for stop in range(30):
-            for step in range(1, 10):
-                s = slice(start, stop, step)
-                assert len(r[s]) == slice_size(s)
-
-    s = slice(10)
-    assert len(r[s]) == slice_size(s)
-    s = slice(1, 10)
-    assert len(r[s]) == slice_size(s)
-
 
 def test_spaceid_to_slice():
     with setup() as f:
@@ -69,4 +57,4 @@ def test_spaceid_to_slice():
                         except:
                             print(start, count, stride, block)
                             raise
-                        assert_equal(a[s], a[sel], f"{(start, count, stride, block)}")
+                        assert_equal(a[s.raw], a[sel], f"{(start, count, stride, block)}")
