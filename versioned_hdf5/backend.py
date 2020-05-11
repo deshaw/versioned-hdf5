@@ -1,9 +1,8 @@
 from h5py import VirtualLayout, VirtualSource
 from ndindex import Slice, ndindex
 
-import math
-
 from .hashtable import Hashtable
+from .slicetools import split_chunks
 
 DEFAULT_CHUNK_SIZE = 2**12
 
@@ -12,13 +11,6 @@ def get_chunks(shape, dtype, chunk_size):
     if len(shape) > 1:
         raise NotImplementedError
     return (chunk_size,)
-
-def split_chunks(shape, chunk_size):
-    if len(shape) > 1:
-        raise NotImplementedError
-
-    for i in range(math.ceil(shape[0]/chunk_size)):
-        yield Slice(chunk_size*i, chunk_size*(i + 1))
 
 def initialize(f):
     version_data = f.create_group('_version_data')

@@ -25,6 +25,13 @@ def split_slice(s, chunk):
         new_step = step
         yield i, Slice(new_start, new_stop, new_step)
 
+def split_chunks(shape, chunk_size):
+    if len(shape) > 1:
+        raise NotImplementedError
+
+    for i in range(math.ceil(shape[0]/chunk_size)):
+        yield Slice(chunk_size*i, chunk_size*(i + 1))
+
 def spaceid_to_slice(space):
     from h5py import h5s
 
