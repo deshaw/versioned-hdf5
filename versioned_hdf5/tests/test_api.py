@@ -725,7 +725,7 @@ def test_moved_file():
         file = VersionedHDF5File(f)
 
         data = np.ones(2*DEFAULT_CHUNK_SIZE)
-
+        
         with file.stage_version('version1') as group:
             group['dataset'] = data
 
@@ -739,3 +739,17 @@ def test_moved_file():
     with h5py.File('test2.hdf5', 'r') as f:
         file = VersionedHDF5File(f)
         assert_equal(file['version1']['dataset'][:], data)
+
+def test_list_assign():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = [1, 2, 3]
+
+        with file.stage_version('version1') as group:
+            group['dataset'] = data
+    
+            assert_equal(group['dataset'][:], data)
+
+        assert_equal(file['version1']['dataset'][:], data)
+
