@@ -1,4 +1,8 @@
+import os
+
 from pytest import raises
+
+import h5py
 
 import numpy as np
 from numpy.testing import assert_equal
@@ -715,6 +719,27 @@ def test_groups():
             raises(ValueError, lambda: group.create_dataset('/group1/test_data', data=data))
             raises(ValueError, lambda: group.create_group('/group1'))
 
+def test_moved_file():
+    # See issue #28. Make sure the virtual datasets do not hard-code the filename.
+    with setup(file_name='test.hdf5') as f:
+        file = VersionedHDF5File(f)
+
+        data = np.ones(2*DEFAULT_CHUNK_SIZE)
+        
+        with file.stage_version('version1') as group:
+            group['dataset'] = data
+
+    with h5py.File('test.hdf5', 'r') as f:
+        file = VersionedHDF5File(f)
+        assert_equal(file['version1']['dataset'][:], data)
+
+    # XXX: os.replace
+    os.rename('test.hdf5', 'test2.hdf5')
+
+    with h5py.File('test2.hdf5', 'r') as f:
+        file = VersionedHDF5File(f)
+        assert_equal(file['version1']['dataset'][:], data)
+
 def test_list_assign():
     with setup() as f:
         file = VersionedHDF5File(f)
@@ -723,7 +748,8 @@ def test_list_assign():
 
         with file.stage_version('version1') as group:
             group['dataset'] = data
-
+    
             assert_equal(group['dataset'][:], data)
 
         assert_equal(file['version1']['dataset'][:], data)
+
