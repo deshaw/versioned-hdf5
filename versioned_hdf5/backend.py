@@ -18,7 +18,7 @@ def split_chunks(shape, chunk_size):
         raise NotImplementedError
 
     for i in range(math.ceil(shape[0]/chunk_size)):
-        yield slice(chunk_size*i, chunk_size*(i + 1))
+        yield Slice(chunk_size*i, chunk_size*(i + 1))
 
 def initialize(f):
     version_data = f.create_group('_version_data')
@@ -64,7 +64,7 @@ def write_dataset(f, name, data, chunk_size=None, compression=None,
     slices_to_write = {}
     for s in split_chunks(data.shape, chunk_size):
         idx = hashtable.largest_index
-        data_s = data[s]
+        data_s = data[s.raw]
         raw_slice = Slice(idx*chunk_size, idx*chunk_size + data_s.shape[0])
         data_hash = hashtable.hash(data_s)
         raw_slice2 = hashtable.setdefault(data_hash, raw_slice)
@@ -74,7 +74,7 @@ def write_dataset(f, name, data, chunk_size=None, compression=None,
 
     ds.resize((old_shape[0] + len(slices_to_write)*chunk_size,))
     for raw_slice, s in slices_to_write.items():
-        ds[raw_slice.raw] = data[s]
+        ds[raw_slice.raw] = data[s.raw]
     return slices
 
 def write_dataset_chunks(f, name, data_dict):
