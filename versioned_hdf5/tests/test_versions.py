@@ -8,7 +8,7 @@ from .helpers import setup
 from ..backend import DEFAULT_CHUNK_SIZE
 from ..versions import (create_version_group, commit_version,
                         get_nth_previous_version, set_current_version,
-                        all_versions)
+                        all_versions, delete_version)
 
 def test_create_version():
     with setup() as f:
@@ -22,16 +22,23 @@ def test_create_version():
                        chunk_size={'test_data': chunk_size},
                        compression={'test_data': 'gzip'},
                        compression_opts={'test_data': 3})
+
         version_bad = create_version_group(f, 'version_bad', '')
         raises(ValueError, lambda: commit_version(version_bad, {'test_data': data},
                                                   chunk_size={'test_data': 2**9}))
+        delete_version(f, 'version_bad', 'version1')
+
         version_bad = create_version_group(f, 'version_bad', '')
         raises(ValueError, lambda: commit_version(version_bad, {'test_data': data},
                                                   compression={'test_data': 'lzf'}))
+        delete_version(f, 'version_bad', 'version1')
+
         version_bad = create_version_group(f, 'version_bad', '')
         raises(ValueError, lambda: commit_version(version_bad,
                                                         {'test_data': data},
                                                         compression_opts={'test_data': 4}))
+        delete_version(f, 'version_bad', 'version1')
+
         assert version1.attrs['prev_version'] == '__first_version__'
         assert version1.parent.attrs['current_version'] == 'version1'
         # Test against the file here, not version1, since version1 is the
@@ -90,14 +97,20 @@ def test_create_version_chunks():
         raises(ValueError, lambda: commit_version(version_bad,
                                                   {'test_data': data},
                                                   chunk_size={'test_data':2**9}))
+        delete_version(f, 'version_bad', 'version1')
+
         version_bad = create_version_group(f, 'version_bad', '')
         raises(ValueError, lambda: commit_version(version_bad,
                                                   {'test_data': data},
                                                   compression={'test_data':'lzf'}))
+        delete_version(f, 'version_bad', 'version1')
+
         version_bad = create_version_group(f, 'version_bad', '')
         raises(ValueError, lambda: commit_version(version_bad,
                                                   {'test_data': data},
                                                   compression_opts={'test_data':4}))
+        delete_version(f, 'version_bad', 'version1')
+
         assert_equal(f['_version_data/versions/version1/test_data'], data)
 
         ds = f['/_version_data/test_data/raw_data']
@@ -217,3 +230,24 @@ def test_set_current_version():
 
         with raises(ValueError):
             set_current_version(f, 'version3')
+
+def test_delete_version():
+    with setup() as f:
+        raises(ValueError, lambda: delete_version(f, 'version1'))
+
+        data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
+                               2*np.ones((DEFAULT_CHUNK_SIZE,)),
+                               3*np.ones((DEFAULT_CHUNK_SIZE,))))
+
+        version1 = create_version_group(f, 'version1')
+        commit_version(version1, {'test_data': data})
+        versions = f['_version_data/versions']
+        assert versions.attrs['current_version'] == 'version1'
+
+        raises(ValueError, lambda: delete_version(f, 'version1', 'doesntexist'))
+
+        delete_version(f, 'version1')
+        versions = f['_version_data/versions']
+
+        assert versions.attrs['current_version'] == '__first_version__'
+        assert list(versions) == ['__first_version__']

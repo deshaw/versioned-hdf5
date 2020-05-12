@@ -12,7 +12,7 @@ import datetime
 from .backend import initialize
 from .versions import (create_version_group, commit_version,
                        get_nth_previous_version, set_current_version,
-                       all_versions)
+                       all_versions, delete_version)
 from .wrappers import InMemoryGroup
 
 class VersionedHDF5File:
@@ -97,6 +97,20 @@ class VersionedHDF5File:
         else:
             raise KeyError(f"Don't know how to get the version for {item!r}")
 
+    def __delitem__(self, item):
+        """
+        Delete a version
+
+        If the version is the current version, the new current version will be
+        set to the previous version.
+        """
+        if not isinstance(item, str):
+            raise NotImplementedError("del is only supported for string keys")
+        if item not in self._versions:
+            raise KeyError(item)
+        new_current = self.current_version if item != self.current_version else self[item].attrs['prev_version']
+        delete_version(self.f, item, new_current)
+
     def __iter__(self):
         return all_versions(self.f, include_first=False)
 
@@ -123,10 +137,16 @@ class VersionedHDF5File:
         `prev_version` for any future `stage_version` call.
 
         """
+        old_current = self.current_version
         group = create_version_group(self.f, version_name,
                                      prev_version=prev_version)
-        yield group
-        commit_version(group, group.datasets(), make_current=make_current,
-                       chunk_size=group.chunk_size,
-                       compression=group.compression,
-                       compression_opts=group.compression_opts)
+
+        try:
+            yield group
+            commit_version(group, group.datasets(), make_current=make_current,
+                           chunk_size=group.chunk_size,
+                           compression=group.compression,
+                           compression_opts=group.compression_opts)
+        except:
+            delete_version(self.f, version_name, old_current)
+            raise

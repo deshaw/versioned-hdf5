@@ -1,4 +1,8 @@
+import os
+
 from pytest import raises
+
+import h5py
 
 import numpy as np
 from numpy.testing import assert_equal
@@ -623,4 +627,224 @@ def test_attrs():
         assert file['version2']['test_data'].attrs == \
             dict(f['_version_data']['versions']['version2']['test_data'].attrs) == \
                 {'test_attr': 1}
+
+def test_auto_delete():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+        try:
+            with file.stage_version('version1') as group:
+                raise RuntimeError
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("did not raise")
+
+        # Make sure the version got deleted so that we can make it again
+
+        data = np.arange(2*DEFAULT_CHUNK_SIZE)
+
+        with file.stage_version('version1') as group:
+            group.create_dataset('test_data', data=data)
+
+        assert_equal(file['version1']['test_data'], data)
+
+def test_delitem():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = np.arange(2*DEFAULT_CHUNK_SIZE)
+
+        with file.stage_version('version1') as group:
+            group.create_dataset('test_data', data=data)
+
+        with file.stage_version('version2') as group:
+            group.create_dataset('test_data2', data=data)
+
+        del file['version2']
+
+        assert list(file) == ['version1']
+        assert file.current_version == 'version1'
+
+        with raises(KeyError):
+            del file['version2']
+
+        del file['version1']
+
+        assert list(file) == []
+        assert file.current_version == '__first_version__'
+
+def test_groups():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = np.ones(2*DEFAULT_CHUNK_SIZE)
+
+        with file.stage_version('version1') as group:
+            group.create_group('group1')
+            group.create_dataset('group1/test_data', data=data)
+            assert_equal(group['group1']['test_data'], data)
+            assert_equal(group['group1/test_data'], data)
+
+        version = file['version1']
+        assert_equal(version['group1']['test_data'], data)
+        assert_equal(version['group1/test_data'], data)
+
+        with file.stage_version('version2', '') as group:
+            group.create_dataset('group1/test_data', data=data)
+            assert_equal(group['group1']['test_data'], data)
+            assert_equal(group['group1/test_data'], data)
+
+        version = file['version2']
+        assert_equal(version['group1']['test_data'], data)
+        assert_equal(version['group1/test_data'], data)
+
+        with file.stage_version('version3', 'version1') as group:
+            group['group1']['test_data'][0] = 0
+            group['group1/test_data'][1] = 0
+
+            assert_equal(group['group1']['test_data'][:2], 0)
+            assert_equal(group['group1']['test_data'][2:], 1)
+
+            assert_equal(group['group1/test_data'][:2], 0)
+            assert_equal(group['group1/test_data'][2:], 1)
+
+        version = file['version3']
+        assert_equal(version['group1']['test_data'][:2], 0)
+        assert_equal(version['group1']['test_data'][2:], 1)
+
+        assert_equal(version['group1/test_data'][:2], 0)
+        assert_equal(version['group1/test_data'][2:], 1)
+
+        assert list(version) == ['group1']
+        assert list(version['group1']) == ['test_data']
+
+        with file.stage_version('version4', 'version3') as group:
+            group.create_dataset('group2/test_data', data=2*data)
+
+            assert_equal(group['group1']['test_data'][:2], 0)
+            assert_equal(group['group1']['test_data'][2:], 1)
+            assert_equal(group['group2']['test_data'][:], 2)
+
+            assert_equal(group['group1/test_data'][:2], 0)
+            assert_equal(group['group1/test_data'][2:], 1)
+            assert_equal(group['group2/test_data'][:], 2)
+
+        version = file['version4']
+        assert_equal(version['group1']['test_data'][:2], 0)
+        assert_equal(version['group1']['test_data'][2:], 1)
+        assert_equal(group['group2']['test_data'][:], 2)
+
+        assert_equal(version['group1/test_data'][:2], 0)
+        assert_equal(version['group1/test_data'][2:], 1)
+        assert_equal(group['group2/test_data'][:], 2)
+
+        assert list(version) == ['group1', 'group2']
+        assert list(version['group1']) == ['test_data']
+        assert list(version['group2']) == ['test_data']
+
+        with file.stage_version('version5', '') as group:
+            group.create_dataset('group1/group2/test_data', data=data)
+            assert_equal(group['group1']['group2']['test_data'], data)
+            assert_equal(group['group1/group2']['test_data'], data)
+            assert_equal(group['group1']['group2/test_data'], data)
+            assert_equal(group['group1/group2/test_data'], data)
+
+        version = file['version5']
+        assert_equal(version['group1']['group2']['test_data'], data)
+        assert_equal(version['group1/group2']['test_data'], data)
+        assert_equal(version['group1']['group2/test_data'], data)
+        assert_equal(version['group1/group2/test_data'], data)
+
+        with file.stage_version('version6', '') as group:
+            group.create_dataset('group1/test_data1', data=data)
+            group.create_dataset('group1/group2/test_data2', data=2*data)
+            group.create_dataset('group1/group2/group3/test_data3', data=3*data)
+            group.create_dataset('group1/group2/test_data4', data=4*data)
+
+            assert_equal(group['group1']['test_data1'], data)
+            assert_equal(group['group1/test_data1'], data)
+
+            assert_equal(group['group1']['group2']['test_data2'], 2*data)
+            assert_equal(group['group1/group2']['test_data2'], 2*data)
+            assert_equal(group['group1']['group2/test_data2'], 2*data)
+            assert_equal(group['group1/group2/test_data2'], 2*data)
+
+            assert_equal(group['group1']['group2']['group3']['test_data3'], 3*data)
+            assert_equal(group['group1/group2']['group3']['test_data3'], 3*data)
+            assert_equal(group['group1/group2']['group3/test_data3'], 3*data)
+            assert_equal(group['group1']['group2/group3/test_data3'], 3*data)
+            assert_equal(group['group1/group2/group3/test_data3'], 3*data)
+
+            assert_equal(group['group1']['group2']['test_data4'], 4*data)
+            assert_equal(group['group1/group2']['test_data4'], 4*data)
+            assert_equal(group['group1']['group2/test_data4'], 4*data)
+            assert_equal(group['group1/group2/test_data4'], 4*data)
+
+            assert list(group) == ['group1']
+            assert set(group['group1']) == {'group2', 'test_data1'}
+            assert set(group['group1']['group2']) == set(group['group1/group2']) == {'group3', 'test_data2', 'test_data4'}
+            assert list(group['group1']['group2']['group3']) == list(group['group1/group2/group3']) == ['test_data3']
+
+        version = file['version6']
+        assert_equal(version['group1']['test_data1'], data)
+        assert_equal(version['group1/test_data1'], data)
+
+        assert_equal(version['group1']['group2']['test_data2'], 2*data)
+        assert_equal(version['group1/group2']['test_data2'], 2*data)
+        assert_equal(version['group1']['group2/test_data2'], 2*data)
+        assert_equal(version['group1/group2/test_data2'], 2*data)
+
+        assert_equal(version['group1']['group2']['group3']['test_data3'], 3*data)
+        assert_equal(version['group1/group2']['group3']['test_data3'], 3*data)
+        assert_equal(version['group1/group2']['group3/test_data3'], 3*data)
+        assert_equal(version['group1']['group2/group3/test_data3'], 3*data)
+        assert_equal(version['group1/group2/group3/test_data3'], 3*data)
+
+        assert_equal(version['group1']['group2']['test_data4'], 4*data)
+        assert_equal(version['group1/group2']['test_data4'], 4*data)
+        assert_equal(version['group1']['group2/test_data4'], 4*data)
+        assert_equal(version['group1/group2/test_data4'], 4*data)
+
+        assert list(version) == ['group1']
+        assert set(version['group1']) == {'group2', 'test_data1'}
+        assert set(version['group1']['group2']) == set(version['group1/group2']) == {'group3', 'test_data2', 'test_data4'}
+        assert list(version['group1']['group2']['group3']) == list(version['group1/group2/group3']) == ['test_data3']
+
+        with file.stage_version('version-bad', '') as group:
+            raises(ValueError, lambda: group.create_dataset('/group1/test_data', data=data))
+            raises(ValueError, lambda: group.create_group('/group1'))
+
+def test_moved_file():
+    # See issue #28. Make sure the virtual datasets do not hard-code the filename.
+    with setup(file_name='test.hdf5') as f:
+        file = VersionedHDF5File(f)
+
+        data = np.ones(2*DEFAULT_CHUNK_SIZE)
+        
+        with file.stage_version('version1') as group:
+            group['dataset'] = data
+
+    with h5py.File('test.hdf5', 'r') as f:
+        file = VersionedHDF5File(f)
+        assert_equal(file['version1']['dataset'][:], data)
+
+    # XXX: os.replace
+    os.rename('test.hdf5', 'test2.hdf5')
+
+    with h5py.File('test2.hdf5', 'r') as f:
+        file = VersionedHDF5File(f)
+        assert_equal(file['version1']['dataset'][:], data)
+
+def test_list_assign():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = [1, 2, 3]
+
+        with file.stage_version('version1') as group:
+            group['dataset'] = data
+    
+            assert_equal(group['dataset'][:], data)
+
+        assert_equal(file['version1']['dataset'][:], data)
 

@@ -1,4 +1,5 @@
 import numpy as np
+from ndindex import Slice
 
 import hashlib
 from collections.abc import MutableMapping
@@ -76,7 +77,7 @@ class Hashtable(MutableMapping):
         hash_table_arr = hash_table[:largest_index]
         hashes = bytes(hash_table_arr['hash'])
         shapes = hash_table_arr['shape']
-        self._d = {hashes[i*self.hash_size:(i+1)*self.hash_size]: slice(*shapes[i]) for i in range(largest_index)}
+        self._d = {hashes[i*self.hash_size:(i+1)*self.hash_size]: Slice(*shapes[i]) for i in range(largest_index)}
         self._indices = {k: i for i, k in enumerate(self._d)}
 
     def __getitem__(self, key):
@@ -87,7 +88,7 @@ class Hashtable(MutableMapping):
             raise TypeError("key must be bytes")
         if len(key) != self.hash_size:
             raise ValueError("key must be %d bytes" % self.hash_size)
-        if not isinstance(value, slice):
+        if not isinstance(value, (slice, Slice)):
             raise TypeError("value must be a slice object")
         if value.step not in [1, None]:
             raise ValueError("only step-1 slices are supported")
@@ -103,7 +104,7 @@ class Hashtable(MutableMapping):
             self.largest_index += 1
             if self.largest_index >= self.hash_table.shape[0]:
                 self.hash_table.resize((self.hash_table.shape[0] + self.chunk_size,))
-        self._d[key] = value
+        self._d[key] = Slice(value)
 
     def __delitem__(self, key):
         raise NotImplementedError
