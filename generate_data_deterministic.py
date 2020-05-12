@@ -119,12 +119,13 @@ class TestVersionedDatasetPerformance(TestCase):
                                                          num_changes,
                                                          num_deletes,
                                                          num_inserts)
-
+                    
                 t = time.time()
                 times.append(t-told)
                 told = t
                 # tts.append(tt)
                 logger.info('Wrote transaction %d at transaction time %s', a, tt)
+                f.flush()
             times.append(t-t0)
         finally:
             f.close()
@@ -405,6 +406,7 @@ class TestVersionedDatasetPerformance(TestCase):
                 told=t
                 #tts.append(tt)
                 logger.info('Wrote transaction %d at transaction time %s', a, tt)
+                f.flush()
             times.append(t-t0)
         finally:
             f.close()
