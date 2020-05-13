@@ -20,13 +20,14 @@ from collections import defaultdict
 import math
 import posixpath as pp
 
+from .backend import DEFAULT_CHUNK_SIZE
 from .slicetools import split_slice, spaceid_to_slice
 
 class InMemoryGroup(Group):
     def __init__(self, bind):
         self._data = {}
         self._subgroups = {}
-        self.chunk_size = defaultdict(type(None))
+        self.chunks = defaultdict(type(None))
         self.compression = defaultdict(type(None))
         self.compression_opts = defaultdict(type(None))
         self._parent = None
@@ -117,14 +118,17 @@ class InMemoryGroup(Group):
         if dirname and dirname not in self:
             self.create_group(dirname)
         data = _make_new_dset(**kwds)
-        chunk_size = kwds.get('chunks')
-        if isinstance(chunk_size, tuple):
-            if len(chunk_size) > 1:
-                raise NotImplementedError("Multiple dimensions")
-            chunk_size = chunk_size[0]
-        if chunk_size is True:
-            raise NotImplementedError("auto-chunking is not yet supported")
-        self.chunk_size[name] = chunk_size
+        shape = data.shape
+        chunks = kwds.get('chunks')
+        if chunks in [True, None]:
+            chunks = (DEFAULT_CHUNK_SIZE,) + shape[1:]
+        if isinstance(chunks, int) and not isinstance(chunks, bool):
+            chunks = (chunks,)
+        if len(shape) != len(chunks):
+            raise ValueError("chunks shape must equal the array shape")
+        if len(shape) == 0:
+            raise NotImplementedError("Scalar datasets")
+        self.chunks[name] = chunks
         self.compression[name] = kwds.get('compression')
         self.compression_opts[name] = kwds.get('compression_opts')
         self[name] = data
@@ -288,7 +292,7 @@ class InMemoryDataset(Dataset):
 
     @property
     def chunks(self):
-        return (self.id.chunk_size,)
+        return tuple(self.id.chunks)
 
     @property
     def attrs(self):
@@ -408,10 +412,11 @@ class InMemoryDatasetID(h5d.DatasetID):
         slice_map = {i.args[0]: j.args[0] for i, j in slice_map.items()}
         fid = h5i.get_file_id(self)
         g = Group(fid)
-        self.chunk_size = g[virtual_sources[0].dset_name].attrs['chunk_size']
+        self.chunks = tuple(g[virtual_sources[0].dset_name].attrs['chunks'])
 
+        chunk_size = self.chunks[0]
         for s in slice_map:
-            self.data_dict[s.start//self.chunk_size] = slice_map[s]
+            self.data_dict[s.start//chunk_size] = slice_map[s]
 
     def set_extent(self, shape):
         if len(shape) > 1:
@@ -419,7 +424,8 @@ class InMemoryDatasetID(h5d.DatasetID):
 
         old_shape = self.shape
         data_dict = self.data_dict
-        chunk_size = self.chunk_size
+        chunks = self.chunks
+        chunk_size = chunks[0]
         if shape[0] < old_shape[0]:
             for i in list(data_dict):
                 if (i + 1)*chunk_size > shape[0]:
@@ -441,18 +447,19 @@ class InMemoryDatasetID(h5d.DatasetID):
                 else:
                     a = data_dict[i]
                 assert a.shape[0] == old_shape % chunk_size
+
                 if i == quo:
                     data_dict[i] = np.concatenate([a, np.zeros((rem -
-                        a.shape[0]), dtype=self.dtype)])
+                        a.shape[0],) + chunks[1:], dtype=self.dtype)])
                 else:
                     data_dict[i] = np.concatenate([a, np.zeros((chunk_size -
-                        a.shape[0],), dtype=self.dtype)])
+                        a.shape[0],) + chunks[1:], dtype=self.dtype)])
             if rem != 0 and quo not in data_dict:
                 # Zeros along the chunks are added in the for loop below, but
                 # we have to add a sub-chunk zeros here
-                data_dict[quo] = np.zeros((rem,), dtype=self.dtype)
+                data_dict[quo] = np.zeros((rem,) + chunks[1:], dtype=self.dtype)
             for i in range(math.ceil(old_shape[0]/chunk_size), quo):
-                data_dict[i] = np.zeros((chunk_size,), dtype=self.dtype)
+                data_dict[i] = np.zeros(chunks, dtype=self.dtype)
         self.shape = shape
 
     @property
@@ -465,7 +472,9 @@ class InMemoryDatasetID(h5d.DatasetID):
 
     def _read_chunk(self, i, mtype=None, dxpl=None):
         # Based on Dataset.__getitem__
-        s = slice(i*self.chunk_size, (i+1)*self.chunk_size)
+        chunks = self.chunks
+        chunk_size = chunks[0]
+        s = slice(i*chunk_size, (i+1)*chunk_size)
         selection = select(self.shape, (s,), dsid=self)
 
         assert selection.nselect != 0
@@ -497,9 +506,11 @@ class InMemoryDatasetID(h5d.DatasetID):
         if fslice == Tuple():
             fslice = Tuple(Slice(0, arr_obj.shape[0], 1),)
         # Chunks that are modified
+        chunks = self.chunks
+        chunk_size = chunks[0]
         N0 = 0
-        for i, s_ in split_slice(fslice.args[0], chunk=self.chunk_size):
-            if isinstance(self.data_dict[i], (Slice, slice)):
+        for i, s_ in split_slice(fslice.args[0], chunk=chunk_size):
+            if isinstance(self.data_dict[i], (Slice, slice, tuple, Tuple)):
                 a = self._read_chunk(i, mtype=mtype, dxpl=dxpl)
                 data_dict[i] = a
 
@@ -526,9 +537,11 @@ class InMemoryDatasetID(h5d.DatasetID):
         if fslice == Tuple():
             fslice = Tuple(Slice(0, arr_obj.shape[0], 1),)
         # Chunks that are modified
+        chunks = self.chunks
+        chunk_size = chunks[0]
         N0 = 0
-        for i, s_ in split_slice(fslice.args[0], chunk=self.chunk_size):
-            if isinstance(self.data_dict[i], (slice, Slice)):
+        for i, s_ in split_slice(fslice.args[0], chunk=chunk_size):
+            if isinstance(self.data_dict[i], (slice, Slice, tuple, Tuple)):
                 a = self._read_chunk(i, mtype=mtype, dxpl=dxpl)
                 data_dict[i] = a
 

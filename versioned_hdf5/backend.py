@@ -1,3 +1,4 @@
+import numpy as np
 from h5py import VirtualLayout, VirtualSource
 from ndindex import Slice, ndindex
 
@@ -19,30 +20,52 @@ def initialize(f):
     versions.attrs['current_version'] = '__first_version__'
 
 def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
-    chunk_size=None, compression=None, compression_opts=None):
-    chunk_size = chunk_size or DEFAULT_CHUNK_SIZE
-    group = f['_version_data'].create_group(name)
+    chunks=True, compression=None, compression_opts=None):
+
+    # Validate shape (based on h5py._hl.dataset.make_new_dset
+    if shape is None:
+        if data is None:
+            if dtype is None:
+                raise TypeError("One of data, shape or dtype must be specified")
+            raise NotImplementedError("empty datasets are not yet implemented")
+        shape = data.shape
+    else:
+        shape = (shape,) if isinstance(shape, int) else tuple(shape)
+        if data is not None and (np.product(shape, dtype=np.ulonglong) != np.product(data.shape, dtype=np.ulonglong)):
+            raise ValueError("Shape tuple is incompatible with data")
     if dtype is None:
         # https://github.com/h5py/h5py/issues/1474
         dtype = data.dtype
-    dataset = group.create_dataset('raw_data', shape=(0,),
-                                   chunks=(chunk_size,), maxshape=(None,),
+
+    ndims = len(shape)
+    if isinstance(chunks, int) and not isinstance(chunks, bool):
+        chunks = (chunks,)
+    if chunks in [True, None]:
+        if ndims <= 1:
+            chunks = (DEFAULT_CHUNK_SIZE,)
+        else:
+            raise NotImplementedError("chunks must be specified for multi-dimensional datasets")
+    group = f['_version_data'].create_group(name)
+    dataset = group.create_dataset('raw_data', shape=(0,) + shape[1:],
+                                   chunks=chunks, maxshape=(None,) + shape[1:],
                                    dtype=dtype, compression=compression,
                                    compression_opts=compression_opts)
-    dataset.attrs['chunk_size'] = chunk_size
-    return write_dataset(f, name, data, chunk_size=chunk_size)
+    dataset.attrs['chunks'] = chunks
+    return write_dataset(f, name, data, chunks=chunks)
 
-def write_dataset(f, name, data, chunk_size=None, compression=None,
+def write_dataset(f, name, data, chunks=None, compression=None,
                   compression_opts=None):
     if name not in f['_version_data']:
-        return create_base_dataset(f, name, data=data, chunk_size=chunk_size,
+        return create_base_dataset(f, name, data=data, chunks=chunks,
             compression=compression, compression_opts=compression_opts)
 
     ds = f['_version_data'][name]['raw_data']
-    if chunk_size is None:
-        chunk_size = ds.attrs['chunk_size']
+    if isinstance(chunks, int) and not isinstance(chunks, bool):
+        chunks = (chunks,)
+    if chunks is None:
+        chunks = ds.attrs['chunks']
     else:
-        if chunk_size != ds.attrs['chunk_size']:
+        if chunks != ds.attrs['chunks']:
             raise ValueError("Chunk size specified but doesn't match already existing chunk size")
 
     if compression or compression_opts:
@@ -54,7 +77,8 @@ def write_dataset(f, name, data, chunk_size=None, compression=None,
     hashtable = Hashtable(f, name)
     slices = []
     slices_to_write = {}
-    for s in split_chunks(data.shape, chunk_size):
+    chunk_size = chunks[0]
+    for s in split_chunks(data.shape, chunks):
         idx = hashtable.largest_index
         data_s = data[s.raw]
         raw_slice = Slice(idx*chunk_size, idx*chunk_size + data_s.shape[0])
@@ -79,8 +103,9 @@ def write_dataset_chunks(f, name, data_dict):
         raise NotImplementedError("Use write_dataset() if the dataset does not yet exist")
 
     ds = f['_version_data'][name]['raw_data']
-    chunk_size = ds.attrs['chunk_size']
+    chunks = ds.attrs['chunks']
     # TODO: Handle more than one dimension
+    chunk_size = chunks[0]
     nchunks = max(data_dict)
     if any(i not in data_dict for i in range(nchunks)):
         raise ValueError("data_dict does not include all chunks")
@@ -112,8 +137,13 @@ def write_dataset_chunks(f, name, data_dict):
 
 def create_virtual_dataset(f, version_name, name, slices, attrs=None):
     raw_data = f['_version_data'][name]['raw_data']
-    chunk_size = raw_data.attrs['chunk_size']
+    chunks = raw_data.attrs['chunks']
+    chunk_size = chunks[0]
+    slices = [s.reduce() for s in slices]
+    if not all(isinstance(s, Slice) for s in slices):
+        raise NotImplementedError("Chunking in other than the first dimension")
     for s in slices[:-1]:
+        s = s.reduce()
         if s.stop - s.start != chunk_size:
             raise NotImplementedError("Smaller than chunk size slice is only supported as the last slice.")
     shape = (chunk_size*(len(slices) - 1) + slices[-1].stop - slices[-1].start,)

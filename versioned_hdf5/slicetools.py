@@ -25,12 +25,19 @@ def split_slice(s, chunk):
         new_step = step
         yield i, Slice(new_start, new_stop, new_step)
 
-def split_chunks(shape, chunk_size):
-    if len(shape) > 1:
-        raise NotImplementedError
+def split_chunks(shape, chunks):
+    if len(shape) != len(chunks):
+        raise ValueError("chunks shape must equal the array shape")
+    if len(shape) == 0:
+        raise NotImplementedError("Scalar datasets")
+
+    if any(i != j for i, j in zip(shape[1:], chunks[1:])):
+        raise NotImplementedError("Chunking over any dimension other than the first is not yet implemented")
+
+    chunk_size = chunks[0]
 
     for i in range(math.ceil(shape[0]/chunk_size)):
-        yield Slice(chunk_size*i, chunk_size*(i + 1))
+        yield Tuple(Slice(chunk_size*i, chunk_size*(i + 1)))
 
 def spaceid_to_slice(space):
     from h5py import h5s

@@ -144,7 +144,7 @@ class VersionedHDF5File:
         try:
             yield group
             commit_version(group, group.datasets(), make_current=make_current,
-                           chunk_size=group.chunk_size,
+                           chunks=group.chunks,
                            compression=group.compression,
                            compression_opts=group.compression_opts)
         except:
