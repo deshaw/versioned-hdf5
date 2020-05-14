@@ -407,14 +407,18 @@ class InMemoryDatasetID(h5d.DatasetID):
         slice_map = {spaceid_to_slice(i.vspace): spaceid_to_slice(i.src_space)
                      for i in virtual_sources}
 
-        slice_map = {i.args[0]: j.args[0] for i, j in slice_map.items()}
+        # slice_map = {i.args[0]: j.args[0] for i, j in slice_map.items()}
         fid = h5i.get_file_id(self)
         g = Group(fid)
         self.chunks = tuple(g[virtual_sources[0].dset_name].attrs['chunks'])
 
         chunk_size = self.chunks[0]
         for s in slice_map:
-            self.data_dict[s.start//chunk_size] = slice_map[s]
+            if isinstance(s, Tuple):
+                start = s.args[0].start
+            else:
+                start = s.start
+            self.data_dict[start//chunk_size] = slice_map[s]
 
     def set_extent(self, shape):
 
@@ -428,7 +432,7 @@ class InMemoryDatasetID(h5d.DatasetID):
                     if i*chunk_size >= shape[0]:
                         del data_dict[i]
                     else:
-                        if isinstance(data_dict[i], (Slice, slice)):
+                        if isinstance(data_dict[i], (Slice, slice, tuple, Tuple)):
                             # Non-chunk multiple
                             a = self._read_chunk(i)
                         else:
@@ -438,7 +442,7 @@ class InMemoryDatasetID(h5d.DatasetID):
             quo, rem = divmod(shape[0], chunk_size)
             if old_shape[0] % chunk_size != 0:
                 i = max(data_dict)
-                if isinstance(data_dict[i], (Slice, slice)):
+                if isinstance(data_dict[i], (Slice, slice, tuple, Tuple)):
                     a = self._read_chunk(i)
                 else:
                     a = data_dict[i]
@@ -504,12 +508,13 @@ class InMemoryDatasetID(h5d.DatasetID):
         chunk_size = chunks[0]
         N0 = 0
         for i, s_ in split_slice(fslice.args[0], chunk=chunk_size):
+            t = Tuple(s_, *fslice.args[1:])
             if isinstance(self.data_dict[i], (Slice, slice, tuple, Tuple)):
                 a = self._read_chunk(i, mtype=mtype, dxpl=dxpl)
                 data_dict[i] = a
 
             N = N0 + len(s_)
-            data_dict[i][s_.raw] = arr[N0:N]
+            data_dict[i][t.raw] = arr[N0:N]
             N0 = N
 
         return data_dict
@@ -533,10 +538,11 @@ class InMemoryDatasetID(h5d.DatasetID):
         chunk_size = chunks[0]
         N0 = 0
         for i, s_ in split_slice(fslice.args[0], chunk=chunk_size):
+            t = Tuple(s_, *fslice.args[1:])
             if isinstance(self.data_dict[i], (slice, Slice, tuple, Tuple)):
                 a = self._read_chunk(i, mtype=mtype, dxpl=dxpl)
                 data_dict[i] = a
 
             N = N0 + len(s_)
-            arr[N0:N] = data_dict[i][s_.raw]
+            arr[N0:N] = data_dict[i][t.raw]
             N0 = N

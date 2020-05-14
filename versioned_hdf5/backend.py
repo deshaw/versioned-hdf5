@@ -1,6 +1,6 @@
 import numpy as np
 from h5py import VirtualLayout, VirtualSource
-from ndindex import Slice, ndindex
+from ndindex import Slice, ndindex, Tuple
 
 from .hashtable import Hashtable
 from .slicetools import split_chunks
@@ -114,11 +114,11 @@ def write_dataset_chunks(f, name, data_dict):
     slices = [None for i in range(len(data_dict))]
     data_to_write = {}
     for chunk, data_s in data_dict.items():
-        if not isinstance(data_s, (slice, tuple, Slice)) and data_s.dtype != ds.dtype:
+        if not isinstance(data_s, (slice, tuple, Tuple, Slice)) and data_s.dtype != ds.dtype:
             raise ValueError(f"dtypes do not match ({data_s.dtype} != {ds.dtype})")
 
         idx = hashtable.largest_index
-        if isinstance(data_s, (slice, tuple, Slice)):
+        if isinstance(data_s, (slice, tuple, Tuple, Slice)):
             slices[chunk] = ndindex(data_s)
         else:
             raw_slice = Slice(idx*chunk_size, idx*chunk_size + data_s.shape[0])
