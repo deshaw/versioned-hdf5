@@ -406,8 +406,6 @@ class InMemoryDatasetID(h5d.DatasetID):
 
         slice_map = {spaceid_to_slice(i.vspace): spaceid_to_slice(i.src_space)
                      for i in virtual_sources}
-        if any(len(i.args) != 1 for i in slice_map) or any(len(i.args) != 1 for i in slice_map.values()):
-            raise NotImplementedError("More than one dimension is not yet supported")
 
         slice_map = {i.args[0]: j.args[0] for i, j in slice_map.items()}
         fid = h5i.get_file_id(self)
@@ -419,8 +417,6 @@ class InMemoryDatasetID(h5d.DatasetID):
             self.data_dict[s.start//chunk_size] = slice_map[s]
 
     def set_extent(self, shape):
-        if len(shape) > 1:
-            raise NotImplementedError("More than one dimension is not yet supported")
 
         old_shape = self.shape
         data_dict = self.data_dict
@@ -492,8 +488,6 @@ class InMemoryDatasetID(h5d.DatasetID):
             raise NotImplementedError("mtype != None")
         mslice = spaceid_to_slice(mspace)
         fslice = spaceid_to_slice(fspace)
-        if len(fslice.args) > 1 or len(self.shape) > 1:
-            raise NotImplementedError("More than one dimension is not yet supported")
         data_dict = self.data_dict
         arr = arr_obj[mslice.raw]
         if np.isscalar(arr):
@@ -523,8 +517,6 @@ class InMemoryDatasetID(h5d.DatasetID):
     def read(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
         mslice = spaceid_to_slice(mspace)
         fslice = spaceid_to_slice(fspace)
-        if len(fslice.args) > 1 or len(self.shape) > 1:
-            raise NotImplementedError("More than one dimension is not yet supported")
         data_dict = self.data_dict
         arr = arr_obj[mslice.raw]
         if np.isscalar(arr):

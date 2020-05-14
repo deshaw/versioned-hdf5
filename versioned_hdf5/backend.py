@@ -63,9 +63,9 @@ def write_dataset(f, name, data, chunks=None, compression=None,
     if isinstance(chunks, int) and not isinstance(chunks, bool):
         chunks = (chunks,)
     if chunks is None:
-        chunks = ds.attrs['chunks']
+        chunks = tuple(ds.attrs['chunks'])
     else:
-        if chunks != ds.attrs['chunks']:
+        if chunks != tuple(ds.attrs['chunks']):
             raise ValueError("Chunk size specified but doesn't match already existing chunk size")
 
     if compression or compression_opts:
@@ -88,7 +88,7 @@ def write_dataset(f, name, data, chunks=None, compression=None,
             slices_to_write[raw_slice] = s
         slices.append(raw_slice2)
 
-    ds.resize((old_shape[0] + len(slices_to_write)*chunk_size,))
+    ds.resize((old_shape[0] + len(slices_to_write)*chunk_size,) + chunks[1:])
     for raw_slice, s in slices_to_write.items():
         ds[raw_slice.raw] = data[s.raw]
     return slices
@@ -103,7 +103,7 @@ def write_dataset_chunks(f, name, data_dict):
         raise NotImplementedError("Use write_dataset() if the dataset does not yet exist")
 
     ds = f['_version_data'][name]['raw_data']
-    chunks = ds.attrs['chunks']
+    chunks = tuple(ds.attrs['chunks'])
     # TODO: Handle more than one dimension
     chunk_size = chunks[0]
     nchunks = max(data_dict)
@@ -130,14 +130,14 @@ def write_dataset_chunks(f, name, data_dict):
 
     assert None not in slices
     old_shape = ds.shape
-    ds.resize((old_shape[0] + len(data_to_write)*chunk_size,))
+    ds.resize((old_shape[0] + len(data_to_write)*chunk_size,) + chunks[1:])
     for raw_slice, data_s in data_to_write.items():
         ds[raw_slice.raw] = data_s
     return slices
 
 def create_virtual_dataset(f, version_name, name, slices, attrs=None):
     raw_data = f['_version_data'][name]['raw_data']
-    chunks = raw_data.attrs['chunks']
+    chunks = tuple(raw_data.attrs['chunks'])
     chunk_size = chunks[0]
     slices = [s.reduce() for s in slices]
     if not all(isinstance(s, Slice) for s in slices):
@@ -146,7 +146,7 @@ def create_virtual_dataset(f, version_name, name, slices, attrs=None):
         s = s.reduce()
         if s.stop - s.start != chunk_size:
             raise NotImplementedError("Smaller than chunk size slice is only supported as the last slice.")
-    shape = (chunk_size*(len(slices) - 1) + slices[-1].stop - slices[-1].start,)
+    shape = (chunk_size*(len(slices) - 1) + slices[-1].stop - slices[-1].start,) + chunks[1:]
 
     layout = VirtualLayout(shape, dtype=raw_data.dtype)
     vs = VirtualSource(raw_data)
