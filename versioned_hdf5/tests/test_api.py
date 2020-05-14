@@ -714,3 +714,30 @@ def test_groups():
         with file.stage_version('version-bad', '') as group:
             raises(ValueError, lambda: group.create_dataset('/group1/test_data', data=data))
             raises(ValueError, lambda: group.create_group('/group1'))
+
+def test_multidimsional():
+    # For now, datasets can only be expanded along the first axis. The shape
+    # of the remaining axes must stay fixed once the dataset is created.
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = np.ones((DEFAULT_CHUNK_SIZE, 2))
+
+        with file.stage_version('version1') as g:
+            g.create_dataset('test_data', data=data)
+            assert_equal(g['test_data'][()], data)
+
+        version1 = file['version1']
+        assert_equal(version1['test_data'][()], data)
+
+        data2 = data.copy()
+        data2[0, 1] = 2
+
+        with file.stage_version('version2') as g:
+            g['test_data'][0, 1] = 2
+            assert g['test_data'][0, 1] == 2
+            assert_equal(g['test_data'][()], data2)
+
+        version2 = file['version2']
+        assert version2['test_data'][0, 1] == 2
+        assert_equal(version2['test_data'][()], data2)
