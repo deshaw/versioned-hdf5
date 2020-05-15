@@ -423,6 +423,8 @@ class InMemoryDatasetID(h5d.DatasetID):
     def set_extent(self, shape):
 
         old_shape = self.shape
+        if old_shape[1:] != shape[1:]:
+            raise NotImplementedError("Resizing is currently only supported in the first dimension")
         data_dict = self.data_dict
         chunks = self.chunks
         chunk_size = chunks[0]
