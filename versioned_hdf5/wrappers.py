@@ -446,7 +446,7 @@ class InMemoryDatasetID(h5d.DatasetID):
                     a = self._read_chunk(i)
                 else:
                     a = data_dict[i]
-                assert a.shape[0] == old_shape % chunk_size
+                assert a.shape[0] == old_shape[0] % chunk_size
 
                 if i == quo:
                     data_dict[i] = np.concatenate([a, np.zeros((rem -
