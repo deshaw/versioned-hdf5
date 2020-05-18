@@ -149,7 +149,7 @@ def create_virtual_dataset(f, version_name, name, slices, attrs=None):
     shape = (chunk_size*(len(slices) - 1) + slices[-1].stop - slices[-1].start,) + chunks[1:]
 
     layout = VirtualLayout(shape, dtype=raw_data.dtype)
-    vs = VirtualSource(raw_data)
+    vs = VirtualSource('.', name=raw_data.name, shape=raw_data.shape, dtype=raw_data.dtype)
 
     for i, s in enumerate(slices):
         # TODO: This needs to handle more than one dimension

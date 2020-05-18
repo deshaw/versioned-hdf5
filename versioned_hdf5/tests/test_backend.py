@@ -116,7 +116,6 @@ def test_create_virtual_dataset_offset():
         assert_equal(virtual_data[0:2*DEFAULT_CHUNK_SIZE], 1.0)
         assert_equal(virtual_data[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE - 2], 3.0)
 
-
 def test_write_dataset_chunk_size():
     with setup() as f:
         chunk_size = 2**10

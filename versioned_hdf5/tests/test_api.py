@@ -1,4 +1,8 @@
+import os
+
 from pytest import raises
+
+import h5py
 
 import numpy as np
 from numpy.testing import assert_equal
@@ -268,6 +272,46 @@ def test_create_dataset():
         assert list(f['/_version_data/versions/version1']) == list(file['version1']) == ['test_data']
         assert list(f['/_version_data/versions/version2']) == list(file['version2']) == ['test_data', 'test_data2']
 
+
+def test_changes_dataset():
+    # Testcase similar to those on generate_data.py
+    test_data = np.ones((2*DEFAULT_CHUNK_SIZE,))
+
+    name = "testname"
+    
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        with file.stage_version('version1', '') as group:
+            group.create_dataset(f'{name}/key', data=test_data)
+            group.create_dataset(f'{name}/val', data=test_data)
+
+        version1 = file['version1']
+        assert version1.attrs['prev_version'] == '__first_version__'
+        assert_equal(version1[f'{name}/key'], test_data)
+        assert_equal(version1[f'{name}/val'], test_data)
+            
+        with file.stage_version('version2') as group:
+            key_ds = group[f'{name}/key']
+            val_ds = group[f'{name}/val']
+            val_ds[0] = -1
+            key_ds[0] = 0
+
+        key = file['version2'][f'{name}/key']
+        assert key.shape == (2*DEFAULT_CHUNK_SIZE,)
+        assert_equal(key[0], 0)
+        assert_equal(key[1:2*DEFAULT_CHUNK_SIZE], 1.0)
+
+        val = file['version2'][f'{name}/val']
+        assert val.shape == (2*DEFAULT_CHUNK_SIZE,)
+        assert_equal(val[0], -1.0)
+        assert_equal(val[1:2*DEFAULT_CHUNK_SIZE], 1.0)
+
+        assert list(f['_version_data/versions/__first_version__']) == []
+        assert list(f['_version_data/versions/version1']) == list(file['version1']) == [name]
+        assert list(f['_version_data/versions/version2']) == list(file['version2']) == [name]
+
+        
 def test_small_dataset():
     # Test creating a dataset that is smaller than the chunk size
     with setup() as f:
@@ -711,9 +755,99 @@ def test_groups():
         assert_equal(version['group1']['group2/test_data'], data)
         assert_equal(version['group1/group2/test_data'], data)
 
+        with file.stage_version('version6', '') as group:
+            group.create_dataset('group1/test_data1', data=data)
+            group.create_dataset('group1/group2/test_data2', data=2*data)
+            group.create_dataset('group1/group2/group3/test_data3', data=3*data)
+            group.create_dataset('group1/group2/test_data4', data=4*data)
+
+            assert_equal(group['group1']['test_data1'], data)
+            assert_equal(group['group1/test_data1'], data)
+
+            assert_equal(group['group1']['group2']['test_data2'], 2*data)
+            assert_equal(group['group1/group2']['test_data2'], 2*data)
+            assert_equal(group['group1']['group2/test_data2'], 2*data)
+            assert_equal(group['group1/group2/test_data2'], 2*data)
+
+            assert_equal(group['group1']['group2']['group3']['test_data3'], 3*data)
+            assert_equal(group['group1/group2']['group3']['test_data3'], 3*data)
+            assert_equal(group['group1/group2']['group3/test_data3'], 3*data)
+            assert_equal(group['group1']['group2/group3/test_data3'], 3*data)
+            assert_equal(group['group1/group2/group3/test_data3'], 3*data)
+
+            assert_equal(group['group1']['group2']['test_data4'], 4*data)
+            assert_equal(group['group1/group2']['test_data4'], 4*data)
+            assert_equal(group['group1']['group2/test_data4'], 4*data)
+            assert_equal(group['group1/group2/test_data4'], 4*data)
+
+            assert list(group) == ['group1']
+            assert set(group['group1']) == {'group2', 'test_data1'}
+            assert set(group['group1']['group2']) == set(group['group1/group2']) == {'group3', 'test_data2', 'test_data4'}
+            assert list(group['group1']['group2']['group3']) == list(group['group1/group2/group3']) == ['test_data3']
+
+        version = file['version6']
+        assert_equal(version['group1']['test_data1'], data)
+        assert_equal(version['group1/test_data1'], data)
+
+        assert_equal(version['group1']['group2']['test_data2'], 2*data)
+        assert_equal(version['group1/group2']['test_data2'], 2*data)
+        assert_equal(version['group1']['group2/test_data2'], 2*data)
+        assert_equal(version['group1/group2/test_data2'], 2*data)
+
+        assert_equal(version['group1']['group2']['group3']['test_data3'], 3*data)
+        assert_equal(version['group1/group2']['group3']['test_data3'], 3*data)
+        assert_equal(version['group1/group2']['group3/test_data3'], 3*data)
+        assert_equal(version['group1']['group2/group3/test_data3'], 3*data)
+        assert_equal(version['group1/group2/group3/test_data3'], 3*data)
+
+        assert_equal(version['group1']['group2']['test_data4'], 4*data)
+        assert_equal(version['group1/group2']['test_data4'], 4*data)
+        assert_equal(version['group1']['group2/test_data4'], 4*data)
+        assert_equal(version['group1/group2/test_data4'], 4*data)
+
+        assert list(version) == ['group1']
+        assert set(version['group1']) == {'group2', 'test_data1'}
+        assert set(version['group1']['group2']) == set(version['group1/group2']) == {'group3', 'test_data2', 'test_data4'}
+        assert list(version['group1']['group2']['group3']) == list(version['group1/group2/group3']) == ['test_data3']
+
         with file.stage_version('version-bad', '') as group:
             raises(ValueError, lambda: group.create_dataset('/group1/test_data', data=data))
             raises(ValueError, lambda: group.create_group('/group1'))
+
+def test_moved_file():
+    # See issue #28. Make sure the virtual datasets do not hard-code the filename.
+    with setup(file_name='test.hdf5') as f:
+        file = VersionedHDF5File(f)
+
+        data = np.ones(2*DEFAULT_CHUNK_SIZE)
+        
+        with file.stage_version('version1') as group:
+            group['dataset'] = data
+
+    with h5py.File('test.hdf5', 'r') as f:
+        file = VersionedHDF5File(f)
+        assert_equal(file['version1']['dataset'][:], data)
+
+    # XXX: os.replace
+    os.rename('test.hdf5', 'test2.hdf5')
+
+    with h5py.File('test2.hdf5', 'r') as f:
+        file = VersionedHDF5File(f)
+        assert_equal(file['version1']['dataset'][:], data)
+
+def test_list_assign():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = [1, 2, 3]
+
+        with file.stage_version('version1') as group:
+            group['dataset'] = data
+    
+            assert_equal(group['dataset'][:], data)
+
+        assert_equal(file['version1']['dataset'][:], data)
+
 
 def test_multidimsional():
     # For now, datasets can only be expanded along the first axis. The shape
