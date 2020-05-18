@@ -29,6 +29,7 @@ def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
                                    chunks=(chunk_size,), maxshape=(None,),
                                    dtype=dtype, compression=compression,
                                    compression_opts=compression_opts)
+
     dataset.attrs['chunk_size'] = chunk_size
     return write_dataset(f, name, data, chunk_size=chunk_size)
 

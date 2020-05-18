@@ -140,7 +140,6 @@ class TestVersionedDatasetPerformance(TestDatasetPerformanceBase):
         # delete rows
         if random.randrange(0, 100) <= pct_deletes:
             # delete from values in two steps
-            arr_val = val_ds[:]
 
             # 1. delete from key0 and associated vals
             r_num_dels_0 = max(int(np.random.randn() + num_deletes_0), 1)
@@ -148,6 +147,7 @@ class TestVersionedDatasetPerformance(TestDatasetPerformanceBase):
 
             rs_val = [r0 * n_key1 + r1 for r0 in rs_0 for r1 in range(n_key1)]
             n_val -= len(rs_val)
+            arr_val = val_ds[:]
             arr_val = np.delete(arr_val, rs_val)
 
             n_key0 -= r_num_dels_0
