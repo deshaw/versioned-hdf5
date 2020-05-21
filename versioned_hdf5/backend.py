@@ -114,13 +114,12 @@ def write_dataset_chunks(f, name, data_dict):
         ds[raw_slice.raw] = data_s
     return slices
 
-def create_virtual_dataset(f, version_name, name, slices, attrs=None, fillvalue=None):
+def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fillvalue=None):
     raw_data = f['_version_data'][name]['raw_data']
     chunk_size = raw_data.attrs['chunk_size']
     for s in slices[:-1]:
         if s.stop - s.start != chunk_size:
             raise NotImplementedError("Smaller than chunk size slice is only supported as the last slice.")
-    shape = (chunk_size*(len(slices) - 1) + slices[-1].stop - slices[-1].start,)
 
     layout = VirtualLayout(shape, dtype=raw_data.dtype)
     vs = VirtualSource('.', name=raw_data.name, shape=raw_data.shape, dtype=raw_data.dtype)

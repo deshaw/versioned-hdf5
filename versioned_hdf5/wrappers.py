@@ -20,6 +20,7 @@ from collections import defaultdict
 import math
 import posixpath as pp
 
+from .backend import DEFAULT_CHUNK_SIZE
 from .slicetools import split_slice, spaceid_to_slice
 
 _groups = {}
@@ -75,7 +76,12 @@ class InMemoryGroup(Group):
             self._subgroups[name] = self.__class__(res.id)
             return self._subgroups[name]
         elif isinstance(res, Dataset):
-            self._data[name] = InMemoryDataset(res.id)
+            if not res.is_virtual:
+                # This must be from a sparse dataset. create_virtual_dataset()
+                # with an empty produces a dataset that isn't virtual.
+                self._data[name] = InMemorySparseDataset.from_dataset(res)
+            else:
+                self._data[name] = InMemoryDataset(res.id)
             return self._data[name]
         else:
             raise NotImplementedError(f"Cannot handle {type(res)!r}")
@@ -92,7 +98,7 @@ class InMemoryGroup(Group):
             self._subgroups[name] = InMemoryGroup(obj.id)
         elif isinstance(obj, InMemoryGroup):
             self._subgroups[name] = obj
-        elif isinstance(obj, InMemoryArrayDataset):
+        elif isinstance(obj, (InMemoryArrayDataset, InMemorySparseDataset)):
             self._data[name] = obj
         else:
             self._data[name] = InMemoryArrayDataset(name, np.asarray(obj))
@@ -130,13 +136,15 @@ class InMemoryGroup(Group):
             n = dirname
         return group
 
-    def create_dataset(self, name, **kwds):
+    def create_dataset(self, name, shape=None, dtype=None, fillvalue=None, **kwds):
         dirname, data_name = pp.split(name)
         if dirname and dirname not in self:
             self.create_group(dirname)
-        data = _make_new_dset(**kwds)
-        if 'fillvalue' in kwds:
-            data = InMemoryArrayDataset(name, data, fillvalue=kwds['fillvalue'])
+        data = _make_new_dset(shape=shape, dtype=dtype, fillvalue=fillvalue, **kwds)
+        if fillvalue is not None and isinstance(data, np.ndarray):
+            data = InMemoryArrayDataset(name, data, fillvalue=fillvalue)
+        if data is None:
+            data = InMemorySparseDataset(name, shape=shape, dtype=dtype, fillvalue=fillvalue)
         chunk_size = kwds.get('chunks')
         if isinstance(chunk_size, tuple):
             if len(chunk_size) > 1:
@@ -313,6 +321,54 @@ class InMemoryDataset(Dataset):
     @property
     def attrs(self):
         return self._attrs
+
+class InMemorySparseDataset:
+    """
+    Class that looks like a Dataset that has no data (only the fillvalue)
+    """
+    def __init__(self, name, shape, dtype, chunk_size=None, fillvalue=None):
+        if shape is None:
+            raise TypeError("shape must be specified for sparse datasets")
+        self.name = name
+        self.shape = shape
+        self.dtype = np.dtype(dtype)
+        self.attrs = {}
+        self.fillvalue = fillvalue or dtype.type()
+        self.chunk_size = chunk_size or DEFAULT_CHUNK_SIZE
+
+        # This works like a mix between InMemoryArrayDataset and
+        # InMemoryDatasetID. Explicit array data is stored in a data_dict like
+        # with InMemoryDatasetID, but unlike it, missing data (which equals
+        # the fill value) is omitted.
+        self.data_dict = {}
+
+    @classmethod
+    def from_dataset(cls, dataset):
+        # np.testing.assert_equal(dataset[()], dataset.fillvalue)
+        return cls(dataset.name, dataset.shape, dataset.dtype, dataset.fillvalue)
+
+    def resize(self, size, axis=None):
+        if axis is not None:
+            if not (axis >=0 and axis < self.ndim):
+                raise ValueError("Invalid axis (0 to %s allowed)" % (self.ndim-1))
+            try:
+                newlen = int(size)
+            except TypeError:
+                raise TypeError("Argument must be a single int if axis is specified")
+            size = list(self.shape)
+            size[axis] = newlen
+
+        size = tuple(size)
+        if len(size) > 1:
+            raise NotImplementedError("More than one dimension is not yet supported")
+        self.shape = size
+
+    def __getitem__(self, item):
+        # Requires https://github.com/Quansight/ndindex/issues/23
+        raise NotImplementedError("Accessing elements of sparse datasets")
+
+    def __setitem__(self, item, value):
+        raise NotImplementedError("Setting elements of sparse datasets")
 
 class InMemoryArrayDataset:
     """

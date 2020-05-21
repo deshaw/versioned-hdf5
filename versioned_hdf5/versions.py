@@ -1,8 +1,10 @@
 from uuid import uuid4
 from collections import defaultdict
 
+import numpy as np
+
 from .backend import write_dataset, write_dataset_chunks, create_virtual_dataset
-from .wrappers import InMemoryGroup, InMemoryDataset, InMemoryArrayDataset
+from .wrappers import InMemoryGroup, InMemoryDataset, InMemoryArrayDataset, InMemorySparseDataset
 
 def create_version_group(f, version_name, prev_version=None):
     versions = f['_version_data/versions']
@@ -71,24 +73,31 @@ def commit_version(version_group, datasets, *,
 
     for name, data in datasets.items():
         fillvalue = None
-        if isinstance(data, (InMemoryDataset, InMemoryArrayDataset)):
+        if isinstance(data, (InMemoryDataset, InMemoryArrayDataset, InMemorySparseDataset)):
             attrs = data.attrs
             fillvalue = data.fillvalue
         else:
             attrs = {}
 
+        shape = data.shape
         if isinstance(data, InMemoryDataset):
             data = data.id.data_dict
         if isinstance(data, dict):
             if chunk_size[name] is not None:
                 raise NotImplementedError("Specifying chunk size with dict data")
             slices = write_dataset_chunks(f, name, data)
+        elif isinstance(data, InMemorySparseDataset):
+            slices = write_dataset(f, name, np.array([]),
+                                   chunk_size=chunk_size[name],
+                                   compression=compression[name],
+                                   compression_opts=compression_opts[name],
+                                   fillvalue=fillvalue)
         else:
             slices = write_dataset(f, name, data, chunk_size=chunk_size[name],
                                    compression=compression[name],
                                    compression_opts=compression_opts[name],
                                    fillvalue=fillvalue)
-        create_virtual_dataset(f, version_name, name, slices, attrs=attrs,
+        create_virtual_dataset(f, version_name, name, shape, slices, attrs=attrs,
                                fillvalue=fillvalue)
     version_group.attrs['committed'] = True
 
