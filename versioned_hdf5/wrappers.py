@@ -93,6 +93,8 @@ class InMemoryGroup(Group):
             self._subgroups[name] = InMemoryGroup(obj.id)
         elif isinstance(obj, InMemoryGroup):
             self._subgroups[name] = obj
+        elif isinstance(obj, InMemoryArrayDataset):
+            self._data[name] = obj
         else:
             self._data[name] = InMemoryArrayDataset(name, np.asarray(obj))
 
@@ -135,6 +137,8 @@ class InMemoryGroup(Group):
             self.create_group(dirname)
         data = _make_new_dset(**kwds)
         shape = data.shape
+        if 'fillvalue' in kwds:
+            data = InMemoryArrayDataset(name, data, fillvalue=kwds['fillvalue'])
         chunks = kwds.get('chunks')
         if chunks in [True, None]:
             chunks = (DEFAULT_CHUNK_SIZE,) + shape[1:]
@@ -158,6 +162,15 @@ class InMemoryGroup(Group):
             yield i
         for i in names:
             yield i
+
+    def __contains__(self, item):
+        dirname, data_name = pp.split(item)
+        if dirname not in ['', '/']:
+            return dirname in self and data_name in self[dirname]
+        for i in self:
+            if i == item:
+                return True
+        return False
 
     def datasets(self):
         res = self._data.copy()
@@ -318,10 +331,11 @@ class InMemoryArrayDataset:
     """
     Class that looks like a h5py.Dataset but is backed by an array
     """
-    def __init__(self, name, array):
+    def __init__(self, name, array, fillvalue=None):
         self.name = name
         self._array = array
         self.attrs = {}
+        self.fillvalue = fillvalue or array.dtype.type()
 
     @property
     def array(self):
@@ -397,9 +411,9 @@ class InMemoryArrayDataset:
         if len(size) > 1:
             raise NotImplementedError("More than one dimension is not yet supported")
         if size[0] > self.shape[0]:
-            self.array = np.concatenate((self.array,
-                                         np.zeros(size[0] - self.shape[0],
-                                                  dtype=self.dtype)))
+            self.array = np.concatenate((self.array, np.full(size[0] -
+                                                             self.shape[0], self.fillvalue,
+                                                             dtype=self.dtype)))
         else:
             self.array = self.array[:size[0]]
 
@@ -436,6 +450,10 @@ class InMemoryDatasetID(h5d.DatasetID):
                 start = s.start
             self.data_dict[start//chunk_size] = slice_map[s]
 
+        fillvalue_a = np.empty((1,), dtype=self.dtype)
+        dcpl.get_fill_value(fillvalue_a)
+        self.fillvalue = fillvalue_a[0]
+
     def set_extent(self, shape):
 
         old_shape = self.shape
@@ -467,17 +485,17 @@ class InMemoryDatasetID(h5d.DatasetID):
                 assert a.shape[0] == old_shape[0] % chunk_size
 
                 if i == quo:
-                    data_dict[i] = np.concatenate([a, np.zeros((rem -
-                        a.shape[0],) + chunks[1:], dtype=self.dtype)])
+                    data_dict[i] = np.concatenate([a, np.full((rem -
+                        a.shape[0],) + chunks[1:], self.fillvalue, dtype=self.dtype)])
                 else:
-                    data_dict[i] = np.concatenate([a, np.zeros((chunk_size -
-                        a.shape[0],) + chunks[1:], dtype=self.dtype)])
+                    data_dict[i] = np.concatenate([a, np.full((chunk_size -
+                        a.shape[0],) + chunks[1:], self.fillvalue, dtype=self.dtype)])
             if rem != 0 and quo not in data_dict:
-                # Zeros along the chunks are added in the for loop below, but
-                # we have to add a sub-chunk zeros here
-                data_dict[quo] = np.zeros((rem,) + chunks[1:], dtype=self.dtype)
+                # fillvalue along the chunks are added in the for loop below, but
+                # we have to add a sub-chunk fillvalues here
+                data_dict[quo] = np.full((rem,) + chunks[1:], self.fillvalue, dtype=self.dtype)
             for i in range(math.ceil(old_shape[0]/chunk_size), quo):
-                data_dict[i] = np.zeros(chunks, dtype=self.dtype)
+                data_dict[i] = np.full(chunks, self.fillvalue, dtype=self.dtype)
         self.shape = shape
 
     @property

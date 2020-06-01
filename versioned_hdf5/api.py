@@ -150,4 +150,3 @@ class VersionedHDF5File:
         except:
             delete_version(self.f, version_name, old_current)
             raise
-
