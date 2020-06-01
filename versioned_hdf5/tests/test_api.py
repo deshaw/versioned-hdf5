@@ -936,3 +936,104 @@ def test_nested_group():
         assert_equal(version2['bar/baz'][:], data1)
         assert 'bar/bon/1/data/axes/date' not in version1
         assert_equal(version2['bar/bon/1/data/axes/date'][:], data2)
+
+def test_fillvalue():
+    # Based on test_resize(), but only the resize largers that use the fill
+    # value
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        fillvalue = 5.0
+
+        no_offset_data = np.ones((2*DEFAULT_CHUNK_SIZE,))
+
+        offset_data = np.concatenate((np.ones((DEFAULT_CHUNK_SIZE,)),
+                                      np.ones((2,))))
+
+        with file.stage_version('version1') as group:
+            group.create_dataset('no_offset', data=no_offset_data, fillvalue=fillvalue)
+            group.create_dataset('offset', data=offset_data, fillvalue=fillvalue)
+
+        group = file['version1']
+        assert group['no_offset'].shape == (2*DEFAULT_CHUNK_SIZE,)
+        assert group['offset'].shape == (DEFAULT_CHUNK_SIZE + 2,)
+        assert_equal(group['no_offset'][:2*DEFAULT_CHUNK_SIZE], 1.0)
+        assert_equal(group['offset'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
+
+        # Resize larger, chunk multiple
+        with file.stage_version('larger_chunk_multiple') as group:
+            group['no_offset'].resize((3*DEFAULT_CHUNK_SIZE,))
+            group['offset'].resize((3*DEFAULT_CHUNK_SIZE,))
+
+        group = file['larger_chunk_multiple']
+        assert group['no_offset'].shape == (3*DEFAULT_CHUNK_SIZE,)
+        assert group['offset'].shape == (3*DEFAULT_CHUNK_SIZE,)
+        assert_equal(group['no_offset'][:2*DEFAULT_CHUNK_SIZE], 1.0)
+        assert_equal(group['no_offset'][2*DEFAULT_CHUNK_SIZE:], fillvalue)
+        assert_equal(group['offset'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
+        assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 2:], fillvalue)
+
+
+        # Resize larger, non-chunk multiple
+        with file.stage_version('larger_chunk_non_multiple', 'version1') as group:
+            group['no_offset'].resize((3*DEFAULT_CHUNK_SIZE + 2,))
+            group['offset'].resize((3*DEFAULT_CHUNK_SIZE + 2,))
+
+        group = file['larger_chunk_non_multiple']
+        assert group['no_offset'].shape == (3*DEFAULT_CHUNK_SIZE + 2,)
+        assert group['offset'].shape == (3*DEFAULT_CHUNK_SIZE + 2,)
+        assert_equal(group['no_offset'][:2*DEFAULT_CHUNK_SIZE], 1.0)
+        assert_equal(group['no_offset'][2*DEFAULT_CHUNK_SIZE:], fillvalue)
+        assert_equal(group['offset'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
+        assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 2:], fillvalue)
+
+        # Resize after creation
+        with file.stage_version('version2', 'version1') as group:
+            # Cover the case where some data is already read in
+            group['offset'][-1] = 2.0
+
+            group['no_offset'].resize((3*DEFAULT_CHUNK_SIZE + 2,))
+            group['offset'].resize((3*DEFAULT_CHUNK_SIZE + 2,))
+
+            assert group['no_offset'].shape == (3*DEFAULT_CHUNK_SIZE + 2,)
+            assert group['offset'].shape == (3*DEFAULT_CHUNK_SIZE + 2,)
+            assert_equal(group['no_offset'][:2*DEFAULT_CHUNK_SIZE], 1.0)
+            assert_equal(group['no_offset'][2*DEFAULT_CHUNK_SIZE:], fillvalue)
+            assert_equal(group['offset'][:DEFAULT_CHUNK_SIZE + 1], 1.0)
+            assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 1], 2.0)
+            assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 2:], fillvalue)
+
+            group['no_offset'].resize((3*DEFAULT_CHUNK_SIZE,))
+            group['offset'].resize((3*DEFAULT_CHUNK_SIZE,))
+
+            assert group['no_offset'].shape == (3*DEFAULT_CHUNK_SIZE,)
+            assert group['offset'].shape == (3*DEFAULT_CHUNK_SIZE,)
+            assert_equal(group['no_offset'][:2*DEFAULT_CHUNK_SIZE], 1.0)
+            assert_equal(group['no_offset'][2*DEFAULT_CHUNK_SIZE:], fillvalue)
+            assert_equal(group['offset'][:DEFAULT_CHUNK_SIZE + 1], 1.0)
+            assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 1], 2.0)
+            assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 2:], fillvalue)
+
+        group = file['version2']
+        assert group['no_offset'].shape == (3*DEFAULT_CHUNK_SIZE,)
+        assert group['offset'].shape == (3*DEFAULT_CHUNK_SIZE,)
+        assert_equal(group['no_offset'][:2*DEFAULT_CHUNK_SIZE], 1.0)
+        assert_equal(group['no_offset'][2*DEFAULT_CHUNK_SIZE:], fillvalue)
+        assert_equal(group['offset'][:DEFAULT_CHUNK_SIZE + 1], 1.0)
+        assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 1], 2.0)
+        assert_equal(group['offset'][DEFAULT_CHUNK_SIZE + 2:], fillvalue)
+
+        # Resize after calling create_dataset, larger
+        with file.stage_version('resize_after_create_larger', '') as group:
+            group.create_dataset('data', data=offset_data,
+                                 fillvalue=fillvalue)
+            group['data'].resize((DEFAULT_CHUNK_SIZE + 4,))
+
+            assert group['data'].shape == (DEFAULT_CHUNK_SIZE + 4,)
+            assert_equal(group['data'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
+            assert_equal(group['data'][DEFAULT_CHUNK_SIZE + 2:], fillvalue)
+
+        group = file['resize_after_create_larger']
+        assert group['data'].shape == (DEFAULT_CHUNK_SIZE + 4,)
+        assert_equal(group['data'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
+        assert_equal(group['data'][DEFAULT_CHUNK_SIZE + 2:], fillvalue)

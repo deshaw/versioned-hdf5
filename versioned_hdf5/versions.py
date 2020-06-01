@@ -77,8 +77,10 @@ def commit_version(version_group, datasets, *,
         versions.attrs['current_version'] = version_name
 
     for name, data in datasets.items():
+        fillvalue = None
         if isinstance(data, (InMemoryDataset, InMemoryArrayDataset)):
             attrs = data.attrs
+            fillvalue = data.fillvalue
         else:
             attrs = {}
 
@@ -89,10 +91,12 @@ def commit_version(version_group, datasets, *,
                 raise NotImplementedError("Specifying chunk size with dict data")
             slices = write_dataset_chunks(f, name, data)
         else:
-            slices = write_dataset(f, name, data,
-                                   chunk_size=chunk_size[name], compression=compression[name],
-                                   compression_opts=compression_opts[name])
-        create_virtual_dataset(f, version_name, name, slices, attrs=attrs)
+            slices = write_dataset(f, name, data, chunk_size=chunk_size[name],
+                                   compression=compression[name],
+                                   compression_opts=compression_opts[name],
+                                   fillvalue=fillvalue)
+        create_virtual_dataset(f, version_name, name, slices, attrs=attrs,
+                               fillvalue=fillvalue)
     version_group.attrs['committed'] = True
 
 def delete_version(f, version_name, new_current=None):

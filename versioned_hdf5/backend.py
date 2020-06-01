@@ -19,7 +19,7 @@ def initialize(f):
     versions.attrs['current_version'] = '__first_version__'
 
 def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
-    chunk_size=None, compression=None, compression_opts=None):
+    chunk_size=None, compression=None, compression_opts=None, fillvalue=None):
     chunk_size = chunk_size or DEFAULT_CHUNK_SIZE
     group = f['_version_data'].create_group(name)
     if dtype is None:
@@ -28,16 +28,17 @@ def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
     dataset = group.create_dataset('raw_data', shape=(0,),
                                    chunks=(chunk_size,), maxshape=(None,),
                                    dtype=dtype, compression=compression,
-                                   compression_opts=compression_opts)
+                                   compression_opts=compression_opts,
+                                   fillvalue=fillvalue)
 
     dataset.attrs['chunk_size'] = chunk_size
     return write_dataset(f, name, data, chunk_size=chunk_size)
 
 def write_dataset(f, name, data, chunk_size=None, compression=None,
-                  compression_opts=None):
+                  compression_opts=None, fillvalue=None):
     if name not in f['_version_data']:
         return create_base_dataset(f, name, data=data, chunk_size=chunk_size,
-            compression=compression, compression_opts=compression_opts)
+            compression=compression, compression_opts=compression_opts, fillvalue=fillvalue)
 
     ds = f['_version_data'][name]['raw_data']
     if chunk_size is None:
@@ -48,6 +49,8 @@ def write_dataset(f, name, data, chunk_size=None, compression=None,
 
     if compression or compression_opts:
         raise ValueError("Compression options can only be specified for the first version of a dataset")
+    if fillvalue is not None and fillvalue != ds.fillvalue:
+        raise ValueError(f"fillvalues do not match ({fillvalue} != {ds.fillvalue})")
     if data.dtype != ds.dtype:
         raise ValueError(f"dtypes do not match ({data.dtype} != {ds.dtype})")
     # TODO: Handle more than one dimension
@@ -111,7 +114,7 @@ def write_dataset_chunks(f, name, data_dict):
         ds[raw_slice.raw] = data_s
     return slices
 
-def create_virtual_dataset(f, version_name, name, slices, attrs=None):
+def create_virtual_dataset(f, version_name, name, slices, attrs=None, fillvalue=None):
     raw_data = f['_version_data'][name]['raw_data']
     chunk_size = raw_data.attrs['chunk_size']
     for s in slices[:-1]:
@@ -126,7 +129,7 @@ def create_virtual_dataset(f, version_name, name, slices, attrs=None):
         # TODO: This needs to handle more than one dimension
         layout[i*chunk_size:i*chunk_size + s.stop - s.start] = vs[s.raw]
 
-    virtual_data = f['_version_data/versions'][version_name].create_virtual_dataset(name, layout)
+    virtual_data = f['_version_data/versions'][version_name].create_virtual_dataset(name, layout, fillvalue=fillvalue)
 
     if attrs:
         for k, v in attrs.items():
