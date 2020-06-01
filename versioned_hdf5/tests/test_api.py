@@ -814,6 +814,69 @@ def test_groups():
             raises(ValueError, lambda: group.create_dataset('/group1/test_data', data=data))
             raises(ValueError, lambda: group.create_group('/group1'))
 
+def test_group_contains():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = np.ones(2*DEFAULT_CHUNK_SIZE)
+
+        with file.stage_version('version1') as group:
+            group.create_dataset('group1/group2/test_data', data=data)
+            assert 'group1' in group
+            assert 'group2' in group['group1']
+            assert 'test_data' in group['group1/group2']
+            assert 'test_data' not in group
+            assert 'test_data' not in group['group1']
+            assert 'group1/group2' in group
+            assert 'group1/group3' not in group
+            assert 'group1/group2/test_data' in group
+            assert 'group1/group3/test_data' not in group
+            assert 'group1/group3/test_data2' not in group
+
+        with file.stage_version('version2') as group:
+            group.create_dataset('group1/group3/test_data2', data=data)
+            assert 'group1' in group
+            assert 'group2' in group['group1']
+            assert 'group3' in group['group1']
+            assert 'test_data' in group['group1/group2']
+            assert 'test_data' not in group
+            assert 'test_data' not in group['group1']
+            assert 'test_data2' in group['group1/group3']
+            assert 'test_data2' not in group['group1/group2']
+            assert 'group1/group2' in group
+            assert 'group1/group3' in group
+            assert 'group1/group2/test_data' in group
+            assert 'group1/group3/test_data' not in group
+            assert 'group1/group3/test_data2' in group
+
+        version1 = file['version1']
+        version2 = file['version2']
+        assert 'group1' in version1
+        assert 'group1' in version2
+        assert 'group2' in version1['group1']
+        assert 'group2' in version2['group1']
+        assert 'group3' not in version1['group1']
+        assert 'group3' in version2['group1']
+        assert 'group1/group2' in version1
+        assert 'group1/group2' in version2
+        assert 'group1/group3' not in version1
+        assert 'group1/group3' in version2
+        assert 'group1/group2/test_data' in version1
+        assert 'group1/group2/test_data' in version2
+        assert 'group1/group3/test_data' not in version1
+        assert 'group1/group3/test_data' not in version2
+        assert 'group1/group3/test_data2' not in version1
+        assert 'group1/group3/test_data2' in version2
+        assert 'test_data' in version1['group1/group2']
+        assert 'test_data' in version2['group1/group2']
+        assert 'test_data' not in version1
+        assert 'test_data' not in version2
+        assert 'test_data' not in version1['group1']
+        assert 'test_data' not in version2['group1']
+        assert 'test_data2' in version2['group1/group3']
+        assert 'test_data2' not in version1['group1/group2']
+        assert 'test_data2' not in version2['group1/group2']
+
 def test_moved_file():
     # See issue #28. Make sure the virtual datasets do not hard-code the filename.
     with setup(file_name='test.hdf5') as f:
@@ -847,6 +910,32 @@ def test_list_assign():
             assert_equal(group['dataset'][:], data)
 
         assert_equal(file['version1']['dataset'][:], data)
+
+def test_nested_group():
+    # Issue #66
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data1 = np.array([1, 1])
+        data2 = np.array([2, 2])
+
+        with file.stage_version('1') as sv:
+            sv.create_dataset('bar/baz', data=data1)
+            assert_equal(sv['bar/baz'][:], data1)
+
+        assert_equal(sv['bar/baz'][:], data1)
+
+        with file.stage_version('2') as sv:
+            sv.create_dataset('bar/bon/1/data/axes/date', data=data2)
+            assert_equal(sv['bar/baz'][:], data1)
+            assert_equal(sv['bar/bon/1/data/axes/date'][:], data2)
+
+        version1 = file['1']
+        version2 = file['2']
+        assert_equal(version1['bar/baz'][:], data1)
+        assert_equal(version2['bar/baz'][:], data1)
+        assert 'bar/bon/1/data/axes/date' not in version1
+        assert_equal(version2['bar/bon/1/data/axes/date'][:], data2)
 
 def test_fillvalue():
     # Based on test_resize(), but only the resize largers that use the fill

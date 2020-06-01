@@ -1,6 +1,8 @@
 from uuid import uuid4
 from collections import defaultdict
 
+from h5py import Dataset, Group
+
 from .backend import write_dataset, write_dataset_chunks, create_virtual_dataset
 from .wrappers import InMemoryGroup, InMemoryDataset, InMemoryArrayDataset
 
@@ -28,7 +30,12 @@ def create_version_group(f, version_name, prev_version=None):
     prev_group = versions[prev_version]
 
     def _get(name, item):
-        group[name] = item
+        if isinstance(item, (Group, InMemoryGroup)):
+            group.create_group(name)
+        elif isinstance(item, Dataset):
+            group[name] = item
+        else:
+            raise NotImplementedError(f"{type(item)}")
         for k, v in item.attrs.items():
             group[name].attrs[k] = v
 

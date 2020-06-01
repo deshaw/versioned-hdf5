@@ -159,6 +159,15 @@ class InMemoryGroup(Group):
         for i in names:
             yield i
 
+    def __contains__(self, item):
+        dirname, data_name = pp.split(item)
+        if dirname not in ['', '/']:
+            return dirname in self and data_name in self[dirname]
+        for i in self:
+            if i == item:
+                return True
+        return False
+
     def datasets(self):
         res = self._data.copy()
 
