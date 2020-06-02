@@ -43,7 +43,7 @@ def create_version_group(f, version_name, prev_version=None):
     return group
 
 def commit_version(version_group, datasets, *,
-                   make_current=True, chunk_size=None,
+                   make_current=True, chunks=None,
                    compression=None, compression_opts=None):
     """
     Create a new version
@@ -69,7 +69,7 @@ def commit_version(version_group, datasets, *,
     versions = version_group.parent
     f = versions.parent.parent
 
-    chunk_size = chunk_size or defaultdict(type(None))
+    chunks = chunks or defaultdict(type(None))
     compression = compression or defaultdict(type(None))
     compression_opts = compression_opts or defaultdict(type(None))
 
@@ -87,11 +87,11 @@ def commit_version(version_group, datasets, *,
         if isinstance(data, InMemoryDataset):
             data = data.id.data_dict
         if isinstance(data, dict):
-            if chunk_size[name] is not None:
+            if chunks[name] is not None:
                 raise NotImplementedError("Specifying chunk size with dict data")
             slices = write_dataset_chunks(f, name, data)
         else:
-            slices = write_dataset(f, name, data, chunk_size=chunk_size[name],
+            slices = write_dataset(f, name, data, chunks=chunks[name],
                                    compression=compression[name],
                                    compression_opts=compression_opts[name],
                                    fillvalue=fillvalue)

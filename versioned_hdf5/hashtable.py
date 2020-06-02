@@ -1,5 +1,5 @@
 import numpy as np
-from ndindex import Slice
+from ndindex import Slice, Tuple
 
 import hashlib
 from collections.abc import MutableMapping
@@ -26,10 +26,12 @@ class Hashtable(MutableMapping):
     mapped to it.
 
     """
-    def __init__(self, f, name):
+    def __init__(self, f, name, chunk_size=None):
+        from .backend import DEFAULT_CHUNK_SIZE
+
         self.f = f
         self.name = name
-        self.chunk_size = f['_version_data'][name]['raw_data'].attrs['chunk_size']
+        self.chunk_size = chunk_size or DEFAULT_CHUNK_SIZE
         if 'hash_table' in f['_version_data'][name]:
             self._load_hashtable()
         else:
@@ -88,6 +90,10 @@ class Hashtable(MutableMapping):
             raise TypeError("key must be bytes")
         if len(key) != self.hash_size:
             raise ValueError("key must be %d bytes" % self.hash_size)
+        if isinstance(value, Tuple):
+            if len(value.args) > 1:
+                raise NotImplementedError("Chunking in more other than the first dimension")
+            value = value.args[0]
         if not isinstance(value, (slice, Slice)):
             raise TypeError("value must be a slice object")
         if value.step not in [1, None]:

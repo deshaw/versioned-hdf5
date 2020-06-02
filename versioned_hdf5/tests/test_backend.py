@@ -119,15 +119,16 @@ def test_create_virtual_dataset_offset():
 def test_write_dataset_chunk_size():
     with setup() as f:
         chunk_size = 2**10
+        chunks = (chunk_size,)
         slices1 = write_dataset(f, 'test_data', np.ones((2*chunk_size,)),
-                                chunk_size=chunk_size)
+                                chunks=chunks)
         raises(ValueError, lambda: write_dataset(f, 'test_data',
-            np.ones((chunk_size,)), chunk_size=2**9))
+            np.ones(chunks), chunks=(2**9,)))
         slices2 = write_dataset_chunks(f, 'test_data',
                                        {0: slices1[0],
-                                        1: 2*np.ones((chunk_size,)),
-                                        2: 2*np.ones((chunk_size,)),
-                                        3: 3*np.ones((chunk_size,)),
+                                        1: 2*np.ones(chunks),
+                                        2: 2*np.ones(chunks),
+                                        3: 3*np.ones(chunks),
                                        })
 
         assert slices1 == [slice(0*chunk_size, 1*chunk_size),
@@ -149,10 +150,11 @@ def test_write_dataset_chunk_size():
 def test_write_dataset_offset_chunk_size():
     with setup() as f:
         chunk_size = 2**10
-        slices1 = write_dataset(f, 'test_data', np.ones((2*chunk_size,)), chunk_size=chunk_size)
+        chunks = (chunk_size,)
+        slices1 = write_dataset(f, 'test_data', np.ones((2*chunk_size,)), chunks=chunks)
         slices2 = write_dataset(f, 'test_data',
-                                np.concatenate((2*np.ones((chunk_size,)),
-                                                2*np.ones((chunk_size,)),
+                                np.concatenate((2*np.ones(chunks),
+                                                2*np.ones(chunks),
                                                 3*np.ones((chunk_size - 2,)))))
 
         assert slices1 == [slice(0*chunk_size, 1*chunk_size),
