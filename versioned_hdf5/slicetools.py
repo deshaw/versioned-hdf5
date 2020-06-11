@@ -9,21 +9,9 @@ def split_slice(s, chunk):
 
     Yields tuples, (i, slice), where i is the chunk that should be sliced.
     """
-    start, stop, step = s.start, s.stop, s.step
-    if any(i < 0 for i in [start, stop, step]):
-        raise NotImplementedError("slices with negative values are not yet supported")
+    start, stop, step = s.args
     for i in range(math.floor(start/chunk), math.ceil(stop/chunk)):
-        if i == 0:
-            new_start = start
-        elif i*chunk < start:
-            new_start = start - i*chunk
-        else:
-            new_start = (i*chunk - start) % step
-            if new_start:
-                new_start = step - new_start
-        new_stop = min(stop - i*chunk, chunk)
-        new_step = step
-        yield i, Slice(new_start, new_stop, new_step)
+        yield i, s.as_subindex(Slice(i*chunk, (i + 1)*chunk))
 
 def split_chunks(shape, chunks):
     if len(shape) != len(chunks):
