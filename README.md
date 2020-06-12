@@ -5,4 +5,4 @@ Status](https://travis-ci.org/Quansight/versioned-hdf5.svg?branch=master)](https
 
 Versioned HDF5 provides a versioned abstraction on top of `h5py`. 
 
-This library is still in pre-alpha development. See the documentation at https://quansight.github.io/versioned-hdf5/.
+This library is still in pre-alpha development. See the documentation at https://deshaw.github.io/versioned-hdf5/.
