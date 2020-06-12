@@ -153,4 +153,5 @@ class VersionedHDF5File:
 
 
 def coverage_test():
-    pass
+    a = 1
+    return a
