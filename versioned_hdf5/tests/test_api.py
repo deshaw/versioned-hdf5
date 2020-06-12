@@ -12,6 +12,7 @@ from ..api import VersionedHDF5File
 
 from .helpers import setup
 
+
 def test_stage_version():
     with setup() as f:
         file = VersionedHDF5File(f)
@@ -19,7 +20,6 @@ def test_stage_version():
         test_data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
                                     2*np.ones((DEFAULT_CHUNK_SIZE,)),
                                     3*np.ones((DEFAULT_CHUNK_SIZE,))))
-
 
         with file.stage_version('version1', '') as group:
             group['test_data'] = test_data
@@ -49,6 +49,7 @@ def test_stage_version():
         assert_equal(ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
         assert_equal(ds[3*DEFAULT_CHUNK_SIZE], 0.0)
         assert_equal(ds[3*DEFAULT_CHUNK_SIZE+1:4*DEFAULT_CHUNK_SIZE], 1.0)
+
 
 def test_stage_version_chunk_size():
     with setup() as f:
@@ -1038,7 +1039,7 @@ def test_fillvalue():
         assert_equal(group['data'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
         assert_equal(group['data'][DEFAULT_CHUNK_SIZE + 2:], fillvalue)
 
-def test_multidimsional():
+def test_multidimensional():
     # For now, datasets can only be expanded along the first axis. The shape
     # of the remaining axes must stay fixed once the dataset is created.
     with setup() as f:
@@ -1064,3 +1065,33 @@ def test_multidimsional():
         version2 = file['version2']
         assert version2['test_data'][0, 1] == 2
         assert_equal(version2['test_data'][()], data2)
+
+
+def test_closes():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = np.ones((DEFAULT_CHUNK_SIZE,))
+
+        with file.stage_version('version1') as g:
+            g.create_dataset('test_data', data=data)
+        assert file._closed == False
+
+        version_data = file._version_data
+        versions = file._versions
+
+        file.close()
+
+        assert file._closed == True
+        raises(AttributeError, lambda: file.f)
+        raises(AttributeError, lambda: file._version_data)
+        raises(AttributeError, lambda: file._versions)
+        assert file.__repr__() == "<Closed VersionedHDF5File>"
+
+        reopened_file = VersionedHDF5File(f)
+        assert list(reopened_file['/_version_data/versions/__first_version__']) == []
+        assert list(reopened_file['/_version_data/versions/version1']) == list(reopened_file['version1']) == ['test_data']
+        assert_equal(reopened_file['version1']['test_data'][()], data)
+
+        assert reopened_file._version_data == version_data
+        assert reopened_file._versions == versions
