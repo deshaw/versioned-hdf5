@@ -50,6 +50,8 @@ def test_stage_version():
         assert_equal(ds[3*DEFAULT_CHUNK_SIZE], 0.0)
         assert_equal(ds[3*DEFAULT_CHUNK_SIZE+1:4*DEFAULT_CHUNK_SIZE], 1.0)
 
+        file.close()
+
 
 def test_stage_version_chunk_size():
     with setup() as f:
@@ -94,6 +96,8 @@ def test_stage_version_chunk_size():
         assert_equal(ds[3*chunk_size], 0.0)
         assert_equal(ds[3*chunk_size+1:4*chunk_size], 1.0)
 
+        file.close()
+
 def test_stage_version_compression():
     with setup() as f:
         file = VersionedHDF5File(f)
@@ -134,6 +138,8 @@ def test_stage_version_compression():
 
         assert ds.compression == 'gzip'
         assert ds.compression_opts == 3
+
+        file.close()
 
 def test_version_int_slicing():
     with setup() as f:
@@ -188,6 +194,8 @@ def test_version_int_slicing():
         with raises(IndexError):
             file[-1]
 
+        file.close()
+
 def test_version_name_slicing():
     with setup() as f:
         file = VersionedHDF5File(f)
@@ -216,6 +224,8 @@ def test_version_name_slicing():
         assert file[-1]['test_data'][0] == 2.0
         assert file[-2]['test_data'][0] == 1.0, file[-2]
 
+        file.close()
+
 def test_iter_versions():
     with setup() as f:
         file = VersionedHDF5File(f)
@@ -235,6 +245,8 @@ def test_iter_versions():
         assert 'version1' in file
         assert 'version2' in file
         assert 'version3' not in file
+
+        file.close()
 
 def test_create_dataset():
     with setup() as f:
@@ -273,6 +285,7 @@ def test_create_dataset():
         assert list(f['/_version_data/versions/version1']) == list(file['version1']) == ['test_data']
         assert list(f['/_version_data/versions/version2']) == list(file['version2']) == ['test_data', 'test_data2']
 
+        file.close()
 
 def test_changes_dataset():
     # Testcase similar to those on generate_data.py
@@ -312,6 +325,7 @@ def test_changes_dataset():
         assert list(f['_version_data/versions/version1']) == list(file['version1']) == [name]
         assert list(f['_version_data/versions/version2']) == list(file['version2']) == [name]
 
+        file.close()
 
 def test_small_dataset():
     # Test creating a dataset that is smaller than the chunk size
@@ -324,6 +338,8 @@ def test_small_dataset():
             group.create_dataset("test", data=data, chunks=(2**14,))
 
         assert_equal(file['version1']['test'], data)
+
+        file.close()
 
 def test_unmodified():
     with setup() as f:
@@ -352,6 +368,8 @@ def test_unmodified():
         assert_equal(file['version2']['test_data2'][0], 0.0)
         assert_equal(file['version2']['test_data2'][1:], test_data[1:])
 
+        file.close()
+
 def test_delete():
     with setup() as f:
         file = VersionedHDF5File(f)
@@ -371,6 +389,8 @@ def test_delete():
         assert set(file['version2']) == {'test_data'}
         assert_equal(file['version2']['test_data'], test_data)
         assert file['version2'].datasets().keys() == {'test_data'}
+
+        file.close()
 
 def test_resize():
     with setup() as f:
@@ -534,6 +554,8 @@ def test_resize():
         assert group['data'].shape == (DEFAULT_CHUNK_SIZE - 4,)
         assert_equal(group['data'][:], 1.0)
 
+        file.close()
+
 def test_resize_unaligned():
     with setup() as f:
         file = VersionedHDF5File(f)
@@ -549,6 +571,7 @@ def test_resize_unaligned():
                 group[ds_name][-1000:] = np.arange(l, l + 1000)
                 assert_equal(group[ds_name][:], np.arange((i + 1) * 1000))
 
+        file.close()
 
 def test_getitem():
     with setup() as f:
@@ -575,6 +598,8 @@ def test_getitem():
             assert_equal(test_data[:], data)
             assert_equal(test_data[:DEFAULT_CHUNK_SIZE+1], data[:DEFAULT_CHUNK_SIZE+1])
 
+        file.close()
+
 def test_nonroot():
     with setup() as f:
         g = f.create_group('subgroup')
@@ -598,6 +623,8 @@ def test_nonroot():
         assert_equal(ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
         assert_equal(ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
         assert_equal(ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
+
+        file.close()
 
 def test_attrs():
     with setup() as f:
@@ -629,6 +656,8 @@ def test_attrs():
             dict(f['_version_data']['versions']['version2']['test_data'].attrs) == \
                 {'test_attr': 1}
 
+        file.close()
+
 def test_auto_delete():
     with setup() as f:
         file = VersionedHDF5File(f)
@@ -648,6 +677,8 @@ def test_auto_delete():
             group.create_dataset('test_data', data=data)
 
         assert_equal(file['version1']['test_data'], data)
+
+        file.close()
 
 def test_delitem():
     with setup() as f:
@@ -673,6 +704,8 @@ def test_delitem():
 
         assert list(file) == []
         assert file.current_version == '__first_version__'
+
+        file.close()
 
 def test_groups():
     with setup() as f:
@@ -815,6 +848,8 @@ def test_groups():
             raises(ValueError, lambda: group.create_dataset('/group1/test_data', data=data))
             raises(ValueError, lambda: group.create_group('/group1'))
 
+        file.close()
+
 def test_group_contains():
     with setup() as f:
         file = VersionedHDF5File(f)
@@ -878,6 +913,8 @@ def test_group_contains():
         assert 'test_data2' not in version1['group1/group2']
         assert 'test_data2' not in version2['group1/group2']
 
+        file.close()
+
 def test_moved_file():
     # See issue #28. Make sure the virtual datasets do not hard-code the filename.
     with setup(file_name='test.hdf5') as f:
@@ -887,10 +924,12 @@ def test_moved_file():
 
         with file.stage_version('version1') as group:
             group['dataset'] = data
+        file.close()
 
     with h5py.File('test.hdf5', 'r') as f:
         file = VersionedHDF5File(f)
         assert_equal(file['version1']['dataset'][:], data)
+        file.close()
 
     # XXX: os.replace
     os.rename('test.hdf5', 'test2.hdf5')
@@ -911,6 +950,7 @@ def test_list_assign():
             assert_equal(group['dataset'][:], data)
 
         assert_equal(file['version1']['dataset'][:], data)
+        file.close()
 
 def test_nested_group():
     # Issue #66
@@ -937,6 +977,8 @@ def test_nested_group():
         assert_equal(version2['bar/baz'][:], data1)
         assert 'bar/bon/1/data/axes/date' not in version1
         assert_equal(version2['bar/bon/1/data/axes/date'][:], data2)
+
+        file.close()
 
 def test_fillvalue():
     # Based on test_resize(), but only the resize largers that use the fill
@@ -1039,6 +1081,8 @@ def test_fillvalue():
         assert_equal(group['data'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
         assert_equal(group['data'][DEFAULT_CHUNK_SIZE + 2:], fillvalue)
 
+        file.close()
+
 def test_multidimensional():
     # For now, datasets can only be expanded along the first axis. The shape
     # of the remaining axes must stay fixed once the dataset is created.
@@ -1065,6 +1109,8 @@ def test_multidimensional():
         version2 = file['version2']
         assert version2['test_data'][0, 1] == 2
         assert_equal(version2['test_data'][()], data2)
+
+        file.close()
 
 
 def test_closes():

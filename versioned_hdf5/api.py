@@ -162,17 +162,10 @@ class VersionedHDF5File:
         Make sure the VersionedHDF5File object is no longer reachable.
         """
         if not self._closed:
-            self.__del__()
-            self._closed = True
-
-    def __del__(self):
-        """
-        Prevent access to VersionedHDF5File data if the file is closed.
-        """
-        if not self._closed:
             del self.f
             del self._version_data
             del self._versions
+            self._closed = True
 
     def __repr__(self):
         """
