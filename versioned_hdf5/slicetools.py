@@ -1,5 +1,6 @@
 from ndindex import Slice, Tuple
 
+from itertools import product
 import math
 
 # TODO: Move this into ndindex
@@ -14,18 +15,35 @@ def split_slice(s, chunk):
         yield i, s.as_subindex(Slice(i*chunk, (i + 1)*chunk))
 
 def split_chunks(shape, chunks):
+    """
+    Yield a set of ndindex indices for chunks over shape
+
+    For example, if a has shape (10, 20) and is chunked into chunks of shape
+    (5, 5).
+
+    >>> from versioned_hdf5.slicetools import split_chunks
+    >>> for i in split_chunks((10, 20), (5, 5)):
+    ...     print(i)
+    Tuple(slice(0, 5, None), slice(0, 5, None))
+    Tuple(slice(0, 5, None), slice(5, 10, None))
+    Tuple(slice(0, 5, None), slice(10, 15, None))
+    Tuple(slice(0, 5, None), slice(15, 20, None))
+    Tuple(slice(5, 10, None), slice(0, 5, None))
+    Tuple(slice(5, 10, None), slice(5, 10, None))
+    Tuple(slice(5, 10, None), slice(10, 15, None))
+    Tuple(slice(5, 10, None), slice(15, 20, None))
+
+    """
     if len(shape) != len(chunks):
         raise ValueError("chunks shape must equal the array shape")
     if len(shape) == 0:
         raise NotImplementedError("Scalar datasets")
 
-    if any(i != j for i, j in zip(shape[1:], chunks[1:])):
-        raise NotImplementedError("Chunking over any dimension other than the first is not yet implemented")
-
-    chunk_size = chunks[0]
-
-    for i in range(math.ceil(shape[0]/chunk_size)):
-        yield Tuple(Slice(chunk_size*i, chunk_size*(i + 1)))
+    d = [math.ceil(i/c) for i, c in zip(shape, chunks)]
+    for c in product(*[range(i) for i in d]):
+        # c = (0, 0, 0), (0, 0, 1), ...
+        yield Tuple(*[Slice(chunk_size*i, chunk_size*(i + 1)) for chunk_size,
+                      i in zip(chunks, c)])
 
 def spaceid_to_slice(space):
     from h5py import h5s
