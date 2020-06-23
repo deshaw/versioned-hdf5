@@ -31,19 +31,19 @@ class VersionedHDF5File:
     this library could result in breaking things.
 
     >>> import h5py
-    >>> f = h5py.File('file.h5')
+    >>> f = h5py.File('file.h5') # doctest: +SKIP
     >>> from versioned_hdf5 import VersionedHDF5File
-    >>> file = VersionedHDF5File(f)
+    >>> file = VersionedHDF5File(f) # doctest: +SKIP
 
     Access versions using indexing
 
-    >>> version1 = file['version1']
+    >>> version1 = file['version1'] # doctest: +SKIP
 
     This returns a group containing the datasets for that version.
 
     To create a new version, use :func:`stage_version`.
 
-    >>> with file.stage_version('version2') as group:
+    >>> with file.stage_version('version2') as group: # doctest: +SKIP
     ...     group['dataset'] = ... # Modify the group
     ...
 
