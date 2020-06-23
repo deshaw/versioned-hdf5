@@ -12,7 +12,7 @@ from h5py._hl import filters
 from h5py._hl.selections import select
 from h5py._hl.vds import VDSmap
 
-from ndindex import Tuple, Slice
+from ndindex import ndindex, Tuple, Slice
 
 import numpy as np
 
@@ -363,11 +363,12 @@ class InMemorySparseDataset:
             raise NotImplementedError("More than one dimension is not yet supported")
         self.shape = size
 
-    def __getitem__(self, item):
-        # Requires https://github.com/Quansight/ndindex/issues/23
-        raise NotImplementedError("Accessing elements of sparse datasets")
+    def __getitem__(self, index):
+        idx = ndindex(index)
+        newshape = idx.newshape(self.shape)
+        return np.full(newshape, self.fillvalue, dtype=self.dtype)
 
-    def __setitem__(self, item, value):
+    def __setitem__(self, index, value):
         raise NotImplementedError("Setting elements of sparse datasets")
 
 class InMemoryArrayDataset:
