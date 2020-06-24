@@ -44,7 +44,7 @@ class Hashtable(MutableMapping):
     hash_size = hash_function().digest_size
 
     def hash(self, data):
-        return self.hash_function(data.data).digest()
+        return self.hash_function(data.data.tobytes()).digest()
 
     @property
     def largest_index(self):
