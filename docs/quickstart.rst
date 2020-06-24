@@ -68,6 +68,14 @@ as ``h5py``::
    group read-only, so modifications made outside of this library could result
    in breaking things.
 
+As seen above, each version is a ``InMemoryGroup`` object. It is possible to
+get a timestamp for the creation of a version by its attribute `timestamp`::
+
+  >>> v2.attrs['timestamp']
+  '2020-06-24 18:45:30'
+
+The timestamps are registered in UTC.
+
 When you are done manipulating data, use ``fileobject.close()`` to make sure the
 HDF5 file is written properly to disk. Note that the ``VersionedHDF5File``
 object does not need to be closed.

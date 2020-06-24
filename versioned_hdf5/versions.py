@@ -2,6 +2,7 @@ from uuid import uuid4
 from collections import defaultdict
 
 from h5py import Dataset, Group
+import datetime
 
 from .backend import write_dataset, write_dataset_chunks, create_virtual_dataset
 from .wrappers import InMemoryGroup, InMemoryDataset, InMemoryArrayDataset
@@ -98,6 +99,8 @@ def commit_version(version_group, datasets, *,
         create_virtual_dataset(f, version_name, name, slices, attrs=attrs,
                                fillvalue=fillvalue)
     version_group.attrs['committed'] = True
+    version_group.attrs['timestamp'] = str(datetime.datetime.now(datetime.timezone.utc))
+
 
 def delete_version(f, version_name, new_current=None):
     """
