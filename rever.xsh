@@ -26,16 +26,21 @@ def annotated_tag():
     git tag -a -m "$GITHUB_REPO $VERSION release" $VERSION
 
 $ACTIVITIES = [
+            'authors',
             'run_tests',
             'build_docs',
+            'changelog',  # Uses files in the news folder to create a changelog for release
             'annotated_tag', # Creates a tag for the new version number
-            'pypi',  # Sends the package to pypi
             'push_tag',  # Pushes the tag up to the $TAG_REMOTE
-            'ghrelease'  # Creates a Github release entry for the new tag
+            'ghrelease',  # Creates a Github release entry for the new tag
+            'pypi'  # Sends the package to pypi
 ]
 
 $PUSH_TAG_REMOTE = 'git@github.com:deshaw/versioned-hdf5.git'  # Repo to push tags to
 
 $GITHUB_ORG = 'deshaw'  # Github org for Github releases and conda-forge
 $GITHUB_REPO = 'versioned-hdf5'  # Github repo for Github releases and conda-forge
+$CHANGELOG_FILENAME = 'CHANGELOG.rst'
+
+
 
