@@ -46,7 +46,7 @@ def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
         else:
             raise NotImplementedError("chunks must be specified for multi-dimensional datasets")
     group = f['_version_data'].create_group(name)
-    dataset = group.create_dataset('raw_data', shape=(0,) + shape[1:],
+    dataset = group.create_dataset('raw_data', shape=(0,) + chunks[1:],
                                    chunks=chunks, maxshape=(None,) + shape[1:],
                                    dtype=dtype, compression=compression,
                                    compression_opts=compression_opts,
