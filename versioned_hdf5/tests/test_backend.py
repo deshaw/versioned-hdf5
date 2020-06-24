@@ -1,7 +1,7 @@
 import numpy as np
 from numpy.testing import assert_equal
 
-from pytest import raises
+from pytest import raises, xfail
 
 import itertools
 
@@ -138,6 +138,33 @@ def test_write_dataset_offset():
         assert_equal(ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE - 2], 3.0)
         assert_equal(ds[3*DEFAULT_CHUNK_SIZE-2:4*DEFAULT_CHUNK_SIZE], 0.0)
 
+
+def test_write_dataset_offset_multidimension():
+    xfail()
+    # TODO: Fix this test once this is implemented
+    with setup() as f:
+        chunks = 3*(CHUNK_SIZE_3D,)
+        data = np.zeros((2*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D))
+        slices1 = write_dataset(f, 'test_data', data, chunks=chunks)
+        data2 = np.empty((2*CHUNK_SIZE_3D - 2, 2*CHUNK_SIZE_3D - 2,
+                          2*CHUNK_SIZE_3D - 2))
+        for n, (i, j, k) in enumerate(itertools.product([0, 1], repeat=3)):
+            data2[i*CHUNK_SIZE_3D:(i+1)*CHUNK_SIZE_3D,
+                  j*CHUNK_SIZE_3D:(j+1)*CHUNK_SIZE_3D,
+                  k*CHUNK_SIZE_3D:(k+1)*CHUNK_SIZE_3D] = n
+
+        slices2 = write_dataset(f, 'test_data', data2, chunks=chunks)
+
+        assert slices1 == 8*[slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D)]
+        assert slices2 == [slice(i*CHUNK_SIZE_3D, (i+1)*CHUNK_SIZE_3D) for i
+                           in range(8)]
+
+        ds = f['/_version_data/test_data/raw_data']
+        assert ds.shape == (8*CHUNK_SIZE_3D, CHUNK_SIZE_3D - 2, CHUNK_SIZE_3D - 2)
+        for n in range(8):
+            assert_equal(ds[n*CHUNK_SIZE_3D:(n+1)*CHUNK_SIZE_3D], n)
+        assert ds.dtype == np.float64
+
 def test_create_virtual_dataset():
     with setup(version_name='test_version') as f:
         slices1 = write_dataset(f, 'test_data', np.ones((2*DEFAULT_CHUNK_SIZE,)))
@@ -154,6 +181,22 @@ def test_create_virtual_dataset():
         assert virtual_data.dtype == np.float64
 
 def test_create_virtual_dataset_offset():
+    with setup(version_name='test_version') as f:
+        slices1 = write_dataset(f, 'test_data', np.ones((2*DEFAULT_CHUNK_SIZE,)))
+        slices2 = write_dataset(f, 'test_data',
+                                np.concatenate((2*np.ones((DEFAULT_CHUNK_SIZE,)),
+                                                3*np.ones((DEFAULT_CHUNK_SIZE - 2,)))))
+
+        virtual_data = create_virtual_dataset(f, 'test_version', 'test_data',
+                                              slices1 + [slices2[1]])
+
+        assert virtual_data.shape == (3*DEFAULT_CHUNK_SIZE - 2,)
+        assert_equal(virtual_data[0:2*DEFAULT_CHUNK_SIZE], 1.0)
+        assert_equal(virtual_data[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE - 2], 3.0)
+
+def test_create_virtual_dataset_offset_multidimension():
+    xfail()
+    # TODO: Fix this test once this is implemented
     with setup(version_name='test_version') as f:
         slices1 = write_dataset(f, 'test_data', np.ones((2*DEFAULT_CHUNK_SIZE,)))
         slices2 = write_dataset(f, 'test_data',

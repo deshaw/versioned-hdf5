@@ -69,6 +69,9 @@ def write_dataset(f, name, data, chunks=None, compression=None,
         if chunks != tuple(ds.attrs['chunks']):
             raise ValueError("Chunk size specified but doesn't match already existing chunk size")
 
+    for i, c in zip(data.shape, chunks):
+        if i % c:
+            raise NotImplementedError("Data shapes that are non-multiples of the chunk size in other than the first dimension is not yet supported")
     if compression or compression_opts:
         raise ValueError("Compression options can only be specified for the first version of a dataset")
     if fillvalue is not None and fillvalue != ds.fillvalue:
@@ -93,6 +96,8 @@ def write_dataset(f, name, data, chunks=None, compression=None,
 
     ds.resize((old_shape[0] + len(slices_to_write)*chunk_size,) + chunks[1:])
     for raw_slice, s in slices_to_write.items():
+        # data_s = data[s.raw]
+        # idx = Tuple(raw_slice, *[slice(0, i) for i in data_s.shape[1:]])
         ds[raw_slice.raw] = data[s.raw]
     return slices
 
