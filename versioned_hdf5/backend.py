@@ -143,8 +143,11 @@ def create_virtual_dataset(f, version_name, name, slices, attrs=None, fillvalue=
     chunks = tuple(raw_data.attrs['chunks'])
     chunk_size = chunks[0]
     slices = [s.reduce() for s in slices]
-    if not all(isinstance(s, Slice) for s in slices):
-        raise NotImplementedError("Chunking in other than the first dimension")
+
+    # Chunks in the raw dataset are expanded along the first dimension only.
+    # Since the chunks are pointed to by virtual datasets, it doesn't make
+    # sense to expand the chunks in the raw dataset along multiple dimensions
+    # (the true layout of the chunks in the raw dataset is irrelevant).
     for s in slices[:-1]:
         s = s.reduce()
         if s.stop - s.start != chunk_size:
