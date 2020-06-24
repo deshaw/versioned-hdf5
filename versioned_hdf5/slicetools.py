@@ -14,6 +14,7 @@ def split_slice(s, chunk):
     for i in range(math.floor(start/chunk), math.ceil(stop/chunk)):
         yield i, s.as_subindex(Slice(i*chunk, (i + 1)*chunk))
 
+# TODO: Should this go in ndindex?
 def split_chunks(shape, chunks):
     """
     Yield a set of ndindex indices for chunks over shape
