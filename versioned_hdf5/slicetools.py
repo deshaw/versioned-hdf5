@@ -20,19 +20,20 @@ def split_chunks(shape, chunks):
     Yield a set of ndindex indices for chunks over shape
 
     For example, if a has shape (10, 20) and is chunked into chunks of shape
-    (5, 5).
+    (5, 5). If the shape is not a multiple of the chunk size, some chunks will
+    be truncated.
 
     >>> from versioned_hdf5.slicetools import split_chunks
-    >>> for i in split_chunks((10, 20), (5, 5)):
+    >>> for i in split_chunks((10, 19), (5, 5)):
     ...     print(i)
     Tuple(slice(0, 5, None), slice(0, 5, None))
     Tuple(slice(0, 5, None), slice(5, 10, None))
     Tuple(slice(0, 5, None), slice(10, 15, None))
-    Tuple(slice(0, 5, None), slice(15, 20, None))
+    Tuple(slice(0, 5, None), slice(15, 19, None))
     Tuple(slice(5, 10, None), slice(0, 5, None))
     Tuple(slice(5, 10, None), slice(5, 10, None))
     Tuple(slice(5, 10, None), slice(10, 15, None))
-    Tuple(slice(5, 10, None), slice(15, 20, None))
+    Tuple(slice(5, 10, None), slice(15, 19, None))
 
     """
     if len(shape) != len(chunks):
@@ -43,8 +44,9 @@ def split_chunks(shape, chunks):
     d = [math.ceil(i/c) for i, c in zip(shape, chunks)]
     for c in product(*[range(i) for i in d]):
         # c = (0, 0, 0), (0, 0, 1), ...
-        yield Tuple(*[Slice(chunk_size*i, chunk_size*(i + 1)) for chunk_size,
-                      i in zip(chunks, c)])
+        yield Tuple(*[Slice(chunk_size*i, min(chunk_size*(i + 1), n)) for
+    n, chunk_size,
+                      i in zip(shape, chunks, c)])
 
 def spaceid_to_slice(space):
     from h5py import h5s
