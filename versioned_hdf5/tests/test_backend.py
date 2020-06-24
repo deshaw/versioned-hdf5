@@ -3,10 +3,14 @@ from numpy.testing import assert_equal
 
 from pytest import raises
 
+import itertools
+
 from .helpers import setup
 from ..backend import (create_base_dataset, write_dataset,
                        create_virtual_dataset, DEFAULT_CHUNK_SIZE,
                        write_dataset_chunks)
+
+CHUNK_SIZE_3D = 2**4 # = cbrt(DEFAULT_CHUNK_SIZE)
 
 def test_initialize():
     with setup():
@@ -40,6 +44,29 @@ def test_write_dataset():
         assert_equal(ds[3*DEFAULT_CHUNK_SIZE:4*DEFAULT_CHUNK_SIZE], 0.0)
         assert ds.dtype == np.float64
 
+def test_write_dataset_multidimension():
+    with setup() as f:
+        chunks = 3*(CHUNK_SIZE_3D,)
+        data = np.zeros((2*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D))
+        slices1 = write_dataset(f, 'test_data', data, chunks=chunks)
+        data2 = data.copy()
+        for n, (i, j, k) in enumerate(itertools.product([0, 1], repeat=3)):
+            data2[i*CHUNK_SIZE_3D:(i+1)*CHUNK_SIZE_3D,
+                  j*CHUNK_SIZE_3D:(j+1)*CHUNK_SIZE_3D,
+                  k*CHUNK_SIZE_3D:(k+1)*CHUNK_SIZE_3D] = n
+
+        slices2 = write_dataset(f, 'test_data', data2, chunks=chunks)
+
+        assert slices1 == 8*[slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D)]
+        assert slices2 == [slice(i*CHUNK_SIZE_3D, (i+1)*CHUNK_SIZE_3D) for i
+                           in range(8)]
+
+        ds = f['/_version_data/test_data/raw_data']
+        assert ds.shape == (8*CHUNK_SIZE_3D, CHUNK_SIZE_3D, CHUNK_SIZE_3D)
+        for n in range(8):
+            assert_equal(ds[n*CHUNK_SIZE_3D:(n+1)*CHUNK_SIZE_3D], n)
+        assert ds.dtype == np.float64
+
 def test_write_dataset_chunks():
     with setup() as f:
         slices1 = write_dataset(f, 'test_data', np.ones((2*DEFAULT_CHUNK_SIZE,)))
@@ -63,6 +90,30 @@ def test_write_dataset_chunks():
         assert_equal(ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
         assert_equal(ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
         assert_equal(ds[3*DEFAULT_CHUNK_SIZE:4*DEFAULT_CHUNK_SIZE], 0.0)
+        assert ds.dtype == np.float64
+
+def test_write_dataset_chunks_multidimension():
+    with setup() as f:
+        chunks = 3*(CHUNK_SIZE_3D,)
+        data = np.zeros((2*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D))
+        slices1 = write_dataset(f, 'test_data', data, chunks=chunks)
+        data_dict = {}
+        for n, (i, j, k) in enumerate(itertools.product([0, 1], repeat=3)):
+            data_dict[n] = n*np.ones(chunks)
+        data_dict[0] = slices1[0]
+
+        slices1 = write_dataset(f, 'test_data', data, chunks=chunks)
+        slices2 = write_dataset_chunks(f, 'test_data', data_dict)
+
+
+        assert slices1 == 8*[slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D)]
+        assert slices2 == [slice(i*CHUNK_SIZE_3D, (i+1)*CHUNK_SIZE_3D) for i
+                           in range(8)]
+
+        ds = f['/_version_data/test_data/raw_data']
+        assert ds.shape == (8*CHUNK_SIZE_3D, CHUNK_SIZE_3D, CHUNK_SIZE_3D)
+        for n in range(8):
+            assert_equal(ds[n*CHUNK_SIZE_3D:(n+1)*CHUNK_SIZE_3D], n)
         assert ds.dtype == np.float64
 
 
