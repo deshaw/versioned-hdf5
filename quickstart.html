@@ -101,9 +101,13 @@ modification, but it is not possible in the HDF5 layer to make a dataset or
 group read-only, so modifications made outside of this library could result
 in breaking things.</p>
 </div>
-<p>When you are done manipulating data, use <code class="docutils literal notranslate"><span class="pre">fileobject.close()</span></code> to make sure the
-HDF5 file is written properly to disk. Note that the <code class="docutils literal notranslate"><span class="pre">VersionedHDF5File</span></code>
-object does not need to be closed.</p>
+<p>When you are done manipulating data, both the <code class="docutils literal notranslate"><span class="pre">h5py</span></code> and <code class="docutils literal notranslate"><span class="pre">VersionedHDF5File</span></code>
+objects must be closed to make sure the HDF5 file is written properly to disk
+(including data about versions.) This can be achieved by</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">fileobject</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">versioned_file</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</pre></div>
+</div>
 </div>
 
 

@@ -66,6 +66,16 @@ this library could result in breaking things.</p>
 </pre></div>
 </div>
 <p>When the context manager exits, the version will be written to the file.</p>
+<p>Finally, use
+&gt;&gt;&gt; file.close()
+to close the <code class="code docutils literal notranslate"><span class="pre">VersionedHDF5File</span></code> object (note that the <code class="code docutils literal notranslate"><span class="pre">h5py</span></code> file object
+should be closed separately.)</p>
+<dl class="py method">
+<dt id="versioned_hdf5.VersionedHDF5File.close">
+<code class="sig-name descname">close</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.close" title="Permalink to this definition">¶</a></dt>
+<dd><p>Make sure the VersionedHDF5File object is no longer reachable.</p>
+</dd></dl>
+
 <dl class="py method">
 <dt id="versioned_hdf5.VersionedHDF5File.current_version">
 <em class="property">property </em><code class="sig-name descname">current_version</code><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.current_version" title="Permalink to this definition">¶</a></dt>
