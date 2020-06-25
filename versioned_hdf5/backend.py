@@ -81,7 +81,7 @@ def write_dataset(f, name, data, chunks=None, compression=None,
     # TODO: Handle more than one dimension
     old_shape = ds.shape
     hashtable = Hashtable(f, name)
-    slices = []
+    slices = {}
     slices_to_write = {}
     chunk_size = chunks[0]
     for s in split_chunks(data.shape, chunks):
@@ -92,7 +92,7 @@ def write_dataset(f, name, data, chunks=None, compression=None,
         raw_slice2 = hashtable.setdefault(data_hash, raw_slice)
         if raw_slice2 == raw_slice:
             slices_to_write[raw_slice] = s
-        slices.append(raw_slice2)
+        slices[s] = raw_slice2
 
     ds.resize((old_shape[0] + len(slices_to_write)*chunk_size,) + chunks[1:])
     for raw_slice, s in slices_to_write.items():
@@ -147,24 +147,23 @@ def create_virtual_dataset(f, version_name, name, slices, attrs=None, fillvalue=
     raw_data = f['_version_data'][name]['raw_data']
     chunks = tuple(raw_data.attrs['chunks'])
     chunk_size = chunks[0]
-    slices = [s.reduce() for s in slices]
+    slices = {c: s.reduce() for c, s in slices.items()}
 
+    shape = tuple([max(c.args[i].stop for c in slices) for i in range(len(chunks))])
     # Chunks in the raw dataset are expanded along the first dimension only.
     # Since the chunks are pointed to by virtual datasets, it doesn't make
     # sense to expand the chunks in the raw dataset along multiple dimensions
     # (the true layout of the chunks in the raw dataset is irrelevant).
-    for s in slices[:-1]:
-        s = s.reduce()
-        if s.stop - s.start != chunk_size:
+    for c, s in slices.items():
+        if c.args[0].stop != shape[0] and s.stop - s.start != chunk_size:
             raise NotImplementedError("Smaller than chunk size slice is only supported as the last slice.")
-    shape = (chunk_size*(len(slices) - 1) + slices[-1].stop - slices[-1].start,) + chunks[1:]
 
     layout = VirtualLayout(shape, dtype=raw_data.dtype)
     vs = VirtualSource('.', name=raw_data.name, shape=raw_data.shape, dtype=raw_data.dtype)
 
-    for i, s in enumerate(slices):
+    for c, s in slices.items():
         # TODO: This needs to handle more than one dimension
-        layout[i*chunk_size:i*chunk_size + s.stop - s.start] = vs[s.raw]
+        layout[c.raw] = vs[s.raw]
 
     virtual_data = f['_version_data/versions'][version_name].create_virtual_dataset(name, layout, fillvalue=fillvalue)
 
