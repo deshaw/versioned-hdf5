@@ -533,12 +533,7 @@ class InMemoryDatasetID(h5d.DatasetID):
         if np.isscalar(arr):
             arr = arr.reshape((1,))
 
-        # Once https://github.com/Quansight/ndindex/issues/18 is fixed,
-        # replace this with
-        #
-        # fslice = fslice.reduce(arr_obj.shape)
-        if fslice == Tuple():
-            fslice = Tuple(Slice(0, arr_obj.shape[0], 1),)
+        fslice = fslice.expand(arr_obj.shape)
         # Chunks that are modified
         chunks = self.chunks
         chunk_size = chunks[0]
@@ -563,12 +558,7 @@ class InMemoryDatasetID(h5d.DatasetID):
         if np.isscalar(arr):
             arr = arr.reshape((1,))
 
-        # Once https://github.com/Quansight/ndindex/issues/18 is fixed,
-        # replace this with
-        #
-        # fslice = fslice.reduce(arr_obj.shape)
-        if fslice == Tuple():
-            fslice = Tuple(Slice(0, arr_obj.shape[0], 1),)
+        fslice = fslice.expand(arr_obj.shape)
         # Chunks that are modified
         chunks = self.chunks
         chunk_size = chunks[0]
