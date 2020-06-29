@@ -50,7 +50,7 @@ def as_subchunks(idx, shape, chunk):
 
 
 # TODO: Should this go in ndindex?
-def split_chunks(shape, chunk):
+def split_chunks(shape, chunks):
     """
     Yield a set of ndindex indices for chunks over shape
 
@@ -71,17 +71,17 @@ def split_chunks(shape, chunk):
     Tuple(slice(5, 10, None), slice(15, 19, None))
 
     """
-    if len(shape) != len(chunk):
+    if len(shape) != len(chunks):
         raise ValueError("chunks shape must equal the array shape")
     if len(shape) == 0:
         raise NotImplementedError("Scalar datasets")
 
-    d = [math.ceil(i/c) for i, c in zip(shape, chunk)]
+    d = [math.ceil(i/c) for i, c in zip(shape, chunks)]
     for c in product(*[range(i) for i in d]):
         # c = (0, 0, 0), (0, 0, 1), ...
         yield Tuple(*[Slice(chunk_size*i, min(chunk_size*(i + 1), n)) for
     n, chunk_size,
-                      i in zip(shape, chunk, c)])
+                      i in zip(shape, chunks, c)])
 
 def spaceid_to_slice(space):
     from h5py import h5s
