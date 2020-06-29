@@ -15,6 +15,7 @@ from .versions import (create_version_group, commit_version,
                        all_versions, delete_version)
 from .wrappers import InMemoryGroup
 
+
 class VersionedHDF5File:
     """
     A Versioned HDF5 File
@@ -49,6 +50,10 @@ class VersionedHDF5File:
 
     When the context manager exits, the version will be written to the file.
 
+    Finally, use
+    >>> file.close()
+    to close the `VersionedHDF5File` object (note that the `h5py` file object
+    should be closed separately.)
     """
     def __init__(self, f):
         self.f = f
@@ -56,6 +61,7 @@ class VersionedHDF5File:
             initialize(f)
         self._version_data = f['_version_data']
         self._versions = self._version_data['versions']
+        self._closed = False
 
     @property
     def current_version(self):
@@ -82,6 +88,18 @@ class VersionedHDF5File:
         # TODO: Don't give an in-memory group if the file is read-only
         return InMemoryGroup(self._versions[version]._id)
 
+    def get_version_by_timestamp(self, timestamp):
+        for version in self._versions:
+            if version != '__first_version__':
+                if isinstance(timestamp, np.datetime64):
+                    ts = f"{timestamp.astype(datetime.datetime)}+0000"
+                else:
+                    ts = timestamp.strftime("%Y-%m-%d %H:%M:%S.%f%z")
+                if ts == self[version].attrs['timestamp']:
+                    # TODO: Don't give an in-memory group if the file is read-only
+                    return InMemoryGroup(self._versions[version]._id)
+        raise KeyError(f"Version with timestamp {timestamp} not found")
+
     def __getitem__(self, item):
         if item is None:
             return self.get_version_by_name(self.current_version)
@@ -93,7 +111,7 @@ class VersionedHDF5File:
             return self.get_version_by_name(get_nth_previous_version(self.f,
                 self.current_version, -item))
         elif isinstance(item, (datetime.datetime, np.datetime64)):
-            raise NotImplementedError
+            return self.get_version_by_timestamp(item)
         else:
             raise KeyError(f"Don't know how to get the version for {item!r}")
 
@@ -150,3 +168,25 @@ class VersionedHDF5File:
         except:
             delete_version(self.f, version_name, old_current)
             raise
+
+    def close(self):
+        """
+        Make sure the VersionedHDF5File object is no longer reachable.
+        """
+        if not self._closed:
+            del self.f
+            del self._version_data
+            del self._versions
+            self._closed = True
+
+    def __repr__(self):
+        """
+        Prints friendly status information.
+
+        These messages are intended to be similar to h5py messages.
+        """
+        if self._closed:
+            return "<Closed VersionedHDF5File>"
+        else:
+            return f"<VersionedHDF5File object \"{self.f.filename}\" (mode" \
+                   f" {self.f.mode})>"

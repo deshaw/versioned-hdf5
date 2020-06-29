@@ -99,7 +99,8 @@ def commit_version(version_group, datasets, *,
         create_virtual_dataset(f, version_name, name, slices, attrs=attrs,
                                fillvalue=fillvalue)
     version_group.attrs['committed'] = True
-    version_group.attrs['timestamp'] = str(datetime.datetime.now(datetime.timezone.utc))
+    ts = datetime.datetime.now(datetime.timezone.utc)
+    version_group.attrs['timestamp'] = ts.strftime("%Y-%m-%d %H:%M:%S.%f%z")
 
 
 def delete_version(f, version_name, new_current=None):
