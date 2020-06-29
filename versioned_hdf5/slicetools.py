@@ -84,6 +84,12 @@ def split_chunks(shape, chunks):
                       i in zip(shape, chunks, c)])
 
 def spaceid_to_slice(space):
+    """
+    Convert an h5py spaceid object into an ndindex index
+
+    The resulting index is always a Tuple index.
+    """
+
     from h5py import h5s
 
     sel_type = space.get_select_type()
