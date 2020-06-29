@@ -14,12 +14,12 @@ def split_slice(s, chunk):
     for i in range(math.floor(start/chunk), math.ceil(stop/chunk)):
         yield i, s.as_subindex(Slice(i*chunk, (i + 1)*chunk))
 
-def as_subchunks(idx, shape, chunk):
+def as_subchunks(idx, shape, chunks):
     """
     Split an index `idx` on an array of shape `shape` into subchunks assuming
-    a chunk size of `chunk`.
+    a chunk size of `chunks`.
 
-    Yields tuples `(c, index)`, where `c` is an index for the chunk that
+    Yields tuples `(c, index)`, where `c` is an index for the chunks that
     should be sliced, and `index` is an index into that chunk giving the
     elements of `idx` that are included in it (`c` and `index` are both
     ndindex indices).
@@ -32,8 +32,8 @@ def as_subchunks(idx, shape, chunk):
     >>> from versioned_hdf5.slicetools import as_subchunks
     >>> idx = (slice(5, 15), 0)
     >>> shape = (20, 20)
-    >>> chunk = (10, 10)
-    >>> for c, index in as_subchunks(idx, shape, chunk):
+    >>> chunks = (10, 10)
+    >>> for c, index in as_subchunks(idx, shape, chunks):
     ...     print(c)
     ...     print('    ', index)
     Tuple(slice(0, 10, None), slice(0, 10, None))
@@ -43,9 +43,9 @@ def as_subchunks(idx, shape, chunk):
 
     """
     idx = ndindex(idx)
-    for c in split_chunks(shape, chunk):
+    for c in split_chunks(shape, chunks):
         index = idx.as_subindex(c)
-        if not index.isempty(chunk):
+        if not index.isempty(chunks):
             yield (c, index)
 
 
