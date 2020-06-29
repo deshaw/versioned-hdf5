@@ -1,4 +1,4 @@
-from ndindex import Slice, Tuple
+from ndindex import Slice, Tuple, ndindex
 
 from itertools import product
 import math
@@ -13,6 +13,41 @@ def split_slice(s, chunk):
     start, stop, step = s.args
     for i in range(math.floor(start/chunk), math.ceil(stop/chunk)):
         yield i, s.as_subindex(Slice(i*chunk, (i + 1)*chunk))
+
+def as_subchunks(idx, shape, chunk):
+    """
+    Split an index `idx` on an array of shape `shape` into subchunks assuming
+    a chunk size of `chunk`.
+
+    Yields tuples `(c, index)`, where `c` is an index for the chunk that
+    should be sliced, and `index` is an index into that chunk giving the
+    elements of `idx` that are included in it (`c` and `index` are both
+    ndindex indices).
+
+    That is to say, for each `(c, index)` pair yielded, `a[c][index]` will
+    give those elements of `a[idx]` that are part of the `c` chunk.
+
+    Note that this only yields those indices that are nonempty.
+
+    >>> from versioned_hdf5.slicetools import as_subchunks
+    >>> idx = (slice(5, 15), 0)
+    >>> shape = (20, 20)
+    >>> chunk = (10, 10)
+    >>> for c, index in as_subchunks(idx, shape, chunk):
+    ...     print(c)
+    ...     print('    ', index)
+    Tuple(slice(0, 10, None), slice(0, 10, None))
+        Tuple(slice(5, 10, 1), 0)
+    Tuple(slice(10, 20, None), slice(0, 10, None))
+        Tuple(slice(0, 5, 1), 0)
+
+    """
+    idx = ndindex(idx)
+    for c in split_chunks(shape, chunk):
+        index = idx.as_subindex(c)
+        if not index.isempty(chunk):
+            yield (c, index)
+
 
 # TODO: Should this go in ndindex?
 def split_chunks(shape, chunks):
