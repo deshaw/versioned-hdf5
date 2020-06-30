@@ -591,7 +591,6 @@ def test_getitem():
             assert_equal(test_data[:], data)
             assert_equal(test_data[:DEFAULT_CHUNK_SIZE+1], data[:DEFAULT_CHUNK_SIZE+1])
 
-
         with file.stage_version('version2') as group:
             test_data = group['test_data']
             assert test_data.shape == (2*DEFAULT_CHUNK_SIZE,)
@@ -601,6 +600,41 @@ def test_getitem():
             assert_equal(test_data[:DEFAULT_CHUNK_SIZE+1], data[:DEFAULT_CHUNK_SIZE+1])
 
         file.close()
+
+
+def test_timestamp_auto():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = np.ones((2*DEFAULT_CHUNK_SIZE,))
+
+        with file.stage_version('version1') as group:
+            group.create_dataset('test_data', data=data)
+
+        assert isinstance(file['version1'].attrs['timestamp'], str)
+
+
+def test_timestamp_manual():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data1 = np.ones((2*DEFAULT_CHUNK_SIZE,))
+        data2 = np.ones((3*DEFAULT_CHUNK_SIZE))
+
+        ts1 = datetime.datetime(2020, 6, 29, 20, 12, 56, 2560, tzinfo=datetime.timezone.utc)
+        ts2 = datetime.datetime(2020, 6, 29, 22, 12, 56, 2560)
+        with file.stage_version('version1', timestamp=ts1) as group:
+            group['test_data_1'] = data1
+
+        assert file['version1'].attrs['timestamp'] == ts1.strftime("%Y-%m-%d %H:%M:%S.%f%z")
+
+        with raises(ValueError):
+            with file.stage_version('version2', timestamp=ts2) as group:
+                group['test_data_2'] = data2
+
+        with raises(TypeError):
+            with file.stage_version('version3', timestamp='2020-6-29') as group:
+                group['test_data_3'] = data1
 
 
 def test_getitem_by_timestamp():

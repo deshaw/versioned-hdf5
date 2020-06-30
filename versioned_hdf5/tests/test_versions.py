@@ -3,6 +3,8 @@ from pytest import raises
 import numpy as np
 from numpy.testing import assert_equal
 
+import datetime
+
 from .helpers import setup
 
 from ..backend import DEFAULT_CHUNK_SIZE
@@ -253,11 +255,3 @@ def test_delete_version():
 
         assert versions.attrs['current_version'] == '__first_version__'
         assert list(versions) == ['__first_version__']
-
-
-def test_timestamp():
-    with setup() as f:
-        data = np.ones((2*DEFAULT_CHUNK_SIZE,))
-        version1 = create_version_group(f, 'version1')
-        commit_version(version1, {'test_data': data})
-        assert isinstance(version1.attrs['timestamp'], str)
