@@ -61,14 +61,14 @@ def split_chunks(shape, chunks):
     >>> from versioned_hdf5.slicetools import split_chunks
     >>> for i in split_chunks((10, 19), (5, 5)):
     ...     print(i)
-    Tuple(slice(0, 5, None), slice(0, 5, None))
-    Tuple(slice(0, 5, None), slice(5, 10, None))
-    Tuple(slice(0, 5, None), slice(10, 15, None))
-    Tuple(slice(0, 5, None), slice(15, 19, None))
-    Tuple(slice(5, 10, None), slice(0, 5, None))
-    Tuple(slice(5, 10, None), slice(5, 10, None))
-    Tuple(slice(5, 10, None), slice(10, 15, None))
-    Tuple(slice(5, 10, None), slice(15, 19, None))
+    Tuple(slice(0, 5, 1), slice(0, 5, 1))
+    Tuple(slice(0, 5, 1), slice(5, 10, 1))
+    Tuple(slice(0, 5, 1), slice(10, 15, 1))
+    Tuple(slice(0, 5, 1), slice(15, 19, 1))
+    Tuple(slice(5, 10, 1), slice(0, 5, 1))
+    Tuple(slice(5, 10, 1), slice(5, 10, 1))
+    Tuple(slice(5, 10, 1), slice(10, 15, 1))
+    Tuple(slice(5, 10, 1), slice(15, 19, 1))
 
     """
     if len(shape) != len(chunks):
@@ -79,7 +79,7 @@ def split_chunks(shape, chunks):
     d = [math.ceil(i/c) for i, c in zip(shape, chunks)]
     for c in product(*[range(i) for i in d]):
         # c = (0, 0, 0), (0, 0, 1), ...
-        yield Tuple(*[Slice(chunk_size*i, min(chunk_size*(i + 1), n)) for
+        yield Tuple(*[Slice(chunk_size*i, min(chunk_size*(i + 1), n), 1) for
     n, chunk_size,
                       i in zip(shape, chunks, c)])
 
