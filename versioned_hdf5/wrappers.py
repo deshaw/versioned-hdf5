@@ -5,14 +5,14 @@ Much of this code is modified from code in h5py. See the LICENSE file for the
 h5py license.
 """
 
-from h5py import Empty, Dataset, Datatype, Group, h5d, h5i, h5p, h5s, h5t
-from h5py._hl.base import guess_dtype, phil
+from h5py import Empty, Dataset, Datatype, Group, h5d, h5i, h5p, h5s, h5t, h5r
+from h5py._hl.base import guess_dtype, with_phil, phil
 from h5py._hl.dataset import _LEGACY_GZIP_COMPRESSION_VALS
 from h5py._hl import filters
-from h5py._hl.selections import select
+from h5py._hl.selections import select, guess_shape
 from h5py._hl.vds import VDSmap
 
-from ndindex import Tuple, Slice
+from ndindex import Tuple, Slice, ndindex
 
 import numpy as np
 
@@ -21,7 +21,7 @@ import math
 import posixpath as pp
 
 from .backend import DEFAULT_CHUNK_SIZE
-from .slicetools import split_slice, spaceid_to_slice
+from .slicetools import split_slice, spaceid_to_slice, as_subchunks
 
 _groups = {}
 class InMemoryGroup(Group):
@@ -327,6 +327,78 @@ class InMemoryDataset(Dataset):
     def attrs(self):
         return self._attrs
 
+    @with_phil
+    def __getitem__(self, args, new_dtype=None):
+        """ Read a slice from the HDF5 dataset.
+
+        Takes slices and recarray-style field names (more than one is
+        allowed!) in any order.  Obeys basic NumPy rules, including
+        broadcasting.
+
+        Also supports:
+
+        * Boolean "mask" array indexing
+        """
+        # This boilerplate code is based on h5py.Dataset.__getitem__
+        args = args if isinstance(args, tuple) else (args,)
+
+        if new_dtype is None:
+            new_dtype = getattr(self._local, 'astype', None)
+
+        # Sort field names from the rest of the args.
+        names = tuple(x for x in args if isinstance(x, str))
+
+        if names:
+            # Read a subset of the fields in this structured dtype
+            if len(names) == 1:
+                names = names[0]  # Read with simpler dtype of this field
+            args = tuple(x for x in args if not isinstance(x, str))
+            return self.fields(names, _prior_dtype=new_dtype)[args]
+
+        if new_dtype is None:
+            new_dtype = self.dtype
+        mtype = h5t.py_create(new_dtype)
+
+        # === Special-case region references ====
+
+        if len(args) == 1 and isinstance(args[0], h5r.RegionReference):
+
+            obj = h5r.dereference(args[0], self.id)
+            if obj != self.id:
+                raise ValueError("Region reference must point to this dataset")
+
+            sid = h5r.get_region(args[0], self.id)
+            mshape = guess_shape(sid)
+            if mshape is None:
+                # 0D with no data (NULL or deselected SCALAR)
+                return Empty(new_dtype)
+            out = np.empty(mshape, dtype=new_dtype)
+            if out.size == 0:
+                return out
+
+            sid_out = h5s.create_simple(mshape)
+            sid_out.select_all()
+            self.id.read(sid_out, sid, out, mtype)
+            return out
+
+        # === END CODE FROM h5py ===
+
+        idx = ndindex(args)
+
+        arr = np.ndarray(idx.newshape(self.shape), new_dtype, order='C')
+
+        for c, index in as_subchunks(idx, self.shape, self.chunks):
+            if isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
+                a = self.id._read_chunk(c.raw, mtype=mtype, dxpl=self._dxpl)
+                self.id.data_dict[c] = a
+
+            if self.id.data_dict[c].size != 0:
+                arr_idx = c.as_subindex(idx)
+                arr[arr_idx.raw] = self.id.data_dict[c][index.raw]
+
+        return arr
+
+
 class InMemoryArrayDataset:
     """
     Class that looks like a h5py.Dataset but is backed by an array
@@ -442,13 +514,19 @@ class InMemoryDatasetID(h5d.DatasetID):
         g = Group(fid)
         self.chunks = tuple(g[virtual_sources[0].dset_name].attrs['chunks'])
 
-        chunk_size = self.chunks[0]
         for s in slice_map:
-            if isinstance(s, Tuple):
-                start = s.args[0].start
-            else:
-                start = s.start
-            self.data_dict[start//chunk_size] = slice_map[s]
+            src_idx = slice_map[s]
+            if isinstance(src_idx, Tuple):
+                # The pointers to the raw data should only be slices, since
+                # the raw data chunks are extended in the first dimension
+                # only.
+                assert src_idx != Tuple()
+                assert len(src_idx.args) == len(self.chunks)
+                assert all(i.reduce() == Slice(0, j, 1) for i, j in
+                    zip(src_idx.args[1:], self.chunks[1:])), (src_idx, self.chunks)
+                src_idx = src_idx.args[0]
+            assert isinstance(src_idx, Slice)
+            self.data_dict[s] = src_idx
 
         fillvalue_a = np.empty((1,), dtype=self.dtype)
         dcpl.get_fill_value(fillvalue_a)
@@ -506,12 +584,9 @@ class InMemoryDatasetID(h5d.DatasetID):
     def shape(self, size):
         self._shape = size
 
-    def _read_chunk(self, i, mtype=None, dxpl=None):
+    def _read_chunk(self, chunk_idx, mtype=None, dxpl=None):
         # Based on Dataset.__getitem__
-        chunks = self.chunks
-        chunk_size = chunks[0]
-        s = slice(i*chunk_size, (i+1)*chunk_size)
-        selection = select(self.shape, (s,), dsid=self)
+        selection = select(self.shape, chunk_idx, dsid=self)
 
         assert selection.nselect != 0
 
