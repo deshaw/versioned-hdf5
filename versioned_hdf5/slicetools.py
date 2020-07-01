@@ -36,9 +36,9 @@ def as_subchunks(idx, shape, chunks):
     >>> for c, index in as_subchunks(idx, shape, chunks):
     ...     print(c)
     ...     print('    ', index)
-    Tuple(slice(0, 10, None), slice(0, 10, None))
+    Tuple(slice(0, 10, 1), slice(0, 10, 1))
         Tuple(slice(5, 10, 1), 0)
-    Tuple(slice(10, 20, None), slice(0, 10, None))
+    Tuple(slice(10, 20, 1), slice(0, 10, 1))
         Tuple(slice(0, 5, 1), 0)
 
     """
