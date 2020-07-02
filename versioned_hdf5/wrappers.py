@@ -647,6 +647,7 @@ class InMemoryDatasetID(h5d.DatasetID):
         self.fillvalue = fillvalue_a[0]
 
     def set_extent(self, shape):
+        raise NotImplementedError("resizing is not yet implemented")
 
         old_shape = self.shape
         if old_shape[1:] != shape[1:]:
