@@ -381,7 +381,7 @@ class InMemoryDataset(Dataset):
             self.id.read(sid_out, sid, out, mtype)
             return out
 
-        # === END CODE FROM h5py ===
+        # === END CODE FROM h5py.Dataset.__getitem__ ===
 
         idx = ndindex(args)
 
@@ -398,6 +398,120 @@ class InMemoryDataset(Dataset):
 
         return arr
 
+    @with_phil
+    def __setitem__(self, args, val):
+        """ Write to the HDF5 dataset from a Numpy array.
+
+        NumPy's broadcasting rules are honored, for "simple" indexing
+        (slices and integers).  For advanced indexing, the shapes must
+        match.
+        """
+        # This boilerplate code is based on h5py.Dataset.__setitem__
+        args = args if isinstance(args, tuple) else (args,)
+
+        # Sort field indices from the slicing
+        names = tuple(x for x in args if isinstance(x, str))
+        args = tuple(x for x in args if not isinstance(x, str))
+
+        # Generally we try to avoid converting the arrays on the Python
+        # side.  However, for compound literals this is unavoidable.
+        vlen = h5t.check_vlen_dtype(self.dtype)
+        if vlen is not None and vlen not in (bytes, str):
+            try:
+                val = np.asarray(val, dtype=vlen)
+            except ValueError:
+                try:
+                    val = np.array([np.array(x, dtype=vlen)
+                                       for x in val], dtype=self.dtype)
+                except ValueError:
+                    pass
+            if vlen == val.dtype:
+                if val.ndim > 1:
+                    tmp = np.empty(shape=val.shape[:-1], dtype=object)
+                    tmp.ravel()[:] = [i for i in val.reshape(
+                        (np.product(val.shape[:-1], dtype=np.ulonglong), val.shape[-1]))]
+                else:
+                    tmp = np.array([None], dtype=object)
+                    tmp[0] = val
+                val = tmp
+        elif self.dtype.kind == "O" or \
+          (self.dtype.kind == 'V' and \
+          (not isinstance(val, np.ndarray) or val.dtype.kind != 'V') and \
+          (self.dtype.subdtype == None)):
+            if len(names) == 1 and self.dtype.fields is not None:
+                # Single field selected for write, from a non-array source
+                if not names[0] in self.dtype.fields:
+                    raise ValueError("No such field for indexing: %s" % names[0])
+                dtype = self.dtype.fields[names[0]][0]
+                cast_compound = True
+            else:
+                dtype = self.dtype
+                cast_compound = False
+
+            val = np.asarray(val, dtype=dtype.base, order='C')
+            if cast_compound:
+                val = val.view(np.dtype([(names[0], dtype)]))
+                val = val.reshape(val.shape[:len(val.shape) - len(dtype.shape)])
+        else:
+            val = np.asarray(val, order='C')
+
+        # Check for array dtype compatibility and convert
+        if self.dtype.subdtype is not None:
+            shp = self.dtype.subdtype[1]
+            valshp = val.shape[-len(shp):]
+            if valshp != shp:  # Last dimension has to match
+                raise TypeError("When writing to array types, last N dimensions have to match (got %s, but should be %s)" % (valshp, shp,))
+            mtype = h5t.py_create(np.dtype((val.dtype, shp)))
+            mshape = val.shape[0:len(val.shape)-len(shp)]
+
+        # Make a compound memory type if field-name slicing is required
+        elif len(names) != 0:
+
+            mshape = val.shape
+
+            # Catch common errors
+            if self.dtype.fields is None:
+                raise TypeError("Illegal slicing argument (not a compound dataset)")
+            mismatch = [x for x in names if x not in self.dtype.fields]
+            if len(mismatch) != 0:
+                mismatch = ", ".join('"%s"'%x for x in mismatch)
+                raise ValueError("Illegal slicing argument (fields %s not in dataset type)" % mismatch)
+
+            # Write non-compound source into a single dataset field
+            if len(names) == 1 and val.dtype.fields is None:
+                subtype = h5t.py_create(val.dtype)
+                mtype = h5t.create(h5t.COMPOUND, subtype.get_size())
+                mtype.insert(self._e(names[0]), 0, subtype)
+
+            # Make a new source type keeping only the requested fields
+            else:
+                fieldnames = [x for x in val.dtype.names if x in names] # Keep source order
+                mtype = h5t.create(h5t.COMPOUND, val.dtype.itemsize)
+                for fieldname in fieldnames:
+                    subtype = h5t.py_create(val.dtype.fields[fieldname][0])
+                    offset = val.dtype.fields[fieldname][1]
+                    mtype.insert(self._e(fieldname), offset, subtype)
+
+        # Use mtype derived from array (let DatasetID.write figure it out)
+        else:
+            mtype = None
+
+
+        # === END CODE FROM h5py.Dataset.__setitem__ ===
+
+        idx = ndindex(args)
+
+        val = np.broadcast_to(val, idx.newshape(self.shape))
+
+        for c, index in as_subchunks(idx, self.shape, self.chunks):
+            if isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
+                a = self.id._read_chunk(c.raw, mtype=mtype, dxpl=self._dxpl)
+                self.id.data_dict[c] = a
+
+            if self.id.data_dict[c].size != 0:
+                val_idx = c.as_subindex(idx)
+                breakpoint()
+                self.id.data_dict[c][index.raw] = val[val_idx.raw]
 
 class InMemoryArrayDataset:
     """

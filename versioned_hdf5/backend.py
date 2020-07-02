@@ -114,12 +114,12 @@ def write_dataset_chunks(f, name, data_dict):
     chunks = tuple(ds.attrs['chunks'])
     # TODO: Handle more than one dimension
     chunk_size = chunks[0]
-    nchunks = max(data_dict)
-    if any(i not in data_dict for i in range(nchunks)):
-        raise ValueError("data_dict does not include all chunks")
+    # nchunks = max(data_dict)
+    # if any(i not in data_dict for i in range(nchunks)):
+    #     raise ValueError("data_dict does not include all chunks")
 
     hashtable = Hashtable(f, name)
-    slices = [None for i in range(len(data_dict))]
+    slices = {i: None for i in data_dict}
     data_to_write = {}
     for chunk, data_s in data_dict.items():
         if not isinstance(data_s, (slice, tuple, Tuple, Slice)) and data_s.dtype != ds.dtype:
@@ -136,7 +136,7 @@ def write_dataset_chunks(f, name, data_dict):
                 data_to_write[raw_slice] = data_s
             slices[chunk] = raw_slice2
 
-    assert None not in slices
+    assert None not in slices.values()
     old_shape = ds.shape
     ds.resize((old_shape[0] + len(data_to_write)*chunk_size,) + chunks[1:])
     for raw_slice, data_s in data_to_write.items():
