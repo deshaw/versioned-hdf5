@@ -54,9 +54,11 @@ def split_chunks(shape, chunks):
     """
     Yield a set of ndindex indices for chunks over shape
 
-    For example, if a has shape (10, 20) and is chunked into chunks of shape
-    (5, 5). If the shape is not a multiple of the chunk size, some chunks will
-    be truncated.
+    If the shape is not a multiple of the chunk size, some chunks will be
+    truncated.
+
+    For example, if a has shape (10, 19) and is chunked into chunks
+    of shape (5, 5):
 
     >>> from versioned_hdf5.slicetools import split_chunks
     >>> for i in split_chunks((10, 19), (5, 5)):
