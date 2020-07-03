@@ -510,7 +510,6 @@ class InMemoryDataset(Dataset):
 
             if self.id.data_dict[c].size != 0:
                 val_idx = c.as_subindex(idx)
-                breakpoint()
                 self.id.data_dict[c][index.raw] = val[val_idx.raw]
 
 class InMemoryArrayDataset:
