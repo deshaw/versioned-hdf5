@@ -51,7 +51,7 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 html_theme = 'alabaster'
 
 html_theme_options = {
-    'github_user': 'Quansight',
+    'github_user': 'deshaw',
     'github_repo': 'versioned-hdf5',
     'github_banner': False, # https://github.com/bitprophet/alabaster/issues/166
     'github_button': False,

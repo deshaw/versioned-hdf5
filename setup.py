@@ -13,12 +13,13 @@ setuptools.setup(
     description="Versioned HDF5",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/Quansight/versioned-hdf5",
+    url="https://github.com/deshaw/versioned-hdf5",
     packages=['versioned_hdf5', 'versioned_hdf5.tests'],
     license="BSD",
     install_requires=[
         "h5py",
         "numpy",
+        "ndindex",
     ],
     classifiers=[
         "Programming Language :: Python :: 3",

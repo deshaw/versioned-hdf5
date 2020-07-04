@@ -13,19 +13,20 @@ from ..versions import (create_version_group, commit_version,
 def test_create_version():
     with setup() as f:
         chunk_size = 2**10
+        chunks = (chunk_size,)
         data = np.concatenate((np.ones((2*chunk_size,)),
-                               2*np.ones((chunk_size,)),
-                               3*np.ones((chunk_size,))))
+                               2*np.ones(chunks),
+                               3*np.ones(chunks)))
 
         version1 = create_version_group(f, 'version1', '')
         commit_version(version1, {'test_data': data},
-                       chunk_size={'test_data': chunk_size},
+                       chunks={'test_data': chunks},
                        compression={'test_data': 'gzip'},
                        compression_opts={'test_data': 3})
 
         version_bad = create_version_group(f, 'version_bad', '')
         raises(ValueError, lambda: commit_version(version_bad, {'test_data': data},
-                                                  chunk_size={'test_data': 2**9}))
+                                                  chunks={'test_data': (2**9,)}))
         delete_version(f, 'version_bad', 'version1')
 
         version_bad = create_version_group(f, 'version_bad', '')
@@ -84,19 +85,20 @@ def test_create_version():
 def test_create_version_chunks():
     with setup() as f:
         chunk_size = 2**10
+        chunks = (chunk_size,)
         data = np.concatenate((np.ones((2*chunk_size,)),
-                               2*np.ones((chunk_size,)),
-                               3*np.ones((chunk_size,))))
+                               2*np.ones(chunks),
+                               3*np.ones(chunks)))
         # TODO: Support creating the initial version with chunks
         version1 = create_version_group(f, 'version1')
         commit_version(version1, {'test_data': data},
-                       chunk_size={'test_data': chunk_size},
+                       chunks={'test_data': chunks},
                        compression={'test_data': 'gzip'},
                        compression_opts={'test_data': 3})
         version_bad = create_version_group(f, 'version_bad', '')
         raises(ValueError, lambda: commit_version(version_bad,
                                                   {'test_data': data},
-                                                  chunk_size={'test_data':2**9}))
+                                                  chunks={'test_data': (2**9,)}))
         delete_version(f, 'version_bad', 'version1')
 
         version_bad = create_version_group(f, 'version_bad', '')
@@ -122,10 +124,10 @@ def test_create_version_chunks():
         assert ds.compression == 'gzip'
         assert ds.compression_opts == 3
 
-        data2_chunks = {0: np.ones((chunk_size,)),
-                        1: np.ones((chunk_size,)),
-                        2: 2*np.ones((chunk_size,)),
-                        3: 3*np.ones((chunk_size,)),
+        data2_chunks = {0: np.ones(chunks),
+                        1: np.ones(chunks),
+                        2: 2*np.ones(chunks),
+                        3: 3*np.ones(chunks),
         }
         data2_chunks[0][0] = 0.0
         data[0] = 0.0
@@ -144,7 +146,7 @@ def test_create_version_chunks():
         assert ds.compression_opts == 3
 
 
-        data3_chunks = {0: np.ones((chunk_size,)),
+        data3_chunks = {0: np.ones(chunks),
                         1: slice(0*chunk_size, 1*chunk_size),
                         2: slice(1*chunk_size, 2*chunk_size),
                         3: slice(2*chunk_size, 3*chunk_size),

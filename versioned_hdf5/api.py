@@ -15,6 +15,7 @@ from .versions import (create_version_group, commit_version,
                        all_versions, delete_version)
 from .wrappers import InMemoryGroup
 
+
 class VersionedHDF5File:
     """
     A Versioned HDF5 File
@@ -49,6 +50,10 @@ class VersionedHDF5File:
 
     When the context manager exits, the version will be written to the file.
 
+    Finally, use
+    >>> file.close()
+    to close the `VersionedHDF5File` object (note that the `h5py` file object
+    should be closed separately.)
     """
     def __init__(self, f):
         self.f = f
@@ -56,6 +61,7 @@ class VersionedHDF5File:
             initialize(f)
         self._version_data = f['_version_data']
         self._versions = self._version_data['versions']
+        self._closed = False
 
     @property
     def current_version(self):
@@ -144,10 +150,31 @@ class VersionedHDF5File:
         try:
             yield group
             commit_version(group, group.datasets(), make_current=make_current,
-                           chunk_size=group.chunk_size,
+                           chunks=group.chunks,
                            compression=group.compression,
                            compression_opts=group.compression_opts)
         except:
             delete_version(self.f, version_name, old_current)
             raise
 
+    def close(self):
+        """
+        Make sure the VersionedHDF5File object is no longer reachable.
+        """
+        if not self._closed:
+            del self.f
+            del self._version_data
+            del self._versions
+            self._closed = True
+
+    def __repr__(self):
+        """
+        Prints friendly status information.
+
+        These messages are intended to be similar to h5py messages.
+        """
+        if self._closed:
+            return "<Closed VersionedHDF5File>"
+        else:
+            return f"<VersionedHDF5File object \"{self.f.filename}\" (mode" \
+                   f" {self.f.mode})>"

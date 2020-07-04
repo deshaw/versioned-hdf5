@@ -1,4 +1,5 @@
 import numpy as np
+from ndindex import Slice, Tuple
 
 import hashlib
 from collections.abc import MutableMapping
@@ -25,10 +26,12 @@ class Hashtable(MutableMapping):
     mapped to it.
 
     """
-    def __init__(self, f, name):
+    def __init__(self, f, name, chunk_size=None):
+        from .backend import DEFAULT_CHUNK_SIZE
+
         self.f = f
         self.name = name
-        self.chunk_size = f['_version_data'][name]['raw_data'].attrs['chunk_size']
+        self.chunk_size = chunk_size or DEFAULT_CHUNK_SIZE
         if 'hash_table' in f['_version_data'][name]:
             self._load_hashtable()
         else:
@@ -76,7 +79,7 @@ class Hashtable(MutableMapping):
         hash_table_arr = hash_table[:largest_index]
         hashes = bytes(hash_table_arr['hash'])
         shapes = hash_table_arr['shape']
-        self._d = {hashes[i*self.hash_size:(i+1)*self.hash_size]: slice(*shapes[i]) for i in range(largest_index)}
+        self._d = {hashes[i*self.hash_size:(i+1)*self.hash_size]: Slice(*shapes[i]) for i in range(largest_index)}
         self._indices = {k: i for i, k in enumerate(self._d)}
 
     def __getitem__(self, key):
@@ -87,7 +90,11 @@ class Hashtable(MutableMapping):
             raise TypeError("key must be bytes")
         if len(key) != self.hash_size:
             raise ValueError("key must be %d bytes" % self.hash_size)
-        if not isinstance(value, slice):
+        if isinstance(value, Tuple):
+            if len(value.args) > 1:
+                raise NotImplementedError("Chunking in more other than the first dimension")
+            value = value.args[0]
+        if not isinstance(value, (slice, Slice)):
             raise TypeError("value must be a slice object")
         if value.step not in [1, None]:
             raise ValueError("only step-1 slices are supported")
@@ -103,7 +110,7 @@ class Hashtable(MutableMapping):
             self.largest_index += 1
             if self.largest_index >= self.hash_table.shape[0]:
                 self.hash_table.resize((self.hash_table.shape[0] + self.chunk_size,))
-        self._d[key] = value
+        self._d[key] = Slice(value)
 
     def __delitem__(self, key):
         raise NotImplementedError

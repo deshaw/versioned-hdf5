@@ -1,16 +1,8 @@
+from ndindex import Slice, Tuple
+
 import math
 
-# Helper functions to workaround slices not being hashable
-def s2t(s):
-    if isinstance(s, tuple):
-        return tuple(s2t(i) for i in s)
-    return (s.start, s.stop)
-
-def t2s(t):
-    if isinstance(t[0], tuple):
-        return tuple(slice(*i) for i in t)
-    return slice(*t)
-
+# TODO: Move this into ndindex
 def split_slice(s, chunk):
     """
     Split a slice into multiple slices along 0:chunk, chunk:2*chunk, etc.
@@ -31,23 +23,21 @@ def split_slice(s, chunk):
                 new_start = step - new_start
         new_stop = min(stop - i*chunk, chunk)
         new_step = step
-        yield i, slice(new_start, new_stop, new_step)
+        yield i, Slice(new_start, new_stop, new_step)
 
-def slice_size(s):
-    """
-    Give the maximum size of an array axis sliced by slice s
+def split_chunks(shape, chunks):
+    if len(shape) != len(chunks):
+        raise ValueError("chunks shape must equal the array shape")
+    if len(shape) == 0:
+        raise NotImplementedError("Scalar datasets")
 
-    The true size could be smaller if the slice extends beyond the bounds of
-    the array.
+    if any(i != j for i, j in zip(shape[1:], chunks[1:])):
+        raise NotImplementedError("Chunking over any dimension other than the first is not yet implemented")
 
-    """
-    start, stop, step = s.start, s.stop, s.step
-    if step == None:
-        step = 1
-    if start == None:
-        start = 0
-    return len(range(start, stop, step))
+    chunk_size = chunks[0]
 
+    for i in range(math.ceil(shape[0]/chunk_size)):
+        yield Tuple(Slice(chunk_size*i, chunk_size*(i + 1)))
 
 def spaceid_to_slice(space):
     from h5py import h5s
@@ -55,7 +45,7 @@ def spaceid_to_slice(space):
     sel_type = space.get_select_type()
 
     if sel_type == h5s.SEL_ALL:
-        return ()
+        return Tuple()
     elif sel_type == h5s.SEL_HYPERSLABS:
         slices = []
         starts, strides, counts, blocks = space.get_regular_hyperslab()
@@ -65,9 +55,9 @@ def spaceid_to_slice(space):
                 raise NotImplementedError("Nontrivial blocks are not yet supported")
             end = _start + (_stride*(count - 1) + 1)*block
             stride = _stride if block == 1 else 1
-            slices.append(slice(start, end, stride))
-        return tuple(slices)
+            slices.append(Slice(start, end, stride))
+        return Tuple(*slices)
     elif sel_type == h5s.SEL_NONE:
-        return (slice(0, 0),)
+        return Tuple(Slice(0, 0),)
     else:
         raise NotImplementedError("Point selections are not yet supported")

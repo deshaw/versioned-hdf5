@@ -218,7 +218,6 @@ class TestVersionedDatasetPerformance(TestDatasetPerformanceBase):
             val_ds.resize((n_val,), refcheck=False)
             val_ds[-num_val_apps:] = np.random.rand(num_val_apps)
 
-
     @classmethod
     def _write_transactions_dense(cls, name, num_rows_initial_0, num_rows_initial_1,
                                   num_transactions,
@@ -262,4 +261,4 @@ class TestVersionedDatasetPerformance(TestDatasetPerformanceBase):
 
 
 if __name__ == '__main__':
-    TestVersionedDatasetPerformance().test_mostly_appends_dense()
+    TestVersionedDatasetPerformance().test_large_fraction_changes_sparse()
