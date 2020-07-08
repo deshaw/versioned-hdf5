@@ -111,9 +111,11 @@ def write_dataset_chunks(f, name, data_dict):
     chunks = tuple(ds.attrs['chunks'])
     chunk_size = chunks[0]
 
-    shape = tuple(max(c.args[i].stop for c in data_dict) for i in range(len(chunks)))
-    if any(i not in data_dict for i in split_chunks(shape, chunks)):
-        raise ValueError("data_dict does not include all chunks")
+    shape = tuple(max(c.args[i].stop for c in data_dict) for i in
+    range(len(chunks)))
+    for c in split_chunks(shape, chunks):
+        if c not in data_dict:
+            raise ValueError(f"data_dict does not include all chunks ({c})")
 
     hashtable = Hashtable(f, name)
     slices = {i: None for i in data_dict}
