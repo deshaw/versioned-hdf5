@@ -327,6 +327,9 @@ class InMemoryDataset(Dataset):
     def attrs(self):
         return self._attrs
 
+    def __array__(self, dtype=None):
+        return self.__getitem__((), new_dtype=dtype)
+
     @with_phil
     def __getitem__(self, args, new_dtype=None):
         """ Read a slice from the HDF5 dataset.
