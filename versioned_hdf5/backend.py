@@ -143,7 +143,6 @@ def write_dataset_chunks(f, name, data_dict):
 def create_virtual_dataset(f, version_name, name, slices, attrs=None, fillvalue=None):
     raw_data = f['_version_data'][name]['raw_data']
     chunks = tuple(raw_data.attrs['chunks'])
-    chunk_size = chunks[0]
     slices = {c: s.reduce() for c, s in slices.items()}
 
     shape = tuple([max(c.args[i].stop for c in slices) for i in range(len(chunks))])
@@ -152,8 +151,8 @@ def create_virtual_dataset(f, version_name, name, slices, attrs=None, fillvalue=
     # sense to expand the chunks in the raw dataset along multiple dimensions
     # (the true layout of the chunks in the raw dataset is irrelevant).
     for c, s in slices.items():
-        if c.args[0].stop != shape[0] and s.stop - s.start != chunk_size:
-            raise NotImplementedError("Smaller than chunk size slice is only supported as the last slice.")
+        if len(c.args[0]) != len(s):
+            raise ValueError("Inconsistent slices dictionary")
 
     layout = VirtualLayout(shape, dtype=raw_data.dtype)
     vs = VirtualSource('.', name=raw_data.name, shape=raw_data.shape, dtype=raw_data.dtype)
