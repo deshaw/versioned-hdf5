@@ -716,51 +716,7 @@ class InMemoryDatasetID(h5d.DatasetID):
         return a
 
     def write(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
-        if mtype is not None:
-            raise NotImplementedError("mtype != None")
-        mslice = spaceid_to_slice(mspace)
-        fslice = spaceid_to_slice(fspace)
-        data_dict = self.data_dict
-        arr = arr_obj[mslice.raw]
-        if np.isscalar(arr):
-            arr = arr.reshape((1,))
-
-        fslice = fslice.expand(arr_obj.shape)
-        # Chunks that are modified
-        chunks = self.chunks
-        chunk_size = chunks[0]
-        N0 = 0
-        for i, s_ in split_slice(fslice.args[0], chunk=chunk_size):
-            t = Tuple(s_, *fslice.args[1:])
-            if isinstance(self.data_dict[i], (Slice, slice, tuple, Tuple)):
-                a = self._read_chunk(i, mtype=mtype, dxpl=dxpl)
-                data_dict[i] = a
-
-            N = N0 + len(s_)
-            data_dict[i][t.raw] = arr[N0:N]
-            N0 = N
-
-        return data_dict
+        raise NotImplementedError("Writing to an InMemoryDataset other than via __setitem__")
 
     def read(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
-        mslice = spaceid_to_slice(mspace)
-        fslice = spaceid_to_slice(fspace)
-        data_dict = self.data_dict
-        arr = arr_obj[mslice.raw]
-        if np.isscalar(arr):
-            arr = arr.reshape((1,))
-
-        fslice = fslice.expand(arr_obj.shape)
-        # Chunks that are modified
-        chunks = self.chunks
-        chunk_size = chunks[0]
-        N0 = 0
-        for i, s_ in split_slice(fslice.args[0], chunk=chunk_size):
-            t = Tuple(s_, *fslice.args[1:])
-            if isinstance(self.data_dict[i], (slice, Slice, tuple, Tuple)):
-                a = self._read_chunk(i, mtype=mtype, dxpl=dxpl)
-                data_dict[i] = a
-
-            N = N0 + len(s_)
-            arr[N0:N] = data_dict[i][t.raw]
-            N0 = N
+        raise NotImplementedError("Reading from an InMemoryDataset other than via __getitem__")
