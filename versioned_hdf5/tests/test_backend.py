@@ -33,16 +33,16 @@ def test_write_dataset():
                                 )))
 
         assert slices1 == {
-            (Slice(0*DEFAULT_CHUNK_SIZE, 1*DEFAULT_CHUNK_SIZE),):
+            (Slice(0*DEFAULT_CHUNK_SIZE, 1*DEFAULT_CHUNK_SIZE, 1),):
                 slice(0*DEFAULT_CHUNK_SIZE, 1*DEFAULT_CHUNK_SIZE),
-            (Slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE),):
+            (Slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE, 1),):
                 slice(0*DEFAULT_CHUNK_SIZE, 1*DEFAULT_CHUNK_SIZE)}
         assert slices2 == {
-            (Slice(0*DEFAULT_CHUNK_SIZE, 1*DEFAULT_CHUNK_SIZE),):
+            (Slice(0*DEFAULT_CHUNK_SIZE, 1*DEFAULT_CHUNK_SIZE, 1),):
                 slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE),
-            (Slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE),):
+            (Slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE, 1),):
                 slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE),
-            (Slice(2*DEFAULT_CHUNK_SIZE, 3*DEFAULT_CHUNK_SIZE),):
+            (Slice(2*DEFAULT_CHUNK_SIZE, 3*DEFAULT_CHUNK_SIZE, 1),):
                 slice(2*DEFAULT_CHUNK_SIZE, 3*DEFAULT_CHUNK_SIZE)}
 
         ds = f['/_version_data/test_data/raw_data']
@@ -68,71 +68,71 @@ def test_write_dataset_multidimension():
 
 
         assert slices1 == {
-            (Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
+            (Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
+             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
+             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
              ): slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-            (Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
+            (Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
+             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
+             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
              ): slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-            (Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
-             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
+            (Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
+             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
+             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
              ): slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-            (Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
-             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
+            (Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
+             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
+             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
              ): slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-            (Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
-             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
+            (Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
+             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
+             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
              ): slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-            (Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
-             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
+            (Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
+             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
+             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
              ): slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-            (Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
-             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
-             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
+            (Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
+             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
+             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
              ): slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-            (Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
-             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
-             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
+            (Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
+             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
+             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
              ): slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
         }
         assert slices2 == {
-            (Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
+            (Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
+             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
+             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
              ): slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-            (Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
+            (Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
+             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
+             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
              ): slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
-            (Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
-             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
+            (Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
+             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
+             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
              ): slice(2*CHUNK_SIZE_3D, 3*CHUNK_SIZE_3D),
-            (Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
-             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
+            (Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
+             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
+             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
              ): slice(3*CHUNK_SIZE_3D, 4*CHUNK_SIZE_3D),
-            (Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
-             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
+            (Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
+             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
+             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
              ): slice(4*CHUNK_SIZE_3D, 5*CHUNK_SIZE_3D),
-            (Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
-             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
-             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
+            (Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
+             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
+             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
              ): slice(5*CHUNK_SIZE_3D, 6*CHUNK_SIZE_3D),
-            (Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
-             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
-             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D),
+            (Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
+             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
+             Slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D, 1),
              ): slice(6*CHUNK_SIZE_3D, 7*CHUNK_SIZE_3D),
-            (Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
-             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
-             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D),
+            (Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
+             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
+             Slice(1*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 1),
              ): slice(7*CHUNK_SIZE_3D, 8*CHUNK_SIZE_3D),
         }
 
@@ -201,16 +201,16 @@ def test_write_dataset_offset():
                                                 3*np.ones((DEFAULT_CHUNK_SIZE - 2,)))))
 
         assert slices1 == {
-            (Slice(0*DEFAULT_CHUNK_SIZE, 1*DEFAULT_CHUNK_SIZE),):
+            (Slice(0*DEFAULT_CHUNK_SIZE, 1*DEFAULT_CHUNK_SIZE, 1),):
                 slice(0*DEFAULT_CHUNK_SIZE, 1*DEFAULT_CHUNK_SIZE),
-            (Slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE),):
+            (Slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE, 1),):
                 slice(0*DEFAULT_CHUNK_SIZE, 1*DEFAULT_CHUNK_SIZE)}
         assert slices2 == {
-            (Slice(0*DEFAULT_CHUNK_SIZE, 1*DEFAULT_CHUNK_SIZE),):
+            (Slice(0*DEFAULT_CHUNK_SIZE, 1*DEFAULT_CHUNK_SIZE, 1),):
                 slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE),
-            (Slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE),):
+            (Slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE, 1),):
                 slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE),
-            (Slice(2*DEFAULT_CHUNK_SIZE, 3*DEFAULT_CHUNK_SIZE - 2),):
+            (Slice(2*DEFAULT_CHUNK_SIZE, 3*DEFAULT_CHUNK_SIZE - 2, 1),):
                 slice(2*DEFAULT_CHUNK_SIZE, 3*DEFAULT_CHUNK_SIZE - 2)}
 
         ds = f['/_version_data/test_data/raw_data']
@@ -256,8 +256,8 @@ def test_create_virtual_dataset():
 
         virtual_data = create_virtual_dataset(f, 'test_version', 'test_data',
             {**slices1,
-             Tuple(Slice(2*DEFAULT_CHUNK_SIZE, 3*DEFAULT_CHUNK_SIZE),):
-             slices2[(Slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE),)]})
+             Tuple(Slice(2*DEFAULT_CHUNK_SIZE, 3*DEFAULT_CHUNK_SIZE, 1),):
+             slices2[(Slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE, 1),)]})
 
         assert virtual_data.shape == (3*DEFAULT_CHUNK_SIZE,)
         assert_equal(virtual_data[0:2*DEFAULT_CHUNK_SIZE], 1.0)
@@ -304,8 +304,8 @@ def test_create_virtual_dataset_offset():
 
         virtual_data = create_virtual_dataset(f, 'test_version', 'test_data',
             {**slices1,
-             Tuple(Slice(2*DEFAULT_CHUNK_SIZE, 3*DEFAULT_CHUNK_SIZE - 2),):
-             slices2[(Slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE - 2),)]})
+             Tuple(Slice(2*DEFAULT_CHUNK_SIZE, 3*DEFAULT_CHUNK_SIZE - 2, 1),):
+             slices2[(Slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE - 2, 1),)]})
 
         assert virtual_data.shape == (3*DEFAULT_CHUNK_SIZE - 2,)
         assert_equal(virtual_data[0:2*DEFAULT_CHUNK_SIZE], 1.0)
@@ -392,9 +392,9 @@ def test_write_dataset_compression():
             np.ones((DEFAULT_CHUNK_SIZE,)), compression='gzip', compression_opts=4))
 
         assert slices1 == {
-            (Slice(0*DEFAULT_CHUNK_SIZE, 1*DEFAULT_CHUNK_SIZE),):
+            (Slice(0*DEFAULT_CHUNK_SIZE, 1*DEFAULT_CHUNK_SIZE, 1),):
                 slice(0*DEFAULT_CHUNK_SIZE, 1*DEFAULT_CHUNK_SIZE),
-            (Slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE),):
+            (Slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE, 1),):
                 slice(0*DEFAULT_CHUNK_SIZE, 1*DEFAULT_CHUNK_SIZE)}
 
         ds = f['/_version_data/test_data/raw_data']
