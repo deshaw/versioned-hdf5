@@ -386,7 +386,7 @@ class InMemoryDataset(Dataset):
 
         # === END CODE FROM h5py.Dataset.__getitem__ ===
 
-        idx = ndindex(args)
+        idx = ndindex(args).reduce(self.shape)
 
         arr = np.ndarray(idx.newshape(self.shape), new_dtype, order='C')
 
@@ -502,7 +502,7 @@ class InMemoryDataset(Dataset):
 
         # === END CODE FROM h5py.Dataset.__setitem__ ===
 
-        idx = ndindex(args)
+        idx = ndindex(args).reduce(self.shape)
 
         val = np.broadcast_to(val, idx.newshape(self.shape))
 
