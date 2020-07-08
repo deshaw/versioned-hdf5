@@ -159,7 +159,9 @@ def create_virtual_dataset(f, version_name, name, slices, attrs=None, fillvalue=
 
     for c, s in slices.items():
         # TODO: This needs to handle more than one dimension
-        layout[c.raw] = vs[s.raw]
+        idx = Tuple(s, *Tuple(*[slice(0, i) for i in shape]).as_subindex(c).args[1:])
+        assert c.newshape(shape) == vs[idx.raw].shape, (c, shape, s)
+        layout[c.raw] = vs[idx.raw]
 
     virtual_data = f['_version_data/versions'][version_name].create_virtual_dataset(name, layout, fillvalue=fillvalue)
 
