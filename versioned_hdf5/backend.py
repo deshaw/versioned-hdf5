@@ -109,11 +109,11 @@ def write_dataset_chunks(f, name, data_dict):
 
     ds = f['_version_data'][name]['raw_data']
     chunks = tuple(ds.attrs['chunks'])
-    # TODO: Handle more than one dimension
     chunk_size = chunks[0]
-    # nchunks = max(data_dict)
-    # if any(i not in data_dict for i in range(nchunks)):
-    #     raise ValueError("data_dict does not include all chunks")
+
+    shape = tuple(max(c.args[i].stop for c in data_dict) for i in range(len(chunks)))
+    if any(i not in data_dict for i in split_chunks(shape, chunks)):
+        raise ValueError("data_dict does not include all chunks")
 
     hashtable = Hashtable(f, name)
     slices = {i: None for i in data_dict}
