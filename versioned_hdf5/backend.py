@@ -93,9 +93,9 @@ def write_dataset(f, name, data, chunks=None, compression=None,
 
     ds.resize((old_shape[0] + len(slices_to_write)*chunk_size,) + chunks[1:])
     for raw_slice, s in slices_to_write.items():
-        # data_s = data[s.raw]
-        # idx = Tuple(raw_slice, *[slice(0, i) for i in data_s.shape[1:]])
-        ds[raw_slice.raw] = data[s.raw]
+        data_s = data[s.raw]
+        idx = Tuple(raw_slice, *[slice(0, i) for i in data_s.shape[1:]])
+        ds[idx.raw] = data[s.raw]
     return slices
 
 def write_dataset_chunks(f, name, data_dict):
