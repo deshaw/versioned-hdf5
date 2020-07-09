@@ -641,8 +641,6 @@ class InMemoryDatasetID(h5d.DatasetID):
                 # only.
                 assert src_idx != Tuple()
                 assert len(src_idx.args) == len(self.chunks)
-                assert all(i.reduce() == Slice(0, j, 1) for i, j in
-                    zip(src_idx.args[1:], self.chunks[1:])), (src_idx, self.chunks)
                 src_idx = src_idx.args[0]
             assert isinstance(src_idx, Slice)
             self.data_dict[s] = src_idx
