@@ -1044,7 +1044,7 @@ def test_multidimsional():
     with setup() as f:
         file = VersionedHDF5File(f)
 
-        data = np.ones((DEFAULT_CHUNK_SIZE, 2))
+        data = np.ones((2*DEFAULT_CHUNK_SIZE, 5))
 
         with file.stage_version('version1') as g:
             g.create_dataset('test_data', data=data,
