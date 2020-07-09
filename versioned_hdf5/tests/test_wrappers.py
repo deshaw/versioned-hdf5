@@ -1,7 +1,10 @@
+import itertools
+
 import numpy as np
 from numpy.testing import assert_equal
 
 from ..wrappers import InMemoryArrayDataset
+from .helpers import setup
 
 def test_InMemoryArrayDataset():
     a = np.arange(100,).reshape((50, 2))
@@ -47,3 +50,16 @@ def test_InMemoryArrayDataset_resize():
     assert_equal(dataset, dataset.array)
     assert_equal(dataset, np.arange(90))
     assert dataset.shape == dataset.array.shape == (90,)
+
+def test_InMemoryArrayDataset_resize_multidimension():
+    a = np.arange(10*10*10).reshape((10, 10, 10))
+    # Test semantics against raw HDF5
+
+    for newshape in itertools.product(*[(5, 10, 15)]*3):
+        dataset = InMemoryArrayDataset('data', a, fillvalue=-1)
+        dataset.resize(newshape)
+        with setup() as f:
+            f.create_dataset('data', data=a, fillvalue=-1,
+                             chunks=(10, 10, 10), maxshape=(None, None, None))
+            f['data'].resize(newshape)
+            assert_equal(dataset[()], f['data'][()], str(newshape))

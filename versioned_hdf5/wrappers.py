@@ -624,14 +624,14 @@ class InMemoryArrayDataset:
             size[axis] = newlen
 
         size = tuple(size)
-        if len(size) > 1:
-            raise NotImplementedError("More than one dimension is not yet supported")
-        if size[0] > self.shape[0]:
-            self.array = np.concatenate((self.array, np.full(size[0] -
-                                                             self.shape[0], self.fillvalue,
-                                                             dtype=self.dtype)))
-        else:
-            self.array = self.array[:size[0]]
+        for i in range(len(size)):
+            if size[i] > self.shape[i]:
+                newshape = list(self.shape)
+                newshape[i] = size[i] - self.shape[i]
+                self.array = np.concatenate((self.array, np.full(newshape, self.fillvalue, dtype=self.dtype)),
+                                            axis=i)
+            else:
+                self.array = self.array[(slice(None),)*i + (slice(None, size[i]),)]
 
 class InMemoryDatasetID(h5d.DatasetID):
     def __init__(self, _id):
