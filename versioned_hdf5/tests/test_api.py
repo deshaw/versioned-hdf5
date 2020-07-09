@@ -1065,3 +1065,15 @@ def test_multidimsional():
         version2 = file['version2']
         assert version2['test_data'][0, 1] == 2
         assert_equal(version2['test_data'][()], data2)
+
+        data3 = data.copy()
+        data3[0:1] = 3
+
+        with file.stage_version('version3', 'version1') as g:
+            g['test_data'][0:1] = 3
+            assert_equal(g['test_data'][0:1], 3)
+            assert_equal(g['test_data'][()], data3)
+
+        version3 = file['version3']
+        assert_equal(version3['test_data'][0:1], 3)
+        assert_equal(version3['test_data'][()], data3)
