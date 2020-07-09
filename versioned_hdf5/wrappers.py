@@ -333,6 +333,34 @@ class InMemoryDataset(Dataset):
     def __array__(self, dtype=None):
         return self.__getitem__((), new_dtype=dtype)
 
+
+    def resize(self, size, axis=None):
+        """ Resize the dataset, or the specified axis.
+
+        The rank of the dataset cannot be changed.
+
+        "Size" should be a shape tuple, or if an axis is specified, an integer.
+
+        BEWARE: This functions differently than the NumPy resize() method!
+        The data is not "reshuffled" to fit in the new shape; each axis is
+        grown or shrunk independently.  The coordinates of existing data are
+        fixed.
+        """
+        # This boilerplate code is based on h5py.Dataset.resize
+        if axis is not None:
+            if not (axis >=0 and axis < self.id.rank):
+                raise ValueError("Invalid axis (0 to %s allowed)" % (self.id.rank-1))
+            try:
+                newlen = int(size)
+            except TypeError:
+                raise TypeError("Argument must be a single int if axis is specified")
+            size = list(self.shape)
+            size[axis] = newlen
+
+        size = tuple(size)
+        # === END CODE FROM h5py.Dataset.resize ===
+        raise NotImplementedError("Resizing is not yet implemented")
+
     @with_phil
     def __getitem__(self, args, new_dtype=None):
         """ Read a slice from the HDF5 dataset.
@@ -341,9 +369,6 @@ class InMemoryDataset(Dataset):
         allowed!) in any order.  Obeys basic NumPy rules, including
         broadcasting.
 
-        Also supports:
-
-        * Boolean "mask" array indexing
         """
         # This boilerplate code is based on h5py.Dataset.__getitem__
         args = args if isinstance(args, tuple) else (args,)
@@ -650,7 +675,7 @@ class InMemoryDatasetID(h5d.DatasetID):
         self.fillvalue = fillvalue_a[0]
 
     def set_extent(self, shape):
-        raise NotImplementedError("resizing is not yet implemented")
+        raise NotImplementedError("Resizing an InMemoryDataset other than via resize()")
 
         old_shape = self.shape
         if old_shape[1:] != shape[1:]:

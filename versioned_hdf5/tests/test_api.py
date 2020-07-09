@@ -1039,8 +1039,6 @@ def test_fillvalue():
         assert_equal(group['data'][DEFAULT_CHUNK_SIZE + 2:], fillvalue)
 
 def test_multidimsional():
-    # For now, datasets can only be expanded along the first axis. The shape
-    # of the remaining axes must stay fixed once the dataset is created.
     with setup() as f:
         file = VersionedHDF5File(f)
 
