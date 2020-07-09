@@ -141,7 +141,10 @@ class InMemoryGroup(Group):
             data = InMemoryArrayDataset(name, data, fillvalue=kwds['fillvalue'])
         chunks = kwds.get('chunks')
         if chunks in [True, None]:
-            chunks = (DEFAULT_CHUNK_SIZE,) + shape[1:]
+            if len(shape) == 1:
+                chunks = (DEFAULT_CHUNK_SIZE,)
+            else:
+                raise NotImplementedError("chunks must be specified for multi-dimensional datasets")
         if isinstance(chunks, int) and not isinstance(chunks, bool):
             chunks = (chunks,)
         if len(shape) != len(chunks):

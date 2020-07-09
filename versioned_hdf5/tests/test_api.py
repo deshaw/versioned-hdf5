@@ -1047,7 +1047,8 @@ def test_multidimsional():
         data = np.ones((DEFAULT_CHUNK_SIZE, 2))
 
         with file.stage_version('version1') as g:
-            g.create_dataset('test_data', data=data)
+            g.create_dataset('test_data', data=data,
+                             chunks=(DEFAULT_CHUNK_SIZE, 2))
             assert_equal(g['test_data'][()], data)
 
         version1 = file['version1']
