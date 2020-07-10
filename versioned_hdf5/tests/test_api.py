@@ -1075,3 +1075,28 @@ def test_multidimsional():
         version3 = file['version3']
         assert_equal(version3['test_data'][0:1], 3)
         assert_equal(version3['test_data'][()], data3)
+
+def test_group_chunks_compression():
+    # Chunks and compression are similar, so test them both at the same time.
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = np.ones((2*DEFAULT_CHUNK_SIZE, 5))
+
+        with file.stage_version('version1') as g:
+            g2 = g.create_group('group')
+            g2.create_dataset('test_data', data=data,
+                              chunks=(DEFAULT_CHUNK_SIZE, 2),
+                              compression='gzip',
+                              compression_opts=3)
+            assert_equal(g2['test_data'][()], data)
+            assert_equal(g['group/test_data'][()], data)
+            assert_equal(g['group']['test_data'][()], data)
+
+        version1 = file['version1']
+        assert_equal(version1['group']['test_data'][()], data)
+        assert_equal(version1['group/test_data'][()], data)
+
+        raw_data = f['/_version_data/group/test_data/raw_data']
+        assert raw_data.compression == 'gzip'
+        assert raw_data.compression_opts == 3

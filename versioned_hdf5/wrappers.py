@@ -42,9 +42,9 @@ class InMemoryGroup(Group):
             return
         self._data = {}
         self._subgroups = {}
-        self.chunks = defaultdict(type(None))
-        self.compression = defaultdict(type(None))
-        self.compression_opts = defaultdict(type(None))
+        self._chunks = defaultdict(type(None))
+        self._compression = defaultdict(type(None))
+        self._compression_opts = defaultdict(type(None))
         self._parent = None
         self._initialized = True
         super().__init__(bind)
@@ -151,9 +151,9 @@ class InMemoryGroup(Group):
             raise ValueError("chunks shape must equal the array shape")
         if len(shape) == 0:
             raise NotImplementedError("Scalar datasets")
-        self.chunks[name] = chunks
-        self.compression[name] = kwds.get('compression')
-        self.compression_opts[name] = kwds.get('compression_opts')
+        self.set_chunks(name, chunks)
+        self.set_compression(name, kwds.get('compression'))
+        self.set_compression_opts(name, kwds.get('compression_opts'))
         self[name] = data
         return self[name]
 
@@ -187,6 +187,52 @@ class InMemoryGroup(Group):
         self.visititems(_get)
 
         return res
+
+    @property
+    def versioned_root(self):
+        p = self
+        while p._parent is not None:
+            p = p._parent
+        return p
+
+    @property
+    def chunks(self):
+        return self.versioned_root._chunks
+
+    def set_chunks(self, item, value):
+        _, full_name = pp.split(item)
+        p = self
+        while p._parent:
+            _, basename = pp.split(p.name)
+            full_name = basename + '/' + full_name
+            p = p._parent
+        self.versioned_root._chunks[full_name] = value
+
+    @property
+    def compression(self):
+        return self.versioned_root._compression
+
+    def set_compression(self, item, value):
+        _, full_name = pp.split(item)
+        p = self
+        while p._parent:
+            _, basename = pp.split(p.name)
+            full_name = basename + '/' + full_name
+            p = p._parent
+        self.versioned_root._compression[full_name] = value
+
+    @property
+    def compression_opts(self):
+        return self.versioned_root._compression_opts
+
+    def set_compression_opts(self, item, value):
+        _, full_name = pp.split(item)
+        p = self
+        while p._parent:
+            _, basename = pp.split(p.name)
+            full_name = basename + '/' + full_name
+            p = p._parent
+        self.versioned_root._compression_opts[full_name] = value
 
     def visititems(self, func):
         self._visit('', func)
