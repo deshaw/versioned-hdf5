@@ -335,7 +335,7 @@ class InMemoryArrayDataset:
         self.name = name
         self._array = array
         self.attrs = {}
-        self.fillvalue = fillvalue or array.dtype.type()
+        self.fillvalue = fillvalue
 
     @property
     def array(self):
@@ -411,8 +411,8 @@ class InMemoryArrayDataset:
         if len(size) > 1:
             raise NotImplementedError("More than one dimension is not yet supported")
         if size[0] > self.shape[0]:
-            self.array = np.concatenate((self.array, np.full(size[0] -
-                                                             self.shape[0], self.fillvalue,
+            self.array = np.concatenate((self.array, np.full(size[0] - self.shape[0],
+                                                             self.fillvalue or self.dtype.type(),
                                                              dtype=self.dtype)))
         else:
             self.array = self.array[:size[0]]
