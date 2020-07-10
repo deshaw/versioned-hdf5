@@ -24,6 +24,12 @@ def test_create_base_dataset():
         create_base_dataset(f, 'test_data', data=np.ones((DEFAULT_CHUNK_SIZE,)))
         assert f['_version_data/test_data/raw_data'].dtype == np.float64
 
+def test_create_base_dataset_multidimension():
+    with setup() as f:
+        create_base_dataset(f, 'test_data', data=np.ones((CHUNK_SIZE_3D, CHUNK_SIZE_3D, 2)),
+                            chunks=(CHUNK_SIZE_3D, CHUNK_SIZE_3D, CHUNK_SIZE_3D))
+        assert f['_version_data/test_data/raw_data'].dtype == np.float64
+
 def test_write_dataset():
     with setup() as f:
         slices1 = write_dataset(f, 'test_data', np.ones((2*DEFAULT_CHUNK_SIZE,)))
