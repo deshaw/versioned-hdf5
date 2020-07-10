@@ -1,7 +1,7 @@
 # versioned-hdf5
 
 [![Build
-Status](https://travis-ci.org/Quansight/versioned-hdf5.svg?branch=master)](https://travis-ci.org/Quansight/versioned-hdf5)
+Status](https://travis-ci.org/deshaw/versioned-hdf5.svg?branch=master)](https://travis-ci.org/deshaw/versioned-hdf5)
 
 Versioned HDF5 provides a versioned abstraction on top of `h5py`. 
 
