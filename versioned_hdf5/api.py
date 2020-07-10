@@ -12,7 +12,7 @@ import datetime
 from .backend import initialize
 from .versions import (create_version_group, commit_version,
                        get_nth_previous_version, set_current_version,
-                       all_versions, delete_version)
+                       all_versions, delete_version, TIMESTAMP_FMT)
 from .wrappers import InMemoryGroup
 
 
@@ -94,7 +94,7 @@ class VersionedHDF5File:
                 if isinstance(timestamp, np.datetime64):
                     ts = f"{timestamp.astype(datetime.datetime)}+0000"
                 else:
-                    ts = timestamp.strftime("%Y-%m-%d %H:%M:%S.%f%z")
+                    ts = timestamp.strftime(TIMESTAMP_FMT)
                 if ts == self[version].attrs['timestamp']:
                     # TODO: Don't give an in-memory group if the file is read-only
                     return InMemoryGroup(self._versions[version]._id)

@@ -11,6 +11,7 @@ from numpy.testing import assert_equal
 
 from ..backend import DEFAULT_CHUNK_SIZE
 from ..api import VersionedHDF5File
+from ..versions import TIMESTAMP_FMT
 
 from .helpers import setup
 
@@ -626,7 +627,7 @@ def test_timestamp_manual():
         with file.stage_version('version1', timestamp=ts1) as group:
             group['test_data_1'] = data1
 
-        assert file['version1'].attrs['timestamp'] == ts1.strftime("%Y-%m-%d %H:%M:%S.%f%z")
+        assert file['version1'].attrs['timestamp'] == ts1.strftime(TIMESTAMP_FMT)
 
         with raises(ValueError):
             with file.stage_version('version2', timestamp=ts2) as group:
@@ -647,7 +648,7 @@ def test_getitem_by_timestamp():
             group.create_dataset('test_data', data=data)
 
         v = file['version1']
-        ts = datetime.datetime.strptime(v.attrs['timestamp'], "%Y-%m-%d %H:%M:%S.%f%z")
+        ts = datetime.datetime.strptime(v.attrs['timestamp'], TIMESTAMP_FMT)
         assert file[ts] == v
 
         dt = np.datetime64(ts.replace(tzinfo=None))
