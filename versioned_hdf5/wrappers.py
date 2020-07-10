@@ -624,6 +624,7 @@ class InMemoryArrayDataset:
             size[axis] = newlen
 
         size = tuple(size)
+        # TODO: Can this be done more efficiently?
         for i in range(len(size)):
             if size[i] > self.shape[i]:
                 newshape = list(self.shape)
