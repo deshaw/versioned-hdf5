@@ -335,7 +335,7 @@ class InMemoryArrayDataset:
         self.name = name
         self._array = array
         self.attrs = {}
-        self.fillvalue = fillvalue or np.zeros((), dtype=array.dtype)
+        self.fillvalue = fillvalue or np.zeros((), dtype=array.dtype)[()]
 
     @property
     def array(self):
