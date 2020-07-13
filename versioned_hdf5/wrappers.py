@@ -19,9 +19,10 @@ import numpy as np
 from collections import defaultdict
 import math
 import posixpath as pp
+import warnings
 
 from .backend import DEFAULT_CHUNK_SIZE
-from .slicetools import split_slice, spaceid_to_slice, as_subchunks
+from .slicetools import split_slice, spaceid_to_slice, as_subchunks, split_chunks
 
 _groups = {}
 class InMemoryGroup(Group):
@@ -407,7 +408,64 @@ class InMemoryDataset(Dataset):
 
         size = tuple(size)
         # === END CODE FROM h5py.Dataset.resize ===
-        raise NotImplementedError("Resizing is not yet implemented")
+
+        old_shape = self.shape
+        data_dict = self.id.data_dict
+        chunks = self.chunks
+        for i, (chunk_size, old_dim, new_dim) in enumerate(zip(chunks, old_shape, size)):
+            if new_dim < old_dim:
+                for c in list(data_dict):
+                    s = c.args[i]
+                    if s.start >= new_dim:
+                        del data_dict[c]
+                    elif s.start <= new_dim < s.stop:
+                        if isinstance(data_dict[c], (Slice, slice, tuple, Tuple)):
+                            # Non-chunk multiple
+                            a = self.id._read_chunk(c.raw)
+                        else:
+                            a = data_dict[c]
+                        sub_s = Slice(None, new_dim).as_subindex(s)
+                        new_c = Tuple(*c.args[:i], Slice(s.start, new_dim, 1), *c.args[i+1:])
+                        del data_dict[c]
+                        data_dict[new_c] = a[(slice(None),)*i + (sub_s.raw,)]
+            elif new_dim > old_dim:
+                quo, rem = divmod(new_dim, chunk_size)
+                if old_dim % chunk_size != 0:
+                    c = max(data_dict, key=lambda x: x.args[i].stop)
+                    if isinstance(data_dict[c], (Slice, slice, tuple, Tuple)):
+                        a = self.id._read_chunk(c.raw)
+                    else:
+                        a = data_dict[c]
+                    assert a.shape[i] == old_dim % chunk_size
+
+                    s = c.args[i]
+                    del data_dict[c]
+                    if s.start == quo*chunk_size:
+                        new_c = Tuple(*c.args[:i], Slice(s.start, s.start + rem, 1), *c.args[i+1:])
+                        data_dict[new_c] = np.concatenate([a, np.full(chunks[:i] + (rem -
+                            a.shape[i],) + chunks[i+1:], self.fillvalue, dtype=self.dtype)])
+                    else:
+                        new_c = Tuple(*c.args[:i], Slice(s.start, s.start + chunk_size, 1), *c.args[i+1:])
+                        data_dict[new_c] = np.concatenate([a, np.full(chunks[:i] + (chunk_size -
+                            a.shape[i],) + chunks[i+1:], self.fillvalue, dtype=self.dtype)])
+
+                if rem != 0 and not any(c.args[i].start == quo*chunk_size for c in data_dict):
+                    # fillvalue along the chunks are added in the for loop below, but
+                    # we have to add a sub-chunk fillvalues here
+                    for c in split_chunks(old_shape, chunks):
+                        if c.args[i].start != 0:
+                            continue
+                        new_c = Tuple(*c.args[:i], Slice(quo*chunk_size, quo*chunk_size + rem, 1), *c.args[i+1:])
+                        data_dict[new_c] = np.full(chunks[:i] + (rem,) + chunks[i+1:], self.fillvalue, dtype=self.dtype)
+                for j in range(math.ceil(old_dim/chunk_size), quo):
+                    for c in split_chunks(old_shape, chunks):
+                        if c.args[i].start != 0:
+                            continue
+                        new_c = Tuple(*c.args[:i], Slice(j*chunk_size, (j+1)*chunk_size, 1), *c.args[i+1:])
+                        data_dict[new_c] = np.full(chunks, self.fillvalue, dtype=self.dtype)
+
+        self.id.shape = size
+
 
     @with_phil
     def __getitem__(self, args, new_dtype=None):
