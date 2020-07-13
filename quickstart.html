@@ -108,6 +108,48 @@ objects must be closed to make sure the HDF5 file is written properly to disk
 <span class="gp">&gt;&gt;&gt; </span><span class="n">versioned_file</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
 </pre></div>
 </div>
+<div class="section" id="other-options">
+<h2>Other Options<a class="headerlink" href="#other-options" title="Permalink to this headline">¶</a></h2>
+<p>When a version is committed to a VersionedHDF5File, a timestamp is automatically
+added to it. The timestamp for each version can be retrieved via the version’s
+<code class="code docutils literal notranslate"><span class="pre">attrs</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">versioned_file</span><span class="p">[</span><span class="s1">&#39;version1&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;timestamp&#39;</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>Since the HDF5 specification does not currently support writing
+<code class="code docutils literal notranslate"><span class="pre">datetime.datetime</span></code> or <code class="code docutils literal notranslate"><span class="pre">numpy.datetime</span></code> objects to HDF5 files, these timestamps
+are stored as strings, using the following format:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>`&quot;%Y-%m-%d %H:%M:%S.%f%z&quot;`
+</pre></div>
+</div>
+<p>The timestamps are registered in UTC. For more details on the format string
+above, see the <code class="code docutils literal notranslate"><span class="pre">datetime.datetime.strftime</span></code> function documentation.</p>
+<p>The timestamp can also be used as an index to retrieve a chosen version from the
+file. In this case, either a <code class="code docutils literal notranslate"><span class="pre">datetime.datetime</span></code> or a <code class="code docutils literal notranslate"><span class="pre">numpy.datetime64</span></code> object
+must be used as a key. For example, if</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">(</span><span class="n">datetime</span><span class="o">.</span><span class="n">timezone</span><span class="o">.</span><span class="n">utc</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>then using</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">versioned_file</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>returns the version with timestamp equal to <code class="code docutils literal notranslate"><span class="pre">t</span></code> (converted to a string according
+to the format mentioned above).</p>
+<p>It is also possible to assign a timestamp manually to a file. Again, this
+requires using either a <code class="code docutils literal notranslate"><span class="pre">datetime.datetime</span></code> or a <code class="code docutils literal notranslate"><span class="pre">numpy.datetime64</span></code> object as
+the timestamp:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">ts</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">(</span><span class="mi">2020</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">29</span><span class="p">,</span> <span class="mi">23</span><span class="p">,</span> <span class="mi">58</span><span class="p">,</span> <span class="mi">21</span><span class="p">,</span> <span class="mi">116470</span><span class="p">,</span> <span class="n">tzinfo</span><span class="o">=</span><span class="n">datetime</span><span class="o">.</span><span class="n">timezone</span><span class="o">.</span><span class="n">utc</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">versioned_file</span><span class="o">.</span><span class="n">stage_version</span><span class="p">(</span><span class="s1">&#39;version1&#39;</span><span class="p">,</span> <span class="n">timestamp</span><span class="o">=</span><span class="n">ts</span><span class="p">)</span> <span class="k">as</span> <span class="n">group</span><span class="p">:</span>
+<span class="gp">&gt;&gt;&gt; </span>   <span class="n">group</span><span class="p">[</span><span class="s1">&#39;mydataset&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">data</span>
+</pre></div>
+</div>
+<p>Now:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">versioned_file</span><span class="p">[</span><span class="n">ts</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>returns the same as <code class="code docutils literal notranslate"><span class="pre">versioned_file['version1']</span></code>.</p>
+</div>
 </div>
 
 
@@ -143,7 +185,10 @@ objects must be closed to make sure the HDF5 file is written properly to disk
 <h3>Navigation</h3>
 <p class="caption"><span class="caption-text">Contents:</span></p>
 <ul class="current">
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Quickstart Guide</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Quickstart Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#other-options">Other Options</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="usage.html">Usage</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reference.html">API Documentation</a></li>
@@ -185,7 +230,7 @@ objects must be closed to make sure the HDF5 file is written properly to disk
       &copy;2020, Quansight.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.1.1</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.1.2</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |

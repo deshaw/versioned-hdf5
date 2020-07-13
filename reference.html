@@ -87,7 +87,7 @@ indexing (the current version is <code class="code docutils literal notranslate"
 
 <dl class="py method">
 <dt id="versioned_hdf5.VersionedHDF5File.stage_version">
-<code class="sig-name descname">stage_version</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">version_name</span><span class="p">:</span> <span class="n">str</span></em>, <em class="sig-param"><span class="n">prev_version</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">make_current</span><span class="o">=</span><span class="default_value">True</span></em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.stage_version" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">stage_version</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">version_name</span><span class="p">:</span> <span class="n">str</span></em>, <em class="sig-param"><span class="n">prev_version</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">make_current</span><span class="o">=</span><span class="default_value">True</span></em>, <em class="sig-param"><span class="n">timestamp</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.stage_version" title="Permalink to this definition">¶</a></dt>
 <dd><p>Return a context manager to stage a new version</p>
 <p>The context manager returns a group, which should be modified in-place
 to build the new version. When the context manager exits, the new
@@ -181,7 +181,7 @@ as the current version. The current version is used as the default
       &copy;2020, Quansight.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.1.1</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.1.2</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |
