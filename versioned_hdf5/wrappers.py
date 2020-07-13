@@ -145,6 +145,8 @@ class InMemoryGroup(Group):
                 chunks = (DEFAULT_CHUNK_SIZE,)
             else:
                 raise NotImplementedError("chunks must be specified for multi-dimensional datasets")
+        if 'maxshape' in kwds and any(i != None for i in kwds['maxshape']):
+            warnings.warn("The maxshape parameter is currently ignored for versioned datasets.")
         if isinstance(chunks, int) and not isinstance(chunks, bool):
             chunks = (chunks,)
         if len(shape) != len(chunks):
