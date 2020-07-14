@@ -9,7 +9,7 @@ from h5py import Empty, Dataset, Datatype, Group, h5d, h5i, h5p, h5s, h5t, h5r
 from h5py._hl.base import guess_dtype, with_phil, phil
 from h5py._hl.dataset import _LEGACY_GZIP_COMPRESSION_VALS
 from h5py._hl import filters
-from h5py._hl.selections import select, guess_shape
+from h5py._hl.selections import guess_shape
 from h5py._hl.vds import VDSmap
 
 from ndindex import Tuple, Slice, ndindex
@@ -17,12 +17,11 @@ from ndindex import Tuple, Slice, ndindex
 import numpy as np
 
 from collections import defaultdict
-import math
 import posixpath as pp
 import warnings
 
 from .backend import DEFAULT_CHUNK_SIZE
-from .slicetools import split_slice, spaceid_to_slice, as_subchunks, split_chunks
+from .slicetools import spaceid_to_slice, as_subchunks, split_chunks
 
 _groups = {}
 class InMemoryGroup(Group):
@@ -563,12 +562,12 @@ class InMemoryDataset(Dataset):
             if valshp != shp:  # Last dimension has to match
                 raise TypeError("When writing to array types, last N dimensions have to match (got %s, but should be %s)" % (valshp, shp,))
             mtype = h5t.py_create(np.dtype((val.dtype, shp)))
-            mshape = val.shape[0:len(val.shape)-len(shp)]
+            # mshape = val.shape[0:len(val.shape)-len(shp)]
 
         # Make a compound memory type if field-name slicing is required
         elif len(names) != 0:
 
-            mshape = val.shape
+            # mshape = val.shape
 
             # Catch common errors
             if self.dtype.fields is None:
