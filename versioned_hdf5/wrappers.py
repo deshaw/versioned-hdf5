@@ -414,7 +414,7 @@ class InMemoryDataset(Dataset):
         data_dict = self.id.data_dict
         chunks = self.chunks
 
-        old_shape_idx = Tuple(*[Slice(0, i, 1) for i in old_shape])
+        old_shape_idx = Tuple(*[Slice(0, i) for i in old_shape])
         new_data_dict = {}
         for c in set(split_chunks(size, chunks)):
             if c in data_dict:
@@ -695,16 +695,19 @@ class InMemoryArrayDataset:
             size = list(self.shape)
             size[axis] = newlen
 
+        old_shape = self.shape
         size = tuple(size)
-        # TODO: Can this be done more efficiently?
-        for i in range(len(size)):
-            if size[i] > self.shape[i]:
-                newshape = list(self.shape)
-                newshape[i] = size[i] - self.shape[i]
-                self.array = np.concatenate((self.array, np.full(newshape, self.fillvalue, dtype=self.dtype)),
-                                            axis=i)
-            else:
-                self.array = self.array[(slice(None),)*i + (slice(None, size[i]),)]
+        if all(new <= old for new, old in zip(size, old_shape)):
+            # Don't create a new array if the old one can just be sliced in
+            # memory.
+            idx = tuple(slice(0, i) for i in size)
+            self.array = self.array[idx]
+        else:
+            old_shape_idx = Tuple(*[Slice(0, i) for i in old_shape])
+            new_shape_idx = Tuple(*[Slice(0, i) for i in size])
+            new_array = np.full(size, self.fillvalue, dtype=self.dtype)
+            new_array[old_shape_idx.as_subindex(new_shape_idx).raw] = self.array[new_shape_idx.as_subindex(old_shape_idx).raw]
+            self.array = new_array
 
 class InMemoryDatasetID(h5d.DatasetID):
     def __init__(self, _id):
