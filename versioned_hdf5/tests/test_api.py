@@ -555,67 +555,58 @@ def test_resize_multiple_dimensions():
 
     shapes = range(5, 25, 5) # 5, 10, 15, 20
     chunks = (10, 10, 10)
-    for oldshape, newshape in\
-        itertools.combinations_with_replacement(itertools.product(shapes, repeat=3), 2):
-        print(oldshape, newshape)
-        data = np.arange(np.product(oldshape)).reshape(oldshape)
-        # Get the ground truth from h5py
-        with setup() as f:
-            f.create_dataset('data', data=data, fillvalue=-1, chunks=chunks,
+    with setup() as f:
+        file = VersionedHDF5File(f)
+        for i, (oldshape, newshape) in\
+            enumerate(itertools.combinations_with_replacement(itertools.product(shapes, repeat=3), 2)):
+            print(oldshape, newshape)
+            data = np.arange(np.product(oldshape)).reshape(oldshape)
+            # Get the ground truth from h5py
+            f.create_dataset(f'data{i}', data=data, fillvalue=-1, chunks=chunks,
                              maxshape=(None, None, None))
-            f['data'].resize(newshape)
-            new_data = f['data'][()]
+            f[f'data{i}'].resize(newshape)
+            new_data = f[f'data{i}'][()]
 
-        # resize after creation
-        with setup() as f:
-            file = VersionedHDF5File(f)
-
-            with file.stage_version('version1') as group:
-                group.create_dataset('dataset', data=data, chunks=chunks,
+            # resize after creation
+            with file.stage_version(f'version1_{i}') as group:
+                group.create_dataset(f'dataset1_{i}', data=data, chunks=chunks,
                                      fillvalue=-1)
-                group['dataset'].resize(newshape)
-                assert group['dataset'].shape == newshape
-                assert_equal(group['dataset'][()], new_data)
+                group[f'dataset1_{i}'].resize(newshape)
+                assert group[f'dataset1_{i}'].shape == newshape
+                assert_equal(group[f'dataset1_{i}'][()], new_data)
 
-            version1 = file['version1']
-            assert version1['dataset'].shape == newshape
-            assert_equal(version1['dataset'][()], new_data)
+            version1 = file[f'version1_{i}']
+            assert version1[f'dataset1_{i}'].shape == newshape
+            assert_equal(version1[f'dataset1_{i}'][()], new_data)
 
-        # resize in a new version
-        with setup() as f:
-            file = VersionedHDF5File(f)
-
-            with file.stage_version('version1') as group:
-                group.create_dataset('dataset', data=data, chunks=chunks,
+            # resize in a new version
+            with file.stage_version(f'version2_1_{i}', '') as group:
+                group.create_dataset(f'dataset2_{i}', data=data, chunks=chunks,
                                      fillvalue=-1)
-            with file.stage_version('version2') as group:
-                group['dataset'].resize(newshape)
-                assert group['dataset'].shape == newshape
-                assert_equal(group['dataset'][()], new_data, str((oldshape, newshape)))
+            with file.stage_version(f'version2_2_{i}', f'version2_1_{i}') as group:
+                group[f'dataset2_{i}'].resize(newshape)
+                assert group[f'dataset2_{i}'].shape == newshape
+                assert_equal(group[f'dataset2_{i}'][()], new_data, str((oldshape, newshape)))
 
-            version2 = file['version2']
-            assert version2['dataset'].shape == newshape
-            assert_equal(version2['dataset'][()], new_data)
+            version2_2 = file[f'version2_2_{i}']
+            assert version2_2[f'dataset2_{i}'].shape == newshape
+            assert_equal(version2_2[f'dataset2_{i}'][()], new_data)
 
-        # resize after some data is read in
-        with setup() as f:
-            file = VersionedHDF5File(f)
-
-            with file.stage_version('version1') as group:
-                group.create_dataset('dataset', data=data, chunks=chunks,
+            # resize after some data is read in
+            with file.stage_version(f'version3_1_{i}', '') as group:
+                group.create_dataset(f'dataset3_{i}', data=data, chunks=chunks,
                                      fillvalue=-1)
-            with file.stage_version('version2') as group:
+            with file.stage_version(f'version3_2_{i}', f'version3_1_{i}') as group:
                 # read in first and last chunks
-                group['dataset'][0, 0, 0]
-                group['dataset'][-1, -1, -1]
-                group['dataset'].resize(newshape)
-                assert group['dataset'].shape == newshape
-                assert_equal(group['dataset'][()], new_data)
+                group[f'dataset3_{i}'][0, 0, 0]
+                group[f'dataset3_{i}'][-1, -1, -1]
+                group[f'dataset3_{i}'].resize(newshape)
+                assert group[f'dataset3_{i}'].shape == newshape
+                assert_equal(group[f'dataset3_{i}'][()], new_data)
 
-            version2 = file['version2']
-            assert version2['dataset'].shape == newshape
-            assert_equal(version2['dataset'][()], new_data)
-
+            version3_2 = file[f'version3_2_{i}']
+            assert version3_2[f'dataset3_{i}'].shape == newshape
+            assert_equal(version3_2[f'dataset3_{i}'][()], new_data)
 
 def test_getitem():
     with setup() as f:
