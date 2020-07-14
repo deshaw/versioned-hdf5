@@ -51,7 +51,9 @@ class VersionedHDF5File:
     When the context manager exits, the version will be written to the file.
 
     Finally, use
-    >>> file.close()
+
+    >>> file.close() # doctest: +SKIP
+
     to close the `VersionedHDF5File` object (note that the `h5py` file object
     should be closed separately.)
     """
