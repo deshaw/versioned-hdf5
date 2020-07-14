@@ -52,14 +52,19 @@ def test_InMemoryArrayDataset_resize():
     assert dataset.shape == dataset.array.shape == (90,)
 
 def test_InMemoryArrayDataset_resize_multidimension():
-    a = np.arange(10*10*10).reshape((10, 10, 10))
     # Test semantics against raw HDF5
 
-    for newshape in itertools.product(*[(5, 10, 15)]*3):
+    shapes = range(5, 25, 5) # 5, 10, 15, 20
+    chunks = (10, 10, 10)
+
+    for i, (oldshape, newshape) in\
+            enumerate(itertools.combinations_with_replacement(itertools.product(shapes, repeat=3), 2)):
+        a = np.arange(np.product(oldshape)).reshape(oldshape)
+
         dataset = InMemoryArrayDataset('data', a, fillvalue=-1)
         dataset.resize(newshape)
         with setup() as f:
             f.create_dataset('data', data=a, fillvalue=-1,
-                             chunks=(10, 10, 10), maxshape=(None, None, None))
+                             chunks=chunks, maxshape=(None, None, None))
             f['data'].resize(newshape)
             assert_equal(dataset[()], f['data'][()], str(newshape))
