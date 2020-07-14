@@ -136,6 +136,8 @@ class InMemoryGroup(Group):
         dirname, data_name = pp.split(name)
         if dirname and dirname not in self:
             self.create_group(dirname)
+        if 'maxshape' in kwds and any(i != None for i in kwds['maxshape']):
+            warnings.warn("The maxshape parameter is currently ignored for versioned datasets.")
         data = _make_new_dset(**kwds)
         shape = data.shape
         if 'fillvalue' in kwds:
@@ -146,8 +148,6 @@ class InMemoryGroup(Group):
                 chunks = (DEFAULT_CHUNK_SIZE,)
             else:
                 raise NotImplementedError("chunks must be specified for multi-dimensional datasets")
-        if 'maxshape' in kwds and any(i != None for i in kwds['maxshape']):
-            warnings.warn("The maxshape parameter is currently ignored for versioned datasets.")
         if isinstance(chunks, int) and not isinstance(chunks, bool):
             chunks = (chunks,)
         if len(shape) != len(chunks):
@@ -293,6 +293,7 @@ def _make_new_dset(shape=None, dtype=None, data=None, chunks=None,
     # Validate chunk shape
     if isinstance(chunks, int) and not isinstance(chunks, bool):
         chunks = (chunks,)
+
     # The original make_new_dset errors here if the shape is less than the
     # chunk size, but we avoid doing that as we cannot change the chunk size
     # for a dataset for any version once it is created. See #34.
