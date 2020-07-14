@@ -1,4 +1,5 @@
 import os
+import itertools
 
 from pytest import raises
 
@@ -547,6 +548,73 @@ def test_resize_unaligned():
                 group[ds_name].resize((l + 1000,))
                 group[ds_name][-1000:] = np.arange(l, l + 1000)
                 assert_equal(group[ds_name][:], np.arange((i + 1) * 1000))
+
+
+def test_resize_multiple_dimensions():
+    # Test semantics against raw HDF5
+
+    shapes = range(5, 25, 5) # 5, 10, 15, 20
+    chunks = (10, 10, 10)
+    for oldshape, newshape in\
+        itertools.combinations_with_replacement(itertools.product(shapes, repeat=3), 2):
+        print(oldshape, newshape)
+        data = np.arange(np.product(oldshape)).reshape(oldshape)
+        # Get the ground truth from h5py
+        with setup() as f:
+            f.create_dataset('data', data=data, fillvalue=-1, chunks=chunks,
+                             maxshape=(None, None, None))
+            f['data'].resize(newshape)
+            new_data = f['data'][()]
+
+        # resize after creation
+        with setup() as f:
+            file = VersionedHDF5File(f)
+
+            with file.stage_version('version1') as group:
+                group.create_dataset('dataset', data=data, chunks=chunks,
+                                     fillvalue=-1)
+                group['dataset'].resize(newshape)
+                assert group['dataset'].shape == newshape
+                assert_equal(group['dataset'][()], new_data)
+
+            version1 = file['version1']
+            assert version1['dataset'].shape == newshape
+            assert_equal(version1['dataset'][()], new_data)
+
+        # resize in a new version
+        with setup() as f:
+            file = VersionedHDF5File(f)
+
+            with file.stage_version('version1') as group:
+                group.create_dataset('dataset', data=data, chunks=chunks,
+                                     fillvalue=-1)
+            with file.stage_version('version2') as group:
+                group['dataset'].resize(newshape)
+                assert group['dataset'].shape == newshape
+                assert_equal(group['dataset'][()], new_data, str((oldshape, newshape)))
+
+            version2 = file['version2']
+            assert version2['dataset'].shape == newshape
+            assert_equal(version2['dataset'][()], new_data)
+
+        # resize after some data is read in
+        with setup() as f:
+            file = VersionedHDF5File(f)
+
+            with file.stage_version('version1') as group:
+                group.create_dataset('dataset', data=data, chunks=chunks,
+                                     fillvalue=-1)
+            with file.stage_version('version2') as group:
+                # read in first and last chunks
+                group['dataset'][0, 0, 0]
+                group['dataset'][-1, -1, -1]
+                group['dataset'].resize(newshape)
+                assert group['dataset'].shape == newshape
+                assert_equal(group['dataset'][()], new_data)
+
+            version2 = file['version2']
+            assert version2['dataset'].shape == newshape
+            assert_equal(version2['dataset'][()], new_data)
 
 
 def test_getitem():
