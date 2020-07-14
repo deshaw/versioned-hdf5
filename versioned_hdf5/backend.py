@@ -158,7 +158,7 @@ def create_virtual_dataset(f, version_name, name, slices, attrs=None, fillvalue=
     # (the true layout of the chunks in the raw dataset is irrelevant).
     for c, s in slices.items():
         if len(c.args[0]) != len(s):
-            raise ValueError("Inconsistent slices dictionary")
+            raise ValueError(f"Inconsistent slices dictionary ({c.args[0]}, {s})")
 
     layout = VirtualLayout(shape, dtype=raw_data.dtype)
     vs = VirtualSource('.', name=raw_data.name, shape=raw_data.shape, dtype=raw_data.dtype)
