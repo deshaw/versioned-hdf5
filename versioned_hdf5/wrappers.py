@@ -527,7 +527,9 @@ class InMemoryDataset(Dataset):
 
         for c, index in as_subchunks(idx, self.shape, self.chunks):
             if isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
-                a = self.id._read_chunk(c.raw, mtype=mtype, dxpl=self._dxpl)
+                raw_idx = Tuple(self.id.data_dict[c], *[slice(0, len(i)) for i
+                                                        in c.args[1:]]).raw
+                a = self.id._read_chunk(raw_idx)
                 self.id.data_dict[c] = a
 
             if self.id.data_dict[c].size != 0:
@@ -643,7 +645,9 @@ class InMemoryDataset(Dataset):
 
         for c, index in as_subchunks(idx, self.shape, self.chunks):
             if isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
-                a = self.id._read_chunk(c.raw, mtype=mtype, dxpl=self._dxpl)
+                raw_idx = Tuple(self.id.data_dict[c], *[slice(0, len(i)) for i
+                                                        in c.args[1:]]).raw
+                a = self.id._read_chunk(raw_idx)
                 self.id.data_dict[c] = a
 
             if self.id.data_dict[c].size != 0:
@@ -764,7 +768,10 @@ class InMemoryDatasetID(h5d.DatasetID):
         # slice_map = {i.args[0]: j.args[0] for i, j in slice_map.items()}
         fid = h5i.get_file_id(self)
         g = Group(fid)
-        self.chunks = tuple(g[virtual_sources[0].dset_name].attrs['chunks'])
+        raw_data_name = virtual_sources[0].dset_name
+        assert all(i.dset_name == raw_data_name for i in virtual_sources)
+        self.raw_data = g[raw_data_name]
+        self.chunks = tuple(self.raw_data.attrs['chunks'])
 
         for s in slice_map:
             src_idx = slice_map[s]
@@ -835,19 +842,8 @@ class InMemoryDatasetID(h5d.DatasetID):
     def shape(self, size):
         self._shape = size
 
-    def _read_chunk(self, chunk_idx, mtype=None, dxpl=None):
-        # Based on Dataset.__getitem__
-        selection = select(self.shape, chunk_idx, dsid=self)
-
-        assert selection.nselect != 0
-
-        a = np.ndarray(selection.mshape, self.dtype, order='C')
-
-        # Read the data into the array a
-        mspace = h5s.create_simple(selection.mshape)
-        fspace = selection.id
-        super().read(mspace, fspace, a, mtype, dxpl=dxpl)
-        return a
+    def _read_chunk(self, chunk_idx):
+        return self.raw_data[chunk_idx]
 
     def write(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
         raise NotImplementedError("Writing to an InMemoryDataset other than via __setitem__")
