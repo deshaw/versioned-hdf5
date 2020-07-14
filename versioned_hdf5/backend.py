@@ -143,7 +143,8 @@ def write_dataset_chunks(f, name, data_dict):
     old_shape = ds.shape
     ds.resize((old_shape[0] + len(data_to_write)*chunk_size,) + chunks[1:])
     for raw_slice, data_s in data_to_write.items():
-        ds[raw_slice.raw] = data_s
+        c = (raw_slice.raw,) + tuple(slice(0, i) for i in data_s.shape[1:])
+        ds[c] = data_s
     return slices
 
 def create_virtual_dataset(f, version_name, name, slices, attrs=None, fillvalue=None):
