@@ -55,7 +55,6 @@ def test_stage_version():
 
         file.close()
 
-
 def test_stage_version_chunk_size():
     with setup() as f:
         chunk_size = 2**10
@@ -602,7 +601,6 @@ def test_getitem():
 
         file.close()
 
-
 def test_timestamp_auto():
     with setup() as f:
         file = VersionedHDF5File(f)
@@ -613,7 +611,6 @@ def test_timestamp_auto():
             group.create_dataset('test_data', data=data)
 
         assert isinstance(file['version1'].attrs['timestamp'], str)
-
 
 def test_timestamp_manual():
     with setup() as f:
@@ -637,7 +634,6 @@ def test_timestamp_manual():
             with file.stage_version('version3', timestamp='2020-6-29') as group:
                 group['test_data_3'] = data1
 
-
 def test_getitem_by_timestamp():
     with setup() as f:
         file = VersionedHDF5File(f)
@@ -655,7 +651,6 @@ def test_getitem_by_timestamp():
         assert file[dt] == v
 
         file.close()
-
 
 def test_nonroot():
     with setup() as f:
@@ -1169,6 +1164,16 @@ def test_multidimensional():
 
         file.close()
 
+
+def test_string_dataset():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+        data = b'baz'
+        with file.stage_version('version1') as group:
+            group['string_ds'] = data
+
+        assert file['version1']['string_ds'][()] == data
+        file.close()
 
 def test_closes():
     with setup() as f:

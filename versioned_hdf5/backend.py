@@ -56,6 +56,7 @@ def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
 
 def write_dataset(f, name, data, chunks=None, compression=None,
                   compression_opts=None, fillvalue=None):
+
     if name not in f['_version_data']:
         return create_base_dataset(f, name, data=data, chunks=chunks,
             compression=compression, compression_opts=compression_opts, fillvalue=fillvalue)
@@ -81,19 +82,20 @@ def write_dataset(f, name, data, chunks=None, compression=None,
     slices = []
     slices_to_write = {}
     chunk_size = chunks[0]
-    for s in split_chunks(data.shape, chunks):
-        idx = hashtable.largest_index
-        data_s = data[s.raw]
-        raw_slice = Slice(idx*chunk_size, idx*chunk_size + data_s.shape[0])
-        data_hash = hashtable.hash(data_s)
-        raw_slice2 = hashtable.setdefault(data_hash, raw_slice)
-        if raw_slice2 == raw_slice:
-            slices_to_write[raw_slice] = s
-        slices.append(raw_slice2)
+    if len(data.shape) != 0:
+        for s in split_chunks(data.shape, chunks):
+            idx = hashtable.largest_index
+            data_s = data[s.raw]
+            raw_slice = Slice(idx*chunk_size, idx*chunk_size + data_s.shape[0])
+            data_hash = hashtable.hash(data_s)
+            raw_slice2 = hashtable.setdefault(data_hash, raw_slice)
+            if raw_slice2 == raw_slice:
+                slices_to_write[raw_slice] = s
+            slices.append(raw_slice2)
+        ds.resize((old_shape[0] + len(slices_to_write)*chunk_size,) + chunks[1:])
+        for raw_slice, s in slices_to_write.items():
+            ds[raw_slice.raw] = data[s.raw]
 
-    ds.resize((old_shape[0] + len(slices_to_write)*chunk_size,) + chunks[1:])
-    for raw_slice, s in slices_to_write.items():
-        ds[raw_slice.raw] = data[s.raw]
     return slices
 
 def write_dataset_chunks(f, name, data_dict):
@@ -149,7 +151,10 @@ def create_virtual_dataset(f, version_name, name, slices, attrs=None, fillvalue=
         s = s.reduce()
         if s.stop - s.start != chunk_size:
             raise NotImplementedError("Smaller than chunk size slice is only supported as the last slice.")
-    shape = (chunk_size*(len(slices) - 1) + slices[-1].stop - slices[-1].start,) + chunks[1:]
+    if len(slices) == 0:
+        shape = ()
+    else:
+        shape = (chunk_size*(len(slices) - 1) + slices[-1].stop - slices[-1].start,) + chunks[1:]
 
     layout = VirtualLayout(shape, dtype=raw_data.dtype)
     vs = VirtualSource('.', name=raw_data.name, shape=raw_data.shape, dtype=raw_data.dtype)
