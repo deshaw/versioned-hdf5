@@ -12,6 +12,7 @@ from numpy.testing import assert_equal
 from ..backend import DEFAULT_CHUNK_SIZE
 from ..api import VersionedHDF5File
 from ..versions import TIMESTAMP_FMT
+from ..wrappers import InMemoryArrayDataset, InMemoryDataset
 
 from .helpers import setup
 
@@ -1198,3 +1199,51 @@ def test_closes():
 
         assert reopened_file._version_data == version_data
         assert reopened_file._versions == versions
+
+def test_check_committed():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = np.ones((DEFAULT_CHUNK_SIZE,))
+
+        with file.stage_version('version1') as g:
+            g.create_dataset('test_data', data=data)
+
+        with raises(ValueError, match="committed"):
+            g['data'] = data
+
+        with raises(ValueError, match="committed"):
+            g.create_dataset('data', data=data)
+
+        with raises(ValueError, match="committed"):
+            g.create_group('subgruop')
+
+        with raises(ValueError, match="committed"):
+            del g['test_data']
+
+        # Incorrectly uses g from the previous version (InMemoryArrayDataset)
+        with raises(ValueError, match="committed"):
+            with file.stage_version('version2'):
+                assert isinstance(g['test_data'], InMemoryArrayDataset)
+                g['test_data'][0] = 1
+
+        with raises(ValueError, match="committed"):
+            with file.stage_version('version2'):
+                assert isinstance(g['test_data'], InMemoryArrayDataset)
+                g['test_data'].resize((100,))
+
+        with file.stage_version('version2') as g2:
+            pass
+
+        # Incorrectly uses g from the previous version (InMemoryDataset)
+        with raises(ValueError, match="committed"):
+            with file.stage_version('version3'):
+                assert isinstance(g2['test_data'], InMemoryDataset)
+                g2['test_data'][0] = 1
+
+        with raises(ValueError, match="committed"):
+            with file.stage_version('version3'):
+                assert isinstance(g2['test_data'], InMemoryDataset)
+                g2['test_data'].resize((100,))
+
+        assert repr(g) == '<Committed InMemoryGroup "/_version_data/versions/version1">'
