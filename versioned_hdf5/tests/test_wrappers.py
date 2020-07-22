@@ -3,6 +3,8 @@ import itertools
 import numpy as np
 from numpy.testing import assert_equal
 
+import pytest
+
 from ..wrappers import InMemoryArrayDataset
 from .helpers import setup
 
@@ -51,20 +53,18 @@ def test_InMemoryArrayDataset_resize():
     assert_equal(dataset, np.arange(90))
     assert dataset.shape == dataset.array.shape == (90,)
 
-def test_InMemoryArrayDataset_resize_multidimension():
+shapes = range(5, 25, 5) # 5, 10, 15, 20
+chunks = (10, 10, 10)
+@pytest.mark.parametrize('oldshape,newshape',
+                         itertools.combinations_with_replacement(itertools.product(shapes, repeat=3), 2))
+def test_InMemoryArrayDataset_resize_multidimension(oldshape, newshape):
     # Test semantics against raw HDF5
+    a = np.arange(np.product(oldshape)).reshape(oldshape)
 
-    shapes = range(5, 25, 5) # 5, 10, 15, 20
-    chunks = (10, 10, 10)
-
-    for i, (oldshape, newshape) in\
-            enumerate(itertools.combinations_with_replacement(itertools.product(shapes, repeat=3), 2)):
-        a = np.arange(np.product(oldshape)).reshape(oldshape)
-
-        dataset = InMemoryArrayDataset('data', a, fillvalue=-1)
-        dataset.resize(newshape)
-        with setup() as f:
-            f.create_dataset('data', data=a, fillvalue=-1,
-                             chunks=chunks, maxshape=(None, None, None))
-            f['data'].resize(newshape)
-            assert_equal(dataset[()], f['data'][()], str(newshape))
+    dataset = InMemoryArrayDataset('data', a, fillvalue=-1)
+    dataset.resize(newshape)
+    with setup() as f:
+        f.create_dataset('data', data=a, fillvalue=-1,
+                         chunks=chunks, maxshape=(None, None, None))
+        f['data'].resize(newshape)
+        assert_equal(dataset[()], f['data'][()], str(newshape))
