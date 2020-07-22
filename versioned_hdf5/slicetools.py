@@ -44,7 +44,11 @@ def as_subchunks(idx, shape, chunks):
     """
     idx = ndindex(idx)
     for c in split_chunks(shape, chunks):
-        index = idx.as_subindex(c)
+        try:
+            index = idx.as_subindex(c)
+        except ValueError:
+            continue
+
         if not index.isempty(chunks):
             yield (c, index)
 
