@@ -1200,6 +1200,21 @@ def test_closes():
         assert reopened_file._version_data == version_data
         assert reopened_file._versions == versions
 
+def test_store_binary_as_void():
+    with setup() as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version('version1') as sv:
+            sv['test_store_binary_data'] = [np.void(b'1111')]
+
+        version1 = vf['version1']
+        assert_equal(version1['test_store_binary_data'][0], np.void(b'1111'))
+
+        with vf.stage_version('version2') as sv:
+            sv['test_store_binary_data'][:] = [np.void(b'1234567890')]
+
+        version2 = vf['version2']
+        assert_equal(version2['test_store_binary_data'][0], np.void(b'1234'))
+
 def test_check_committed():
     with setup() as f:
         file = VersionedHDF5File(f)
