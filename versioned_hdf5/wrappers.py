@@ -47,19 +47,29 @@ class InMemoryGroup(Group):
         self.compression_opts = defaultdict(type(None))
         self._parent = None
         self._initialized = True
+        self._committed = False
         super().__init__(bind)
 
     # Based on Group.__repr__
     def __repr__(self):
+        namestr = (
+            '"%s"' % self.name
+        ) if self.name is not None else u"(anonymous)"
         if not self:
             r = u"<Closed InMemoryGroup>"
+        elif self._committed:
+            r = "<Committed InMemoryGroup %s>" % namestr
         else:
-            namestr = (
-                '"%s"' % self.name
-            ) if self.name is not None else u"(anonymous)"
             r = '<InMemoryGroup %s (%d members)>' % (namestr, len(self))
 
         return r
+
+    def _check_committed(self):
+        if self._committed:
+            namestr = (
+                '"%s"' % self.name
+            ) if self.name is not None else u"(anonymous)"
+            raise ValueError("InMemoryGroup %s has already been committed" % namestr)
 
     def __getitem__(self, name):
         dirname, basename = pp.split(name)
@@ -76,19 +86,20 @@ class InMemoryGroup(Group):
             self._subgroups[name] = self.__class__(res.id)
             return self._subgroups[name]
         elif isinstance(res, Dataset):
-            self._data[name] = InMemoryDataset(res.id)
+            self._data[name] = InMemoryDataset(res.id, parent=self)
             return self._data[name]
         else:
             raise NotImplementedError(f"Cannot handle {type(res)!r}")
 
     def __setitem__(self, name, obj):
+        self._check_committed()
         dirname, basename = pp.split(name)
         if dirname:
             self[dirname][basename] = obj
             return
 
         if isinstance(obj, Dataset):
-            self._data[name] = InMemoryDataset(obj.id)
+            self._data[name] = InMemoryDataset(obj.id, parent=self)
         elif isinstance(obj, Group):
             self._subgroups[name] = InMemoryGroup(obj.id)
         elif isinstance(obj, InMemoryGroup):
@@ -96,9 +107,10 @@ class InMemoryGroup(Group):
         elif isinstance(obj, InMemoryArrayDataset):
             self._data[name] = obj
         else:
-            self._data[name] = InMemoryArrayDataset(name, np.asarray(obj))
+            self._data[name] = InMemoryArrayDataset(name, np.asarray(obj), parent=self)
 
     def __delitem__(self, name):
+        self._check_committed()
         if name in self._data:
             del self._data[name]
 
@@ -113,6 +125,7 @@ class InMemoryGroup(Group):
         self._parent = p
 
     def create_group(self, name, track_order=None):
+        self._check_committed()
         if name.startswith('/'):
             raise ValueError("Root level groups cannot be created inside of versioned groups")
         group = type(self)(
@@ -132,13 +145,14 @@ class InMemoryGroup(Group):
         return group
 
     def create_dataset(self, name, **kwds):
+        self._check_committed()
         dirname, data_name = pp.split(name)
         if dirname and dirname not in self:
             self.create_group(dirname)
         data = _make_new_dset(**kwds)
         shape = data.shape
         if 'fillvalue' in kwds:
-            data = InMemoryArrayDataset(name, data, fillvalue=kwds['fillvalue'])
+            data = InMemoryArrayDataset(name, data, parent=self, fillvalue=kwds['fillvalue'])
         chunks = kwds.get('chunks')
         if chunks in [True, None]:
             chunks = (DEFAULT_CHUNK_SIZE,) + shape[1:]
@@ -311,12 +325,13 @@ class InMemoryDataset(Dataset):
     The versioned dataset can be modified, which performs modifications
     in-memory only.
     """
-    def __init__(self, bind, **kwargs):
+    def __init__(self, bind, parent, **kwargs):
         # Hold a reference to the original bind so h5py doesn't invalidate the id
         # XXX: We need to handle deallocation here properly when our object
         # gets deleted or closed.
         self.orig_bind = bind
         super().__init__(InMemoryDatasetID(bind.id), **kwargs)
+        self._parent = parent
         self._attrs = dict(super().attrs)
 
     @property
@@ -327,14 +342,27 @@ class InMemoryDataset(Dataset):
     def attrs(self):
         return self._attrs
 
+    @property
+    def parent(self):
+        return self._parent
+
+    def __setitem__(self, item, value):
+        self.parent._check_committed()
+        super().__setitem__(item, value)
+
+    def resize(self, size, axis=None):
+        self.parent._check_committed()
+        super().resize(size, axis=axis)
+
 class InMemoryArrayDataset:
     """
     Class that looks like a h5py.Dataset but is backed by an array
     """
-    def __init__(self, name, array, fillvalue=None):
+    def __init__(self, name, array, parent, fillvalue=None):
         self.name = name
         self._array = array
         self.attrs = {}
+        self.parent = parent
         self.fillvalue = fillvalue or np.zeros((), dtype=array.dtype)[()]
 
     @property
@@ -361,6 +389,7 @@ class InMemoryArrayDataset:
         return self.array.__getitem__(item)
 
     def __setitem__(self, item, value):
+        self.parent._check_committed()
         self.array.__setitem__(item, value)
 
     def __len__(self):
@@ -397,6 +426,7 @@ class InMemoryArrayDataset:
             yield self[i]
 
     def resize(self, size, axis=None):
+        self.parent._check_committed()
         if axis is not None:
             if not (axis >=0 and axis < self.ndim):
                 raise ValueError("Invalid axis (0 to %s allowed)" % (self.ndim-1))

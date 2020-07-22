@@ -12,7 +12,7 @@ import datetime
 from .backend import initialize
 from .versions import (create_version_group, commit_version,
                        get_nth_previous_version, set_current_version,
-                       all_versions, delete_version)
+                       all_versions, delete_version, TIMESTAMP_FMT)
 from .wrappers import InMemoryGroup
 
 
@@ -88,6 +88,18 @@ class VersionedHDF5File:
         # TODO: Don't give an in-memory group if the file is read-only
         return InMemoryGroup(self._versions[version]._id)
 
+    def get_version_by_timestamp(self, timestamp):
+        for version in self._versions:
+            if version != '__first_version__':
+                if isinstance(timestamp, np.datetime64):
+                    ts = f"{timestamp.astype(datetime.datetime)}+0000"
+                else:
+                    ts = timestamp.strftime(TIMESTAMP_FMT)
+                if ts == self[version].attrs['timestamp']:
+                    # TODO: Don't give an in-memory group if the file is read-only
+                    return InMemoryGroup(self._versions[version]._id)
+        raise KeyError(f"Version with timestamp {timestamp} not found")
+
     def __getitem__(self, item):
         if item is None:
             return self.get_version_by_name(self.current_version)
@@ -99,7 +111,7 @@ class VersionedHDF5File:
             return self.get_version_by_name(get_nth_previous_version(self.f,
                 self.current_version, -item))
         elif isinstance(item, (datetime.datetime, np.datetime64)):
-            raise NotImplementedError
+            return self.get_version_by_timestamp(item)
         else:
             raise KeyError(f"Don't know how to get the version for {item!r}")
 
@@ -122,7 +134,7 @@ class VersionedHDF5File:
 
     @contextmanager
     def stage_version(self, version_name: str, prev_version=None,
-                      make_current=True):
+                      make_current=True, timestamp=None):
         """
         Return a context manager to stage a new version
 
@@ -149,10 +161,12 @@ class VersionedHDF5File:
 
         try:
             yield group
+            group._committed = True
             commit_version(group, group.datasets(), make_current=make_current,
                            chunks=group.chunks,
                            compression=group.compression,
-                           compression_opts=group.compression_opts)
+                           compression_opts=group.compression_opts,
+                           timestamp=timestamp)
         except:
             delete_version(self.f, version_name, old_current)
             raise
