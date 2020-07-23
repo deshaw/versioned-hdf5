@@ -587,7 +587,6 @@ def test_resize_multiple_dimensions():
         file = VersionedHDF5File(f)
         for i, (oldshape, newshape) in\
             enumerate(itertools.combinations_with_replacement(itertools.product(shapes, repeat=3), 2)):
-            print(oldshape, newshape)
             data = np.arange(np.product(oldshape)).reshape(oldshape)
             # Get the ground truth from h5py
             f.create_dataset(f'data{i}', data=data, fillvalue=-1, chunks=chunks,
