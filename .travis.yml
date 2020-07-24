@@ -28,12 +28,11 @@ install:
   - conda config --add channels conda-forge
   - conda update -q conda
   - conda info -a
-  - conda create -n test-environment python=$TRAVIS_PYTHON_VERSION h5py numpy ndindex pyflakes pytest pytest-doctestplus doctr sphinx pytest-cov
+  - conda create -n test-environment python=$TRAVIS_PYTHON_VERSION h5py numpy scipy ndindex pyflakes pytest pytest-doctestplus pytest-flakes doctr sphinx pytest-cov
   - source activate test-environment
 
 script:
   - set -e
-  - pyflakes .
   - python -We:invalid -We::SyntaxWarning -m compileall -f -q versioned_hdf5/
   - if [[ "${COVERAGE}" == "true" ]]; then
         PYTEST_FLAGS="--cov=./";
