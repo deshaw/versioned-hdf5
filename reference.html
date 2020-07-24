@@ -49,26 +49,28 @@ prevent accidental modification, but it is not possible in the HDF5 layer
 to make a dataset or group read-only, so modifications made outside of
 this library could result in breaking things.</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">h5py</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">f</span> <span class="o">=</span> <span class="n">h5py</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="s1">&#39;file.h5&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">f</span> <span class="o">=</span> <span class="n">h5py</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="s1">&#39;file.h5&#39;</span><span class="p">)</span> 
 <span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">versioned_hdf5</span> <span class="kn">import</span> <span class="n">VersionedHDF5File</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">file</span> <span class="o">=</span> <span class="n">VersionedHDF5File</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">file</span> <span class="o">=</span> <span class="n">VersionedHDF5File</span><span class="p">(</span><span class="n">f</span><span class="p">)</span> 
 </pre></div>
 </div>
 <p>Access versions using indexing</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">version1</span> <span class="o">=</span> <span class="n">file</span><span class="p">[</span><span class="s1">&#39;version1&#39;</span><span class="p">]</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">version1</span> <span class="o">=</span> <span class="n">file</span><span class="p">[</span><span class="s1">&#39;version1&#39;</span><span class="p">]</span> 
 </pre></div>
 </div>
 <p>This returns a group containing the datasets for that version.</p>
 <p>To create a new version, use <a class="reference internal" href="#versioned_hdf5.VersionedHDF5File.stage_version" title="versioned_hdf5.VersionedHDF5File.stage_version"><code class="xref py py-func docutils literal notranslate"><span class="pre">stage_version()</span></code></a>.</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">file</span><span class="o">.</span><span class="n">stage_version</span><span class="p">(</span><span class="s1">&#39;version2&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">group</span><span class="p">:</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">file</span><span class="o">.</span><span class="n">stage_version</span><span class="p">(</span><span class="s1">&#39;version2&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">group</span><span class="p">:</span> 
 <span class="gp">... </span>    <span class="n">group</span><span class="p">[</span><span class="s1">&#39;dataset&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="o">...</span> <span class="c1"># Modify the group</span>
 <span class="gp">...</span>
 </pre></div>
 </div>
 <p>When the context manager exits, the version will be written to the file.</p>
-<p>Finally, use
-&gt;&gt;&gt; file.close()
-to close the <code class="code docutils literal notranslate"><span class="pre">VersionedHDF5File</span></code> object (note that the <code class="code docutils literal notranslate"><span class="pre">h5py</span></code> file object
+<p>Finally, use</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">file</span><span class="o">.</span><span class="n">close</span><span class="p">()</span> 
+</pre></div>
+</div>
+<p>to close the <code class="code docutils literal notranslate"><span class="pre">VersionedHDF5File</span></code> object (note that the <code class="code docutils literal notranslate"><span class="pre">h5py</span></code> file object
 should be closed separately.)</p>
 <dl class="py method">
 <dt id="versioned_hdf5.VersionedHDF5File.close">
