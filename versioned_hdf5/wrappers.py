@@ -5,23 +5,23 @@ Much of this code is modified from code in h5py. See the LICENSE file for the
 h5py license.
 """
 
-from h5py import Empty, Dataset, Datatype, Group, h5d, h5i, h5p, h5s, h5t
-from h5py._hl.base import guess_dtype, phil
+from h5py import Empty, Dataset, Datatype, Group, h5d, h5i, h5p, h5s, h5t, h5r
+from h5py._hl.base import guess_dtype, with_phil, phil
 from h5py._hl.dataset import _LEGACY_GZIP_COMPRESSION_VALS
 from h5py._hl import filters
-from h5py._hl.selections import select
+from h5py._hl.selections import guess_shape
 from h5py._hl.vds import VDSmap
 
-from ndindex import Tuple, Slice
+from ndindex import Tuple, Slice, ndindex
 
 import numpy as np
 
 from collections import defaultdict
-import math
 import posixpath as pp
+import warnings
 
 from .backend import DEFAULT_CHUNK_SIZE
-from .slicetools import split_slice, spaceid_to_slice
+from .slicetools import spaceid_to_slice, as_subchunks, split_chunks
 
 _groups = {}
 class InMemoryGroup(Group):
@@ -42,9 +42,9 @@ class InMemoryGroup(Group):
             return
         self._data = {}
         self._subgroups = {}
-        self.chunks = defaultdict(type(None))
-        self.compression = defaultdict(type(None))
-        self.compression_opts = defaultdict(type(None))
+        self._chunks = defaultdict(type(None))
+        self._compression = defaultdict(type(None))
+        self._compression_opts = defaultdict(type(None))
         self._parent = None
         self._initialized = True
         self._committed = False
@@ -149,22 +149,27 @@ class InMemoryGroup(Group):
         dirname, data_name = pp.split(name)
         if dirname and dirname not in self:
             self.create_group(dirname)
+        if 'maxshape' in kwds and any(i != None for i in kwds['maxshape']):
+            warnings.warn("The maxshape parameter is currently ignored for versioned datasets.")
         data = _make_new_dset(**kwds)
         shape = data.shape
         if 'fillvalue' in kwds:
             data = InMemoryArrayDataset(name, data, parent=self, fillvalue=kwds['fillvalue'])
         chunks = kwds.get('chunks')
         if chunks in [True, None]:
-            chunks = (DEFAULT_CHUNK_SIZE,) + shape[1:]
+            if len(shape) == 1:
+                chunks = (DEFAULT_CHUNK_SIZE,)
+            else:
+                raise NotImplementedError("chunks must be specified for multi-dimensional datasets")
         if isinstance(chunks, int) and not isinstance(chunks, bool):
             chunks = (chunks,)
         if len(shape) != len(chunks):
             raise ValueError("chunks shape must equal the array shape")
         if len(shape) == 0:
             raise NotImplementedError("Scalar datasets")
-        self.chunks[name] = chunks
-        self.compression[name] = kwds.get('compression')
-        self.compression_opts[name] = kwds.get('compression_opts')
+        self.set_chunks(name, chunks)
+        self.set_compression(name, kwds.get('compression'))
+        self.set_compression_opts(name, kwds.get('compression_opts'))
         self[name] = data
         return self[name]
 
@@ -198,6 +203,52 @@ class InMemoryGroup(Group):
         self.visititems(_get)
 
         return res
+
+    @property
+    def versioned_root(self):
+        p = self
+        while p._parent is not None:
+            p = p._parent
+        return p
+
+    @property
+    def chunks(self):
+        return self.versioned_root._chunks
+
+    def set_chunks(self, item, value):
+        _, full_name = pp.split(item)
+        p = self
+        while p._parent:
+            _, basename = pp.split(p.name)
+            full_name = basename + '/' + full_name
+            p = p._parent
+        self.versioned_root._chunks[full_name] = value
+
+    @property
+    def compression(self):
+        return self.versioned_root._compression
+
+    def set_compression(self, item, value):
+        _, full_name = pp.split(item)
+        p = self
+        while p._parent:
+            _, basename = pp.split(p.name)
+            full_name = basename + '/' + full_name
+            p = p._parent
+        self.versioned_root._compression[full_name] = value
+
+    @property
+    def compression_opts(self):
+        return self.versioned_root._compression_opts
+
+    def set_compression_opts(self, item, value):
+        _, full_name = pp.split(item)
+        p = self
+        while p._parent:
+            _, basename = pp.split(p.name)
+            full_name = basename + '/' + full_name
+            p = p._parent
+        self.versioned_root._compression_opts[full_name] = value
 
     def visititems(self, func):
         self._visit('', func)
@@ -255,6 +306,7 @@ def _make_new_dset(shape=None, dtype=None, data=None, chunks=None,
     # Validate chunk shape
     if isinstance(chunks, int) and not isinstance(chunks, bool):
         chunks = (chunks,)
+
     # The original make_new_dset errors here if the shape is less than the
     # chunk size, but we avoid doing that as we cannot change the chunk size
     # for a dataset for any version once it is created. See #34.
@@ -346,13 +398,242 @@ class InMemoryDataset(Dataset):
     def parent(self):
         return self._parent
 
-    def __setitem__(self, item, value):
-        self.parent._check_committed()
-        super().__setitem__(item, value)
+    def __array__(self, dtype=None):
+        return self.__getitem__((), new_dtype=dtype)
+
 
     def resize(self, size, axis=None):
+        """ Resize the dataset, or the specified axis.
+
+        The rank of the dataset cannot be changed.
+
+        "Size" should be a shape tuple, or if an axis is specified, an integer.
+
+        BEWARE: This functions differently than the NumPy resize() method!
+        The data is not "reshuffled" to fit in the new shape; each axis is
+        grown or shrunk independently.  The coordinates of existing data are
+        fixed.
+        """
         self.parent._check_committed()
-        super().resize(size, axis=axis)
+        # This boilerplate code is based on h5py.Dataset.resize
+        if axis is not None:
+            if not (axis >=0 and axis < self.id.rank):
+                raise ValueError("Invalid axis (0 to %s allowed)" % (self.id.rank-1))
+            try:
+                newlen = int(size)
+            except TypeError:
+                raise TypeError("Argument must be a single int if axis is specified")
+            size = list(self.shape)
+            size[axis] = newlen
+
+        size = tuple(size)
+        # === END CODE FROM h5py.Dataset.resize ===
+
+        old_shape = self.shape
+        data_dict = self.id.data_dict
+        chunks = self.chunks
+
+        old_shape_idx = Tuple(*[Slice(0, i) for i in old_shape])
+        new_data_dict = {}
+        for c in set(split_chunks(size, chunks)):
+            if c in data_dict:
+                new_data_dict[c] = data_dict[c]
+            else:
+                a = self[c.raw]
+                data = np.full(c.newshape(size), self.fillvalue, dtype=self.dtype)
+                data[old_shape_idx.as_subindex(c).raw] = a
+                new_data_dict[c] = data
+
+        self.id.data_dict = new_data_dict
+        self.id.shape = size
+
+
+    @with_phil
+    def __getitem__(self, args, new_dtype=None):
+        """ Read a slice from the HDF5 dataset.
+
+        Takes slices and recarray-style field names (more than one is
+        allowed!) in any order.  Obeys basic NumPy rules, including
+        broadcasting.
+
+        """
+        # This boilerplate code is based on h5py.Dataset.__getitem__
+        args = args if isinstance(args, tuple) else (args,)
+
+        if new_dtype is None:
+            new_dtype = getattr(self._local, 'astype', None)
+
+        # Sort field names from the rest of the args.
+        names = tuple(x for x in args if isinstance(x, str))
+
+        if names:
+            # Read a subset of the fields in this structured dtype
+            if len(names) == 1:
+                names = names[0]  # Read with simpler dtype of this field
+            args = tuple(x for x in args if not isinstance(x, str))
+            return self.fields(names, _prior_dtype=new_dtype)[args]
+
+        if new_dtype is None:
+            new_dtype = self.dtype
+        mtype = h5t.py_create(new_dtype)
+
+        # === Special-case region references ====
+
+        if len(args) == 1 and isinstance(args[0], h5r.RegionReference):
+
+            obj = h5r.dereference(args[0], self.id)
+            if obj != self.id:
+                raise ValueError("Region reference must point to this dataset")
+
+            sid = h5r.get_region(args[0], self.id)
+            mshape = guess_shape(sid)
+            if mshape is None:
+                # 0D with no data (NULL or deselected SCALAR)
+                return Empty(new_dtype)
+            out = np.empty(mshape, dtype=new_dtype)
+            if out.size == 0:
+                return out
+
+            sid_out = h5s.create_simple(mshape)
+            sid_out.select_all()
+            self.id.read(sid_out, sid, out, mtype)
+            return out
+
+        # === END CODE FROM h5py.Dataset.__getitem__ ===
+
+        idx = ndindex(args).reduce(self.shape)
+
+        arr = np.ndarray(idx.newshape(self.shape), new_dtype, order='C')
+
+        for c, index in as_subchunks(idx, self.shape, self.chunks):
+            if isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
+                raw_idx = Tuple(self.id.data_dict[c], *[slice(0, len(i)) for i
+                                                        in c.args[1:]]).raw
+                a = self.id._read_chunk(raw_idx)
+                self.id.data_dict[c] = a
+
+            if self.id.data_dict[c].size != 0:
+                arr_idx = c.as_subindex(idx)
+                arr[arr_idx.raw] = self.id.data_dict[c][index.raw]
+
+        return arr
+
+    @with_phil
+    def __setitem__(self, args, val):
+        """ Write to the HDF5 dataset from a Numpy array.
+
+        NumPy's broadcasting rules are honored, for "simple" indexing
+        (slices and integers).  For advanced indexing, the shapes must
+        match.
+        """
+        self.parent._check_committed()
+        # This boilerplate code is based on h5py.Dataset.__setitem__
+        args = args if isinstance(args, tuple) else (args,)
+
+        # Sort field indices from the slicing
+        names = tuple(x for x in args if isinstance(x, str))
+        args = tuple(x for x in args if not isinstance(x, str))
+
+        # Generally we try to avoid converting the arrays on the Python
+        # side.  However, for compound literals this is unavoidable.
+        vlen = h5t.check_vlen_dtype(self.dtype)
+        if vlen is not None and vlen not in (bytes, str):
+            try:
+                val = np.asarray(val, dtype=vlen)
+            except ValueError:
+                try:
+                    val = np.array([np.array(x, dtype=vlen)
+                                       for x in val], dtype=self.dtype)
+                except ValueError:
+                    pass
+            if vlen == val.dtype:
+                if val.ndim > 1:
+                    tmp = np.empty(shape=val.shape[:-1], dtype=object)
+                    tmp.ravel()[:] = [i for i in val.reshape(
+                        (np.product(val.shape[:-1], dtype=np.ulonglong), val.shape[-1]))]
+                else:
+                    tmp = np.array([None], dtype=object)
+                    tmp[0] = val
+                val = tmp
+        elif self.dtype.kind == "O" or \
+          (self.dtype.kind == 'V' and \
+          (not isinstance(val, np.ndarray) or val.dtype.kind != 'V') and \
+          (self.dtype.subdtype == None)):
+            if len(names) == 1 and self.dtype.fields is not None:
+                # Single field selected for write, from a non-array source
+                if not names[0] in self.dtype.fields:
+                    raise ValueError("No such field for indexing: %s" % names[0])
+                dtype = self.dtype.fields[names[0]][0]
+                cast_compound = True
+            else:
+                dtype = self.dtype
+                cast_compound = False
+
+            val = np.asarray(val, dtype=dtype.base, order='C')
+            if cast_compound:
+                val = val.view(np.dtype([(names[0], dtype)]))
+                val = val.reshape(val.shape[:len(val.shape) - len(dtype.shape)])
+        else:
+            val = np.asarray(val, order='C')
+
+        # Check for array dtype compatibility and convert
+        if self.dtype.subdtype is not None:
+            shp = self.dtype.subdtype[1]
+            valshp = val.shape[-len(shp):]
+            if valshp != shp:  # Last dimension has to match
+                raise TypeError("When writing to array types, last N dimensions have to match (got %s, but should be %s)" % (valshp, shp,))
+            mtype = h5t.py_create(np.dtype((val.dtype, shp)))
+            # mshape = val.shape[0:len(val.shape)-len(shp)]
+
+        # Make a compound memory type if field-name slicing is required
+        elif len(names) != 0:
+
+            # mshape = val.shape
+
+            # Catch common errors
+            if self.dtype.fields is None:
+                raise TypeError("Illegal slicing argument (not a compound dataset)")
+            mismatch = [x for x in names if x not in self.dtype.fields]
+            if len(mismatch) != 0:
+                mismatch = ", ".join('"%s"'%x for x in mismatch)
+                raise ValueError("Illegal slicing argument (fields %s not in dataset type)" % mismatch)
+
+            # Write non-compound source into a single dataset field
+            if len(names) == 1 and val.dtype.fields is None:
+                subtype = h5t.py_create(val.dtype)
+                mtype = h5t.create(h5t.COMPOUND, subtype.get_size())
+                mtype.insert(self._e(names[0]), 0, subtype)
+
+            # Make a new source type keeping only the requested fields
+            else:
+                fieldnames = [x for x in val.dtype.names if x in names] # Keep source order
+                mtype = h5t.create(h5t.COMPOUND, val.dtype.itemsize)
+                for fieldname in fieldnames:
+                    subtype = h5t.py_create(val.dtype.fields[fieldname][0])
+                    offset = val.dtype.fields[fieldname][1]
+                    mtype.insert(self._e(fieldname), offset, subtype)
+
+        # Use mtype derived from array (let DatasetID.write figure it out)
+        else:
+            mtype = None
+
+
+        # === END CODE FROM h5py.Dataset.__setitem__ ===
+
+        idx = ndindex(args).reduce(self.shape)
+
+        val = np.broadcast_to(val, idx.newshape(self.shape))
+
+        for c, index in as_subchunks(idx, self.shape, self.chunks):
+            if isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
+                raw_idx = Tuple(self.id.data_dict[c], *[slice(0, len(i)) for i
+                                                        in c.args[1:]]).raw
+                a = self.id._read_chunk(raw_idx)
+                self.id.data_dict[c] = a
+
+            if self.id.data_dict[c].size != 0:
+                val_idx = c.as_subindex(idx)
+                self.id.data_dict[c][index.raw] = val[val_idx.raw]
 
 class InMemoryArrayDataset:
     """
@@ -437,15 +718,19 @@ class InMemoryArrayDataset:
             size = list(self.shape)
             size[axis] = newlen
 
+        old_shape = self.shape
         size = tuple(size)
-        if len(size) > 1:
-            raise NotImplementedError("More than one dimension is not yet supported")
-        if size[0] > self.shape[0]:
-            self.array = np.concatenate((self.array, np.full(size[0] - self.shape[0],
-                                                             self.fillvalue,
-                                                             dtype=self.dtype)))
+        if all(new <= old for new, old in zip(size, old_shape)):
+            # Don't create a new array if the old one can just be sliced in
+            # memory.
+            idx = tuple(slice(0, i) for i in size)
+            self.array = self.array[idx]
         else:
-            self.array = self.array[:size[0]]
+            old_shape_idx = Tuple(*[Slice(0, i) for i in old_shape])
+            new_shape_idx = Tuple(*[Slice(0, i) for i in size])
+            new_array = np.full(size, self.fillvalue, dtype=self.dtype)
+            new_array[old_shape_idx.as_subindex(new_shape_idx).raw] = self.array[new_shape_idx.as_subindex(old_shape_idx).raw]
+            self.array = new_array
 
 class InMemoryDatasetID(h5d.DatasetID):
     def __init__(self, _id):
@@ -470,63 +755,29 @@ class InMemoryDatasetID(h5d.DatasetID):
         # slice_map = {i.args[0]: j.args[0] for i, j in slice_map.items()}
         fid = h5i.get_file_id(self)
         g = Group(fid)
-        self.chunks = tuple(g[virtual_sources[0].dset_name].attrs['chunks'])
+        raw_data_name = virtual_sources[0].dset_name
+        assert all(i.dset_name == raw_data_name for i in virtual_sources)
+        self.raw_data = g[raw_data_name]
+        self.chunks = tuple(self.raw_data.attrs['chunks'])
 
-        chunk_size = self.chunks[0]
         for s in slice_map:
-            if isinstance(s, Tuple):
-                start = s.args[0].start
-            else:
-                start = s.start
-            self.data_dict[start//chunk_size] = slice_map[s]
+            src_idx = slice_map[s]
+            if isinstance(src_idx, Tuple):
+                # The pointers to the raw data should only be slices, since
+                # the raw data chunks are extended in the first dimension
+                # only.
+                assert src_idx != Tuple()
+                assert len(src_idx.args) == len(self.chunks)
+                src_idx = src_idx.args[0]
+            assert isinstance(src_idx, Slice)
+            self.data_dict[s] = src_idx
 
         fillvalue_a = np.empty((1,), dtype=self.dtype)
         dcpl.get_fill_value(fillvalue_a)
         self.fillvalue = fillvalue_a[0]
 
     def set_extent(self, shape):
-
-        old_shape = self.shape
-        if old_shape[1:] != shape[1:]:
-            raise NotImplementedError("Resizing is currently only supported in the first dimension")
-        data_dict = self.data_dict
-        chunks = self.chunks
-        chunk_size = chunks[0]
-        if shape[0] < old_shape[0]:
-            for i in list(data_dict):
-                if (i + 1)*chunk_size > shape[0]:
-                    if i*chunk_size >= shape[0]:
-                        del data_dict[i]
-                    else:
-                        if isinstance(data_dict[i], (Slice, slice, tuple, Tuple)):
-                            # Non-chunk multiple
-                            a = self._read_chunk(i)
-                        else:
-                            a = data_dict[i]
-                        data_dict[i] = a[:shape[0] - i*chunk_size]
-        elif shape[0] > old_shape[0]:
-            quo, rem = divmod(shape[0], chunk_size)
-            if old_shape[0] % chunk_size != 0:
-                i = max(data_dict)
-                if isinstance(data_dict[i], (Slice, slice, tuple, Tuple)):
-                    a = self._read_chunk(i)
-                else:
-                    a = data_dict[i]
-                assert a.shape[0] == old_shape[0] % chunk_size
-
-                if i == quo:
-                    data_dict[i] = np.concatenate([a, np.full((rem -
-                        a.shape[0],) + chunks[1:], self.fillvalue, dtype=self.dtype)])
-                else:
-                    data_dict[i] = np.concatenate([a, np.full((chunk_size -
-                        a.shape[0],) + chunks[1:], self.fillvalue, dtype=self.dtype)])
-            if rem != 0 and quo not in data_dict:
-                # fillvalue along the chunks are added in the for loop below, but
-                # we have to add a sub-chunk fillvalues here
-                data_dict[quo] = np.full((rem,) + chunks[1:], self.fillvalue, dtype=self.dtype)
-            for i in range(math.ceil(old_shape[0]/chunk_size), quo):
-                data_dict[i] = np.full(chunks, self.fillvalue, dtype=self.dtype)
-        self.shape = shape
+        raise NotImplementedError("Resizing an InMemoryDataset other than via resize()")
 
     @property
     def shape(self):
@@ -536,79 +787,11 @@ class InMemoryDatasetID(h5d.DatasetID):
     def shape(self, size):
         self._shape = size
 
-    def _read_chunk(self, i, mtype=None, dxpl=None):
-        # Based on Dataset.__getitem__
-        chunks = self.chunks
-        chunk_size = chunks[0]
-        s = slice(i*chunk_size, (i+1)*chunk_size)
-        selection = select(self.shape, (s,), dsid=self)
-
-        assert selection.nselect != 0
-
-        a = np.ndarray(selection.mshape, self.dtype, order='C')
-
-        # Read the data into the array a
-        mspace = h5s.create_simple(selection.mshape)
-        fspace = selection.id
-        super().read(mspace, fspace, a, mtype, dxpl=dxpl)
-        return a
+    def _read_chunk(self, chunk_idx):
+        return self.raw_data[chunk_idx]
 
     def write(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
-        if mtype is not None:
-            raise NotImplementedError("mtype != None")
-        mslice = spaceid_to_slice(mspace)
-        fslice = spaceid_to_slice(fspace)
-        data_dict = self.data_dict
-        arr = arr_obj[mslice.raw]
-        if np.isscalar(arr):
-            arr = arr.reshape((1,))
-
-        # Once https://github.com/Quansight/ndindex/issues/18 is fixed,
-        # replace this with
-        #
-        # fslice = fslice.reduce(arr_obj.shape)
-        if fslice == Tuple():
-            fslice = Tuple(Slice(0, arr_obj.shape[0], 1),)
-        # Chunks that are modified
-        chunks = self.chunks
-        chunk_size = chunks[0]
-        N0 = 0
-        for i, s_ in split_slice(fslice.args[0], chunk=chunk_size):
-            t = Tuple(s_, *fslice.args[1:])
-            if isinstance(self.data_dict[i], (Slice, slice, tuple, Tuple)):
-                a = self._read_chunk(i, mtype=mtype, dxpl=dxpl)
-                data_dict[i] = a
-
-            N = N0 + len(s_)
-            data_dict[i][t.raw] = arr[N0:N]
-            N0 = N
-
-        return data_dict
+        raise NotImplementedError("Writing to an InMemoryDataset other than via __setitem__")
 
     def read(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
-        mslice = spaceid_to_slice(mspace)
-        fslice = spaceid_to_slice(fspace)
-        data_dict = self.data_dict
-        arr = arr_obj[mslice.raw]
-        if np.isscalar(arr):
-            arr = arr.reshape((1,))
-
-        # Once https://github.com/Quansight/ndindex/issues/18 is fixed,
-        # replace this with
-        #
-        # fslice = fslice.reduce(arr_obj.shape)
-        if fslice == Tuple():
-            fslice = Tuple(Slice(0, arr_obj.shape[0], 1),)
-        # Chunks that are modified
-        chunks = self.chunks
-        chunk_size = chunks[0]
-        N0 = 0
-        for i, s_ in split_slice(fslice.args[0], chunk=chunk_size):
-            t = Tuple(s_, *fslice.args[1:])
-            if isinstance(self.data_dict[i], (slice, Slice, tuple, Tuple)):
-                a = self._read_chunk(i, mtype=mtype, dxpl=dxpl)
-                data_dict[i] = a
-
-            N = N0 + len(s_)
-            arr[N0:N] = data_dict[i][t.raw]
-            N0 = N
+        raise NotImplementedError("Reading from an InMemoryDataset other than via __getitem__")

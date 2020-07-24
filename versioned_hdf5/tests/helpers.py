@@ -10,5 +10,8 @@ def setup(file_name='test.hdf5', name=None, version_name=None):
     if name:
         f['_version_data'].create_group(name)
     if version_name:
-        f['_version_data/versions'].create_group(version_name)
+        if isinstance(version_name, str):
+            version_name = [version_name]
+        for name in version_name:
+            f['_version_data/versions'].create_group(name)
     return f

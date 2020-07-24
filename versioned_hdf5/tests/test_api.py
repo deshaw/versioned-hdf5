@@ -1,4 +1,5 @@
 import os
+import itertools
 
 from pytest import raises
 
@@ -577,6 +578,63 @@ def test_resize_unaligned():
 
         file.close()
 
+def test_resize_multiple_dimensions():
+    # Test semantics against raw HDF5
+
+    shapes = range(5, 25, 5) # 5, 10, 15, 20
+    chunks = (10, 10, 10)
+    with setup() as f:
+        file = VersionedHDF5File(f)
+        for i, (oldshape, newshape) in\
+            enumerate(itertools.combinations_with_replacement(itertools.product(shapes, repeat=3), 2)):
+            data = np.arange(np.product(oldshape)).reshape(oldshape)
+            # Get the ground truth from h5py
+            f.create_dataset(f'data{i}', data=data, fillvalue=-1, chunks=chunks,
+                             maxshape=(None, None, None))
+            f[f'data{i}'].resize(newshape)
+            new_data = f[f'data{i}'][()]
+
+            # resize after creation
+            with file.stage_version(f'version1_{i}') as group:
+                group.create_dataset(f'dataset1_{i}', data=data, chunks=chunks,
+                                     fillvalue=-1)
+                group[f'dataset1_{i}'].resize(newshape)
+                assert group[f'dataset1_{i}'].shape == newshape
+                assert_equal(group[f'dataset1_{i}'][()], new_data)
+
+            version1 = file[f'version1_{i}']
+            assert version1[f'dataset1_{i}'].shape == newshape
+            assert_equal(version1[f'dataset1_{i}'][()], new_data)
+
+            # resize in a new version
+            with file.stage_version(f'version2_1_{i}', '') as group:
+                group.create_dataset(f'dataset2_{i}', data=data, chunks=chunks,
+                                     fillvalue=-1)
+            with file.stage_version(f'version2_2_{i}', f'version2_1_{i}') as group:
+                group[f'dataset2_{i}'].resize(newshape)
+                assert group[f'dataset2_{i}'].shape == newshape
+                assert_equal(group[f'dataset2_{i}'][()], new_data, str((oldshape, newshape)))
+
+            version2_2 = file[f'version2_2_{i}']
+            assert version2_2[f'dataset2_{i}'].shape == newshape
+            assert_equal(version2_2[f'dataset2_{i}'][()], new_data)
+
+            # resize after some data is read in
+            with file.stage_version(f'version3_1_{i}', '') as group:
+                group.create_dataset(f'dataset3_{i}', data=data, chunks=chunks,
+                                     fillvalue=-1)
+            with file.stage_version(f'version3_2_{i}', f'version3_1_{i}') as group:
+                # read in first and last chunks
+                group[f'dataset3_{i}'][0, 0, 0]
+                group[f'dataset3_{i}'][-1, -1, -1]
+                group[f'dataset3_{i}'].resize(newshape)
+                assert group[f'dataset3_{i}'].shape == newshape
+                assert_equal(group[f'dataset3_{i}'][()], new_data)
+
+            version3_2 = file[f'version3_2_{i}']
+            assert version3_2[f'dataset3_{i}'].shape == newshape
+            assert_equal(version3_2[f'dataset3_{i}'][()], new_data)
+
 def test_getitem():
     with setup() as f:
         file = VersionedHDF5File(f)
@@ -1139,18 +1197,15 @@ def test_fillvalue():
         assert_equal(group['data'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
         assert_equal(group['data'][DEFAULT_CHUNK_SIZE + 2:], fillvalue)
 
-        file.close()
-
-def test_multidimensional():
-    # For now, datasets can only be expanded along the first axis. The shape
-    # of the remaining axes must stay fixed once the dataset is created.
+def test_multidimsional():
     with setup() as f:
         file = VersionedHDF5File(f)
 
-        data = np.ones((DEFAULT_CHUNK_SIZE, 2))
+        data = np.ones((2*DEFAULT_CHUNK_SIZE, 5))
 
         with file.stage_version('version1') as g:
-            g.create_dataset('test_data', data=data)
+            g.create_dataset('test_data', data=data,
+                             chunks=(DEFAULT_CHUNK_SIZE, 2))
             assert_equal(g['test_data'][()], data)
 
         version1 = file['version1']
@@ -1167,6 +1222,43 @@ def test_multidimensional():
         version2 = file['version2']
         assert version2['test_data'][0, 1] == 2
         assert_equal(version2['test_data'][()], data2)
+
+        data3 = data.copy()
+        data3[0:1] = 3
+
+        with file.stage_version('version3', 'version1') as g:
+            g['test_data'][0:1] = 3
+            assert_equal(g['test_data'][0:1], 3)
+            assert_equal(g['test_data'][()], data3)
+
+        version3 = file['version3']
+        assert_equal(version3['test_data'][0:1], 3)
+        assert_equal(version3['test_data'][()], data3)
+
+def test_group_chunks_compression():
+    # Chunks and compression are similar, so test them both at the same time.
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = np.ones((2*DEFAULT_CHUNK_SIZE, 5))
+
+        with file.stage_version('version1') as g:
+            g2 = g.create_group('group')
+            g2.create_dataset('test_data', data=data,
+                              chunks=(DEFAULT_CHUNK_SIZE, 2),
+                              compression='gzip',
+                              compression_opts=3)
+            assert_equal(g2['test_data'][()], data)
+            assert_equal(g['group/test_data'][()], data)
+            assert_equal(g['group']['test_data'][()], data)
+
+        version1 = file['version1']
+        assert_equal(version1['group']['test_data'][()], data)
+        assert_equal(version1['group/test_data'][()], data)
+
+        raw_data = f['/_version_data/group/test_data/raw_data']
+        assert raw_data.compression == 'gzip'
+        assert raw_data.compression_opts == 3
 
         file.close()
 

@@ -3,6 +3,8 @@ from pytest import raises
 import numpy as np
 from numpy.testing import assert_equal
 
+from ndindex import Tuple, Slice
+
 from .helpers import setup
 
 from ..backend import DEFAULT_CHUNK_SIZE
@@ -124,12 +126,13 @@ def test_create_version_chunks():
         assert ds.compression == 'gzip'
         assert ds.compression_opts == 3
 
-        data2_chunks = {0: np.ones(chunks),
-                        1: np.ones(chunks),
-                        2: 2*np.ones(chunks),
-                        3: 3*np.ones(chunks),
+        data2_chunks = {
+            Tuple(Slice(0*chunk_size, 1*chunk_size, 1)): np.ones(chunks),
+            Tuple(Slice(1*chunk_size, 2*chunk_size, 1)): np.ones(chunks),
+            Tuple(Slice(2*chunk_size, 3*chunk_size, 1)): 2*np.ones(chunks),
+            Tuple(Slice(3*chunk_size, 4*chunk_size, 1)): 3*np.ones(chunks),
         }
-        data2_chunks[0][0] = 0.0
+        data2_chunks[Tuple(Slice(0*chunk_size, 1*chunk_size, 1))][0] = 0.0
         data[0] = 0.0
 
         version2 = create_version_group(f, 'version2')
@@ -145,13 +148,13 @@ def test_create_version_chunks():
         assert ds.compression == 'gzip'
         assert ds.compression_opts == 3
 
-
-        data3_chunks = {0: np.ones(chunks),
-                        1: slice(0*chunk_size, 1*chunk_size),
-                        2: slice(1*chunk_size, 2*chunk_size),
-                        3: slice(2*chunk_size, 3*chunk_size),
+        data3_chunks = {
+            Tuple(Slice(0*chunk_size, 1*chunk_size, 1)): np.ones(chunks),
+            Tuple(Slice(1*chunk_size, 2*chunk_size, 1)): Slice(0*chunk_size, 1*chunk_size),
+            Tuple(Slice(2*chunk_size, 3*chunk_size, 1)): Slice(1*chunk_size, 2*chunk_size),
+            Tuple(Slice(3*chunk_size, 4*chunk_size, 1)): Slice(2*chunk_size, 3*chunk_size),
         }
-        data3_chunks[0][0] = 2.0
+        data3_chunks[Tuple(Slice(0*chunk_size, 1*chunk_size, 1))][0] = 2.0
         data[0] = 2.0
 
         version3 = create_version_group(f, 'version3')

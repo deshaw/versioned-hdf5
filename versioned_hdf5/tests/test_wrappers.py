@@ -1,5 +1,9 @@
+import itertools
+
 import numpy as np
 from numpy.testing import assert_equal
+
+import pytest
 
 from ..wrappers import InMemoryArrayDataset, InMemoryGroup
 from .helpers import setup
@@ -54,3 +58,23 @@ def test_InMemoryArrayDataset_resize():
         assert_equal(dataset, dataset.array)
         assert_equal(dataset, np.arange(90))
         assert dataset.shape == dataset.array.shape == (90,)
+
+shapes = range(5, 25, 5) # 5, 10, 15, 20
+chunks = (10, 10, 10)
+@pytest.mark.parametrize('oldshape,newshape',
+                         itertools.combinations_with_replacement(itertools.product(shapes, repeat=3), 2))
+def test_InMemoryArrayDataset_resize_multidimension(oldshape, newshape):
+    # Test semantics against raw HDF5
+    a = np.arange(np.product(oldshape)).reshape(oldshape)
+
+    with setup() as f:
+        group = f.create_group('group')
+        parent = InMemoryGroup(group.id)
+
+        dataset = InMemoryArrayDataset('data', a, parent=parent, fillvalue=-1)
+        dataset.resize(newshape)
+
+        f.create_dataset('data', data=a, fillvalue=-1,
+                         chunks=chunks, maxshape=(None, None, None))
+        f['data'].resize(newshape)
+        assert_equal(dataset[()], f['data'][()], str(newshape))
