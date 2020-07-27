@@ -213,42 +213,65 @@ class InMemoryGroup(Group):
 
     @property
     def chunks(self):
-        return self.versioned_root._chunks
+        return self._chunks
 
+    # TODO: Can we generalize this, set_compression, and set_compression_opts
+    # into a single method? Descriptors?
     def set_chunks(self, item, value):
         full_name = item
         p = self
         while p._parent:
+            p._chunks[full_name] = value
             _, basename = pp.split(p.name)
             full_name = basename + '/' + full_name
             p = p._parent
         self.versioned_root._chunks[full_name] = value
 
+        dirname, basename = pp.split(item)
+        while dirname:
+            self[dirname]._chunks[basename] = value
+            dirname, b = pp.split(dirname)
+            basename = pp.join(b, basename)
+
     @property
     def compression(self):
-        return self.versioned_root._compression
+        return self._compression
 
     def set_compression(self, item, value):
         full_name = item
         p = self
         while p._parent:
+            p._compression[full_name] = value
             _, basename = pp.split(p.name)
             full_name = basename + '/' + full_name
             p = p._parent
         self.versioned_root._compression[full_name] = value
 
+        dirname, basename = pp.split(item)
+        while dirname:
+            self[dirname]._compression[basename] = value
+            dirname, b = pp.split(dirname)
+            basename = pp.join(b, basename)
+
     @property
     def compression_opts(self):
-        return self.versioned_root._compression_opts
+        return self._compression_opts
 
     def set_compression_opts(self, item, value):
         full_name = item
         p = self
         while p._parent:
+            p._compression_opts[full_name] = value
             _, basename = pp.split(p.name)
             full_name = basename + '/' + full_name
             p = p._parent
         self.versioned_root._compression_opts[full_name] = value
+
+        dirname, basename = pp.split(item)
+        while dirname:
+            self[dirname]._compression_opts[basename] = value
+            dirname, b = pp.split(dirname)
+            basename = pp.join(b, basename)
 
     def visititems(self, func):
         self._visit('', func)
