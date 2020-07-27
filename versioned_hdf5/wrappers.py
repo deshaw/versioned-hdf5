@@ -689,6 +689,18 @@ class InMemoryArrayDataset:
     def ndim(self):
         return len(self._array.shape)
 
+    @property
+    def chunks(self):
+        return self.parent.chunks[self.name]
+
+    @property
+    def compression(self):
+        return self.parent.compression[self.name]
+
+    @property
+    def compression_opts(self):
+        return self.parent.compression_opts[self.name]
+
     def __getitem__(self, item):
         return self.array.__getitem__(item)
 
