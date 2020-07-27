@@ -93,7 +93,13 @@ def commit_version(version_group, datasets, *,
             data = data.id.data_dict
         if isinstance(data, dict):
             if chunks[name] is not None:
-                raise NotImplementedError("Specifying chunk size with dict data")
+                ds = f['_version_data'][name]['raw_data']
+                if chunks[name] != tuple(ds.attrs['chunks']):
+                    # This should never happen because dict data only occurs
+                    # with datasets that already exist from previous versions,
+                    # and chunks can only be specified with the first version
+                    # containing a dataset
+                    raise ValueError(f"Inconsistent chunk size {chunks[name]} != {tuple(ds.attrs['chunks'])}")
             slices = write_dataset_chunks(f, name, data)
         else:
             slices = write_dataset(f, name, data, chunks=chunks[name],
