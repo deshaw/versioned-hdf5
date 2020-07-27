@@ -1362,8 +1362,6 @@ def test_set_chunks_nested():
             data_group = sv.create_group('data')
             data_group.create_dataset('bar', data=np.arange(4))
 
-    with h5py.File('foo.h5', 'r+') as f:
-        vf = VersionedHDF5File(f)
         with vf.stage_version('1') as sv:
             data_group = sv['data']
             data_group.create_dataset('props/1/bar', data=np.arange(0, 4, 2))
