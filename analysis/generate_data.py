@@ -19,7 +19,7 @@ from versioned_hdf5.api import VersionedHDF5File
 class TestVersionedDatasetPerformance(TestDatasetPerformanceBase):
     @classmethod
     def _write_transactions_sparse(cls, name, chunk_size, compression, versions,
-                                   print_transactions, deterministic,
+                                   print_transactions,
                                    num_rows_initial, num_transactions,
                                    num_rows_per_append,
                                    pct_changes, num_changes,
@@ -28,90 +28,83 @@ class TestVersionedDatasetPerformance(TestDatasetPerformanceBase):
 
         logger = logging.getLogger(__name__)
 
-        with temp_dir_ctx() as tmp_dir:
-            filename = tmp_dir + f'/{name}.h5'
-            tts = []
-            f = h5py.File(filename, 'w')
-            told = time.time()
-            t0 = told
-            times = []
-            try:
+        #with temp_dir_ctx() as tmp_dir:
+        #filename = tmp_dir + f'/{name}.h5'
+        filename = f"{name}.h5"
+        tts = []
+        f = h5py.File(filename, 'w')
+        told = time.time()
+        t0 = told
+        times = []
+        try:
+            if versions:
+                file = VersionedHDF5File(f)
+                with file.stage_version("initial_version") as group:
+                    key0_ds = group.create_dataset(name + '/key0',
+                                                   data=np.random.rand(num_rows_initial),
+                                                   dtype=(np.dtype('int64')),
+                                                   chunks=chunk_size,
+                                                   compression=compression)
+                    key1_ds = group.create_dataset(name + '/key1',
+                                                   data=np.random.rand(num_rows_initial),
+                                                   dtype=(np.dtype('int64')),
+                                                   chunks=chunk_size,
+                                                   compression=compression)
+                    val_ds = group.create_dataset(name + '/val',
+                                                  data=np.random.rand(num_rows_initial),
+                                                  dtype=(np.dtype('float64')),
+                                                  chunks=chunk_size,
+                                                  compression=compression)
+            else:
+                key0_ds = f.create_dataset(name + '/key0',
+                                           data=np.random.rand(num_rows_initial),
+                                           dtype=(np.dtype('int64')),
+                                           maxshape=(None,),
+                                           chunks=(chunk_size,),
+                                           compression=compression)
+                key1_ds = f.create_dataset(name + '/key1',
+                                           data=np.random.rand(num_rows_initial),
+                                           dtype=(np.dtype('int64')),
+                                           maxshape=(None,),
+                                           chunks=(chunk_size,),
+                                           compression=compression)
+                val_ds = f.create_dataset(name + '/val',
+                                          data=np.random.rand(num_rows_initial),
+                                          dtype=(np.dtype('float64')),
+                                          maxshape=(None,),
+                                          chunks=(chunk_size,),
+                                          compression=compression)
+                
+            for a in range(num_transactions):
+                if print_transactions:
+                    print("Transaction", a)
+                tt = datetime.datetime.utcnow()
                 if versions:
-                    file = VersionedHDF5File(f)
-                    with file.stage_version("initial_version") as group:
-                        key0_ds = group.create_dataset(name + '/key0',
-                                                       data=np.random.rand(num_rows_initial),
-                                                       dtype=(np.dtype('int64')),
-                                                       chunks=chunk_size,
-                                                       compression=compression,
-                                                       deterministic=deterministic)
-                        key1_ds = group.create_dataset(name + '/key1',
-                                                       data=np.random.rand(num_rows_initial),
-                                                       dtype=(np.dtype('int64')),
-                                                       chunks=chunk_size,
-                                                       compression=compression,
-                                                       deterministic=deterministic)
-                        val_ds = group.create_dataset(name + '/val',
-                                                      data=np.random.rand(num_rows_initial),
-                                                      dtype=(np.dtype('float64')),
-                                                      chunks=chunk_size,
-                                                      compression=compression,
-                                                      deterministic=deterministic)
-                else:
-                    key0_ds = f.create_dataset(name + '/key0',
-                                               data=np.random.rand(num_rows_initial),
-                                               dtype=(np.dtype('int64')),
-                                               maxshape=(None,),
-                                               chunks=(chunk_size,),
-                                               compression=compression)
-                    key1_ds = f.create_dataset(name + '/key1',
-                                               data=np.random.rand(num_rows_initial),
-                                               dtype=(np.dtype('int64')),
-                                               maxshape=(None,),
-                                               chunks=(chunk_size,),
-                                               compression=compression)
-                    val_ds = f.create_dataset(name + '/val',
-                                              data=np.random.rand(num_rows_initial),
-                                              dtype=(np.dtype('float64')),
-                                              maxshape=(None,),
-                                              chunks=(chunk_size,),
-                                              compression=compression)
-
-                if deterministic:
-                    pct_changes = 0.0
-                    pct_deletes = 0.0
-                    pct_inserts = 0.0
-
-                for a in range(num_transactions):
-                    if print_transactions:
-                        print("Transaction", a)
-                    tt = datetime.datetime.utcnow()
-                    if versions:
-                        with file.stage_version(str(tt)) as group:
-                            key0_ds = group[name + '/key0']
-                            key1_ds = group[name + '/key1']
-                            val_ds = group[name + '/val']
-                            cls._modify_dss_sparse(key0_ds, key1_ds, val_ds,
-                                                   num_rows_per_append,
-                                                   pct_changes if a > 0 else 0.0, num_changes,
-                                                   pct_deletes if a > 0 else 0.0, num_deletes,
-                                                   pct_inserts if a > 0 else 0.0, num_inserts)
-                    else:
+                    with file.stage_version(str(tt)) as group:
+                        key0_ds = group[name + '/key0']
+                        key1_ds = group[name + '/key1']
+                        val_ds = group[name + '/val']
                         cls._modify_dss_sparse(key0_ds, key1_ds, val_ds,
                                                num_rows_per_append,
                                                pct_changes if a > 0 else 0.0, num_changes,
                                                pct_deletes if a > 0 else 0.0, num_deletes,
                                                pct_inserts if a > 0 else 0.0, num_inserts)
-                    t = time.time()
-                    times.append(t-told)
-                    told = t
-                    tts.append(tt)
-                    logger.info('Wrote transaction %d at transaction time %s', a, tt)
-                    f.flush()
-                times.append(t-t0)
-            finally:
-                f.close()
-            return times
+                else:
+                    cls._modify_dss_sparse(key0_ds, key1_ds, val_ds,
+                                           num_rows_per_append,
+                                           pct_changes if a > 0 else 0.0, num_changes,
+                                           pct_deletes if a > 0 else 0.0, num_deletes,
+                                           pct_inserts if a > 0 else 0.0, num_inserts)
+                t = time.time()
+                times.append(t-told)
+                told = t
+                tts.append(tt)
+                logger.info('Wrote transaction %d at transaction time %s', a, tt)
+                f.flush()
+            times.append(t-t0)
+        finally:
+            f.close()
+        return times
 
     @classmethod
     def _write_transactions_dense(cls, name,
@@ -172,7 +165,7 @@ class TestVersionedDatasetPerformance(TestDatasetPerformanceBase):
                 val_ds = f.create_dataset(name + '/val',
                                           data=np.random.rand(num_rows_initial_0, num_rows_initial_1),
                                           dtype=np.dtype('float64'),
-                                          maxshape=(None,),
+                                          maxshape=(None, None),
                                           chunks=(chunk_size, chunk_size),
                                           compression=compression)
                 

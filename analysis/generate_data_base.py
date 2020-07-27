@@ -71,7 +71,7 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
     @classmethod
     @abc.abstractmethod
     def _write_transactions_sparse(cls, name, chunk_size, compression, versions,
-                                   print_transactions, deterministic,
+                                   print_transactions, 
                                    num_rows_initial, num_transactions,
                                    num_rows_per_append,
                                    pct_changes, num_changes,
@@ -225,6 +225,11 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
 
         num_rows_initial = 5000
         num_rows_per_append = 0  # triggers the constant size test (FIXME)
+
+        pct_inserts = 0
+        pct_deletes = 0
+        pct_changes = 0
+        
         num_inserts = 10
         num_deletes = 10
         num_changes = 1000
@@ -237,9 +242,9 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
                                                 num_rows_initial,
                                                 num_transactions,
                                                 num_rows_per_append,
-                                                num_changes,
-                                                num_deletes,
-                                                num_inserts)
+                                                pct_changes, num_changes,
+                                                pct_deletes, num_deletes,
+                                                pct_inserts, num_inserts)
         return times
 
     def test_mostly_appends_dense(self,

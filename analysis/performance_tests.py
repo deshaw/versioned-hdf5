@@ -58,7 +58,6 @@ class PerformanceTests:
                     chunk_size = 2 ** p
                     if versions:
                         name = f"{self.testname}_{n}_{p}_{c}"
-                        print(f"in create_files: name = {name}")
                     else:
                         name = f"{self.testname}_{n}_{p}_{c}_no_versions"
                     filename = os.path.join(self.path, f"{name}.h5")
@@ -72,7 +71,7 @@ class PerformanceTests:
                         msg += " not available. Creating new file.\n"
                         # t0 = time.time()
                         t = self.testfun(n, name, chunk_size, c,
-                                         versions=versions)
+                                         versions=versions, deterministic=True)
                         # t = time.time()-t0
                         h5pyfile = h5py.File(filename, 'r')
                     if versions:
@@ -210,11 +209,15 @@ if __name__ == "__main__":
     #    summary, msg = testcase.create_files(versions=False)
     #    testcase.save(summary, f"{testcase.testname}_no_versions")
 
-    tests = [test_mostly_appends_dense]
+    tests = [test_mostly_appends_dense,
+             test_small_fraction_changes_sparse,
+             test_large_fraction_changes_sparse,
+             test_large_fraction_constant_sparse,
+             test_mostly_appends_sparse]
 
     for test in tests:
         testcase = test(num_transactions=[2],
-                        exponents=[14],
+                        exponents=[12, ],
                         compression=[None, ])
         summary, msg = testcase.create_files(versions=True)
         testcase.save(summary, f"{testcase.testname}")
