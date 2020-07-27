@@ -229,7 +229,7 @@ class InMemoryGroup(Group):
         return self.versioned_root._compression
 
     def set_compression(self, item, value):
-        _, full_name = pp.split(item)
+        full_name = item
         p = self
         while p._parent:
             _, basename = pp.split(p.name)
@@ -242,7 +242,7 @@ class InMemoryGroup(Group):
         return self.versioned_root._compression_opts
 
     def set_compression_opts(self, item, value):
-        _, full_name = pp.split(item)
+        full_name = item
         p = self
         while p._parent:
             _, basename = pp.split(p.name)
