@@ -216,7 +216,7 @@ class InMemoryGroup(Group):
         return self.versioned_root._chunks
 
     def set_chunks(self, item, value):
-        _, full_name = pp.split(item)
+        full_name = item
         p = self
         while p._parent:
             _, basename = pp.split(p.name)

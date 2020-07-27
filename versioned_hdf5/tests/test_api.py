@@ -1354,3 +1354,16 @@ def test_check_committed():
                 g2['test_data'].resize((100,))
 
         assert repr(g) == '<Committed InMemoryGroup "/_version_data/versions/version1">'
+
+def test_set_chunks_nested():
+    with setup() as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version('0') as sv:
+            data_group = sv.create_group('data')
+            data_group.create_dataset('bar', data=np.arange(4))
+
+    with h5py.File('foo.h5', 'r+') as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version('1') as sv:
+            data_group = sv['data']
+            data_group.create_dataset('props/1/bar', data=np.arange(0, 4, 2))
