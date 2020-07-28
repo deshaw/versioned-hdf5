@@ -424,7 +424,6 @@ class InMemoryDataset(Dataset):
     def __array__(self, dtype=None):
         return self.__getitem__((), new_dtype=dtype)
 
-
     def resize(self, size, axis=None):
         """ Resize the dataset, or the specified axis.
 
@@ -680,6 +679,10 @@ class InMemoryArrayDataset:
     @property
     def shape(self):
         return self._array.shape
+
+    @property
+    def size(self):
+        return np.prod(self.shape)
 
     @property
     def dtype(self):
