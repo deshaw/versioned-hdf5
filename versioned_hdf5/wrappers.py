@@ -171,6 +171,8 @@ class InMemoryGroup(Group):
         self.set_compression(name, kwds.get('compression'))
         self.set_compression_opts(name, kwds.get('compression_opts'))
         self[name] = data
+        if 'dtype' in kwds:
+            self[name]._dtype = kwds['dtype']
         return self[name]
 
     def __iter__(self):
@@ -642,6 +644,7 @@ class InMemoryArrayDataset:
     def __init__(self, name, array, parent, fillvalue=None):
         self.name = name
         self._array = array
+        self._dtype = None
         self.attrs = {}
         self.parent = parent
         self.fillvalue = fillvalue or np.zeros((), dtype=array.dtype)[()]
@@ -660,6 +663,8 @@ class InMemoryArrayDataset:
 
     @property
     def dtype(self):
+        if self._dtype is not None:
+            return self._dtype
         return self._array.dtype
 
     @property
