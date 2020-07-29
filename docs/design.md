@@ -31,7 +31,7 @@ datasets in a seamless way. The data from each part of a virtual dataset comes
 from another dataset. HDF5 does this seamlessly, so that a virtual dataset
 appears to be a normal dataset.
 
-The basic design of versioned-hdf5 is this. Whenever a dataset is created for
+The basic design of versioned-hdf5 is this: whenever a dataset is created for
 the first time (the first version containing the dataset), it is split into
 chunks. The data in each chunk is hashed and stored in a hash table. The
 unique chunks are then appended into to a single raw_data dataset. The raw
@@ -141,6 +141,8 @@ exists in `version2`. The HDF5 layout would look like this
 │   └── raw_data
 │
 └── versions/
+    ├── __first_version__/
+    │
     ├── version1/
     │   └── data1
     │
@@ -148,6 +150,10 @@ exists in `version2`. The HDF5 layout would look like this
         ├── data1
         └── data2
 ```
+
+`__first_version__` is an empty group that exists only for internal
+bookkeeping purposes, so that each version has a valid previous version (see
+below).
 
 ## Submodule Organization
 
@@ -191,7 +197,9 @@ self-contained, containing only virtual datasets that point only to the
 respective raw datasets. Versioned-hdf5 also keeps track of the "current
 version", which is used only to allow previous version to not be specified
 when creating a new version (this information is stored on the attributes of
-the `_versioned_data/versions` group).
+the `_versioned_data/versions` group). If a version does not have a previous
+version, its previous version is the special empty `__first_version__` version
+group.
 
 `versioned_hdf5.versions` contains functions to create a version group, commit
 a version, and access and manipulate versions. The main function here is
