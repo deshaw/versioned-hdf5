@@ -3,8 +3,8 @@
 /* -- page layout ----------------------------------------------------------- */
 
 body {
-    font-family: Georgia, serif;
-    font-size: 17px;
+    font-family: Palatino, 'goudy old style', 'minion pro', 'bell mt', Georgia, 'Hiragino Mincho Pro', serif;
+    font-size: 18px;
     background-color: #fff;
     color: #000;
     margin: 0;
@@ -13,7 +13,7 @@ body {
 
 
 div.document {
-    width: 940px;
+    width: 1000px;
     margin: 30px auto 0 auto;
 }
 
@@ -47,7 +47,7 @@ div.body > .section {
 }
 
 div.footer {
-    width: 940px;
+    width: 1000px;
     margin: 20px auto 30px auto;
     font-size: 14px;
     color: #888;
@@ -103,7 +103,7 @@ div.sphinxsidebarwrapper p.blurb {
 
 div.sphinxsidebar h3,
 div.sphinxsidebar h4 {
-    font-family: Georgia, serif;
+    font-family: Palatino, 'goudy old style', 'minion pro', 'bell mt', Georgia, 'Hiragino Mincho Pro', serif;
     color: #444;
     font-size: 24px;
     font-weight: normal;
@@ -147,7 +147,7 @@ div.sphinxsidebar ul li.toctree-l2 > a {
 
 div.sphinxsidebar input {
     border: 1px solid #CCC;
-    font-family: Georgia, serif;
+    font-family: Palatino, 'goudy old style', 'minion pro', 'bell mt', Georgia, 'Hiragino Mincho Pro', serif;
     font-size: 1em;
 }
 
@@ -193,7 +193,7 @@ div.body h3,
 div.body h4,
 div.body h5,
 div.body h6 {
-    font-family: Georgia, serif;
+    font-family: Palatino, 'goudy old style', 'minion pro', 'bell mt', Georgia, 'Hiragino Mincho Pro', serif;
     font-weight: normal;
     margin: 30px 0px 10px 0px;
     padding: 0;
@@ -234,7 +234,7 @@ div.admonition tt.xref, div.admonition code.xref, div.admonition a tt {
 }
 
 div.admonition p.admonition-title {
-    font-family: Georgia, serif;
+    font-family: Palatino, 'goudy old style', 'minion pro', 'bell mt', Georgia, 'Hiragino Mincho Pro', serif;
     font-weight: normal;
     font-size: 24px;
     margin: 0 0 10px 0;
@@ -323,8 +323,8 @@ p.admonition-title:after {
 }
 
 pre, tt, code {
-    font-family: 'Consolas', 'Menlo', 'DejaVu Sans Mono', 'Bitstream Vera Sans Mono', monospace;
-    font-size: 0.9em;
+    font-family: 'Menlo', 'DejaVu Sans Mono', 'Consolas', 'Bitstream Vera Sans Mono', monospace;
+    font-size: 0.85em;
 }
 
 .hll {
@@ -451,7 +451,7 @@ dl pre, blockquote pre, li pre {
 }
 
 tt, code {
-    background-color: #ecf0f3;
+    background-color: #FFFFFF;
     color: #222;
     /* padding: 1px 2px; */
 }

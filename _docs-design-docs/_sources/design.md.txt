@@ -1,11 +1,13 @@
 # Design
 
 Versioned-hdf5 is built as a wrapper on top of h5py. The basic idea behind the
-design is that versioned-hdf5 is a copy-on-write system, inspired by git as
-well as modern filesystems such as APFS and Btrfs. Copy-on-write is a good fit
-whenever data should be completely immutable. In a copy-on-write system, any
-modifications to a piece of data produce a new copy of the data, leaving the
-original intact. Any references to the original will continue to point to it.
+design is that versioned-hdf5 is a
+[copy-on-write](https://en.wikipedia.org/wiki/Copy-on-write) system, inspired
+by git as well as modern filesystems such as APFS and Btrfs. Copy-on-write is
+a good fit whenever data should be completely immutable. In a copy-on-write
+system, any modification to a piece of data produces a new copy of the data,
+leaving the original intact. Any references to the original will continue to
+point to it.
 
 This is implemented using two key HDF5 primitives: chunks and virtual
 datasets.
@@ -15,34 +17,35 @@ which is configurable, although some chunks may not be completely full. A
 chunk is the smallest part of a dataset that HDF5 operates on. Whenever a
 subset of a dataset is to be read, the entire chunk containing that dataset is
 read into memory. Picking an optimal chunk size is a nontrivial task, and
-depends on things such as the size of your L1 cache, and the typical shape of
+depends on things such as the size of your L1 cache and the typical shape of
 your dataset. Furthermore, in versioned-hdf5 a chunk is the smallest amount of
 data that is stored only once across versions if it has not changed. If the
-chunk size is too small, it could affect performance, as all operations must
-operate on chunks, but if it is too large, it could make the resulting
-versioned file large, as even a change of a single element requires rewriting
-the entire chunk. Versioned-hdf5 does not presently contain any logic for
-automatically picking a chunk size. The [pytables
+chunk size is too small, it would affect performance, as operations would
+require reading and writing more chunks, but if it is too large, it would make
+the resulting versioned file unnecessarily large, as changing even a single
+element of a chunk requires rewriting the entire chunk. Versioned-hdf5 does
+not presently contain any logic for automatically picking a chunk size. The
+[pytables
 documentation](https://www.pytables.org/usersguide/optimization.html) has some
 tips on picking an optimal chunk size.
 
-Virtual datasets are a special kind of dataset that reference data from other
-datasets in a seamless way. The data from each part of a virtual dataset comes
-from another dataset. HDF5 does this seamlessly, so that a virtual dataset
-appears to be a normal dataset.
+[Virtual datasets](http://docs.h5py.org/en/stable/vds.html) are a special kind
+of dataset that reference data from other datasets in a seamless way. The data
+from each part of a virtual dataset comes from another dataset. HDF5 does this
+seamlessly, so that a virtual dataset appears to be a normal dataset.
 
 The basic design of versioned-hdf5 is this: whenever a dataset is created for
 the first time (the first version containing the dataset), it is split into
 chunks. The data in each chunk is hashed and stored in a hash table. The
-unique chunks are then appended into to a single raw_data dataset. The raw
-dataset stores each chunk along the first dimension only. Finally, a virtual
-dataset is made that references the corresponding chunks in the raw dataset to
-recreate the original dataset. When later versions modify this dataset, each
-modified chunk is appended to the raw dataset, and a new virtual dataset is
-created pointing to corresponding chunks.
+unique chunks are then appended into to a `raw_data` dataset corresponding to
+the dataset. Finally, a virtual dataset is made that references the
+corresponding chunks in the raw dataset to recreate the original dataset. When
+later versions modify this dataset, each modified chunk is appended to the raw
+dataset, and a new virtual dataset is created pointing to corresponding
+chunks.
 
-For example, say we start with the first version, `version 1`, and create a
-dataset `dataset` with `n` chunks. The dataset chunks will be written into the
+For example, say we start with the first version, `version_1`, and create a
+dataset `my_dataset` with `n` chunks. The dataset chunks will be written into the
 raw dataset, and the final virtual dataset will point to those chunks.
 
 ```{graphviz}
@@ -55,24 +58,24 @@ fontsize = "16"
 ];
 edge [
 ];
-"dataset (version 1)" [
-label = "data (version 1)|<f0>CHUNK 0|<f1>CHUNK 1|<fdot>...|<fn>CHUNK n"
+"dataset (version_1)" [
+label = "my_dataset (version_1)|<f0>CHUNK 0|<f1>CHUNK 1|<fdot>...|<fn>CHUNK n"
 shape = "record"
 ];
 "raw_data" [
 label = "raw_data|<f0>CHUNK 0|<f1>CHUNK 1|<fdot>...|<fn>CHUNK n"
 shape = "record"
 ];
-"dataset (version 1)":f0 -> "raw_data":f0 [];
-"dataset (version 1)":f1 -> "raw_data":f1 [];
-"dataset (version 1)":fdot -> "raw_data":fdot [];
-"dataset (version 1)":fn -> "raw_data":fn [];
+"dataset (version_1)":f0 -> "raw_data":f0 [];
+"dataset (version_1)":f1 -> "raw_data":f1 [];
+"dataset (version_1)":fdot -> "raw_data":fdot [];
+"dataset (version_1)":fn -> "raw_data":fn [];
 }
 ```
 
-If we then create a version `version 2` based off `version 1`, and modify only
-data contained in chunk 2, that new data will be appended to the raw dataset,
-and the resulting virtual dataset for version 2 will look like this:
+If we then create a version `version_2` based off `version_1`, and modify only
+data contained in CHUNK 2, that new data will be appended to the raw dataset,
+and the resulting virtual dataset for `version_2` will look like this:
 
 ```{graphviz}
 digraph g {
@@ -84,33 +87,33 @@ fontsize = "16"
 ];
 edge [
 ];
-"dataset (version 1)" [
-label = "data (version 1)|<f0>CHUNK 0|<f1>CHUNK 1|<fdot>...|<fn>CHUNK n"
+"dataset (version_1)" [
+label = "my_dataset (version_1)|<f0>CHUNK 0|<f1>CHUNK 1|<fdot>...|<fn>CHUNK n"
 shape = "record"
 ];
-"dataset (version 2)" [
-label = "data (version 2)|<f0>CHUNK 0|<f1>CHUNK 1|<fdot>...|<fn>CHUNK n"
+"dataset (version_2)" [
+label = "my_dataset (version_2)|<f0>CHUNK 0|<f1>CHUNK 1|<fdot>...|<fn>CHUNK n"
 shape = "record"
 ];
 "raw_data" [
 label = "raw_data|<f0>CHUNK 0|<f1>CHUNK 1|<fdot>...|<fn>CHUNK n|<fn1>CHUNK n+1"
 shape = "record"
 ];
-"dataset (version 1)":f0 -> "raw_data":f0 [];
-"dataset (version 1)":f1 -> "raw_data":f1 [];
-"dataset (version 1)":fdot -> "raw_data":fdot [];
-"dataset (version 1)":fn -> "raw_data":fn [];
-"raw_data":f0 -> "dataset (version 2)":f0 [dir=back];
-"dataset (version 2)":fdot -> "raw_data":fdot [];
-"dataset (version 2)":f1 -> "raw_data":fn1 [];
-"dataset (version 2)":fn -> "raw_data":fn [];
+"dataset (version_1)":f0 -> "raw_data":f0 [];
+"dataset (version_1)":f1 -> "raw_data":f1 [];
+"dataset (version_1)":fdot -> "raw_data":fdot [];
+"dataset (version_1)":fn -> "raw_data":fn [];
+"raw_data":f0 -> "dataset (version_2)":f0 [dir=back];
+"dataset (version_2)":fdot -> "raw_data":fdot [];
+"dataset (version_2)":f1 -> "raw_data":fn1 [];
+"dataset (version_2)":fn -> "raw_data":fn [];
 }
 ```
 
-Since both versions 1 and 2 of `dataset` have identical data in chunks other
-than chunk 2, they both point to the exact same data in the raw data. Thus,
-the underlying HDF5 file only stores the data in version 1 of `dataset` once,
-and only the modified chunk in version 2 is stored on top of that.
+Since both versions 1 and 2 of `my_dataset` have identical data in chunks other than
+CHUNK 2, they both point to the exact same data in `raw_data`. Thus, the
+underlying HDF5 file only stores the data in version 1 of `my_dataset` once, and
+only the modified chunks from `version_2`'s `my_dataset` are stored on top of that.
 
 All extra metadata, such as attributes, is stored on the virtual dataset.
 Since virtual datasets act exactly like real datasets and operate at the HDF5
@@ -120,15 +123,16 @@ never access them outside of the versioned-hdf5 API (see below).
 
 ## HDF5 File Layout
 
-Inside of the HDF5 file, there is
-a special `_versioned_data` group that holds all the internal data for
-versioned-hdf5. This group contains a `versions` group, which contains groups
-for each version that has been created. It also contains a group for each
-dataset that exists in a version. These groups each contain two groups,
-`hash_table`, and `raw_data`. For example, consider a versioned-hdf5 file that
-contains two versions, `version1`, and `version2`, with datasets `data1` and
-`data2`. Suppose also that `data1` exists in both versions and `data2` only
-exists in `version2`. The HDF5 layout would look like this
+Inside of the HDF5 file, there is a special `_versioned_data` group that holds
+all the internal data for versioned-hdf5. This group contains a `versions`
+group, which contains groups for each version that has been created. It also
+contains a group for each dataset that exists in a version. These groups each
+contain two datasets, `hash_table`, and `raw_data`.
+
+For example, consider a versioned-hdf5 file that contains two versions,
+`version1`, and `version2`, with datasets `data1` and `data2`. Suppose also
+that `data1` exists in both versions and `data2` only exists in `version2`.
+The HDF5 layout would look like this
 
 ```
 /_versioned_data/
@@ -152,34 +156,35 @@ exists in `version2`. The HDF5 layout would look like this
 ```
 
 `__first_version__` is an empty group that exists only for internal
-bookkeeping purposes, so that each version has a valid previous version (see
-below).
+bookkeeping purposes (see below).
 
 ## Submodule Organization
 
-The versioned-hdf5 code is split into three layers.
+The versioned-hdf5 code is split into four layers, the backend, the versions,
+the h5py wrappers, and the top-level API.
 
 ### Backend
 
-The backend layer is the bottom most layer. It is the only layer that does
-actual writes to HDF5. It deals with the splitting of chunks from the
-versioned dataset, and creation of the virtual datasets that compromise the
+The backend layer is the bottommost layer. It is the only layer that does
+actual dataset writes to HDF5. It deals with the splitting of chunks from the
+versioned dataset and creation of the virtual datasets that compromise the
 version groups. The relevant modules are `versioned_hdf5.backend` and
 `versioned_hdf5.hashtable`.
 
-`versioned_hdf5.backend.write_dataset` takes a dataset (or array) and
-writes it to the raw data for the given dataset. The data in each chunk of the
-dataset is SHA256 hashed, and the hash is looked up in the hashtable dataset
-and if it already exists in the raw data, that chunk in the raw data is
-reused. The hashtable maps `SHA256 hash -> (start, stop)` where `(start,
-stop)` gives a slice range for the chunk in the raw dataset. All chunks that
-do not exist in the hashtable already are appended to the raw dataset and
-added to the hashtable. `versioned_hdf5.backend.write_dataset_chunks` works
+`versioned_hdf5.backend.write_dataset()` takes a dataset (or array) and writes
+it to the raw data for the given dataset. The data in each chunk of the
+dataset is SHA256 hashed, and the hash is looked up in the hashtable dataset.
+If it already exists in the raw data, that chunk in the raw data is reused.
+The hashtable maps `SHA256 hash -> (start, stop)` where `(start, stop)` gives
+a slice range for the chunk in the raw dataset (chunks in the `raw_data`
+dataset are concatenated along the first axis only). All chunks that do not
+exist in the hashtable already are appended to the raw dataset and added to
+the hashtable. `versioned_hdf5.backend.write_dataset_chunks()` works
 similarly, except instead of taking a dataset as input, it takes an dictionary
 mapping chunks. This allows the higher levels of the API to only pass in the
-chunks of an existing dataset that have been modified.
+chunks of an existing dataset that have been modified (see below).
 
-`versioned_hdf5.backend.create_virtual_dataset` creates a virtual dataset
+`versioned_hdf5.backend.create_virtual_dataset()` creates a virtual dataset
 in the version group pointing to corresponding chunks in the raw dataset.
 `versioned_hdf5.backend` also has various functions for initializing a
 dataset the first time it is created in a version.
@@ -189,23 +194,26 @@ hashtable dataset in HDF5 as a dict-like object.
 
 ### Versions
 
-Each version is stored as a group in the `_versioned_data/versions` group. The
-group contains attributes that reference the previous version, as well as
-metadata like the timestamp when the version was created. The reference of
-previous version is only needed to traverse versions. Each version group is
-self-contained, containing only virtual datasets that point only to the
-respective raw datasets. Versioned-hdf5 also keeps track of the "current
-version", which is used only to allow previous version to not be specified
-when creating a new version (this information is stored on the attributes of
-the `_versioned_data/versions` group). If a version does not have a previous
+Each version is stored as a subgroup of the `_versioned_data/versions/` group.
+The group contains attributes that reference the previous version, as well as
+metadata like the timestamp when the version was created. Consequently, the
+versions form a DAG. However, the reference to the previous version is only
+used by the top-level API that allows traversing versions. Each version group
+is self-contained, containing only virtual datasets that point only to the
+respective raw datasets.
+
+Versioned-hdf5 also keeps track of the "current version", which is used only
+to allow previous version to not be specified when creating a new version
+(this information is stored on the attributes of the
+`_versioned_data/versions` group). If a version does not have a previous
 version, its previous version is the special empty `__first_version__` version
 group.
 
 `versioned_hdf5.versions` contains functions to create a version group, commit
 a version, and access and manipulate versions. The main function here is
-`versioned_hdf5.versions.commit_version`, which is called when the
-`VersionedHDF5File.stage_version` context manager exits with all the datasets
-that should be committed to the new version.
+`versioned_hdf5.versions.commit_version()`, which is called with all the
+datasets that should be committed to the new version when the
+`VersionedHDF5File.stage_version()` context manager exits.
 
 ### h5py Wrappers
 
@@ -220,59 +228,68 @@ be interacted with via the versioned-hdf5 library. Writing to a versioned
 dataset directly with h5py or another HDF5 wrapper library may lead to data
 corruption, as common data is shared between versions.
 
-The objects for this layer all live in `versioned_hdf5.wrappers`.
+The objects for this layer all live in `versioned_hdf5.wrappers`. The primary
+objects are
 
 `InMemoryGroup`: This is the object returned by the
-`VersionedHDF5File.stage_version` context manager. It acts like an
+`VersionedHDF5File.stage_version()` context manager. It acts like an
 `h5py.Group` object, but all data is stored in memory. This is done efficiency
 so that only data that is modified is actually read in from the file. This
-object is also used for any subgroups that are used in the versioned file. The
-primary purpose of this object is to keep track of what has been modified
-while a version is being staged. Once the `stage_version` context manager
-exits, this object is passed to `commit_version` (see above), which extracts
-the relevant information about what datasets exist in the new version and how
-they relate to previous versions, if there are any.
+object is also used for any subgroups of the version group. The primary
+purpose of this object is to keep track of what has been modified while a
+version is being staged. Once the `stage_version()` context manager exits,
+this object is passed to `commit_version()` (see above), which extracts the
+relevant information about what datasets exist in the new version and how they
+relate to previous versions, if there are any.
 
 `InMemoryArrayDataset`: This objects acts like a `h5py.Dataset`, but wraps a
 NumPy array in memory. This object is used whenever a dataset is created for
 the first time.
 
-`InMemoryDataset`: This objects acts like a `h5py.Dataset`. This object is
-used whenever a dataset in a version already exists from a previous version.
-This object stores only those chunks of the dataset in memory that are
-actually read in or modified. This is not only more memory efficient, but it
-allows passing only the modified chunks as arrays to the backend. The
-remaining chunks will then automatically point to the chunks in the raw data
-that they pointed to in the previous version, without needing to re-hash the
-data. One challenge with this design is that InMemoryDataset represents a
-single dataset that is broken up into chunks, which live in the raw dataset
-and may not be contiguous. The
+`InMemoryDataset`: This objects acts like a `h5py.Dataset`. It is used
+whenever a dataset in a version already exists from a previous version. This
+object stores only those chunks of the dataset in memory that are actually
+read in or modified. This is not only more memory efficient, but it allows
+passing only the modified chunks as arrays to the backend. The remaining
+chunks will then automatically point to the chunks in the raw data that they
+pointed to in the previous version, without needing to re-hash the data.
+
+One challenge with this design is that `InMemoryDataset` represents a single
+dataset that is broken up into chunks, which live in the raw dataset and may
+not be contiguous. The
 [ndindex](https://quansight.github.io/ndindex/index.html) library is used to
 manage translation of indices on the dataset to and from the chunked data.
-ndindex is also used throughout versioned_hdf5 to store and manipulate slice
+ndindex is also used throughout versioned-hdf5 to store and manipulate slice
 and other index objects, as it is more convenient than using the raw index
 types. For example, in the backend, we need to store slices in a dictionary.
 The default Python `slice` object is not hashable, which makes this annoying
 to do. The ndindex index objects are all hashable. The ndindex library was
-created in order to make index manipulation in versioned-hdf5 possible, as
-well as allowing code that passes indices around to become much cleaner.
+initially created for versioned-hdf5, in order to make index manipulation
+possible as well as allowing code that passes indices around to become much
+cleaner.
 
 These wrapper objects all try to emulate the h5py API as closely as possible,
 so that the user can use them just as they would the real h5py objects. Any
-discrepancy between h5py and VersionedHDF5 semantics should be considered a
+discrepancy between h5py and versioned-hdf5 semantics should be considered a
 bug in versioned-hdf5.
 
 ### Top-level API
 
-The top-level API consists of one object, `VersionedHDF5File`. This object
+The top-level API consists of one object, {any}`VersionedHDF5File`. This object
 allows accessing versions via getitem, like
 `VersionedHDF5File(f)[version_name]`. The primary use of this object, however,
-is the `stage_version` method, which is a context manager that returns a group
+is the `stage_version()` method, which is a context manager that returns a group
 for a new version. The way to make a new version is
 
 ```py
+import h5py
+from versioned_hdf5 import VersionedHDF5File
+
 f = h5py.File(...)
 file = VersionedHDF5File(f)
+
+# new_version and prev_version are strings corresponding the the version names
+# for the new and previous versions
 with file.stage_version(new_version, prev_version) as g:
     g['dataset'][0] = 1 # Modify a dataset from prev_version
     g['dataset'].resize(...) # Resize a dataset from prev_version
@@ -285,7 +302,7 @@ previous version `prev_version`, but modifications to it will not actually
 modify `prev_version`. Rather, they will stage changes for the new version
 `new_version`. When the context manager exits, whatever the state of the
 version group `g` is will be written as `new_version`. Any data chunks from
-`prev_version` that was not modified will be reused as described above.
+`prev_version` that were not modified will be reused as described above.
 
 Once a version is committed (after the context manager exits), it should be
 treated as read-only. The versioned-hdf5 objects have some safeguards to
