@@ -135,6 +135,11 @@ shape = &quot;record&quot;
 than chunk 2, they both point to the exact same data in the raw data. Thus,
 the underlying HDF5 file only stores the data in version 1 of <code class="docutils literal notranslate"><span class="pre">dataset</span></code> once,
 and only the modified chunk in version 2 is stored on top of that.</p>
+<p>All extra metadata, such as attributes, is stored on the virtual dataset.
+Since virtual datasets act exactly like real datasets and operate at the HDF5
+level, each version is a real group in the HDF5 file that is exactly that
+version. However, these groups should be treated as read-only, and you should
+never access them outside of the versioned-hdf5 API (see below).</p>
 <div class="section" id="hdf5-file-layout">
 <h2>HDF5 File Layout<a class="headerlink" href="#hdf5-file-layout" title="Permalink to this headline">¶</a></h2>
 <p>Inside of the HDF5 file, there is
@@ -173,8 +178,8 @@ exists in <code class="docutils literal notranslate"><span class="pre">version2<
 <p>The backend layer is the bottom most layer. It is the only layer that does
 actual writes to HDF5. It deals with the splitting of chunks from the
 versioned dataset, and creation of the virtual datasets that compromise the
-version groups. The relevant modules are <code class="docutils literal notranslate"><span class="pre">versioned_hdf5.backend</span></code>,
-<code class="docutils literal notranslate"><span class="pre">versioned_hdf5.hashtable</span></code>, and <code class="docutils literal notranslate"><span class="pre">versioned_hdf5.versions</span></code>.</p>
+version groups. The relevant modules are <code class="docutils literal notranslate"><span class="pre">versioned_hdf5.backend</span></code> and
+<code class="docutils literal notranslate"><span class="pre">versioned_hdf5.hashtable</span></code>.</p>
 <p><code class="docutils literal notranslate"><span class="pre">versioned_hdf5.backend.write_dataset</span></code> takes a dataset (or array) and
 writes it to the raw data for the given dataset. The data in each chunk of the
 dataset is SHA256 hashed, and the hash is looked up in the hashtable dataset
@@ -191,6 +196,18 @@ in the version group pointing to corresponding chunks in the raw dataset.
 dataset the first time it is created in a version.</p>
 <p><code class="docutils literal notranslate"><span class="pre">versioned_hdf5.hashtable</span></code> contains a <code class="docutils literal notranslate"><span class="pre">Hashtable</span></code> object that wraps the
 hashtable dataset in HDF5 as a dict-like object.</p>
+</div>
+<div class="section" id="versions">
+<h3>Versions<a class="headerlink" href="#versions" title="Permalink to this headline">¶</a></h3>
+<p>Each version is stored as a group in the <code class="docutils literal notranslate"><span class="pre">_versioned_data/versions</span></code> group. The
+group contains attributes that reference the previous version, as well as
+metadata like the timestamp when the version was created. The reference of
+previous version is only needed to traverse versions. Each version group is
+self-contained, containing only virtual datasets that point only to the
+respective raw datasets. Versioned-hdf5 also keeps track of the “current
+version”, which is used only to allow previous version to not be specified
+when creating a new version (this information is stored on the attributes of
+the <code class="docutils literal notranslate"><span class="pre">_versioned_data/versions</span></code> group).</p>
 <p><code class="docutils literal notranslate"><span class="pre">versioned_hdf5.versions</span></code> contains functions to create a version group, commit
 a version, and access and manipulate versions. The main function here is
 <code class="docutils literal notranslate"><span class="pre">versioned_hdf5.versions.commit_version</span></code>, which is called when the

@@ -112,6 +112,12 @@ than chunk 2, they both point to the exact same data in the raw data. Thus,
 the underlying HDF5 file only stores the data in version 1 of `dataset` once,
 and only the modified chunk in version 2 is stored on top of that.
 
+All extra metadata, such as attributes, is stored on the virtual dataset.
+Since virtual datasets act exactly like real datasets and operate at the HDF5
+level, each version is a real group in the HDF5 file that is exactly that
+version. However, these groups should be treated as read-only, and you should
+never access them outside of the versioned-hdf5 API (see below).
+
 ## HDF5 File Layout
 
 Inside of the HDF5 file, there is
@@ -152,8 +158,8 @@ The versioned-hdf5 code is split into three layers.
 The backend layer is the bottom most layer. It is the only layer that does
 actual writes to HDF5. It deals with the splitting of chunks from the
 versioned dataset, and creation of the virtual datasets that compromise the
-version groups. The relevant modules are `versioned_hdf5.backend`,
-`versioned_hdf5.hashtable`, and `versioned_hdf5.versions`.
+version groups. The relevant modules are `versioned_hdf5.backend` and
+`versioned_hdf5.hashtable`.
 
 `versioned_hdf5.backend.write_dataset` takes a dataset (or array) and
 writes it to the raw data for the given dataset. The data in each chunk of the
@@ -174,6 +180,18 @@ dataset the first time it is created in a version.
 
 `versioned_hdf5.hashtable` contains a `Hashtable` object that wraps the
 hashtable dataset in HDF5 as a dict-like object.
+
+### Versions
+
+Each version is stored as a group in the `_versioned_data/versions` group. The
+group contains attributes that reference the previous version, as well as
+metadata like the timestamp when the version was created. The reference of
+previous version is only needed to traverse versions. Each version group is
+self-contained, containing only virtual datasets that point only to the
+respective raw datasets. Versioned-hdf5 also keeps track of the "current
+version", which is used only to allow previous version to not be specified
+when creating a new version (this information is stored on the attributes of
+the `_versioned_data/versions` group).
 
 `versioned_hdf5.versions` contains functions to create a version group, commit
 a version, and access and manipulate versions. The main function here is
