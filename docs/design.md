@@ -112,7 +112,7 @@ than chunk 2, they both point to the exact same data in the raw data. Thus,
 the underlying HDF5 file only stores the data in version 1 of `dataset` once,
 and only the modified chunk in version 2 is stored on top of that.
 
-## Layout
+## HDF5 File Layout
 
 Inside of the HDF5 file, there is
 a special `_versioned_data` group that holds all the internal data for
@@ -143,7 +143,7 @@ exists in `version2`. The HDF5 layout would look like this
         └── data2
 ```
 
-## Code layout
+## Submodule Organization
 
 The versioned-hdf5 code is split into three layers.
 
