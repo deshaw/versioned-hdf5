@@ -39,7 +39,9 @@ script:
   - if [[ "${COVERAGE}" == "true" ]]; then
         PYTEST_FLAGS="--cov=./";
     fi
-  - pytest $PYTEST_FLAGS
+  - if [[ "${TESTS}" == "true" ]]; then
+        pytest $PYTEST_FLAGS;
+    fi
   # # Make sure it installs
   # - python setup.py install
   - if [[ "${DOCS}" == "true" ]]; then
