@@ -412,6 +412,18 @@ class InMemoryDataset(Dataset):
         self._attrs = dict(super().attrs)
 
     @property
+    def fillvalue(self):
+         if super().fillvalue is not None:
+             return super().fillvalue
+         if self.dtype.metadata:
+             # Custom h5py string dtype. Make sure to use a fillvalue of ''
+             if 'vlen' in self.dtype.metadata:
+                 return self.dtype.metadata['vlen']()
+             elif 'h5py_encoding' in self.dtype.metadata:
+                 return self.dtype.type()
+         return np.zeros((), dtype=self.dtype)[()]
+
+    @property
     def chunks(self):
         return tuple(self.id.chunks)
 
@@ -669,7 +681,7 @@ class InMemoryArrayDataset:
         self._dtype = None
         self.attrs = {}
         self.parent = parent
-        self.fillvalue = fillvalue or np.zeros((), dtype=array.dtype)[()]
+        self._fillvalue = fillvalue
 
     @property
     def array(self):
@@ -692,6 +704,18 @@ class InMemoryArrayDataset:
         if self._dtype is not None:
             return self._dtype
         return self._array.dtype
+
+    @property
+    def fillvalue(self):
+         if self._fillvalue is not None:
+             return self._fillvalue
+         if self.dtype.metadata:
+             # Custom h5py string dtype. Make sure to use a fillvalue of ''
+             if 'vlen' in self.dtype.metadata:
+                 return self.dtype.metadata['vlen']()
+             elif 'h5py_encoding' in self.dtype.metadata:
+                 return b''
+         return np.zeros((), dtype=self.dtype)[()]
 
     @property
     def ndim(self):
