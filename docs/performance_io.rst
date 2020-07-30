@@ -22,7 +22,7 @@ using the ``performance_tests.py`` script from ``analysis`` folder.
 Setup
 -----
 
-.. code:: ipython3
+.. code:: python
 
     import h5py
     import json
@@ -35,7 +35,7 @@ Setup
 Test 1: Large fraction changes (sparse)
 ---------------------------------------
 
-.. code:: ipython3
+.. code:: python
 
     testname = "test_large_fraction_changes_sparse"
 
@@ -45,7 +45,7 @@ Reading in sequential mode
 For this test, we’ll read data from all versions in a file,
 sequentially.
 
-.. code:: ipython3
+.. code:: python
 
     def read_times(filename):
         h5pyfile = h5py.File(filename, 'r+')
@@ -65,14 +65,14 @@ To keep this test short, we’ll only analyze the tests using **no
 compression**, and **chunk size** :math:`2^{14}`. Note that this can be
 changed in the lines below if desired.
 
-.. code:: ipython3
+.. code:: python
 
     compression = "None"
     exponent = 14
 
 Plotting with respect to the number of versions, we get the following:
 
-.. code:: ipython3
+.. code:: python
 
     rtimes = []
     num_transactions = [50, 100, 500, 1000, 5000]
@@ -111,7 +111,7 @@ In the code below you can choose to read a random version from the file,
 or the version which is approximately at half of the version set (for
 reproducibility reasons).
 
-.. code:: ipython3
+.. code:: python
 
     def read_version(filename, n):
         h5pyfile = h5py.File(filename, 'r+')
@@ -139,7 +139,7 @@ file (each line in the figure represents a run). It is expected that
 there are variations in the read times, as this fluctuates with the
 system load while running the test.
 
-.. code:: ipython3
+.. code:: python
 
     num_transactions = [50, 100, 500, 1000, 5000]
     
@@ -172,7 +172,7 @@ Reading first version vs. reading latest version
 Next, we’ll compare the times necessary to read the first version and
 the latest version on each file.
 
-.. code:: ipython3
+.. code:: python
 
     def read_first(filename):
         h5pyfile = h5py.File(filename, 'r+')
@@ -186,7 +186,7 @@ the latest version on each file.
         vfile.close()
         return t
 
-.. code:: ipython3
+.. code:: python
 
     num_transactions = [50, 100, 500, 1000, 5000]
     
@@ -219,7 +219,7 @@ stored in the file. For comparison, we will also measure reading times
 for files generated without versioning (i.e. with no use of Versioned
 HDF5). Note that these should be similar data.
 
-.. code:: ipython3
+.. code:: python
 
     def read_last(filename):
         h5pyfile = h5py.File(filename, 'r+')
@@ -238,7 +238,7 @@ HDF5). Note that these should be similar data.
         vfile.close()
         return t
 
-.. code:: ipython3
+.. code:: python
 
     def read_no_versions(filename):
         h5pyfile = h5py.File(filename, 'r+')
@@ -248,7 +248,7 @@ HDF5). Note that these should be similar data.
         h5pyfile.close()
         return t
 
-.. code:: ipython3
+.. code:: python
 
     num_transactions = [50, 100, 500, 1000, 5000]
     
@@ -289,13 +289,13 @@ In this case, we can see that:
 Test 2: Mostly appends (Sparse)
 -------------------------------
 
-.. code:: ipython3
+.. code:: python
 
     testname = "test_mostly_appends_sparse"
 
 Once again, for shortness, we’ll only consider
 
-.. code:: ipython3
+.. code:: python
 
     compression = "None"
     exponent = 14
@@ -306,7 +306,7 @@ Reading in sequential mode
 If we read data from each version of the file, sequentially, we obtain
 the following:
 
-.. code:: ipython3
+.. code:: python
 
     rtimes = []
     num_transactions = [25, 50, 100, 500]
@@ -340,7 +340,7 @@ Reading specific version
 Now, let’s see the times required to read a specific version from each
 file.
 
-.. code:: ipython3
+.. code:: python
 
     num_transactions = [25, 50, 100, 500]
     
@@ -375,7 +375,7 @@ Reading first version vs. reading latest version
 Looking at the times required to read the first version and the latest
 version of the files, we get the following results.
 
-.. code:: ipython3
+.. code:: python
 
     num_transactions = [25, 50, 100, 500]
     
@@ -405,7 +405,7 @@ increases.
 
 For the latest version, the results are as follows.
 
-.. code:: ipython3
+.. code:: python
 
     num_transactions = [25, 50, 100, 500]
     
@@ -447,7 +447,7 @@ seconds.)
 Test 3: Small Fraction Changes (Sparse)
 ---------------------------------------
 
-.. code:: ipython3
+.. code:: python
 
     testname = "test_small_fraction_changes_sparse"
 
@@ -456,14 +456,14 @@ Reading in sequential mode
 
 Once again, we only consider
 
-.. code:: ipython3
+.. code:: python
 
     compression = "None"
     exponent = 14
 
 Reading all versions in a file sequentially gives the following result.
 
-.. code:: ipython3
+.. code:: python
 
     rtimes = []
     num_transactions = [50, 100, 500, 1000, 5000]
@@ -495,7 +495,7 @@ The times required to read a specific version from each file are
 similarly slightly affected by the number of existing versions in the
 file, as can be seen below.
 
-.. code:: ipython3
+.. code:: python
 
     num_transactions = [50, 100, 500, 1000, 5000]
     
@@ -529,7 +529,7 @@ Reading first version vs. reading latest version
 
 Reading the first version from each file results in the following:
 
-.. code:: ipython3
+.. code:: python
 
     num_transactions = [50, 100, 500, 1000, 5000]
     
@@ -556,7 +556,7 @@ Reading the first version from each file results in the following:
 Comparing reading the latest version from a Versioned HDF5 file with an
 unversioned file (black line in the plot) results in the following:
 
-.. code:: ipython3
+.. code:: python
 
     num_transactions = [50, 100, 500, 1000, 5000]
     
@@ -597,13 +597,13 @@ In this case, we can see that:
 Test 4: Large Fraction Changes (Sparse) - Constant Size
 -------------------------------------------------------
 
-.. code:: ipython3
+.. code:: python
 
     testname = "test_large_fraction_constant_sparse"
 
 Once more,
 
-.. code:: ipython3
+.. code:: python
 
     compression = "None"
     exponent = 14
@@ -613,7 +613,7 @@ Reading in sequential mode
 
 Reading all versions from each file sequentially gives the following.
 
-.. code:: ipython3
+.. code:: python
 
     rtimes = []
     num_transactions = [50, 100, 500, 1000, 5000]
@@ -645,7 +645,7 @@ Reading specific version
 The times required to read a specific version from each file are
 similarly unnaffected by the number of existing versions in the file.
 
-.. code:: ipython3
+.. code:: python
 
     num_transactions = [50, 100, 500, 1000, 5000]
     
@@ -678,7 +678,7 @@ Reading first version vs. reading latest version
 
 Finally, let’s read the first version of each file.
 
-.. code:: ipython3
+.. code:: python
 
     num_transactions = [50, 100, 500, 1000, 5000]
     
@@ -705,7 +705,7 @@ Finally, let’s read the first version of each file.
 Comparing versioned and unversioned files for the latest version results
 in the following:
 
-.. code:: ipython3
+.. code:: python
 
     num_transactions = [50, 100, 500, 1000, 5000]
     
@@ -747,7 +747,7 @@ Test 5: Mostly appends (Dense)
 
 **Note that this test includes a two-dimensional dataset.**
 
-.. code:: ipython3
+.. code:: python
 
     testname = "test_mostly_appends_dense"
 
@@ -757,7 +757,7 @@ files, and will show a poor performance overall. In this case, we have
 chosen a chunk size of :math:`2^8` as a sensible value for the current
 tests.
 
-.. code:: ipython3
+.. code:: python
 
     compression = "None"
     exponent = 8
@@ -768,7 +768,7 @@ Reading in sequential mode
 When we read all versions in sequential mode for this test, the results
 are as follows.
 
-.. code:: ipython3
+.. code:: python
 
     rtimes = []
     num_transactions = [25, 50, 100, 500]
@@ -801,7 +801,7 @@ Reading specific version
 Now, let’s see the times required to read a specific version from each
 file.
 
-.. code:: ipython3
+.. code:: python
 
     num_transactions = [25, 50, 100, 500]
     
@@ -833,7 +833,7 @@ Reading first version vs. reading latest version
 Reading the first version of each of these files results in the
 following.
 
-.. code:: ipython3
+.. code:: python
 
     num_transactions = [25, 50, 100, 500]
     
@@ -859,7 +859,7 @@ following.
 For the latest version, once again comparing with the unversioned file,
 we have the following results:
 
-.. code:: ipython3
+.. code:: python
 
     num_transactions = [25, 50, 100, 500]
     

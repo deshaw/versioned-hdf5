@@ -19,7 +19,7 @@ We performed the following tests:
 Setup
 -----
 
-.. code:: ipython3
+.. code:: python
 
     import h5py
     import json
@@ -33,7 +33,7 @@ testcase that was run recently; - a ``.json`` file named after the test
 name and options, containing a summary of the results. This file can be
 read with
 
-.. code:: ipython3
+.. code:: python
 
     with open("<filename>.json", "r") as json_in:
           test = json.load(json_in)
@@ -41,7 +41,7 @@ read with
 Test 1: Large fraction changes (sparse)
 ---------------------------------------
 
-.. code:: ipython3
+.. code:: python
 
     testname = "test_large_fraction_changes_sparse"
 
@@ -64,7 +64,7 @@ Analysis
 
 First, let’s obtain some common parameters from the tests:
 
-.. code:: ipython3
+.. code:: python
 
     num_transactions = [test['num_transactions'] for test in testcase_1]
     chunk_sizes = [test['chunk_size'] for test in testcase_1]
@@ -95,7 +95,7 @@ linear plot, and on the right a loglog plot of the same size data for
 the maximum file size obtained when generating the same tests with no
 versioning (that is, not using VersionedHDF5).
 
-.. code:: ipython3
+.. code:: python
 
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(20,8))
     
@@ -146,7 +146,7 @@ Comparing compression algorithms
 For each chunk size that we chose to test, let’s compare the file sizes
 corresponding to each compression algorithm that we used.
 
-.. code:: ipython3
+.. code:: python
 
     fig, ax = plt.subplots(ncs, figsize=(10,10), sharey=True)
     fig.suptitle(f"{testname}: File sizes")
@@ -182,7 +182,7 @@ Comparing chunk sizes
 Now, for each choice of compression algorithm, we compare different
 chunk sizes.
 
-.. code:: ipython3
+.. code:: python
 
     fig, ax = plt.subplots(ncomp, figsize=(10,10), sharey=True)
     fig.suptitle(f"{testname}: File sizes")
@@ -220,7 +220,7 @@ Creation times
 If we look at the creation times for these files, we have something like
 this:
 
-.. code:: ipython3
+.. code:: python
 
     t_write = np.array([test['t_write'][-1] for test in testcase_1])
     fig_large_fraction_changes_times = plt.figure(figsize=(10,8))
@@ -259,7 +259,7 @@ file, that is, to add a new transaction. The graphs below show, for each
 fixed number of transactions, the time required to add new versions as
 the file is created.
 
-.. code:: ipython3
+.. code:: python
 
     fig_times, ax = plt.subplots(n+1, figsize=(14,20))
     fig_times.suptitle(f"{testname}: time to write each new version")
@@ -309,7 +309,7 @@ faster read/write speeds as well).
 Test 2: Mostly appends (sparse)
 -------------------------------
 
-.. code:: ipython3
+.. code:: python
 
     testname = "test_mostly_appends_sparse"
 
@@ -327,7 +327,7 @@ Analysis
 Repeating the same analysis as in the previous test, let’s show the size
 information in a graph:
 
-.. code:: ipython3
+.. code:: python
 
     num_transactions = [test['num_transactions'] for test in testcase_2]
     chunk_sizes = [test['chunk_size'] for test in testcase_2]
@@ -346,7 +346,7 @@ A blue solid horizontal line indicates the maximum file size obtained
 when generating the same tests with no versioning (that is, not using
 VersionedHDF5).
 
-.. code:: ipython3
+.. code:: python
 
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(20,8))
     
@@ -397,7 +397,7 @@ Comparing compression algorithms
 For each chunk size that we chose to test, let’s compare the file sizes
 corresponding to each compression algorithm that we used.
 
-.. code:: ipython3
+.. code:: python
 
     fig, ax = plt.subplots(ncs, figsize=(10,10), sharey=True)
     fig.suptitle(f"{testname}: File sizes")
@@ -433,7 +433,7 @@ Comparing chunk sizes
 Now, for each choice of compression algorithm, we compare different
 chunk sizes.
 
-.. code:: ipython3
+.. code:: python
 
     fig, ax = plt.subplots(ncomp, figsize=(10,10), sharey=True)
     fig.suptitle(f"{testname}: File sizes")
@@ -470,7 +470,7 @@ Creation times
 
 The creation times for each file are as follows.
 
-.. code:: ipython3
+.. code:: python
 
     t_write = np.array([test['t_write'][-1] for test in testcase_2])
     fig_large_fraction_changes_times = plt.figure(figsize=(10,8))
@@ -507,7 +507,7 @@ The creation times for each file are as follows.
 Again, the graphs below show, for each fixed number of transactions, the
 time required to add new versions as the file is created.
 
-.. code:: ipython3
+.. code:: python
 
     fig_times, ax = plt.subplots(n+1, figsize=(14,20))
     fig_times.suptitle(f"{testname}: time to write each new version")
@@ -556,13 +556,13 @@ non-versioned cases.
 Test 3: Small fraction changes (sparse)
 ---------------------------------------
 
-.. code:: ipython3
+.. code:: python
 
     testname = "test_small_fraction_changes_sparse"
 
 We have tested the following options:
 
-.. code:: ipython3
+.. code:: python
           
    num_transactions_3 = [50, 100, 500, 1000, 5000]
    exponents_3 = [12, 14]
@@ -573,7 +573,7 @@ Analysis
 
 Again, let’s show the size information in a graph:
 
-.. code:: ipython3
+.. code:: python
 
     num_transactions = [test['num_transactions'] for test in testcase_3]
     chunk_sizes = [test['chunk_size'] for test in testcase_3]
@@ -591,7 +591,7 @@ plot of the same size data for ``testcase_3``. A blue solid horizontal
 line indicates the maximum file size obtained when generating the same
 tests with no versioning (that is, not using VersionedHDF5).
 
-.. code:: ipython3
+.. code:: python
 
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(20,8))
     
@@ -642,7 +642,7 @@ Comparing compression algorithms
 For each chunk size that we chose to test, let’s compare the file sizes
 corresponding to each compression algorithm that we used.
 
-.. code:: ipython3
+.. code:: python
 
     fig, ax = plt.subplots(ncs, figsize=(10,10), sharey=True)
     fig.suptitle(f"{testname}: File sizes")
@@ -678,7 +678,7 @@ Comparing chunk sizes
 Now, for each choice of compression algorithm, we compare different
 chunk sizes.
 
-.. code:: ipython3
+.. code:: python
 
     fig, ax = plt.subplots(ncomp, figsize=(10,10), sharey=True)
     fig.suptitle(f"{testname}: File sizes")
@@ -716,7 +716,7 @@ Creation times
 If we look at the creation times for these files, we have something like
 this:
 
-.. code:: ipython3
+.. code:: python
 
     t_write = np.array([test['t_write'][-1] for test in testcase_3])
     fig_large_fraction_changes_times = plt.figure(figsize=(10,8))
@@ -753,7 +753,7 @@ this:
 Again, the graphs below show, for each fixed number of transactions, the
 time required to add new versions as the file is created.
 
-.. code:: ipython3
+.. code:: python
 
     fig_times, ax = plt.subplots(n+1, figsize=(14,20))
     fig_times.suptitle(f"{testname}: time to write each new version")
@@ -797,7 +797,7 @@ and unversioned case.
 Test 4: Large fraction changes - constant array size (sparse)
 -------------------------------------------------------------
 
-.. code:: ipython3
+.. code:: python
 
     testname = "test_large_fraction_constant_sparse"
 
@@ -814,7 +814,7 @@ Analysis
 
 Again, let’s show the size information in a graph:
 
-.. code:: ipython3
+.. code:: python
 
     num_transactions = [test['num_transactions'] for test in testcase_4]
     chunk_sizes = [test['chunk_size'] for test in testcase_4]
@@ -832,7 +832,7 @@ plot of the same size data for ``testcase_4``. A blue solid horizontal
 line indicates the maximum file size obtained when generating the same
 tests with no versioning (that is, not using VersionedHDF5).
 
-.. code:: ipython3
+.. code:: python
 
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(20,8))
     
@@ -883,7 +883,7 @@ Comparing compression algorithms
 For each chunk size that we chose to test, let’s compare the file sizes
 corresponding to each compression algorithm that we used.
 
-.. code:: ipython3
+.. code:: python
 
     fig, ax = plt.subplots(ncs, figsize=(10,10), sharey=True)
     fig.suptitle(f"{testname}: File sizes")
@@ -919,7 +919,7 @@ Comparing chunk sizes
 Now, for each choice of compression algorithm, we compare different
 chunk sizes.
 
-.. code:: ipython3
+.. code:: python
 
     fig, ax = plt.subplots(ncomp, figsize=(10,10), sharey=True)
     fig.suptitle(f"{testname}: File sizes")
@@ -957,7 +957,7 @@ Creation times
 If we look at the creation times for these files, we have something like
 this:
 
-.. code:: ipython3
+.. code:: python
 
     t_write = np.array([test['t_write'][-1] for test in testcase_4])
     fig_large_fraction_changes_times = plt.figure(figsize=(10,8))
@@ -994,7 +994,7 @@ this:
 Again, the graphs below show, for each fixed number of transactions, the
 time required to add new versions as the file is created.
 
-.. code:: ipython3
+.. code:: python
 
     fig_times, ax = plt.subplots(n+1, figsize=(14,20))
     fig_times.suptitle(f"{testname}: time to write each new version")
@@ -1033,7 +1033,7 @@ add new versions as the number of transactions grows.
 Test 5: Mostly appends (dense)
 ------------------------------
 
-.. code:: ipython3
+.. code:: python
 
     testname = "test_mostly_appends_dense"
 
@@ -1054,7 +1054,7 @@ Analysis
 
 Let’s show the size information in a graph:
 
-.. code:: ipython3
+.. code:: python
 
     num_transactions = [test['num_transactions'] for test in testcase_5]
     chunk_sizes = [test['chunk_size'] for test in testcase_5]
@@ -1072,7 +1072,7 @@ loglog plot of the same size data for ``testcase_5``. A blue solid
 horizontal line indicates the maximum file size obtained when generating
 the same tests with no versioning (that is, not using VersionedHDF5).
 
-.. code:: ipython3
+.. code:: python
 
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(20,8))
     
@@ -1123,7 +1123,7 @@ Comparing compression algorithms
 For each chunk size that we chose to test, let’s compare the file sizes
 corresponding to each compression algorithm that we used.
 
-.. code:: ipython3
+.. code:: python
 
     fig, ax = plt.subplots(ncs, figsize=(10,10), sharey=True)
     fig.suptitle(f"{testname}: File sizes")
@@ -1159,7 +1159,7 @@ Comparing chunk sizes
 Now, for each choice of compression algorithm, we compare different
 chunk sizes.
 
-.. code:: ipython3
+.. code:: python
 
     fig, ax = plt.subplots(ncomp, figsize=(10,10), sharey=True)
     fig.suptitle(f"{testname}: File sizes")
@@ -1197,7 +1197,7 @@ Creation times
 If we look at the creation times for these files, we have something like
 this:
 
-.. code:: ipython3
+.. code:: python
 
     t_write = np.array([test['t_write'][-1] for test in testcase_5])
     fig_large_fraction_changes_times = plt.figure(figsize=(10,8))
@@ -1234,7 +1234,7 @@ this:
 Again, the graphs below show, for each fixed number of transactions, the
 time required to add new versions as the file is created.
 
-.. code:: ipython3
+.. code:: python
 
     fig_times, ax = plt.subplots(n+1, figsize=(14,20))
     fig_times.suptitle(f"{testname}: time to write each new version")
