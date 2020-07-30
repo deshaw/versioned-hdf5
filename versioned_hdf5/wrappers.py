@@ -171,6 +171,8 @@ class InMemoryGroup(Group):
         self.set_compression(name, kwds.get('compression'))
         self.set_compression_opts(name, kwds.get('compression_opts'))
         self[name] = data
+        if 'dtype' in kwds:
+            self[name]._dtype = kwds['dtype']
         return self[name]
 
     def __iter__(self):
@@ -213,42 +215,65 @@ class InMemoryGroup(Group):
 
     @property
     def chunks(self):
-        return self.versioned_root._chunks
+        return self._chunks
 
+    # TODO: Can we generalize this, set_compression, and set_compression_opts
+    # into a single method? Descriptors?
     def set_chunks(self, item, value):
-        _, full_name = pp.split(item)
+        full_name = item
         p = self
         while p._parent:
+            p._chunks[full_name] = value
             _, basename = pp.split(p.name)
             full_name = basename + '/' + full_name
             p = p._parent
         self.versioned_root._chunks[full_name] = value
 
+        dirname, basename = pp.split(item)
+        while dirname:
+            self[dirname]._chunks[basename] = value
+            dirname, b = pp.split(dirname)
+            basename = pp.join(b, basename)
+
     @property
     def compression(self):
-        return self.versioned_root._compression
+        return self._compression
 
     def set_compression(self, item, value):
-        _, full_name = pp.split(item)
+        full_name = item
         p = self
         while p._parent:
+            p._compression[full_name] = value
             _, basename = pp.split(p.name)
             full_name = basename + '/' + full_name
             p = p._parent
         self.versioned_root._compression[full_name] = value
 
+        dirname, basename = pp.split(item)
+        while dirname:
+            self[dirname]._compression[basename] = value
+            dirname, b = pp.split(dirname)
+            basename = pp.join(b, basename)
+
     @property
     def compression_opts(self):
-        return self.versioned_root._compression_opts
+        return self._compression_opts
 
     def set_compression_opts(self, item, value):
-        _, full_name = pp.split(item)
+        full_name = item
         p = self
         while p._parent:
+            p._compression_opts[full_name] = value
             _, basename = pp.split(p.name)
             full_name = basename + '/' + full_name
             p = p._parent
         self.versioned_root._compression_opts[full_name] = value
+
+        dirname, basename = pp.split(item)
+        while dirname:
+            self[dirname]._compression_opts[basename] = value
+            dirname, b = pp.split(dirname)
+            basename = pp.join(b, basename)
 
     def visititems(self, func):
         self._visit('', func)
@@ -400,7 +425,6 @@ class InMemoryDataset(Dataset):
 
     def __array__(self, dtype=None):
         return self.__getitem__((), new_dtype=dtype)
-
 
     def resize(self, size, axis=None):
         """ Resize the dataset, or the specified axis.
@@ -642,6 +666,7 @@ class InMemoryArrayDataset:
     def __init__(self, name, array, parent, fillvalue=None):
         self.name = name
         self._array = array
+        self._dtype = None
         self.attrs = {}
         self.parent = parent
         self.fillvalue = fillvalue or np.zeros((), dtype=array.dtype)[()]
@@ -659,12 +684,30 @@ class InMemoryArrayDataset:
         return self._array.shape
 
     @property
+    def size(self):
+        return np.prod(self.shape)
+
+    @property
     def dtype(self):
+        if self._dtype is not None:
+            return self._dtype
         return self._array.dtype
 
     @property
     def ndim(self):
         return len(self._array.shape)
+
+    @property
+    def chunks(self):
+        return self.parent.chunks[self.name]
+
+    @property
+    def compression(self):
+        return self.parent.compression[self.name]
+
+    @property
+    def compression_opts(self):
+        return self.parent.compression_opts[self.name]
 
     def __getitem__(self, item):
         return self.array.__getitem__(item)

@@ -35,6 +35,8 @@ def test_InMemoryArrayDataset():
         assert dataset[30, 0] == 1000
         assert dataset.array[30, 0] == 1000
 
+        assert dataset.size == 100
+
 def test_InMemoryArrayDataset_resize():
     with setup() as f:
         group = f.create_group('group')
