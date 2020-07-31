@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.abspath('..'))
 project = 'Versioned HDF5'
 copyright = '2020, Quansight'
 author = 'Quansight'
+release = REVER_VERSION
 
 # Enable warnings for all bad cross references. These are turned into errors
 # with the -W flag in the Makefile.
