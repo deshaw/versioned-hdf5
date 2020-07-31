@@ -40,7 +40,7 @@ $PUSH_TAG_REMOTE = 'git@github.com:deshaw/versioned-hdf5.git'  # Repo to push ta
 
 $GITHUB_ORG = 'deshaw'  # Github org for Github releases and conda-forge
 $GITHUB_REPO = 'versioned-hdf5'  # Github repo for Github releases and conda-forge
-$CHANGELOG_FILENAME = 'CHANGELOG.md'
+$CHANGELOG_FILENAME = 'docs/CHANGELOG.md'
 $AUTHORS_FILENAME = 'AUTHORS.md'
 
 
