@@ -46,6 +46,14 @@ def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
         else:
             raise NotImplementedError("chunks must be specified for multi-dimensional datasets")
     group = f['_version_data'].create_group(name)
+    if dtype.metadata and ('vlen' in dtype.metadata or 'h5py_encoding' in dtype.metadata):
+        # h5py string dtype
+        # (https://h5py.readthedocs.io/en/2.10.0/strings.html). Setting the
+        # fillvalue in this case doesn't work
+        # (https://github.com/h5py/h5py/issues/941).
+        if fillvalue not in [0, '', b'', None]:
+            raise ValueError("Non-default fillvalue not supported for variable length strings")
+        fillvalue = None
     dataset = group.create_dataset('raw_data', shape=(0,) + chunks[1:],
                                    chunks=chunks, maxshape=(None,) + chunks[1:],
                                    dtype=dtype, compression=compression,
@@ -169,6 +177,16 @@ def create_virtual_dataset(f, version_name, name, slices, attrs=None, fillvalue=
         idx = Tuple(s, *Tuple(*[slice(0, i) for i in shape]).as_subindex(c).args[1:])
         assert c.newshape(shape) == vs[idx.raw].shape, (c, shape, s)
         layout[c.raw] = vs[idx.raw]
+
+    dtype = raw_data.dtype
+    if dtype.metadata and ('vlen' in dtype.metadata or 'h5py_encoding' in dtype.metadata):
+        # Variable length string dtype
+        # (https://h5py.readthedocs.io/en/2.10.0/strings.html). Setting the
+        # fillvalue in this case doesn't work
+        # (https://github.com/h5py/h5py/issues/941).
+        if fillvalue not in [0, '', b'', None]:
+            raise ValueError("Non-default fillvalue not supported for variable length strings")
+        fillvalue = None
 
     virtual_data = f['_version_data/versions'][version_name].create_virtual_dataset(name, layout, fillvalue=fillvalue)
 
