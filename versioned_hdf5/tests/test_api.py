@@ -1377,3 +1377,37 @@ def test_InMemoryArrayDataset_chunks():
             assert data_group['g/bar'].chunks == (100,)
             assert data_group['g/bar'].compression == 'gzip'
             assert data_group['g/bar'].compression_opts == 3
+
+def test_string_dtypes():
+    # Make sure the fillvalue logic works correctly for custom h5py string dtypes.
+    for typ, dt in [
+            (str, h5py.string_dtype('utf-8')),
+            (bytes, h5py.string_dtype('ascii')),
+            # h5py uses bytes here
+            (bytes, h5py.string_dtype('utf-8', length=20)),
+            (bytes, h5py.string_dtype('ascii', length=20)),
+            ]:
+
+        if typ == str:
+            data = np.full(10, 'hello world', dtype=dt)
+        else:
+            data = np.full(10, b'hello world', dtype=dt)
+        with setup() as f:
+            file = VersionedHDF5File(f)
+            with file.stage_version('0') as sv:
+                sv.create_dataset("name", shape=(10,), dtype=dt, data=data)
+                assert isinstance(sv['name'], InMemoryArrayDataset)
+                sv['name'].resize((11,))
+
+            assert file['0']['name'].dtype == dt
+            assert_equal(file['0']['name'][:10], data)
+            assert file['0']['name'][10] == typ(), dt.metadata
+
+            with file.stage_version('1') as sv:
+                assert isinstance(sv['name'], InMemoryDataset)
+                sv['name'].resize((12,))
+
+            assert file['1']['name'].dtype == dt
+            assert_equal(file['1']['name'][:10], data, str(dt.metadata))
+            assert file['1']['name'][10] == typ(), dt.metadata
+            assert file['1']['name'][11] == typ(), dt.metadata
