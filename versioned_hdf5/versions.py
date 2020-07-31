@@ -2,9 +2,13 @@ from uuid import uuid4
 from collections import defaultdict
 
 from h5py import Dataset, Group
+import datetime
+import numpy as np
 
 from .backend import write_dataset, write_dataset_chunks, create_virtual_dataset
 from .wrappers import InMemoryGroup, InMemoryDataset, InMemoryArrayDataset
+
+TIMESTAMP_FMT = "%Y-%m-%d %H:%M:%S.%f%z"
 
 def create_version_group(f, version_name, prev_version=None):
     versions = f['_version_data/versions']
@@ -44,7 +48,8 @@ def create_version_group(f, version_name, prev_version=None):
 
 def commit_version(version_group, datasets, *,
                    make_current=True, chunks=None,
-                   compression=None, compression_opts=None):
+                   compression=None, compression_opts=None,
+                   timestamp=None):
     """
     Create a new version
 
@@ -98,6 +103,20 @@ def commit_version(version_group, datasets, *,
         create_virtual_dataset(f, version_name, name, slices, attrs=attrs,
                                fillvalue=fillvalue)
     version_group.attrs['committed'] = True
+
+    if timestamp is not None:
+        if isinstance(timestamp, datetime.datetime):
+            if timestamp.tzinfo != datetime.timezone.utc:
+                raise ValueError("timestamp must be in UTC")
+            version_group.attrs['timestamp'] = timestamp.strftime(TIMESTAMP_FMT)
+        elif isinstance(timestamp, np.datetime64):
+            version_group.attrs['timestamp'] = f"{timestamp.astype(datetime.datetime)}+0000"
+        else:
+            raise TypeError("timestamp data must be either a datetime.datetime or numpy.datetime64 object")
+    else:
+        ts = datetime.datetime.now(datetime.timezone.utc)
+        version_group.attrs['timestamp'] = ts.strftime(TIMESTAMP_FMT)
+
 
 def delete_version(f, version_name, new_current=None):
     """

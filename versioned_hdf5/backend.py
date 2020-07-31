@@ -46,8 +46,16 @@ def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
         else:
             raise NotImplementedError("chunks must be specified for multi-dimensional datasets")
     group = f['_version_data'].create_group(name)
-    dataset = group.create_dataset('raw_data', shape=(0,) + shape[1:],
-                                   chunks=chunks, maxshape=(None,) + shape[1:],
+    if dtype.metadata and ('vlen' in dtype.metadata or 'h5py_encoding' in dtype.metadata):
+        # h5py string dtype
+        # (https://h5py.readthedocs.io/en/2.10.0/strings.html). Setting the
+        # fillvalue in this case doesn't work
+        # (https://github.com/h5py/h5py/issues/941).
+        if fillvalue not in [0, '', b'', None]:
+            raise ValueError("Non-default fillvalue not supported for variable length strings")
+        fillvalue = None
+    dataset = group.create_dataset('raw_data', shape=(0,) + chunks[1:],
+                                   chunks=chunks, maxshape=(None,) + chunks[1:],
                                    dtype=dtype, compression=compression,
                                    compression_opts=compression_opts,
                                    fillvalue=fillvalue)
@@ -78,7 +86,7 @@ def write_dataset(f, name, data, chunks=None, compression=None,
     # TODO: Handle more than one dimension
     old_shape = ds.shape
     hashtable = Hashtable(f, name)
-    slices = []
+    slices = {}
     slices_to_write = {}
     chunk_size = chunks[0]
     for s in split_chunks(data.shape, chunks):
@@ -89,11 +97,13 @@ def write_dataset(f, name, data, chunks=None, compression=None,
         raw_slice2 = hashtable.setdefault(data_hash, raw_slice)
         if raw_slice2 == raw_slice:
             slices_to_write[raw_slice] = s
-        slices.append(raw_slice2)
+        slices[s] = raw_slice2
 
     ds.resize((old_shape[0] + len(slices_to_write)*chunk_size,) + chunks[1:])
     for raw_slice, s in slices_to_write.items():
-        ds[raw_slice.raw] = data[s.raw]
+        data_s = data[s.raw]
+        idx = Tuple(raw_slice, *[slice(0, i) for i in data_s.shape[1:]])
+        ds[idx.raw] = data[s.raw]
     return slices
 
 def write_dataset_chunks(f, name, data_dict):
@@ -107,14 +117,20 @@ def write_dataset_chunks(f, name, data_dict):
 
     ds = f['_version_data'][name]['raw_data']
     chunks = tuple(ds.attrs['chunks'])
-    # TODO: Handle more than one dimension
     chunk_size = chunks[0]
-    nchunks = max(data_dict)
-    if any(i not in data_dict for i in range(nchunks)):
-        raise ValueError("data_dict does not include all chunks")
+
+    shape = tuple(max(c.args[i].stop for c in data_dict) for i in
+    range(len(chunks)))
+    all_chunks = list(split_chunks(shape, chunks))
+    for c in all_chunks:
+        if c not in data_dict:
+            raise ValueError(f"data_dict does not include all chunks ({c})")
+    for c in data_dict:
+        if c not in all_chunks:
+            raise ValueError(f"data_dict contains extra chunks ({c})")
 
     hashtable = Hashtable(f, name)
-    slices = [None for i in range(len(data_dict))]
+    slices = {i: None for i in data_dict}
     data_to_write = {}
     for chunk, data_s in data_dict.items():
         if not isinstance(data_s, (slice, tuple, Tuple, Slice)) and data_s.dtype != ds.dtype:
@@ -131,32 +147,46 @@ def write_dataset_chunks(f, name, data_dict):
                 data_to_write[raw_slice] = data_s
             slices[chunk] = raw_slice2
 
-    assert None not in slices
+    assert None not in slices.values()
     old_shape = ds.shape
     ds.resize((old_shape[0] + len(data_to_write)*chunk_size,) + chunks[1:])
     for raw_slice, data_s in data_to_write.items():
-        ds[raw_slice.raw] = data_s
+        c = (raw_slice.raw,) + tuple(slice(0, i) for i in data_s.shape[1:])
+        ds[c] = data_s
     return slices
 
 def create_virtual_dataset(f, version_name, name, slices, attrs=None, fillvalue=None):
     raw_data = f['_version_data'][name]['raw_data']
     chunks = tuple(raw_data.attrs['chunks'])
-    chunk_size = chunks[0]
-    slices = [s.reduce() for s in slices]
-    if not all(isinstance(s, Slice) for s in slices):
-        raise NotImplementedError("Chunking in other than the first dimension")
-    for s in slices[:-1]:
-        s = s.reduce()
-        if s.stop - s.start != chunk_size:
-            raise NotImplementedError("Smaller than chunk size slice is only supported as the last slice.")
-    shape = (chunk_size*(len(slices) - 1) + slices[-1].stop - slices[-1].start,) + chunks[1:]
+    slices = {c: s.reduce() for c, s in slices.items()}
+
+    shape = tuple([max(c.args[i].stop for c in slices) for i in range(len(chunks))])
+    # Chunks in the raw dataset are expanded along the first dimension only.
+    # Since the chunks are pointed to by virtual datasets, it doesn't make
+    # sense to expand the chunks in the raw dataset along multiple dimensions
+    # (the true layout of the chunks in the raw dataset is irrelevant).
+    for c, s in slices.items():
+        if len(c.args[0]) != len(s):
+            raise ValueError(f"Inconsistent slices dictionary ({c.args[0]}, {s})")
 
     layout = VirtualLayout(shape, dtype=raw_data.dtype)
     vs = VirtualSource('.', name=raw_data.name, shape=raw_data.shape, dtype=raw_data.dtype)
 
-    for i, s in enumerate(slices):
+    for c, s in slices.items():
         # TODO: This needs to handle more than one dimension
-        layout[i*chunk_size:i*chunk_size + s.stop - s.start] = vs[s.raw]
+        idx = Tuple(s, *Tuple(*[slice(0, i) for i in shape]).as_subindex(c).args[1:])
+        assert c.newshape(shape) == vs[idx.raw].shape, (c, shape, s)
+        layout[c.raw] = vs[idx.raw]
+
+    dtype = raw_data.dtype
+    if dtype.metadata and ('vlen' in dtype.metadata or 'h5py_encoding' in dtype.metadata):
+        # Variable length string dtype
+        # (https://h5py.readthedocs.io/en/2.10.0/strings.html). Setting the
+        # fillvalue in this case doesn't work
+        # (https://github.com/h5py/h5py/issues/941).
+        if fillvalue not in [0, '', b'', None]:
+            raise ValueError("Non-default fillvalue not supported for variable length strings")
+        fillvalue = None
 
     virtual_data = f['_version_data/versions'][version_name].create_virtual_dataset(name, layout, fillvalue=fillvalue)
 

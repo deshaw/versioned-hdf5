@@ -6,7 +6,7 @@ from ndindex import Slice
 from h5py._hl.selections import Selection
 
 from .helpers import setup
-from ..slicetools import split_slice, spaceid_to_slice
+from ..slicetools import split_slice, spaceid_to_slice, split_chunks
 
 def test_split_slice():
     chunk = 10
@@ -58,3 +58,46 @@ def test_spaceid_to_slice():
                             print(start, count, stride, block)
                             raise
                         assert_equal(a[s.raw], a[sel], f"{(start, count, stride, block)}")
+
+def test_split_chunks():
+    shape = (100, 101, 102)
+    chunks = (50, 50, 20)
+    # split_chunks() actually returns ndindex types, but we use raw types here
+    # since they are more terse.
+    assert list(split_chunks(shape=shape, chunks=chunks)) ==\
+        [(slice(0, 50, 1), slice(0, 50, 1), slice(0, 20, 1)),
+         (slice(0, 50, 1), slice(0, 50, 1), slice(20, 40, 1)),
+         (slice(0, 50, 1), slice(0, 50, 1), slice(40, 60, 1)),
+         (slice(0, 50, 1), slice(0, 50, 1), slice(60, 80, 1)),
+         (slice(0, 50, 1), slice(0, 50, 1), slice(80, 100, 1)),
+         (slice(0, 50, 1), slice(0, 50, 1), slice(100, 102, 1)),
+         (slice(0, 50, 1), slice(50, 100, 1), slice(0, 20, 1)),
+         (slice(0, 50, 1), slice(50, 100, 1), slice(20, 40, 1)),
+         (slice(0, 50, 1), slice(50, 100, 1), slice(40, 60, 1)),
+         (slice(0, 50, 1), slice(50, 100, 1), slice(60, 80, 1)),
+         (slice(0, 50, 1), slice(50, 100, 1), slice(80, 100, 1)),
+         (slice(0, 50, 1), slice(50, 100, 1), slice(100, 102, 1)),
+         (slice(0, 50, 1), slice(100, 101, 1), slice(0, 20, 1)),
+         (slice(0, 50, 1), slice(100, 101, 1), slice(20, 40, 1)),
+         (slice(0, 50, 1), slice(100, 101, 1), slice(40, 60, 1)),
+         (slice(0, 50, 1), slice(100, 101, 1), slice(60, 80, 1)),
+         (slice(0, 50, 1), slice(100, 101, 1), slice(80, 100, 1)),
+         (slice(0, 50, 1), slice(100, 101, 1), slice(100, 102, 1)),
+         (slice(50, 100, 1), slice(0, 50, 1), slice(0, 20, 1)),
+         (slice(50, 100, 1), slice(0, 50, 1), slice(20, 40, 1)),
+         (slice(50, 100, 1), slice(0, 50, 1), slice(40, 60, 1)),
+         (slice(50, 100, 1), slice(0, 50, 1), slice(60, 80, 1)),
+         (slice(50, 100, 1), slice(0, 50, 1), slice(80, 100, 1)),
+         (slice(50, 100, 1), slice(0, 50, 1), slice(100, 102, 1)),
+         (slice(50, 100, 1), slice(50, 100, 1), slice(0, 20, 1)),
+         (slice(50, 100, 1), slice(50, 100, 1), slice(20, 40, 1)),
+         (slice(50, 100, 1), slice(50, 100, 1), slice(40, 60, 1)),
+         (slice(50, 100, 1), slice(50, 100, 1), slice(60, 80, 1)),
+         (slice(50, 100, 1), slice(50, 100, 1), slice(80, 100, 1)),
+         (slice(50, 100, 1), slice(50, 100, 1), slice(100, 102, 1)),
+         (slice(50, 100, 1), slice(100, 101, 1), slice(0, 20, 1)),
+         (slice(50, 100, 1), slice(100, 101, 1), slice(20, 40, 1)),
+         (slice(50, 100, 1), slice(100, 101, 1), slice(40, 60, 1)),
+         (slice(50, 100, 1), slice(100, 101, 1), slice(60, 80, 1)),
+         (slice(50, 100, 1), slice(100, 101, 1), slice(80, 100, 1)),
+         (slice(50, 100, 1), slice(100, 101, 1), slice(100, 102, 1))]
