@@ -3,6 +3,3 @@ include versioned_hdf5/_version.py
 include LICENSE
 include pytest.ini
 include AUTHORS.md
-
-exclude generate_data*
-recursive-exclude analysis
