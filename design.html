@@ -1,0 +1,411 @@
+<!-- See https://github.com/bitprophet/alabaster/issues/166 -->
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>Design &#8212; Versioned HDF5  documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="_static/graphviz.css" />
+    <script id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/language_data.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="API Documentation" href="reference.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <div class="section" id="design">
+<h1>Design<a class="headerlink" href="#design" title="Permalink to this headline">¶</a></h1>
+<p>Versioned-hdf5 is built as a wrapper on top of h5py. The basic idea behind the
+design is that versioned-hdf5 is a
+<a class="reference external" href="https://en.wikipedia.org/wiki/Copy-on-write">copy-on-write</a> system, inspired
+by git as well as modern filesystems such as APFS and Btrfs. Copy-on-write is
+a good fit whenever data should be completely immutable. In a copy-on-write
+system, any modification to a piece of data produces a new copy of the data,
+leaving the original intact. Any references to the original will continue to
+point to it.</p>
+<p>This is implemented using two key HDF5 primitives: chunks and virtual
+datasets.</p>
+<p>In HDF5, datasets are split into multiple chunks. Each chunk is of equal size,
+which is configurable, although some chunks may not be completely full. A
+chunk is the smallest part of a dataset that HDF5 operates on. Whenever a
+subset of a dataset is to be read, the entire chunk containing that dataset is
+read into memory. Picking an optimal chunk size is a nontrivial task, and
+depends on things such as the size of your L1 cache and the typical shape of
+your dataset. Furthermore, in versioned-hdf5 a chunk is the smallest amount of
+data that is stored only once across versions if it has not changed. If the
+chunk size is too small, it would affect performance, as operations would
+require reading and writing more chunks, but if it is too large, it would make
+the resulting versioned file unnecessarily large, as changing even a single
+element of a chunk requires rewriting the entire chunk. Versioned-hdf5 does
+not presently contain any logic for automatically picking a chunk size. The
+<a class="reference external" href="https://www.pytables.org/usersguide/optimization.html">pytables
+documentation</a> has some
+tips on picking an optimal chunk size.</p>
+<p><a class="reference external" href="http://docs.h5py.org/en/stable/vds.html">Virtual datasets</a> are a special kind
+of dataset that reference data from other datasets in a seamless way. The data
+from each part of a virtual dataset comes from another dataset. HDF5 does this
+seamlessly, so that a virtual dataset appears to be a normal dataset.</p>
+<p>The basic design of versioned-hdf5 is this: whenever a dataset is created for
+the first time (the first version containing the dataset), it is split into
+chunks. The data in each chunk is hashed and stored in a hash table. The
+unique chunks are then appended into to a <code class="docutils literal notranslate"><span class="pre">raw_data</span></code> dataset corresponding to
+the dataset. Finally, a virtual dataset is made that references the
+corresponding chunks in the raw dataset to recreate the original dataset. When
+later versions modify this dataset, each modified chunk is appended to the raw
+dataset, and a new virtual dataset is created pointing to corresponding
+chunks.</p>
+<p>For example, say we start with the first version, <code class="docutils literal notranslate"><span class="pre">version_1</span></code>, and create a
+dataset <code class="docutils literal notranslate"><span class="pre">my_dataset</span></code> with <code class="docutils literal notranslate"><span class="pre">n</span></code> chunks. The dataset chunks will be written into the
+raw dataset, and the final virtual dataset will point to those chunks.</p>
+<div class="graphviz"><object data="_images/graphviz-ecbd24dcde0b77d41d0b20fef4801659bffcea48.svg" type="image/svg+xml" class="graphviz">
+<p class="warning">digraph g {
+graph [
+rankdir = &quot;LR&quot;
+];
+node [
+fontsize = &quot;16&quot;
+];
+edge [
+];
+&quot;dataset (version_1)&quot; [
+label = &quot;my_dataset (version_1)|&lt;f0&gt;CHUNK 0|&lt;f1&gt;CHUNK 1|&lt;fdot&gt;...|&lt;fn&gt;CHUNK n&quot;
+shape = &quot;record&quot;
+];
+&quot;raw_data&quot; [
+label = &quot;raw_data|&lt;f0&gt;CHUNK 0|&lt;f1&gt;CHUNK 1|&lt;fdot&gt;...|&lt;fn&gt;CHUNK n&quot;
+shape = &quot;record&quot;
+];
+&quot;dataset (version_1)&quot;:f0 -&gt; &quot;raw_data&quot;:f0 [];
+&quot;dataset (version_1)&quot;:f1 -&gt; &quot;raw_data&quot;:f1 [];
+&quot;dataset (version_1)&quot;:fdot -&gt; &quot;raw_data&quot;:fdot [];
+&quot;dataset (version_1)&quot;:fn -&gt; &quot;raw_data&quot;:fn [];
+}</p></object></div>
+<p>If we then create a version <code class="docutils literal notranslate"><span class="pre">version_2</span></code> based off <code class="docutils literal notranslate"><span class="pre">version_1</span></code>, and modify only
+data contained in CHUNK 2, that new data will be appended to the raw dataset,
+and the resulting virtual dataset for <code class="docutils literal notranslate"><span class="pre">version_2</span></code> will look like this:</p>
+<div class="graphviz"><object data="_images/graphviz-80fa658bee6bbb3cd10e1e0c194576cc82ad7e0b.svg" type="image/svg+xml" class="graphviz">
+<p class="warning">digraph g {
+graph [
+rankdir = &quot;LR&quot;
+];
+node [
+fontsize = &quot;16&quot;
+];
+edge [
+];
+&quot;dataset (version_1)&quot; [
+label = &quot;my_dataset (version_1)|&lt;f0&gt;CHUNK 0|&lt;f1&gt;CHUNK 1|&lt;fdot&gt;...|&lt;fn&gt;CHUNK n&quot;
+shape = &quot;record&quot;
+];
+&quot;dataset (version_2)&quot; [
+label = &quot;my_dataset (version_2)|&lt;f0&gt;CHUNK 0|&lt;f1&gt;CHUNK 1|&lt;fdot&gt;...|&lt;fn&gt;CHUNK n&quot;
+shape = &quot;record&quot;
+];
+&quot;raw_data&quot; [
+label = &quot;raw_data|&lt;f0&gt;CHUNK 0|&lt;f1&gt;CHUNK 1|&lt;fdot&gt;...|&lt;fn&gt;CHUNK n|&lt;fn1&gt;CHUNK n+1&quot;
+shape = &quot;record&quot;
+];
+&quot;dataset (version_1)&quot;:f0 -&gt; &quot;raw_data&quot;:f0 [];
+&quot;dataset (version_1)&quot;:f1 -&gt; &quot;raw_data&quot;:f1 [];
+&quot;dataset (version_1)&quot;:fdot -&gt; &quot;raw_data&quot;:fdot [];
+&quot;dataset (version_1)&quot;:fn -&gt; &quot;raw_data&quot;:fn [];
+&quot;raw_data&quot;:f0 -&gt; &quot;dataset (version_2)&quot;:f0 [dir=back];
+&quot;dataset (version_2)&quot;:fdot -&gt; &quot;raw_data&quot;:fdot [];
+&quot;dataset (version_2)&quot;:f1 -&gt; &quot;raw_data&quot;:fn1 [];
+&quot;dataset (version_2)&quot;:fn -&gt; &quot;raw_data&quot;:fn [];
+}</p></object></div>
+<p>Since both versions 1 and 2 of <code class="docutils literal notranslate"><span class="pre">my_dataset</span></code> have identical data in chunks other than
+CHUNK 2, they both point to the exact same data in <code class="docutils literal notranslate"><span class="pre">raw_data</span></code>. Thus, the
+underlying HDF5 file only stores the data in version 1 of <code class="docutils literal notranslate"><span class="pre">my_dataset</span></code> once, and
+only the modified chunks from <code class="docutils literal notranslate"><span class="pre">version_2</span></code>’s <code class="docutils literal notranslate"><span class="pre">my_dataset</span></code> are stored on top of that.</p>
+<p>All extra metadata, such as attributes, is stored on the virtual dataset.
+Since virtual datasets act exactly like real datasets and operate at the HDF5
+level, each version is a real group in the HDF5 file that is exactly that
+version. However, these groups should be treated as read-only, and you should
+never access them outside of the versioned-hdf5 API (see below).</p>
+<div class="section" id="hdf5-file-layout">
+<h2>HDF5 File Layout<a class="headerlink" href="#hdf5-file-layout" title="Permalink to this headline">¶</a></h2>
+<p>Inside of the HDF5 file, there is a special <code class="docutils literal notranslate"><span class="pre">_versioned_data</span></code> group that holds
+all the internal data for versioned-hdf5. This group contains a <code class="docutils literal notranslate"><span class="pre">versions</span></code>
+group, which contains groups for each version that has been created. It also
+contains a group for each dataset that exists in a version. These groups each
+contain two datasets, <code class="docutils literal notranslate"><span class="pre">hash_table</span></code>, and <code class="docutils literal notranslate"><span class="pre">raw_data</span></code>.</p>
+<p>For example, consider a versioned-hdf5 file that contains two versions,
+<code class="docutils literal notranslate"><span class="pre">version1</span></code>, and <code class="docutils literal notranslate"><span class="pre">version2</span></code>, with datasets <code class="docutils literal notranslate"><span class="pre">data1</span></code> and <code class="docutils literal notranslate"><span class="pre">data2</span></code>. Suppose also
+that <code class="docutils literal notranslate"><span class="pre">data1</span></code> exists in both versions and <code class="docutils literal notranslate"><span class="pre">data2</span></code> only exists in <code class="docutils literal notranslate"><span class="pre">version2</span></code>.
+The HDF5 layout would look like this</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>/_versioned_data/
+├── data1/
+│   ├── hash_table
+│   └── raw_data
+│
+├── data2/
+│   ├── hash_table
+│   └── raw_data
+│
+└── versions/
+    ├── __first_version__/
+    │
+    ├── version1/
+    │   └── data1
+    │
+    └── version2/
+        ├── data1
+        └── data2
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">__first_version__</span></code> is an empty group that exists only for internal
+bookkeeping purposes (see below).</p>
+</div>
+<div class="section" id="submodule-organization">
+<h2>Submodule Organization<a class="headerlink" href="#submodule-organization" title="Permalink to this headline">¶</a></h2>
+<p>The versioned-hdf5 code is split into four layers, the backend, the versions,
+the h5py wrappers, and the top-level API.</p>
+<div class="section" id="backend">
+<h3>Backend<a class="headerlink" href="#backend" title="Permalink to this headline">¶</a></h3>
+<p>The backend layer is the bottommost layer. It is the only layer that does
+actual dataset writes to HDF5. It deals with the splitting of chunks from the
+versioned dataset and creation of the virtual datasets that compromise the
+version groups. The relevant modules are <code class="docutils literal notranslate"><span class="pre">versioned_hdf5.backend</span></code> and
+<code class="docutils literal notranslate"><span class="pre">versioned_hdf5.hashtable</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">versioned_hdf5.backend.write_dataset()</span></code> takes a dataset (or array) and writes
+it to the raw data for the given dataset. The data in each chunk of the
+dataset is SHA256 hashed, and the hash is looked up in the hashtable dataset.
+If it already exists in the raw data, that chunk in the raw data is reused.
+The hashtable maps <code class="docutils literal notranslate"><span class="pre">SHA256</span> <span class="pre">hash</span> <span class="pre">-&gt;</span> <span class="pre">(start,</span> <span class="pre">stop)</span></code> where <code class="docutils literal notranslate"><span class="pre">(start,</span> <span class="pre">stop)</span></code> gives
+a slice range for the chunk in the raw dataset (chunks in the <code class="docutils literal notranslate"><span class="pre">raw_data</span></code>
+dataset are concatenated along the first axis only). All chunks that do not
+exist in the hashtable already are appended to the raw dataset and added to
+the hashtable. <code class="docutils literal notranslate"><span class="pre">versioned_hdf5.backend.write_dataset_chunks()</span></code> works
+similarly, except instead of taking a dataset as input, it takes an dictionary
+mapping chunks. This allows the higher levels of the API to only pass in the
+chunks of an existing dataset that have been modified (see below).</p>
+<p><code class="docutils literal notranslate"><span class="pre">versioned_hdf5.backend.create_virtual_dataset()</span></code> creates a virtual dataset
+in the version group pointing to corresponding chunks in the raw dataset.
+<code class="docutils literal notranslate"><span class="pre">versioned_hdf5.backend</span></code> also has various functions for initializing a
+dataset the first time it is created in a version.</p>
+<p><code class="docutils literal notranslate"><span class="pre">versioned_hdf5.hashtable</span></code> contains a <code class="docutils literal notranslate"><span class="pre">Hashtable</span></code> object that wraps the
+hashtable dataset in HDF5 as a dict-like object.</p>
+</div>
+<div class="section" id="versions">
+<h3>Versions<a class="headerlink" href="#versions" title="Permalink to this headline">¶</a></h3>
+<p>Each version is stored as a subgroup of the <code class="docutils literal notranslate"><span class="pre">_versioned_data/versions/</span></code> group.
+The group contains attributes that reference the previous version, as well as
+metadata like the timestamp when the version was created. Consequently, the
+versions form a DAG. However, the reference to the previous version is only
+used by the top-level API that allows traversing versions. Each version group
+is self-contained, containing only virtual datasets that point only to the
+respective raw datasets.</p>
+<p>Versioned-hdf5 also keeps track of the “current version”, which is used only
+to allow previous version to not be specified when creating a new version
+(this information is stored on the attributes of the
+<code class="docutils literal notranslate"><span class="pre">_versioned_data/versions</span></code> group). If a version does not have a previous
+version, its previous version is the special empty <code class="docutils literal notranslate"><span class="pre">__first_version__</span></code> version
+group.</p>
+<p><code class="docutils literal notranslate"><span class="pre">versioned_hdf5.versions</span></code> contains functions to create a version group, commit
+a version, and access and manipulate versions. The main function here is
+<code class="docutils literal notranslate"><span class="pre">versioned_hdf5.versions.commit_version()</span></code>, which is called with all the
+datasets that should be committed to the new version when the
+<code class="docutils literal notranslate"><span class="pre">VersionedHDF5File.stage_version()</span></code> context manager exits.</p>
+</div>
+<div class="section" id="h5py-wrappers">
+<h3>h5py Wrappers<a class="headerlink" href="#h5py-wrappers" title="Permalink to this headline">¶</a></h3>
+<p>One minor issue with the copy-on-write idea is that HDF5 does have a native
+way to make virtual datasets read-only. If you modify a virtual dataset, it
+will also modify the dataset that it points to. In our design, this would
+modify all other versions of a dataset pointing to the same raw data chunks.</p>
+<p>Hence, versioned-hdf5 provides wrappers to the various h5py objects that
+implement the proper copy-on-write semantics. Versioned HDF5 files should only
+be interacted with via the versioned-hdf5 library. Writing to a versioned
+dataset directly with h5py or another HDF5 wrapper library may lead to data
+corruption, as common data is shared between versions.</p>
+<p>The objects for this layer all live in <code class="docutils literal notranslate"><span class="pre">versioned_hdf5.wrappers</span></code>. The primary
+objects are</p>
+<p><code class="docutils literal notranslate"><span class="pre">InMemoryGroup</span></code>: This is the object returned by the
+<code class="docutils literal notranslate"><span class="pre">VersionedHDF5File.stage_version()</span></code> context manager. It acts like an
+<code class="docutils literal notranslate"><span class="pre">h5py.Group</span></code> object, but all data is stored in memory. This is done efficiency
+so that only data that is modified is actually read in from the file. This
+object is also used for any subgroups of the version group. The primary
+purpose of this object is to keep track of what has been modified while a
+version is being staged. Once the <code class="docutils literal notranslate"><span class="pre">stage_version()</span></code> context manager exits,
+this object is passed to <code class="docutils literal notranslate"><span class="pre">commit_version()</span></code> (see above), which extracts the
+relevant information about what datasets exist in the new version and how they
+relate to previous versions, if there are any.</p>
+<p><code class="docutils literal notranslate"><span class="pre">InMemoryArrayDataset</span></code>: This objects acts like a <code class="docutils literal notranslate"><span class="pre">h5py.Dataset</span></code>, but wraps a
+NumPy array in memory. This object is used whenever a dataset is created for
+the first time.</p>
+<p><code class="docutils literal notranslate"><span class="pre">InMemoryDataset</span></code>: This objects acts like a <code class="docutils literal notranslate"><span class="pre">h5py.Dataset</span></code>. It is used
+whenever a dataset in a version already exists from a previous version. This
+object stores only those chunks of the dataset in memory that are actually
+read in or modified. This is not only more memory efficient, but it allows
+passing only the modified chunks as arrays to the backend. The remaining
+chunks will then automatically point to the chunks in the raw data that they
+pointed to in the previous version, without needing to re-hash the data.</p>
+<p>One challenge with this design is that <code class="docutils literal notranslate"><span class="pre">InMemoryDataset</span></code> represents a single
+dataset that is broken up into chunks, which live in the raw dataset and may
+not be contiguous. The
+<a class="reference external" href="https://quansight.github.io/ndindex/index.html">ndindex</a> library is used to
+manage translation of indices on the dataset to and from the chunked data.
+ndindex is also used throughout versioned-hdf5 to store and manipulate slice
+and other index objects, as it is more convenient than using the raw index
+types. For example, in the backend, we need to store slices in a dictionary.
+The default Python <code class="docutils literal notranslate"><span class="pre">slice</span></code> object is not hashable, which makes this annoying
+to do. The ndindex index objects are all hashable. The ndindex library was
+initially created for versioned-hdf5, in order to make index manipulation
+possible as well as allowing code that passes indices around to become much
+cleaner.</p>
+<p>These wrapper objects all try to emulate the h5py API as closely as possible,
+so that the user can use them just as they would the real h5py objects. Any
+discrepancy between h5py and versioned-hdf5 semantics should be considered a
+bug in versioned-hdf5.</p>
+</div>
+<div class="section" id="top-level-api">
+<h3>Top-level API<a class="headerlink" href="#top-level-api" title="Permalink to this headline">¶</a></h3>
+<p>The top-level API consists of one object, <a class="reference internal" href="reference.html#versioned_hdf5.VersionedHDF5File" title="versioned_hdf5.VersionedHDF5File"><code class="xref any py py-class docutils literal notranslate"><span class="pre">VersionedHDF5File</span></code></a>. This object
+allows accessing versions via getitem, like
+<code class="docutils literal notranslate"><span class="pre">VersionedHDF5File(f)[version_name]</span></code>. The primary use of this object, however,
+is the <code class="docutils literal notranslate"><span class="pre">stage_version()</span></code> method, which is a context manager that returns a group
+for a new version. The way to make a new version is</p>
+<div class="highlight-py notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">h5py</span>
+<span class="kn">from</span> <span class="nn">versioned_hdf5</span> <span class="kn">import</span> <span class="n">VersionedHDF5File</span>
+
+<span class="n">f</span> <span class="o">=</span> <span class="n">h5py</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="o">...</span><span class="p">)</span>
+<span class="n">file</span> <span class="o">=</span> <span class="n">VersionedHDF5File</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+
+<span class="c1"># new_version and prev_version are strings corresponding the the version names</span>
+<span class="c1"># for the new and previous versions</span>
+<span class="k">with</span> <span class="n">file</span><span class="o">.</span><span class="n">stage_version</span><span class="p">(</span><span class="n">new_version</span><span class="p">,</span> <span class="n">prev_version</span><span class="p">)</span> <span class="k">as</span> <span class="n">g</span><span class="p">:</span>
+    <span class="n">g</span><span class="p">[</span><span class="s1">&#39;dataset&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span> <span class="c1"># Modify a dataset from prev_version</span>
+    <span class="n">g</span><span class="p">[</span><span class="s1">&#39;dataset&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">resize</span><span class="p">(</span><span class="o">...</span><span class="p">)</span> <span class="c1"># Resize a dataset from prev_version</span>
+    <span class="n">g</span><span class="o">.</span><span class="n">create_dataset</span><span class="p">(</span><span class="s1">&#39;dataset2&#39;</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span> <span class="c1"># Create a new dataset</span>
+    <span class="n">g</span><span class="o">.</span><span class="n">create_group</span><span class="p">(</span><span class="s1">&#39;new_group&#39;</span><span class="p">)</span> <span class="c1"># Create a new subgroup</span>
+</pre></div>
+</div>
+<p>Inside of the context manager, the group <code class="docutils literal notranslate"><span class="pre">g</span></code> will look exactly like the
+previous version <code class="docutils literal notranslate"><span class="pre">prev_version</span></code>, but modifications to it will not actually
+modify <code class="docutils literal notranslate"><span class="pre">prev_version</span></code>. Rather, they will stage changes for the new version
+<code class="docutils literal notranslate"><span class="pre">new_version</span></code>. When the context manager exits, whatever the state of the
+version group <code class="docutils literal notranslate"><span class="pre">g</span></code> is will be written as <code class="docutils literal notranslate"><span class="pre">new_version</span></code>. Any data chunks from
+<code class="docutils literal notranslate"><span class="pre">prev_version</span></code> that were not modified will be reused as described above.</p>
+<p>Once a version is committed (after the context manager exits), it should be
+treated as read-only. The versioned-hdf5 objects have some safeguards to
+prevent accidentally writing to existing versioned data, but the underlying
+h5py has no such safeguards, since there are no notions of read-only datasets
+in HDF5 itself, so these safeguards should not be relied on.</p>
+</div>
+</div>
+</div>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">Versioned HDF5</a></h1>
+
+
+
+
+
+
+
+
+
+
+    
+
+<p>
+<a class="badge" href="https://travis-ci.org/deshaw/versioned-hdf5">
+    <img
+        alt="https://secure.travis-ci.org/deshaw/versioned-hdf5.svg?branch=master"
+        src="https://secure.travis-ci.org/deshaw/versioned-hdf5.svg?branch=master"
+    />
+</a>
+</p>
+
+
+<h3>Navigation</h3>
+<p class="caption"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reference.html">API Documentation</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Design</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#hdf5-file-layout">HDF5 File Layout</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#submodule-organization">Submodule Organization</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="reference.html" title="previous chapter">API Documentation</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    
+    <div class="footer">
+      &copy;2020, Quansight.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.4.4</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="_sources/design.md.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+    <span id="forkongithub"><a href="https://github.com/deshaw/versioned-hdf5">Fork me on GitHub</a></span>
+  </body>
+</html>

@@ -2,13 +2,13 @@
 
 <!DOCTYPE html>
 
-<html>
+<html xmlns="http://www.w3.org/1999/xhtml">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>API Documentation &#8212; Versioned HDF5  documentation</title>
     <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
     <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="_static/graphviz.css" />
     <script id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
     <script src="_static/jquery.js"></script>
     <script src="_static/underscore.js"></script>
@@ -16,6 +16,7 @@
     <script src="_static/language_data.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Design" href="design.html" />
     <link rel="prev" title="Usage" href="usage.html" />
    
   <link rel="stylesheet" href="_static/custom.css" type="text/css" />
@@ -35,9 +36,9 @@
             
   <div class="section" id="module-versioned_hdf5">
 <span id="api-documentation"></span><h1>API Documentation<a class="headerlink" href="#module-versioned_hdf5" title="Permalink to this headline">¶</a></h1>
-<dl class="py class">
+<dl class="class">
 <dt id="versioned_hdf5.VersionedHDF5File">
-<em class="property">class </em><code class="sig-prename descclassname">versioned_hdf5.</code><code class="sig-name descname">VersionedHDF5File</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">f</span></em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">versioned_hdf5.</code><code class="sig-name descname">VersionedHDF5File</code><span class="sig-paren">(</span><em class="sig-param">f</em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File" title="Permalink to this definition">¶</a></dt>
 <dd><p>A Versioned HDF5 File</p>
 <p>This is the main entry-point of the library. To use a versioned HDF5 file,
 pass a h5py file to constructor. The methods on the resulting object can
@@ -72,13 +73,13 @@ this library could result in breaking things.</p>
 </div>
 <p>to close the <code class="code docutils literal notranslate"><span class="pre">VersionedHDF5File</span></code> object (note that the <code class="code docutils literal notranslate"><span class="pre">h5py</span></code> file object
 should be closed separately.)</p>
-<dl class="py method">
+<dl class="method">
 <dt id="versioned_hdf5.VersionedHDF5File.close">
 <code class="sig-name descname">close</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.close" title="Permalink to this definition">¶</a></dt>
 <dd><p>Make sure the VersionedHDF5File object is no longer reachable.</p>
 </dd></dl>
 
-<dl class="py method">
+<dl class="method">
 <dt id="versioned_hdf5.VersionedHDF5File.current_version">
 <em class="property">property </em><code class="sig-name descname">current_version</code><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.current_version" title="Permalink to this definition">¶</a></dt>
 <dd><p>The current version.</p>
@@ -87,9 +88,9 @@ should be closed separately.)</p>
 indexing (the current version is <code class="code docutils literal notranslate"><span class="pre">self[0]</span></code>).</p>
 </dd></dl>
 
-<dl class="py method">
+<dl class="method">
 <dt id="versioned_hdf5.VersionedHDF5File.stage_version">
-<code class="sig-name descname">stage_version</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">version_name</span><span class="p">:</span> <span class="n">str</span></em>, <em class="sig-param"><span class="n">prev_version</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">make_current</span><span class="o">=</span><span class="default_value">True</span></em>, <em class="sig-param"><span class="n">timestamp</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.stage_version" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">stage_version</code><span class="sig-paren">(</span><em class="sig-param">version_name: str</em>, <em class="sig-param">prev_version=None</em>, <em class="sig-param">make_current=True</em>, <em class="sig-param">timestamp=None</em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.stage_version" title="Permalink to this definition">¶</a></dt>
 <dd><p>Return a context manager to stage a new version</p>
 <p>The context manager returns a group, which should be modified in-place
 to build the new version. When the context manager exits, the new
@@ -146,6 +147,7 @@ as the current version. The current version is used as the default
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="usage.html">Usage</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">API Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="design.html">Design</a></li>
 </ul>
 
 <div class="relations">
@@ -153,6 +155,7 @@ as the current version. The current version is used as the default
 <ul>
   <li><a href="index.html">Documentation overview</a><ul>
       <li>Previous: <a href="usage.html" title="previous chapter">Usage</a></li>
+      <li>Next: <a href="design.html" title="next chapter">Design</a></li>
   </ul></li>
 </ul>
 </div>
@@ -183,7 +186,7 @@ as the current version. The current version is used as the default
       &copy;2020, Quansight.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.1.2</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.4.4</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |
