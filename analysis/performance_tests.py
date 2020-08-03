@@ -1,7 +1,6 @@
 import os
 import json
 import h5py
-from pathlib import Path
 from versioned_hdf5 import VersionedHDF5File
 from generate_data import TestVersionedDatasetPerformance as TVDP
 
