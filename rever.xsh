@@ -10,7 +10,7 @@ def run_tests():
     with run_in_conda_env(['python=3.8', 'pytest', 'numpy', 'h5py',
                            'ndindex', 'pyflakes', 'pytest-cov',
                            'scipy', 'pytest-doctestplus', 'pytest-flakes',
-                           'doctr' 'sphinx']):
+                           'doctr', 'sphinx']):
         pyflakes .
         python -We:invalid -We::SyntaxWarning -m compileall -f -q ndindex/
         pytest
