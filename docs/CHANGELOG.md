@@ -4,7 +4,7 @@ versioned-hdf5 Change Log
 
 .. current developments
 
-vv1.0
+v1.0
 ====================
 
 **Added:**
