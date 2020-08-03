@@ -14,8 +14,10 @@ matrix:
     - python: 3.8
       env:
         - TESTS=true
-        - DOCS=true
         - COVERAGE=true
+    - python: 3.8
+      env:
+        - DOCS=true
         # Doctr deploy key for deshaw/versioned-hdf5
         - secure: "fljdGv06C2vYYXLXc1mmMH7c6DafXYXApsZ0sZakzMiEg8H+KP2FCrgcspHnaeWnUmqnORzLQVN4xSF2Ee4MnnruwT56lcNdR0OzdOF1TM3pcZL8coIdtc8YAfX7ChK5rKawJNaZi4j0po7CLfSV0oDr1zTxr3ZoVfHWJjWyw0F8+kWHZakQyt0ZvhX3uXJaRcEOdtHP+oELmtIasYzLsBlgt7WhHUZ3EmasQ13CwA8O+nk0i6COSMeV9j9bbzl47vTH0OxnYIZGjKzWdvAYHFl3Y5lXrq4pN1i93kQcLs2pEmxoNf1WHPUNmCcWWca0ElqIgGpjSBIe7/E0HOf/yVZ6UuaiGsLhQn2QDY5wCSKjxC1V+7Co73jlus8nki8y25Sm1K973C3XvfK7iMS9tDhlRsgdOfg0oJDiHk4czS8S683Xo1J0quk8eiFlwgs+pz98Ps1AbCP6choaX5aRXwhCoE12s3qsUXcOX7D6CepMh0NLiB8wAR2Wk+cQaW4VkRjDHC74b9msBsXYMZpm077ckAzL1yW0ieslvwiUdvlOLkXu/Yz/ZeeUwKUclPvkHUS4JpcWwPNX17i3ofdyOpjglB0WmwH7rBwa5E5abH4VYW24fUstlAMzrXd6mV5EKd/qqJFHzexuNdiLGQE2g886as2Owz3VQTGHU0GaB8Y="
 
@@ -28,7 +30,7 @@ install:
   - conda config --add channels conda-forge
   - conda update -q conda
   - conda info -a
-  - conda create -n test-environment python=$TRAVIS_PYTHON_VERSION h5py numpy scipy ndindex pyflakes pytest pytest-doctestplus pytest-flakes doctr sphinx pytest-cov
+  - conda create -n test-environment python=$TRAVIS_PYTHON_VERSION h5py numpy scipy ndindex pyflakes pytest pytest-doctestplus pytest-flakes doctr sphinx pytest-cov myst-parser graphviz
   - source activate test-environment
 
 script:
@@ -37,7 +39,9 @@ script:
   - if [[ "${COVERAGE}" == "true" ]]; then
         PYTEST_FLAGS="--cov=./";
     fi
-  - pytest $PYTEST_FLAGS
+  - if [[ "${TESTS}" == "true" ]]; then
+        pytest $PYTEST_FLAGS;
+    fi
   # # Make sure it installs
   # - python setup.py install
   - if [[ "${DOCS}" == "true" ]]; then
@@ -45,6 +49,11 @@ script:
         make html;
         cd ..;
         doctr deploy .;
+        if [[ "${TRAVIS_BRANCH}" == "master" ]]; then
+            doctr deploy .;
+        else
+            doctr deploy --no-require-master "_docs-$TRAVIS_BRANCH";
+        fi
     fi
   - if [[ "${COVERAGE}" == "true" ]]; then
         bash <(curl -s https://codecov.io/bash) || echo "Codecov did not collect coverage reports";
