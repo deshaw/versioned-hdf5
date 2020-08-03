@@ -22,7 +22,7 @@ def initialize(f):
 def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
     chunks=True, compression=None, compression_opts=None, fillvalue=None):
 
-    # Validate shape (based on h5py._hl.dataset.make_new_dset
+    # Validate shape (based on h5py._hl.dataset.make_new_dset)
     if shape is None:
         if data is None:
             if dtype is None:

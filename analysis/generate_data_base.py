@@ -1,7 +1,6 @@
 from __future__ import (absolute_import, division, print_function, with_statement)
 
 import abc
-import datetime
 import random
 from unittest import TestCase
 
@@ -13,15 +12,17 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
     """
     Test cases for the most common use cases where we encounter when we write data to HDF5.
 
-    In general all data has multiple columns which are divided into "keys" and "values". The keys determine
-    the identity of the row (this stock, this time) and the values are the associated values (the price, ...).
+    In general all data has multiple columns which are divided into "keys" and "values". The keys
+    determine the identity of the row (this stock, this time) and the values are the associated
+    values (the price, ...).
 
 
     We have two different implementation methods:
-    - "sparse": key and value columns are stored as arrays of equal length and to get the i-th "row" you
-      read key0[i], key1[i], ..., val0[i], val1[i], ...
-    - "dense": key columns are the labels of the axes of the data and the length of the value column is the product
-      of the length of the key columns: len(val0) == len(key0) * len(key1) * ...
+    - "sparse": key and value columns are stored as arrays of equal length and to get the i-th
+      "row" you read key0[i], key1[i], ..., val0[i], val1[i], ...
+    - "dense": key columns are the labels of the axes of the data and the length of the value
+      column is the product of the length of the key columns:
+      len(val0) == len(key0) * len(key1) * ...
       To get the i-th row you retrieve
         key0[i // len(key1) // len(key2) // ...],
         key1[(i // len(key2) // len(key3) // ...) % len(key1)],
@@ -34,37 +35,49 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
     # models
     RECENCTNESS_POWERLAW_SHAPE = 20.0
 
-
-    def test_mostly_appends_sparse(self):
-        num_transactions = 250 * 10
+    def test_mostly_appends_sparse(self,
+                                   num_transactions=250,
+                                   filename="test_mostly_appends_sparse",
+                                   chunk_size=None,
+                                   compression=None,
+                                   versions=True,
+                                   print_transactions=False,
+                                   deterministic=False):
 
         num_rows_initial = 1000
-
         num_rows_per_append = 1000
 
-        pct_inserts = 5
+        if deterministic:
+            pct_inserts = 0
+            pct_deletes = 0
+            pct_changes = 0
+        else:
+            pct_inserts = 5
+            pct_deletes = 1
+            pct_changes = 5
+
         num_inserts = 10
-
-        pct_deletes = 1
         num_deletes = 10
-
-        pct_changes = 5
         num_changes = 10
 
-        name = 'test_mostly_appends'
-
-        self._write_transactions_sparse(name, num_rows_initial, num_transactions, num_rows_per_append, pct_changes,
-                                        num_changes, pct_deletes, num_deletes, pct_inserts, num_inserts)
-
+        times = self._write_transactions_sparse(filename, chunk_size, compression, versions,
+                                                print_transactions, num_rows_initial,
+                                                num_transactions, num_rows_per_append,
+                                                pct_changes, num_changes,
+                                                pct_deletes, num_deletes,
+                                                pct_inserts, num_inserts)
+        return times
 
     @classmethod
     @abc.abstractmethod
-    def _write_transactions_sparse(cls, name, num_rows_initial, num_transactions, num_rows_per_append,
+    def _write_transactions_sparse(cls, name, chunk_size, compression, versions,
+                                   print_transactions, 
+                                   num_rows_initial, num_transactions,
+                                   num_rows_per_append,
                                    pct_changes, num_changes,
                                    pct_deletes, num_deletes,
                                    pct_inserts, num_inserts):
         pass
-
 
     @classmethod
     def _get_rand_fn(cls, dtype):
@@ -75,13 +88,12 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
         else:
             raise ValueError('implement other dtypes')
 
-
     @classmethod
     def _modify_dss_sparse(cls, key0_ds, key1_ds, val_ds, num_rows_per_append,
                            pct_changes, num_changes,
                            pct_deletes, num_deletes,
                            pct_inserts, num_inserts):
-        tt = datetime.datetime.utcnow()
+
         ns = set([len(ds) for ds in [key0_ds, key1_ds, val_ds]])
         assert len(ns) == 1
         n = next(iter(ns))
@@ -125,92 +137,171 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
                 rand_fn = cls._get_rand_fn(ds.dtype)
                 ds.resize((n,))
                 ds[-rand_num_apps:] = rand_fn(rand_num_apps)
-        return tt
 
-
-    def test_large_fraction_changes_sparse(self):
-        num_transactions = 250 * 10
+    def test_large_fraction_changes_sparse(self,
+                                           num_transactions=250,
+                                           filename="test_large_fraction_changes_sparse",
+                                           chunk_size=None,
+                                           compression=None,
+                                           versions=True,
+                                           print_transactions=False,
+                                           deterministic=False):
 
         num_rows_initial = 5000
-
         num_rows_per_append = 10
 
-        pct_inserts = 1
+        if deterministic:
+            pct_inserts = 0
+            pct_deletes = 0
+            pct_changes = 0
+        else:
+            pct_inserts = 1
+            pct_deletes = 1
+            pct_changes = 90
+
         num_inserts = 10
-
-        pct_deletes = 1
         num_deletes = 10
-
-        pct_changes = 90
         num_changes = 1000
 
-        name = 'test_large_fraction_changes'
+        times = self._write_transactions_sparse(filename,
+                                                chunk_size,
+                                                compression,
+                                                versions,
+                                                print_transactions,
+                                                num_rows_initial,
+                                                num_transactions,
+                                                num_rows_per_append,
+                                                pct_changes, num_changes,
+                                                pct_deletes, num_deletes,
+                                                pct_inserts, num_inserts)
+        return times
 
-        self._write_transactions_sparse(name, num_rows_initial, num_transactions, num_rows_per_append, pct_changes,
-                                        num_changes, pct_deletes, num_deletes, pct_inserts, num_inserts)
-
-
-    def test_small_fraction_changes_sparse(self):
-        num_transactions = 250 * 10
+    def test_small_fraction_changes_sparse(self,
+                                           num_transactions=250,
+                                           filename="test_small_fraction_changes_sparse",
+                                           chunk_size=None,
+                                           compression=None,
+                                           versions=True,
+                                           print_transactions=False,
+                                           deterministic=False):
 
         num_rows_initial = 5000
-
         num_rows_per_append = 10
 
-        pct_inserts = 1
+        if deterministic:
+            pct_inserts = 0
+            pct_deletes = 0
+            pct_changes = 0
+        else:
+            pct_inserts = 1
+            pct_deletes = 1
+            pct_changes = 90
+
         num_inserts = 10
-
-        pct_deletes = 1
         num_deletes = 10
-
-        pct_changes = 90
         num_changes = 10
 
-        name = 'test_small_fraction_changes'
+        times = self._write_transactions_sparse(filename,
+                                                chunk_size,
+                                                compression,
+                                                versions,
+                                                print_transactions,
+                                                num_rows_initial,
+                                                num_transactions,
+                                                num_rows_per_append,
+                                                pct_changes, num_changes,
+                                                pct_deletes, num_deletes,
+                                                pct_inserts, num_inserts)
+        return times
 
-        self._write_transactions_sparse(name, num_rows_initial, num_transactions, num_rows_per_append, pct_changes,
-                                        num_changes, pct_deletes, num_deletes, pct_inserts, num_inserts)
+    def test_large_fraction_constant_sparse(self,
+                                            num_transactions=250,
+                                            filename="test_large_fraction_constant_sparse",
+                                            chunk_size=None,
+                                            compression=None,
+                                            versions=True,
+                                            print_transactions=False,
+                                            deterministic=False):
 
+        num_rows_initial = 5000
+        num_rows_per_append = 0  # triggers the constant size test (FIXME)
 
-    def test_mostly_appends_dense(self):
-        num_transactions = 250 * 10
+        pct_inserts = 0
+        pct_deletes = 0
+        pct_changes = 0
+        
+        num_inserts = 10
+        num_deletes = 10
+        num_changes = 1000
+
+        times = self._write_transactions_sparse(filename,
+                                                chunk_size,
+                                                compression,
+                                                versions,
+                                                print_transactions,
+                                                num_rows_initial,
+                                                num_transactions,
+                                                num_rows_per_append,
+                                                pct_changes, num_changes,
+                                                pct_deletes, num_deletes,
+                                                pct_inserts, num_inserts)
+        return times
+
+    def test_mostly_appends_dense(self,
+                                  num_transactions=250,
+                                  filename="test_mostly_appends_dense",
+                                  chunk_size=None,
+                                  compression=None,
+                                  versions=True,
+                                  print_transactions=False,
+                                  deterministic=False):
 
         num_rows_initial_0 = 30
         num_rows_initial_1 = 30
-
         num_rows_per_append_0 = 1
 
-        pct_inserts = 5
+        if deterministic:
+            pct_inserts = 0
+            pct_deletes = 0
+            pct_changes = 0
+        else:
+            pct_inserts = 5
+            pct_deletes = 1
+            pct_changes = 5
+
         num_inserts_0 = 1
         num_inserts_1 = 10
-
-        pct_deletes = 1
         num_deletes_0 = 1
         num_deletes_1 = 1
-
-        pct_changes = 5
         num_changes = 10
 
-        name = 'test_mostly_appends'
-
-        self._write_transactions_dense(name, num_rows_initial_0, num_rows_initial_1,
-                                       num_transactions,
-                                       num_rows_per_append_0,
-                                       pct_changes, num_changes,
-                                       pct_deletes, num_deletes_0, num_deletes_1,
-                                       pct_inserts, num_inserts_0, num_inserts_1)
-
+        times = self._write_transactions_dense(filename,
+                                               chunk_size,
+                                               compression,
+                                               versions,
+                                               print_transactions,
+                                               num_rows_initial_0, num_rows_initial_1,
+                                               num_transactions,
+                                               num_rows_per_append_0,
+                                               pct_changes, num_changes,
+                                               pct_deletes, num_deletes_0, num_deletes_1,
+                                               pct_inserts, num_inserts_0, num_inserts_1)
+        return times
 
     @classmethod
     @abc.abstractmethod
-    def _write_transactions_dense(cls, name, num_rows_initial_0, num_rows_initial_1,
+    def _write_transactions_dense(cls, name,
+                                  chunk_size,
+                                  compression,
+                                  versions,
+                                  print_transactions,
+                                  num_rows_initial_0, num_rows_initial_1,
                                   num_transactions,
                                   num_rows_per_append_0,
                                   pct_changes, num_changes,
                                   pct_deletes, num_deletes_0, num_deletes_1,
                                   pct_inserts, num_inserts_0, num_inserts_1):
         pass
-
 
     @classmethod
     def _modify_dss_dense(cls, key0_ds, key1_ds, val_ds,
