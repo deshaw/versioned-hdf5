@@ -197,17 +197,6 @@ class test_large_fraction_constant_sparse(PerformanceTests):
 
 if __name__ == "__main__":
 
-    # tests = [test_small_fraction_changes_sparse,
-    #          test_large_fraction_constant_sparse]
-    # for test in tests:
-    #    testcase = test(num_transactions=[50, 100, 500, 1000, 5000, 10000],
-    #                    exponents=[14],
-    #                    compression=[None,])
-    #    summary, msg = testcase.create_files(versions=True)
-    #    testcase.save(summary, f"{testcase.testname}")
-    #    summary, msg = testcase.create_files(versions=False)
-    #    testcase.save(summary, f"{testcase.testname}_no_versions")
-
     tests = [test_mostly_appends_dense,
              test_small_fraction_changes_sparse,
              test_large_fraction_changes_sparse,
