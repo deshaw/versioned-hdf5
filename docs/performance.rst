@@ -37,28 +37,11 @@ The tests are as follows:
 
 To test the performance of VersionedHDF5 files, we have chosen to compare a few different chunk sizes and compression algorithms. These values have been chosen heuristically, and optimal values depend on different use cases and nature of the datasets stored in the file.
 
-     
-File sizes
-----------
-
-As the number of versions in a file grows, its size on disk is also expected to
-grow. However, it is reasonable to expect that the overhead of storing metadata
-for versioned files doesn't cause the file sizes to explode as the number of
-versions increases. To see the tests and analysis, go to :ref:`performance_filesizes`.
-   
-
-Read and write speeds
----------------------
-
-To see a brief outline of how VersionedHDF5Files behave in terms of creation time, read and write speeds and a comparison with unversioned files (plain HDF5 files generated using h5py), see :ref:`performance_io`.
-
-   
-Links
------
+- **File sizes**: As the number of versions in a file grows, its size on disk is also expected to grow. However, it is reasonable to expect that the overhead of storing metadata for versioned files doesn't cause the file sizes to explode as the number of versions increases. To see the tests and analysis, go to :ref:`performance_filesizes`.
+- **Read and write speeds**: To see a brief outline of how VersionedHDF5Files behave in terms of creation time, read and write speeds and a comparison with unversioned files (plain HDF5 files generated using h5py), see :ref:`performance_io`.
 
 .. toctree::
-   :maxdepth: 1
-   :caption: Performance tests:
-
-   performance_filesizes
-   performance_io
+   :hidden:
+      
+   performance_filesizes.rst
+   performance_io.rst
