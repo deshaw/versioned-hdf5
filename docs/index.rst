@@ -5,14 +5,15 @@ Versioned HDF5 provides a versioned abstraction on top of `h5py <https://www.h5p
 
 .. toctree::
    :maxdepth: 2
+   :titlesonly:              
    :caption: Contents:
 
    quickstart
    installation
-   usage
    performance
    reference
    design
+   CHANGELOG
 
 Source
 ------

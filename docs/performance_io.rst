@@ -134,7 +134,7 @@ reproducibility reasons).
         vfile.close()
         return t
 
-The next plot contains a set of reads for the middle element of each
+The next plot contains a set of 20 reads for the middle element of each
 file (each line in the figure represents a run). It is expected that
 there are variations in the read times, as this fluctuates with the
 system load while running the test.
