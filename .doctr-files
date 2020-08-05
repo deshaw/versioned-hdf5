@@ -1,3 +1,4 @@
+./CHANGELOG.html
 ./_images/Performance_tests-File_sizes_105_0.png
 ./_images/Performance_tests-File_sizes_108_0.png
 ./_images/Performance_tests-File_sizes_111_0.png
@@ -45,6 +46,7 @@
 ./_images/Performance_tests-IO_99_0.png
 ./_images/graphviz-80fa658bee6bbb3cd10e1e0c194576cc82ad7e0b.svg
 ./_images/graphviz-ecbd24dcde0b77d41d0b20fef4801659bffcea48.svg
+./_sources/CHANGELOG.md.txt
 ./_sources/design.md.txt
 ./_sources/index.rst.txt
 ./_sources/installation.rst.txt
@@ -53,7 +55,6 @@
 ./_sources/performance_io.rst.txt
 ./_sources/quickstart.rst.txt
 ./_sources/reference.rst.txt
-./_sources/usage.rst.txt
 ./_static/alabaster.css
 ./_static/basic.css
 ./_static/custom.css
@@ -83,4 +84,3 @@
 ./reference.html
 ./search.html
 ./searchindex.js
-./usage.html

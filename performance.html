@@ -18,7 +18,7 @@
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="next" title="Performance Analysis of VersionedHDF5 Files: File sizes" href="performance_filesizes.html" />
-    <link rel="prev" title="Usage" href="usage.html" />
+    <link rel="prev" title="Installation" href="installation.html" />
    
   <link rel="stylesheet" href="_static/custom.css" type="text/css" />
   
@@ -64,26 +64,11 @@ which biases the modifications towards the end of the array, simulating a possib
 </li>
 </ol>
 <p>To test the performance of VersionedHDF5 files, we have chosen to compare a few different chunk sizes and compression algorithms. These values have been chosen heuristically, and optimal values depend on different use cases and nature of the datasets stored in the file.</p>
-<div class="section" id="file-sizes">
-<h2>File sizes<a class="headerlink" href="#file-sizes" title="Permalink to this headline">¶</a></h2>
-<p>As the number of versions in a file grows, its size on disk is also expected to
-grow. However, it is reasonable to expect that the overhead of storing metadata
-for versioned files doesn’t cause the file sizes to explode as the number of
-versions increases. To see the tests and analysis, go to <a class="reference internal" href="performance_filesizes.html#performance-filesizes"><span class="std std-ref">Performance Analysis of VersionedHDF5 Files: File sizes</span></a>.</p>
-</div>
-<div class="section" id="read-and-write-speeds">
-<h2>Read and write speeds<a class="headerlink" href="#read-and-write-speeds" title="Permalink to this headline">¶</a></h2>
-<p>To see a brief outline of how VersionedHDF5Files behave in terms of creation time, read and write speeds and a comparison with unversioned files (plain HDF5 files generated using h5py), see <a class="reference internal" href="performance_io.html#performance-io"><span class="std std-ref">I/O Performance for Versioned-HDF5 Files</span></a>.</p>
-</div>
-<div class="section" id="links">
-<h2>Links<a class="headerlink" href="#links" title="Permalink to this headline">¶</a></h2>
-<div class="toctree-wrapper compound">
-<p class="caption"><span class="caption-text">Performance tests:</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="performance_filesizes.html">Performance Analysis of VersionedHDF5 Files: File sizes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="performance_io.html">I/O Performance for Versioned-HDF5 Files</a></li>
+<ul class="simple">
+<li><p><strong>File sizes</strong>: As the number of versions in a file grows, its size on disk is also expected to grow. However, it is reasonable to expect that the overhead of storing metadata for versioned files doesn’t cause the file sizes to explode as the number of versions increases. To see the tests and analysis, go to <a class="reference internal" href="performance_filesizes.html#performance-filesizes"><span class="std std-ref">Performance Analysis of VersionedHDF5 Files: File sizes</span></a>.</p></li>
+<li><p><strong>Read and write speeds</strong>: To see a brief outline of how VersionedHDF5Files behave in terms of creation time, read and write speeds and a comparison with unversioned files (plain HDF5 files generated using h5py), see <a class="reference internal" href="performance_io.html#performance-io"><span class="std std-ref">I/O Performance for Versioned-HDF5 Files</span></a>.</p></li>
 </ul>
-</div>
+<div class="toctree-wrapper compound">
 </div>
 </div>
 
@@ -122,22 +107,21 @@ versions increases. To see the tests and analysis, go to <a class="reference int
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Performance</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#file-sizes">File sizes</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#read-and-write-speeds">Read and write speeds</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#links">Links</a></li>
+<li class="toctree-l2"><a class="reference internal" href="performance_filesizes.html">Performance Analysis of VersionedHDF5 Files: File sizes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="performance_io.html">I/O Performance for Versioned-HDF5 Files</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="reference.html">API Documentation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="design.html">Design</a></li>
+<li class="toctree-l1"><a class="reference internal" href="CHANGELOG.html">Versioned HDF5 Change Log</a></li>
 </ul>
 
 <div class="relations">
 <h3>Related Topics</h3>
 <ul>
   <li><a href="index.html">Documentation overview</a><ul>
-      <li>Previous: <a href="usage.html" title="previous chapter">Usage</a></li>
+      <li>Previous: <a href="installation.html" title="previous chapter">Installation</a></li>
       <li>Next: <a href="performance_filesizes.html" title="next chapter">Performance Analysis of VersionedHDF5 Files: File sizes</a></li>
   </ul></li>
 </ul>

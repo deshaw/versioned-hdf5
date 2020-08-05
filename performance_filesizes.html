@@ -58,11 +58,11 @@ standard options (<a class="reference internal" href="performance.html#performan
 <span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
 </pre></div>
 </div>
-<p>The information from the generated test files are stored in either -
-<code class="docutils literal notranslate"><span class="pre">testcase.tests</span></code>, a dictionary containing all the info related to a
-testcase that was run recently; - a <code class="docutils literal notranslate"><span class="pre">.json</span></code> file named after the test
-name and options, containing a summary of the results. This file can be
-read with</p>
+<p>The information from the generated test files are stored in either</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">testcase.tests</span></code>, a dictionary containing all the info related to a testcase that was run recently;</p></li>
+<li><p>a <code class="docutils literal notranslate"><span class="pre">.json</span></code> file named after the test name and options, containing a summary of the results. This file can be read with</p></li>
+</ul>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">&quot;&lt;filename&gt;.json&quot;</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">json_in</span><span class="p">:</span>
       <span class="n">test</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">json_in</span><span class="p">)</span>
 </pre></div>
@@ -79,7 +79,7 @@ read with</p>
 <span class="n">compression_1</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;gzip&quot;</span><span class="p">,</span> <span class="s2">&quot;lzf&quot;</span><span class="p">]</span>
 </pre></div>
 </div>
-<p>(note that chunk sizes are taken as power of 2, so an exponent of <span class="math notranslate nohighlight">\(12\)</span> means that the chunk size is <span class="math notranslate nohighlight">\(2^12\)</span> or 4096.</p>
+<p>(note that chunk sizes are taken as power of 2, so an exponent of <span class="math notranslate nohighlight">\(12\)</span> means that the chunk size is <span class="math notranslate nohighlight">\(2^12\)</span> or 4096.)</p>
 <p>If you want to generate your own tests, you can modify the appropriate constants
 for the desired tests, and run them on the notebook included in the <code class="code docutils literal notranslate"><span class="pre">analysis</span></code> directory of the VersionedHDF souces. <strong>Please keep in mind that file sizes can become very large for large numbers of transactions (above 5000
 transactions).</strong></p>
@@ -1161,15 +1161,14 @@ at this point in VersionedHDF5.</p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage</a></li>
 <li class="toctree-l1 current"><a class="reference internal" href="performance.html">Performance</a><ul class="current">
-<li class="toctree-l2"><a class="reference internal" href="performance.html#file-sizes">File sizes</a></li>
-<li class="toctree-l2"><a class="reference internal" href="performance.html#read-and-write-speeds">Read and write speeds</a></li>
-<li class="toctree-l2 current"><a class="reference internal" href="performance.html#links">Links</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Performance Analysis of VersionedHDF5 Files: File sizes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="performance_io.html">I/O Performance for Versioned-HDF5 Files</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="reference.html">API Documentation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="design.html">Design</a></li>
+<li class="toctree-l1"><a class="reference internal" href="CHANGELOG.html">Versioned HDF5 Change Log</a></li>
 </ul>
 
 <div class="relations">
