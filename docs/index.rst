@@ -1,7 +1,7 @@
 Versioned HDF5
 ==============
 
-Versioned HDF5 provides a versioned abstraction on top of `h5py <https://www.h5py.org/>`__ . This package is still in a pre-alpha development stage.
+Versioned HDF5 provides a versioned abstraction on top of `h5py <https://www.h5py.org/>`__ .
 
 .. toctree::
    :maxdepth: 2
