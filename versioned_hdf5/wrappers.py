@@ -185,6 +185,7 @@ class InMemoryGroup(Group):
             yield i
 
     def __contains__(self, item):
+        item = item.rstrip('/')
         dirname, data_name = pp.split(item)
         if dirname not in ['', '/']:
             return dirname in self and data_name in self[dirname]

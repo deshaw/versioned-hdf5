@@ -1004,21 +1004,37 @@ def test_group_contains():
         version1 = file['version1']
         version2 = file['version2']
         assert 'group1' in version1
+        assert 'group1/' in version1
         assert 'group1' in version2
+        assert 'group1/' in version2
         assert 'group2' in version1['group1']
+        assert 'group2/' in version1['group1']
         assert 'group2' in version2['group1']
+        assert 'group2/' in version2['group1']
         assert 'group3' not in version1['group1']
+        assert 'group3/' not in version1['group1']
         assert 'group3' in version2['group1']
+        assert 'group3/' in version2['group1']
         assert 'group1/group2' in version1
+        assert 'group1/group2/' in version1
         assert 'group1/group2' in version2
+        assert 'group1/group2/' in version2
         assert 'group1/group3' not in version1
+        assert 'group1/group3/' not in version1
         assert 'group1/group3' in version2
+        assert 'group1/group3/' in version2
         assert 'group1/group2/test_data' in version1
+        assert 'group1/group2/test_data/' in version1
         assert 'group1/group2/test_data' in version2
+        assert 'group1/group2/test_data/' in version2
         assert 'group1/group3/test_data' not in version1
+        assert 'group1/group3/test_data/' not in version1
         assert 'group1/group3/test_data' not in version2
+        assert 'group1/group3/test_data/' not in version2
         assert 'group1/group3/test_data2' not in version1
+        assert 'group1/group3/test_data2/' not in version1
         assert 'group1/group3/test_data2' in version2
+        assert 'group1/group3/test_data2/' in version2
         assert 'test_data' in version1['group1/group2']
         assert 'test_data' in version2['group1/group2']
         assert 'test_data' not in version1
