@@ -29,7 +29,6 @@ class InMemoryGroup(Group):
         # Make sure each group only corresponds to one InMemoryGroup instance.
         # Otherwise a new instance would lose track of any datasets or
         # subgroups created in the old one.
-        # TODO: Garbage collect closed groups.
         if bind in _groups:
             return _groups[bind]
         obj = super().__new__(cls)
@@ -49,6 +48,12 @@ class InMemoryGroup(Group):
         self._initialized = True
         self._committed = False
         super().__init__(bind)
+
+    def close(self):
+        self._committed = True
+        for bind in list(_groups.keys()):
+            if _groups[bind].name in self:
+                del _groups[bind]
 
     # Based on Group.__repr__
     def __repr__(self):
