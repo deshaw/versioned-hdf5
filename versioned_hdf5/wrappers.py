@@ -52,7 +52,9 @@ class InMemoryGroup(Group):
     def close(self):
         self._committed = True
         for bind in list(_groups.keys()):
-            if _groups[bind].name in self:
+            if not _groups[bind]:
+                del _groups[bind]
+            elif _groups[bind].name in self:
                 del _groups[bind]
 
     # Based on Group.__repr__
