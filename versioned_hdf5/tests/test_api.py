@@ -1045,6 +1045,10 @@ def test_group_contains():
         assert 'test_data2' not in version1['group1/group2']
         assert 'test_data2' not in version2['group1/group2']
 
+        assert '/_version_data/versions/version1/' in version1
+        assert '/_version_data/versions/version1' in version1
+        assert '/_version_data/versions/version1/' not in version2
+        assert '/_version_data/versions/version1' not in version2
         assert '/_version_data/versions/version1/group1' in version1
         assert '/_version_data/versions/version1/group1' not in version2
         assert '/_version_data/versions/version1/group1/group2' in version1
