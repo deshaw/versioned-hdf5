@@ -296,7 +296,6 @@ def _make_new_dset(shape=None, dtype=None, data=None, chunks=None,
                   track_order=None, dcpl=None):
     """ Return a new low-level dataset identifier """
 
-    print(f"shape = {shape}")
     # Convert data to a C-contiguous ndarray
     if data is not None and not isinstance(data, Empty):
         # normalize strings -> np.dtype objects

@@ -508,6 +508,20 @@ def test_resize(vfile):
     assert_equal(group['data'][:], 1.0)
 
 
+def test_resize_unaligned(vfile):
+    ds_name = 'test_resize_unaligned'
+    with vfile.stage_version('0') as group:
+        group.create_dataset(ds_name, data=np.arange(1000))
+
+    for i in range(1, 10):
+        with vfile.stage_version(str(i)) as group:
+            l = len(group[ds_name])
+            assert_equal(group[ds_name][:], np.arange(i * 1000))
+            group[ds_name].resize((l + 1000,))
+            group[ds_name][-1000:] = np.arange(l, l + 1000)
+            assert_equal(group[ds_name][:], np.arange((i + 1) * 1000))
+
+
 def test_resize_multiple_dimensions(vfile):
     # Test semantics against raw HDF5
 
