@@ -82,9 +82,9 @@ with the versioning should happen through the API. <code class="docutils literal
 used to expose versioned data by version name:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">v2</span> <span class="o">=</span> <span class="n">versioned_file</span><span class="p">[</span><span class="s1">&#39;version2&#39;</span><span class="p">]</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">v2</span>
-<span class="go">&lt;InMemoryGroup &quot;/_version_data/versions/version2&quot; (1 members)&gt;</span>
+<span class="go">&lt;Committed InMemoryGroup &quot;/_version_data/versions/version2&quot;&gt;</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">v2</span><span class="p">[</span><span class="s1">&#39;mydataset&#39;</span><span class="p">]</span>
-<span class="go">&lt;HDF5 dataset &quot;mydataset&quot;: shape (10000,), type &quot;&lt;f8&quot;&gt;</span>
+<span class="go">&lt;InMemoryArrayDataset &quot;mydataset&quot;: shape (10000,), type &quot;&lt;f8&quot;&gt;</span>
 </pre></div>
 </div>
 <p>To access the actual data stored in version <code class="docutils literal notranslate"><span class="pre">version2</span></code>, we use the same syntax

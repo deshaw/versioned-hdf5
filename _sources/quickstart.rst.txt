@@ -48,9 +48,9 @@ used to expose versioned data by version name::
 
   >>> v2 = versioned_file['version2']
   >>> v2
-  <InMemoryGroup "/_version_data/versions/version2" (1 members)>
+  <Committed InMemoryGroup "/_version_data/versions/version2">
   >>> v2['mydataset']
-  <HDF5 dataset "mydataset": shape (10000,), type "<f8">
+  <InMemoryArrayDataset "mydataset": shape (10000,), type "<f8">
 
 To access the actual data stored in version ``version2``, we use the same syntax
 as ``h5py``::
