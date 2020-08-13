@@ -19,11 +19,12 @@ import numpy as np
 from collections import defaultdict
 import posixpath as pp
 import warnings
+from weakref import WeakValueDictionary
 
 from .backend import DEFAULT_CHUNK_SIZE
 from .slicetools import spaceid_to_slice, as_subchunks, split_chunks
 
-_groups = {}
+_groups = WeakValueDictionary({})
 class InMemoryGroup(Group):
     def __new__(cls, bind):
         # Make sure each group only corresponds to one InMemoryGroup instance.
@@ -51,11 +52,6 @@ class InMemoryGroup(Group):
 
     def close(self):
         self._committed = True
-        for bind in list(_groups.keys()):
-            if not _groups[bind]:
-                del _groups[bind]
-            elif _groups[bind].name in self:
-                del _groups[bind]
 
     # Based on Group.__repr__
     def __repr__(self):
