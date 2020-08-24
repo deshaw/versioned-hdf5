@@ -1,4 +1,5 @@
 import os
+import itertools
 
 from pytest import raises
 
@@ -12,6 +13,7 @@ from numpy.testing import assert_equal
 from ..backend import DEFAULT_CHUNK_SIZE
 from ..api import VersionedHDF5File
 from ..versions import TIMESTAMP_FMT
+from ..wrappers import InMemoryArrayDataset, InMemoryDataset
 
 from .helpers import setup
 
@@ -575,6 +577,63 @@ def test_resize_unaligned():
 
         file.close()
 
+def test_resize_multiple_dimensions():
+    # Test semantics against raw HDF5
+
+    shapes = range(5, 25, 5) # 5, 10, 15, 20
+    chunks = (10, 10, 10)
+    with setup() as f:
+        file = VersionedHDF5File(f)
+        for i, (oldshape, newshape) in\
+            enumerate(itertools.combinations_with_replacement(itertools.product(shapes, repeat=3), 2)):
+            data = np.arange(np.product(oldshape)).reshape(oldshape)
+            # Get the ground truth from h5py
+            f.create_dataset(f'data{i}', data=data, fillvalue=-1, chunks=chunks,
+                             maxshape=(None, None, None))
+            f[f'data{i}'].resize(newshape)
+            new_data = f[f'data{i}'][()]
+
+            # resize after creation
+            with file.stage_version(f'version1_{i}') as group:
+                group.create_dataset(f'dataset1_{i}', data=data, chunks=chunks,
+                                     fillvalue=-1)
+                group[f'dataset1_{i}'].resize(newshape)
+                assert group[f'dataset1_{i}'].shape == newshape
+                assert_equal(group[f'dataset1_{i}'][()], new_data)
+
+            version1 = file[f'version1_{i}']
+            assert version1[f'dataset1_{i}'].shape == newshape
+            assert_equal(version1[f'dataset1_{i}'][()], new_data)
+
+            # resize in a new version
+            with file.stage_version(f'version2_1_{i}', '') as group:
+                group.create_dataset(f'dataset2_{i}', data=data, chunks=chunks,
+                                     fillvalue=-1)
+            with file.stage_version(f'version2_2_{i}', f'version2_1_{i}') as group:
+                group[f'dataset2_{i}'].resize(newshape)
+                assert group[f'dataset2_{i}'].shape == newshape
+                assert_equal(group[f'dataset2_{i}'][()], new_data, str((oldshape, newshape)))
+
+            version2_2 = file[f'version2_2_{i}']
+            assert version2_2[f'dataset2_{i}'].shape == newshape
+            assert_equal(version2_2[f'dataset2_{i}'][()], new_data)
+
+            # resize after some data is read in
+            with file.stage_version(f'version3_1_{i}', '') as group:
+                group.create_dataset(f'dataset3_{i}', data=data, chunks=chunks,
+                                     fillvalue=-1)
+            with file.stage_version(f'version3_2_{i}', f'version3_1_{i}') as group:
+                # read in first and last chunks
+                group[f'dataset3_{i}'][0, 0, 0]
+                group[f'dataset3_{i}'][-1, -1, -1]
+                group[f'dataset3_{i}'].resize(newshape)
+                assert group[f'dataset3_{i}'].shape == newshape
+                assert_equal(group[f'dataset3_{i}'][()], new_data)
+
+            version3_2 = file[f'version3_2_{i}']
+            assert version3_2[f'dataset3_{i}'].shape == newshape
+            assert_equal(version3_2[f'dataset3_{i}'][()], new_data)
+
 def test_getitem():
     with setup() as f:
         file = VersionedHDF5File(f)
@@ -1133,18 +1192,15 @@ def test_fillvalue():
         assert_equal(group['data'][:DEFAULT_CHUNK_SIZE + 2], 1.0)
         assert_equal(group['data'][DEFAULT_CHUNK_SIZE + 2:], fillvalue)
 
-        file.close()
-
-def test_multidimensional():
-    # For now, datasets can only be expanded along the first axis. The shape
-    # of the remaining axes must stay fixed once the dataset is created.
+def test_multidimsional():
     with setup() as f:
         file = VersionedHDF5File(f)
 
-        data = np.ones((DEFAULT_CHUNK_SIZE, 2))
+        data = np.ones((2*DEFAULT_CHUNK_SIZE, 5))
 
         with file.stage_version('version1') as g:
-            g.create_dataset('test_data', data=data)
+            g.create_dataset('test_data', data=data,
+                             chunks=(DEFAULT_CHUNK_SIZE, 2))
             assert_equal(g['test_data'][()], data)
 
         version1 = file['version1']
@@ -1161,6 +1217,43 @@ def test_multidimensional():
         version2 = file['version2']
         assert version2['test_data'][0, 1] == 2
         assert_equal(version2['test_data'][()], data2)
+
+        data3 = data.copy()
+        data3[0:1] = 3
+
+        with file.stage_version('version3', 'version1') as g:
+            g['test_data'][0:1] = 3
+            assert_equal(g['test_data'][0:1], 3)
+            assert_equal(g['test_data'][()], data3)
+
+        version3 = file['version3']
+        assert_equal(version3['test_data'][0:1], 3)
+        assert_equal(version3['test_data'][()], data3)
+
+def test_group_chunks_compression():
+    # Chunks and compression are similar, so test them both at the same time.
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = np.ones((2*DEFAULT_CHUNK_SIZE, 5))
+
+        with file.stage_version('version1') as g:
+            g2 = g.create_group('group')
+            g2.create_dataset('test_data', data=data,
+                              chunks=(DEFAULT_CHUNK_SIZE, 2),
+                              compression='gzip',
+                              compression_opts=3)
+            assert_equal(g2['test_data'][()], data)
+            assert_equal(g['group/test_data'][()], data)
+            assert_equal(g['group']['test_data'][()], data)
+
+        version1 = file['version1']
+        assert_equal(version1['group']['test_data'][()], data)
+        assert_equal(version1['group/test_data'][()], data)
+
+        raw_data = f['/_version_data/group/test_data/raw_data']
+        assert raw_data.compression == 'gzip'
+        assert raw_data.compression_opts == 3
 
         file.close()
 
@@ -1203,3 +1296,123 @@ def test_closes():
 
         assert reopened_file._version_data == version_data
         assert reopened_file._versions == versions
+
+def test_store_binary_as_void():
+    with setup() as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version('version1') as sv:
+            sv['test_store_binary_data'] = [np.void(b'1111')]
+
+        version1 = vf['version1']
+        assert_equal(version1['test_store_binary_data'][0], np.void(b'1111'))
+
+        with vf.stage_version('version2') as sv:
+            sv['test_store_binary_data'][:] = [np.void(b'1234567890')]
+
+        version2 = vf['version2']
+        assert_equal(version2['test_store_binary_data'][0], np.void(b'1234'))
+
+def test_check_committed():
+    with setup() as f:
+        file = VersionedHDF5File(f)
+
+        data = np.ones((DEFAULT_CHUNK_SIZE,))
+
+        with file.stage_version('version1') as g:
+            g.create_dataset('test_data', data=data)
+
+        with raises(ValueError, match="committed"):
+            g['data'] = data
+
+        with raises(ValueError, match="committed"):
+            g.create_dataset('data', data=data)
+
+        with raises(ValueError, match="committed"):
+            g.create_group('subgruop')
+
+        with raises(ValueError, match="committed"):
+            del g['test_data']
+
+        # Incorrectly uses g from the previous version (InMemoryArrayDataset)
+        with raises(ValueError, match="committed"):
+            with file.stage_version('version2'):
+                assert isinstance(g['test_data'], InMemoryArrayDataset)
+                g['test_data'][0] = 1
+
+        with raises(ValueError, match="committed"):
+            with file.stage_version('version2'):
+                assert isinstance(g['test_data'], InMemoryArrayDataset)
+                g['test_data'].resize((100,))
+
+        with file.stage_version('version2') as g2:
+            pass
+
+        # Incorrectly uses g from the previous version (InMemoryDataset)
+        with raises(ValueError, match="committed"):
+            with file.stage_version('version3'):
+                assert isinstance(g2['test_data'], InMemoryDataset)
+                g2['test_data'][0] = 1
+
+        with raises(ValueError, match="committed"):
+            with file.stage_version('version3'):
+                assert isinstance(g2['test_data'], InMemoryDataset)
+                g2['test_data'].resize((100,))
+
+        assert repr(g) == '<Committed InMemoryGroup "/_version_data/versions/version1">'
+
+def test_set_chunks_nested():
+    with setup() as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version('0') as sv:
+            data_group = sv.create_group('data')
+            data_group.create_dataset('bar', data=np.arange(4))
+
+        with vf.stage_version('1') as sv:
+            data_group = sv['data']
+            data_group.create_dataset('props/1/bar', data=np.arange(0, 4, 2))
+
+def test_InMemoryArrayDataset_chunks():
+    with setup() as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version('0') as sv:
+            data_group = sv.create_group('data')
+            data_group.create_dataset('g/bar', data=np.arange(4),
+    chunks=(100,), compression='gzip', compression_opts=3)
+            assert isinstance(data_group['g/bar'], InMemoryArrayDataset)
+            assert data_group['g/bar'].chunks == (100,)
+            assert data_group['g/bar'].compression == 'gzip'
+            assert data_group['g/bar'].compression_opts == 3
+
+def test_string_dtypes():
+    # Make sure the fillvalue logic works correctly for custom h5py string dtypes.
+    for typ, dt in [
+            (str, h5py.string_dtype('utf-8')),
+            (bytes, h5py.string_dtype('ascii')),
+            # h5py uses bytes here
+            (bytes, h5py.string_dtype('utf-8', length=20)),
+            (bytes, h5py.string_dtype('ascii', length=20)),
+            ]:
+
+        if typ == str:
+            data = np.full(10, 'hello world', dtype=dt)
+        else:
+            data = np.full(10, b'hello world', dtype=dt)
+        with setup() as f:
+            file = VersionedHDF5File(f)
+            with file.stage_version('0') as sv:
+                sv.create_dataset("name", shape=(10,), dtype=dt, data=data)
+                assert isinstance(sv['name'], InMemoryArrayDataset)
+                sv['name'].resize((11,))
+
+            assert file['0']['name'].dtype == dt
+            assert_equal(file['0']['name'][:10], data)
+            assert file['0']['name'][10] == typ(), dt.metadata
+
+            with file.stage_version('1') as sv:
+                assert isinstance(sv['name'], InMemoryDataset)
+                sv['name'].resize((12,))
+
+            assert file['1']['name'].dtype == dt
+            assert_equal(file['1']['name'][:10], data, str(dt.metadata))
+            assert file['1']['name'][10] == typ(), dt.metadata
+            assert file['1']['name'][11] == typ(), dt.metadata

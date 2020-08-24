@@ -1,10 +1,8 @@
 import os
-import sys
-sys.path.append('..')
 import json
 import h5py
 from versioned_hdf5 import VersionedHDF5File
-from generate_data_deterministic import TestVersionedDatasetPerformance as TVDP
+from generate_data import TestVersionedDatasetPerformance as TVDP
 
 
 # auxiliary code to format file sizes
@@ -49,6 +47,7 @@ class PerformanceTests:
         else:
             self.verbose = False
 
+
     def create_files(self, versions=True):
         tests = []
         msg = ""
@@ -67,11 +66,11 @@ class PerformanceTests:
                         h5pyfile = h5py.File(filename, 'r')
                         msg += " exists - unable to compute creation time.\n"
                         t = 0
-                    except:
+                    except Exception:
                         msg += " not available. Creating new file.\n"
                         # t0 = time.time()
                         t = self.testfun(n, name, chunk_size, c,
-                                         versions=versions)
+                                         versions=versions, deterministic=True)
                         # t = time.time()-t0
                         h5pyfile = h5py.File(filename, 'r')
                     if versions:
@@ -198,26 +197,17 @@ class test_large_fraction_constant_sparse(PerformanceTests):
 
 if __name__ == "__main__":
 
-#    tests = [test_small_fraction_changes_sparse,
-#             test_large_fraction_constant_sparse]
-
-#    for test in tests:
-#        testcase = test(num_transactions=[50, 100, 500, 1000, 5000, 10000],
-#                        exponents=[14],
-#                        compression=[None,])
-#        summary, msg = testcase.create_files(versions=True)
-#        testcase.save(summary, f"{testcase.testname}")
-#        summary, msg = testcase.create_files(versions=False)
-#        testcase.save(summary, f"{testcase.testname}_no_versions")
-
-    tests = [test_mostly_appends_dense]
+    tests = [test_mostly_appends_dense,
+             test_small_fraction_changes_sparse,
+             test_large_fraction_changes_sparse,
+             test_large_fraction_constant_sparse,
+             test_mostly_appends_sparse]
 
     for test in tests:
-        testcase = test(num_transactions=[1000],
-                        exponents=[14],
-                        compression=[None,])
+        testcase = test(num_transactions=[2],
+                        exponents=[12, ],
+                        compression=[None, ])
         summary, msg = testcase.create_files(versions=True)
         testcase.save(summary, f"{testcase.testname}")
         summary, msg = testcase.create_files(versions=False)
         testcase.save(summary, f"{testcase.testname}_no_versions")
-

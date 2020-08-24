@@ -3,9 +3,9 @@
 [![Build
 Status](https://travis-ci.org/deshaw/versioned-hdf5.svg?branch=master)](https://travis-ci.org/deshaw/versioned-hdf5)
 
-Versioned HDF5 provides a versioned abstraction on top of `h5py`. 
+Versioned HDF5 provides a versioned abstraction on top of `h5py`.
 
-This library is still in pre-alpha development. See the documentation at https://deshaw.github.io/versioned-hdf5/.
+See the documentation at https://deshaw.github.io/versioned-hdf5/.
 
 ## History
 This was created by the [D. E. Shaw group](https://www.deshaw.com/) in conjunction with [Quansight](https://www.quansight.com/).
