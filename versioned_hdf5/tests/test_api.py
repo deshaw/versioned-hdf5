@@ -1175,7 +1175,7 @@ def test_closes(vfile):
 
 
 def test_scalar_dataset():
-    for typ, data1, data2 in [
+    for data1, data2 in [
             (b'baz', b'foo'),
             (np.asarray('baz', dtype='S'), np.asarray('foo', dtype='S')),
             (1.5, 2.3),
