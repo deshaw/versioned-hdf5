@@ -19,6 +19,7 @@ def initialize(f):
     versions.create_group('__first_version__')
     versions.attrs['current_version'] = '__first_version__'
 
+
 def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
     chunks=True, compression=None, compression_opts=None, fillvalue=None):
 
@@ -163,23 +164,30 @@ def create_virtual_dataset(f, version_name, name, slices, attrs=None, fillvalue=
     chunks = tuple(raw_data.attrs['chunks'])
     slices = {c: s.reduce() for c, s in slices.items()}
 
-    shape = tuple([max(c.args[i].stop for c in slices) for i in range(len(chunks))])
-    # Chunks in the raw dataset are expanded along the first dimension only.
-    # Since the chunks are pointed to by virtual datasets, it doesn't make
-    # sense to expand the chunks in the raw dataset along multiple dimensions
-    # (the true layout of the chunks in the raw dataset is irrelevant).
-    for c, s in slices.items():
-        if len(c.args[0]) != len(s):
-            raise ValueError(f"Inconsistent slices dictionary ({c.args[0]}, {s})")
+    if len(raw_data) == 0:
+        shape = ()
+        layout = VirtualLayout((1,), dtype=raw_data.dtype)
+        vs = VirtualSource('.', name=raw_data.name, shape=(1,), dtype=raw_data.dtype)
+        layout[0] = vs[()]
+    else:
+        shape = tuple([max(c.args[i].stop for c in slices) for i in range(len(chunks))])
 
-    layout = VirtualLayout(shape, dtype=raw_data.dtype)
-    vs = VirtualSource('.', name=raw_data.name, shape=raw_data.shape, dtype=raw_data.dtype)
+        # Chunks in the raw dataset are expanded along the first dimension only.
+        # Since the chunks are pointed to by virtual datasets, it doesn't make
+        # sense to expand the chunks in the raw dataset along multiple dimensions
+        # (the true layout of the chunks in the raw dataset is irrelevant).
+        for c, s in slices.items():
+            if len(c.args[0]) != len(s):
+                raise ValueError(f"Inconsistent slices dictionary ({c.args[0]}, {s})")
 
-    for c, s in slices.items():
-        # TODO: This needs to handle more than one dimension
-        idx = Tuple(s, *Tuple(*[slice(0, i) for i in shape]).as_subindex(c).args[1:])
-        assert c.newshape(shape) == vs[idx.raw].shape, (c, shape, s)
-        layout[c.raw] = vs[idx.raw]
+        layout = VirtualLayout(shape, dtype=raw_data.dtype)
+        vs = VirtualSource('.', name=raw_data.name, shape=raw_data.shape, dtype=raw_data.dtype)
+
+        for c, s in slices.items():
+            # TODO: This needs to handle more than one dimension
+            idx = Tuple(s, *Tuple(*[slice(0, i) for i in shape]).as_subindex(c).args[1:])
+            assert c.newshape(shape) == vs[idx.raw].shape, (c, shape, s)
+            layout[c.raw] = vs[idx.raw]
 
     dtype = raw_data.dtype
     if dtype.metadata and ('vlen' in dtype.metadata or 'h5py_encoding' in dtype.metadata):
