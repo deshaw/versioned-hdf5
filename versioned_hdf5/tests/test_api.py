@@ -522,9 +522,10 @@ def test_resize_unaligned(vfile):
             assert_equal(group[ds_name][:], np.arange((i + 1) * 1000))
 
 
-def test_resize_multiple_dimensions(vfile):
+def test_resize_multiple_dimensions(tmp_path, h5file):
     # Test semantics against raw HDF5
 
+    vfile = VersionedHDF5File(h5file)
     shapes = range(5, 25, 5)  # 5, 10, 15, 20
     chunks = (10, 10, 10)
     for i, (oldshape, newshape) in\
@@ -577,6 +578,13 @@ def test_resize_multiple_dimensions(vfile):
         assert version3_2[f'dataset3_{i}'].shape == newshape
         assert_equal(version3_2[f'dataset3_{i}'][()], new_data)
 
+    vfile.close()
+    try:
+        h5file.close()
+    except ValueError:
+        # Work around a bug in h5py. See
+        # https://github.com/deshaw/versioned-hdf5/pull/125
+        pass
 
 def test_getitem(vfile):
     data = np.arange(2*DEFAULT_CHUNK_SIZE)
