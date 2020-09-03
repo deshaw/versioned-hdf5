@@ -3,6 +3,7 @@ from ndindex import Slice, Tuple, ndindex
 from itertools import product
 import math
 
+
 # TODO: Move this into ndindex
 def split_slice(s, chunk):
     """
@@ -13,6 +14,7 @@ def split_slice(s, chunk):
     start, stop, step = s.args
     for i in range(math.floor(start/chunk), math.ceil(stop/chunk)):
         yield i, s.as_subindex(Slice(i*chunk, (i + 1)*chunk))
+
 
 def as_subchunks(idx, shape, chunks):
     """
@@ -80,14 +82,18 @@ def split_chunks(shape, chunks):
     if len(shape) != len(chunks):
         raise ValueError("chunks shape must equal the array shape")
     if len(shape) == 0:
-        raise NotImplementedError("Scalar datasets")
+        # chunk_size = 1
+        yield Tuple(Slice(0))
+    else:
+        if len(shape) != len(chunks):
+            raise ValueError("chunks shape must equal the array shape")
 
     d = [math.ceil(i/c) for i, c in zip(shape, chunks)]
     for c in product(*[range(i) for i in d]):
         # c = (0, 0, 0), (0, 0, 1), ...
-        yield Tuple(*[Slice(chunk_size*i, min(chunk_size*(i + 1), n), 1) for
-    n, chunk_size,
+        yield Tuple(*[Slice(chunk_size*i, min(chunk_size*(i + 1), n), 1) for n, chunk_size,
                       i in zip(shape, chunks, c)])
+
 
 def spaceid_to_slice(space):
     """
