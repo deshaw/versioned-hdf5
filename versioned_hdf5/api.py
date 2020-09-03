@@ -163,7 +163,7 @@ class VersionedHDF5File:
 
         try:
             yield group
-            group._committed = True
+            group.close()
             commit_version(group, group.datasets(), make_current=make_current,
                            chunks=group.chunks,
                            compression=group.compression,

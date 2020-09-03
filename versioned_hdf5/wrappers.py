@@ -19,17 +19,17 @@ import numpy as np
 from collections import defaultdict
 import posixpath as pp
 import warnings
+from weakref import WeakValueDictionary
 
 from .backend import DEFAULT_CHUNK_SIZE
 from .slicetools import spaceid_to_slice, as_subchunks, split_chunks
 
-_groups = {}
+_groups = WeakValueDictionary({})
 class InMemoryGroup(Group):
     def __new__(cls, bind):
         # Make sure each group only corresponds to one InMemoryGroup instance.
         # Otherwise a new instance would lose track of any datasets or
         # subgroups created in the old one.
-        # TODO: Garbage collect closed groups.
         if bind in _groups:
             return _groups[bind]
         obj = super().__new__(cls)
@@ -49,6 +49,9 @@ class InMemoryGroup(Group):
         self._initialized = True
         self._committed = False
         super().__init__(bind)
+
+    def close(self):
+        self._committed = True
 
     # Based on Group.__repr__
     def __repr__(self):
@@ -185,6 +188,13 @@ class InMemoryGroup(Group):
             yield i
 
     def __contains__(self, item):
+        item = item + '/'
+        root = self.versioned_root.name + '/'
+        if item.startswith(root):
+            item = item[len(root):]
+            if not item.rstrip('/'):
+                return self == self.versioned_root
+        item = item.rstrip('/')
         dirname, data_name = pp.split(item)
         if dirname not in ['', '/']:
             return dirname in self and data_name in self[dirname]

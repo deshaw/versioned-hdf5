@@ -522,9 +522,10 @@ def test_resize_unaligned(vfile):
             assert_equal(group[ds_name][:], np.arange((i + 1) * 1000))
 
 
-def test_resize_multiple_dimensions(vfile):
+def test_resize_multiple_dimensions(tmp_path, h5file):
     # Test semantics against raw HDF5
 
+    vfile = VersionedHDF5File(h5file)
     shapes = range(5, 25, 5)  # 5, 10, 15, 20
     chunks = (10, 10, 10)
     for i, (oldshape, newshape) in\
@@ -577,6 +578,13 @@ def test_resize_multiple_dimensions(vfile):
         assert version3_2[f'dataset3_{i}'].shape == newshape
         assert_equal(version3_2[f'dataset3_{i}'][()], new_data)
 
+    vfile.close()
+    try:
+        h5file.close()
+    except ValueError:
+        # Work around a bug in h5py. See
+        # https://github.com/deshaw/versioned-hdf5/pull/125
+        pass
 
 def test_getitem(vfile):
     data = np.arange(2*DEFAULT_CHUNK_SIZE)
@@ -844,35 +852,34 @@ def test_groups(vfile):
         assert set(group['group1']['group2']) == set(group['group1/group2']) == {'group3', 'test_data2', 'test_data4'}
         assert list(group['group1']['group2']['group3']) == list(group['group1/group2/group3']) == ['test_data3']
 
-    version = vfile['version6']
-    assert_equal(version['group1']['test_data1'], data)
-    assert_equal(version['group1/test_data1'], data)
+        version = vfile['version6']
+        assert_equal(version['group1']['test_data1'], data)
+        assert_equal(version['group1/test_data1'], data)
 
-    assert_equal(version['group1']['group2']['test_data2'], 2*data)
-    assert_equal(version['group1/group2']['test_data2'], 2*data)
-    assert_equal(version['group1']['group2/test_data2'], 2*data)
-    assert_equal(version['group1/group2/test_data2'], 2*data)
+        assert_equal(version['group1']['group2']['test_data2'], 2*data)
+        assert_equal(version['group1/group2']['test_data2'], 2*data)
+        assert_equal(version['group1']['group2/test_data2'], 2*data)
+        assert_equal(version['group1/group2/test_data2'], 2*data)
 
-    assert_equal(version['group1']['group2']['group3']['test_data3'], 3*data)
-    assert_equal(version['group1/group2']['group3']['test_data3'], 3*data)
-    assert_equal(version['group1/group2']['group3/test_data3'], 3*data)
-    assert_equal(version['group1']['group2/group3/test_data3'], 3*data)
-    assert_equal(version['group1/group2/group3/test_data3'], 3*data)
+        assert_equal(version['group1']['group2']['group3']['test_data3'], 3*data)
+        assert_equal(version['group1/group2']['group3']['test_data3'], 3*data)
+        assert_equal(version['group1/group2']['group3/test_data3'], 3*data)
+        assert_equal(version['group1']['group2/group3/test_data3'], 3*data)
+        assert_equal(version['group1/group2/group3/test_data3'], 3*data)
 
-    assert_equal(version['group1']['group2']['test_data4'], 4*data)
-    assert_equal(version['group1/group2']['test_data4'], 4*data)
-    assert_equal(version['group1']['group2/test_data4'], 4*data)
-    assert_equal(version['group1/group2/test_data4'], 4*data)
+        assert_equal(version['group1']['group2']['test_data4'], 4*data)
+        assert_equal(version['group1/group2']['test_data4'], 4*data)
+        assert_equal(version['group1']['group2/test_data4'], 4*data)
+        assert_equal(version['group1/group2/test_data4'], 4*data)
 
-    assert list(version) == ['group1']
-    assert set(version['group1']) == {'group2', 'test_data1'}
-    assert set(version['group1']['group2']) == set(version['group1/group2']) == {'group3', 'test_data2', 'test_data4'}
-    assert list(version['group1']['group2']['group3']) == list(version['group1/group2/group3']) == ['test_data3']
+        assert list(version) == ['group1']
+        assert set(version['group1']) == {'group2', 'test_data1'}
+        assert set(version['group1']['group2']) == set(version['group1/group2']) == {'group3', 'test_data2', 'test_data4'}
+        assert list(version['group1']['group2']['group3']) == list(version['group1/group2/group3']) == ['test_data3']
 
-    with vfile.stage_version('version-bad', '') as group:
-        raises(ValueError, lambda: group.create_dataset('/group1/test_data', data=data))
-        raises(ValueError, lambda: group.create_group('/group1'))
-
+        with vfile.stage_version('version-bad', '') as group:
+            raises(ValueError, lambda: group.create_dataset('/group1/test_data', data=data))
+            raises(ValueError, lambda: group.create_group('/group1'))
 
 def test_group_contains(vfile):
     data = np.ones(2*DEFAULT_CHUNK_SIZE)
@@ -909,21 +916,37 @@ def test_group_contains(vfile):
     version1 = vfile['version1']
     version2 = vfile['version2']
     assert 'group1' in version1
+    assert 'group1/' in version1
     assert 'group1' in version2
+    assert 'group1/' in version2
     assert 'group2' in version1['group1']
+    assert 'group2/' in version1['group1']
     assert 'group2' in version2['group1']
+    assert 'group2/' in version2['group1']
     assert 'group3' not in version1['group1']
+    assert 'group3/' not in version1['group1']
     assert 'group3' in version2['group1']
+    assert 'group3/' in version2['group1']
     assert 'group1/group2' in version1
+    assert 'group1/group2/' in version1
     assert 'group1/group2' in version2
+    assert 'group1/group2/' in version2
     assert 'group1/group3' not in version1
+    assert 'group1/group3/' not in version1
     assert 'group1/group3' in version2
+    assert 'group1/group3/' in version2
     assert 'group1/group2/test_data' in version1
+    assert 'group1/group2/test_data/' in version1
     assert 'group1/group2/test_data' in version2
+    assert 'group1/group2/test_data/' in version2
     assert 'group1/group3/test_data' not in version1
+    assert 'group1/group3/test_data/' not in version1
     assert 'group1/group3/test_data' not in version2
+    assert 'group1/group3/test_data/' not in version2
     assert 'group1/group3/test_data2' not in version1
+    assert 'group1/group3/test_data2/' not in version1
     assert 'group1/group3/test_data2' in version2
+    assert 'group1/group3/test_data2/' in version2
     assert 'test_data' in version1['group1/group2']
     assert 'test_data' in version2['group1/group2']
     assert 'test_data' not in version1
@@ -934,6 +957,14 @@ def test_group_contains(vfile):
     assert 'test_data2' not in version1['group1/group2']
     assert 'test_data2' not in version2['group1/group2']
 
+    assert '/_version_data/versions/version1/' in version1
+    assert '/_version_data/versions/version1' in version1
+    assert '/_version_data/versions/version1/' not in version2
+    assert '/_version_data/versions/version1' not in version2
+    assert '/_version_data/versions/version1/group1' in version1
+    assert '/_version_data/versions/version1/group1' not in version2
+    assert '/_version_data/versions/version1/group1/group2' in version1
+    assert '/_version_data/versions/version1/group1/group2' not in version2
 
 @mark.setup_args(file_name='test.hdf5')
 def test_moved_file(tmp_path, h5file):
