@@ -1353,3 +1353,17 @@ def test_string_dtypes():
             assert file['1']['name'][10] == typ(), dt.metadata
             assert file['1']['name'][11] == typ(), dt.metadata
         f.close()
+
+def test_empty(vfile):
+    with vfile.stage_version('version1') as g:
+        g['data'] = np.arange(10)
+        g.create_dataset('data2', data=np.empty((1, 0, 2)), chunks=(5, 5, 5))
+        assert_equal(g['data2'][()], np.empty((1, 0, 2)))
+    assert_equal(vfile['version1']['data2'][()], np.empty((1, 0, 2)))
+
+    with vfile.stage_version('version2') as g:
+        g['data'].resize((0,))
+        assert_equal(g['data'][()], np.empty((0,)))
+
+    assert_equal(vfile['version2']['data'][()], np.empty((0,)))
+    assert_equal(vfile['version2']['data2'][()], np.empty((1, 0, 2)))
