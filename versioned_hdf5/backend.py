@@ -124,7 +124,7 @@ def write_dataset_chunks(f, name, data_dict):
     chunk_size = chunks[0]
 
     shape = tuple(max(c.args[i].stop for c in data_dict) for i in
-    range(len(chunks)))
+                  range(len(chunks)))
     all_chunks = list(split_chunks(shape, chunks))
     for c in all_chunks:
         if c not in data_dict:

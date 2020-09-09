@@ -819,21 +819,27 @@ class InMemoryDatasetID(h5d.DatasetID):
 
         dcpl = self.get_create_plist()
         # Same as dataset.get_virtual_sources
-        virtual_sources = [
-                VDSmap(dcpl.get_virtual_vspace(j),
-                       dcpl.get_virtual_filename(j),
-                       dcpl.get_virtual_dsetname(j),
-                       dcpl.get_virtual_srcspace(j))
-                for j in range(dcpl.get_virtual_count())]
+        if 0 in self._shape:
+            # Work around https://github.com/h5py/h5py/issues/1660
+            empty_idx = Tuple().expand(self._shape)
+            slice_map = {empty_idx: empty_idx}
+            raw_data_name = dcpl.get_virtual_dsetname(0)
+        else:
+            virtual_sources = [
+                    VDSmap(dcpl.get_virtual_vspace(j),
+                           dcpl.get_virtual_filename(j),
+                           dcpl.get_virtual_dsetname(j),
+                           dcpl.get_virtual_srcspace(j))
+                    for j in range(dcpl.get_virtual_count())]
 
-        slice_map = {spaceid_to_slice(i.vspace): spaceid_to_slice(i.src_space)
-                     for i in virtual_sources}
+            slice_map = {spaceid_to_slice(i.vspace): spaceid_to_slice(i.src_space)
+                         for i in virtual_sources}
+            raw_data_name = virtual_sources[0].dset_name
+            assert all(i.dset_name == raw_data_name for i in virtual_sources)
 
         # slice_map = {i.args[0]: j.args[0] for i, j in slice_map.items()}
         fid = h5i.get_file_id(self)
         g = Group(fid)
-        raw_data_name = virtual_sources[0].dset_name
-        assert all(i.dset_name == raw_data_name for i in virtual_sources)
         self.raw_data = g[raw_data_name]
         self.chunks = tuple(self.raw_data.attrs['chunks'])
 

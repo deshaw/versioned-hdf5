@@ -89,6 +89,8 @@ def split_chunks(shape, chunks):
             raise ValueError("chunks shape must equal the array shape")
 
     d = [math.ceil(i/c) for i, c in zip(shape, chunks)]
+    if 0 in d:
+        yield Tuple(*[Slice(0, bool(i)*chunk_size, 1) for i, chunk_size in zip(d, chunks)]).expand(shape)
     for c in product(*[range(i) for i in d]):
         # c = (0, 0, 0), (0, 0, 1), ...
         yield Tuple(*[Slice(chunk_size*i, min(chunk_size*(i + 1), n), 1) for n, chunk_size,
