@@ -96,6 +96,9 @@ class Hashtable(MutableMapping):
             value = value.args[0]
         if not isinstance(value, (slice, Slice)):
             raise TypeError("value must be a slice object")
+        value = Slice(value)
+        if value.isempty():
+            return
         if value.step not in [1, None]:
             raise ValueError("only step-1 slices are supported")
 
