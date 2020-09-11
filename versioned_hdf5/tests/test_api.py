@@ -1367,3 +1367,39 @@ def test_empty(vfile):
 
     assert_equal(vfile['version2']['data'][()], np.empty((0,)))
     assert_equal(vfile['version2']['data2'][()], np.empty((1, 0, 2)))
+
+
+def test_read_only():
+    with setup('test.hdf5', 'w') as f:
+        file = VersionedHDF5File(f)
+        timestamp = datetime.datetime.now(datetime.timezone.utc)
+        with file.stage_version('version1', timestamp=timestamp) as g:
+            g['data'] = [0, 1, 2]
+
+        with raises(ValueError):
+            g['data'][0] = 1
+        with raises(ValueError):
+            g['data2'] = [1, 2, 3]
+
+        with raises(ValueError):
+            file['version1']['data'][0] = 1
+        with raises(ValueError):
+            file['version1']['data2'] = [1, 2, 3]
+
+        with raises(ValueError):
+            file[timestamp]['data'][0] = 1
+        with raises(ValueError):
+            file[timestamp]['data2'] = [1, 2, 3]
+
+    with h5py.File('test.hdf5', 'r+') as f:
+        file = VersionedHDF5File(f)
+
+        with raises(ValueError):
+            file['version1']['data'][0] = 1
+        with raises(ValueError):
+            file['version1']['data2'] = [1, 2, 3]
+
+        with raises(ValueError):
+            file[timestamp]['data'][0] = 1
+        with raises(ValueError):
+            file[timestamp]['data2'] = [1, 2, 3]
