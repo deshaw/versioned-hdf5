@@ -332,7 +332,7 @@ def test_unmodified(vfile):
     assert_equal(vfile['version2']['test_data2'][1:], test_data[1:])
 
 
-def test_delete(vfile):
+def test_delete_version(vfile):
     test_data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
                                 2*np.ones((DEFAULT_CHUNK_SIZE,)),
                                 3*np.ones((DEFAULT_CHUNK_SIZE,))))
@@ -1367,3 +1367,86 @@ def test_empty(vfile):
 
     assert_equal(vfile['version2']['data'][()], np.empty((0,)))
     assert_equal(vfile['version2']['data2'][()], np.empty((1, 0, 2)))
+
+def test_delete_datasets(vfile):
+    data1 = np.arange(10)
+    data2 = np.zeros(20, dtype=int)
+    with vfile.stage_version('version1') as g:
+        g['data'] = data1
+        g.create_group('group1/group2')
+        g['group1']['data1'] = data1
+        g['group1']['group2']['data1'] = data1
+
+    with vfile.stage_version('del_data') as g:
+        del g['data']
+
+    with vfile.stage_version('del_data1', 'version1') as g:
+        del g['group1/group2/data1']
+
+    with vfile.stage_version('del_group2', 'version1') as g:
+        del g['group1/group2']
+
+    with vfile.stage_version('del_group1', 'version1') as g:
+        del g['group1/group2']
+
+    with vfile.stage_version('version2', 'del_data') as g:
+        g['data'] = np.zeros(20, dtype=int)
+
+    with vfile.stage_version('version3', 'del_data1') as g:
+        g.create_group('group1/group2')
+        g['group1/group2/data1'] = data2
+
+    with vfile.stage_version('version4', 'del_group2') as g:
+        g.create_group('group1/group2')
+        g['group1/group2/data1'] = data2
+
+    with vfile.stage_version('version5', 'del_group1') as g:
+        g.create_group('group1/group2')
+        g['group1/group2/data1'] = data2
+
+    assert list(vfile['version1']) == ['group1', 'data']
+    assert list(vfile['version1']['group1']) == ['group2']
+    assert list(vfile['version1']['group1']['group2']) == ['data1']
+    assert_equal(vfile['version1']['data'][:], data1)
+    assert_equal(vfile['version1']['group1/group2/data'][:], data1)
+
+    assert list(vfile['del_data']) == ['group1']
+    assert list(vfile['del_data']['group1']) == ['group2']
+    assert list(vfile['del_data']['group1']['group2']) == ['data1']
+    assert_equal(vfile['del_data']['group1/group2/data'][:], data1)
+
+    assert list(vfile['del_data1']) == ['group1', 'data']
+    assert list(vfile['del_data1']['group1']) == ['group2']
+    assert list(vfile['del_data1']['group1']['group2']) == []
+    assert_equal(vfile['del_data1']['data'][:], data1)
+
+    assert list(vfile['del_group2']) == ['group1', 'data']
+    assert list(vfile['del_group2']['group1']) == []
+    assert_equal(vfile['del_group2']['data'][:], data1)
+
+    assert list(vfile['del_group1']) == ['data']
+    assert_equal(vfile['del_group1']['data'][:], data1)
+
+    assert list(vfile['version2']) == ['group1', 'data']
+    assert list(vfile['version2']['group1']) == ['group2']
+    assert list(vfile['version2']['group1']['group2']) == ['data1']
+    assert_equal(vfile['version2']['data'][:], data2)
+    assert_equal(vfile['version2']['group1/group2/data'][:], data1)
+
+    assert list(vfile['version3']) == ['group1', 'data']
+    assert list(vfile['version3']['group1']) == ['group2']
+    assert list(vfile['version3']['group1']['group2']) == ['data1']
+    assert_equal(vfile['version3']['data'][:], data1)
+    assert_equal(vfile['version3']['group1/group2/data'][:], data2)
+
+    assert list(vfile['version4']) == ['group1', 'data']
+    assert list(vfile['version4']['group1']) == ['group2']
+    assert list(vfile['version4']['group1']['group2']) == ['data1']
+    assert_equal(vfile['version4']['data'][:], data1)
+    assert_equal(vfile['version4']['group1/group2/data'][:], data2)
+
+    assert list(vfile['version5']) == ['group1', 'data']
+    assert list(vfile['version5']['group1']) == ['group2']
+    assert list(vfile['version5']['group1']['group2']) == ['data1']
+    assert_equal(vfile['version5']['data'][:], data1)
+    assert_equal(vfile['version5']['group1/group2/data'][:], data2)

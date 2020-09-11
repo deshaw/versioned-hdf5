@@ -114,8 +114,23 @@ class InMemoryGroup(Group):
 
     def __delitem__(self, name):
         self._check_committed()
+        dirname, basename = pp.split(name)
+        if dirname:
+            if not basename:
+                del self[dirname]
+            else:
+                del self[dirname][basename]
+            return
+
         if name in self._data:
             del self._data[name]
+        elif name in self._subgroups:
+            for i in self[name]:
+                del self[name][i]
+            del self._subgroups[name]
+            super().__delitem__(name)
+        else:
+            raise KeyError(f"{name!r} is not in {self}")
 
     @property
     def parent(self):
