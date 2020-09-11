@@ -1367,3 +1367,10 @@ def test_empty(vfile):
 
     assert_equal(vfile['version2']['data'][()], np.empty((0,)))
     assert_equal(vfile['version2']['data2'][()], np.empty((1, 0, 2)))
+
+def test_auto_create_group(vfile):
+    with vfile.stage_version('version1') as g:
+        g['a/b/c'] = [0, 1, 2]
+        assert_equal(g['a']['b']['c'][:], [0, 1, 2])
+
+    assert_equal(vfile['version1']['a']['b']['c'][:], [0, 1, 2])
