@@ -1374,7 +1374,6 @@ def test_delete_datasets(vfile):
     with vfile.stage_version('version1') as g:
         g['data'] = data1
         g.create_group('group1/group2')
-        g['group1']['data1'] = data1
         g['group1']['group2']['data1'] = data1
 
     with vfile.stage_version('del_data') as g:
@@ -1387,13 +1386,12 @@ def test_delete_datasets(vfile):
         del g['group1/group2']
 
     with vfile.stage_version('del_group1', 'version1') as g:
-        del g['group1/group2']
+        del g['group1/']
 
     with vfile.stage_version('version2', 'del_data') as g:
         g['data'] = np.zeros(20, dtype=int)
 
     with vfile.stage_version('version3', 'del_data1') as g:
-        g.create_group('group1/group2')
         g['group1/group2/data1'] = data2
 
     with vfile.stage_version('version4', 'del_group2') as g:
@@ -1404,49 +1402,49 @@ def test_delete_datasets(vfile):
         g.create_group('group1/group2')
         g['group1/group2/data1'] = data2
 
-    assert list(vfile['version1']) == ['group1', 'data']
+    assert set(vfile['version1']) == {'group1', 'data'}
     assert list(vfile['version1']['group1']) == ['group2']
     assert list(vfile['version1']['group1']['group2']) == ['data1']
     assert_equal(vfile['version1']['data'][:], data1)
-    assert_equal(vfile['version1']['group1/group2/data'][:], data1)
+    assert_equal(vfile['version1']['group1/group2/data1'][:], data1)
 
     assert list(vfile['del_data']) == ['group1']
     assert list(vfile['del_data']['group1']) == ['group2']
     assert list(vfile['del_data']['group1']['group2']) == ['data1']
-    assert_equal(vfile['del_data']['group1/group2/data'][:], data1)
+    assert_equal(vfile['del_data']['group1/group2/data1'][:], data1)
 
-    assert list(vfile['del_data1']) == ['group1', 'data']
+    assert set(vfile['del_data1']) == {'group1', 'data'}
     assert list(vfile['del_data1']['group1']) == ['group2']
     assert list(vfile['del_data1']['group1']['group2']) == []
     assert_equal(vfile['del_data1']['data'][:], data1)
 
-    assert list(vfile['del_group2']) == ['group1', 'data']
+    assert set(vfile['del_group2']) == {'group1', 'data'}
     assert list(vfile['del_group2']['group1']) == []
     assert_equal(vfile['del_group2']['data'][:], data1)
 
     assert list(vfile['del_group1']) == ['data']
     assert_equal(vfile['del_group1']['data'][:], data1)
 
-    assert list(vfile['version2']) == ['group1', 'data']
+    assert set(vfile['version2']) == {'group1', 'data'}
     assert list(vfile['version2']['group1']) == ['group2']
     assert list(vfile['version2']['group1']['group2']) == ['data1']
     assert_equal(vfile['version2']['data'][:], data2)
-    assert_equal(vfile['version2']['group1/group2/data'][:], data1)
+    assert_equal(vfile['version2']['group1/group2/data1'][:], data1)
 
-    assert list(vfile['version3']) == ['group1', 'data']
+    assert set(vfile['version3']) == {'group1', 'data'}
     assert list(vfile['version3']['group1']) == ['group2']
     assert list(vfile['version3']['group1']['group2']) == ['data1']
     assert_equal(vfile['version3']['data'][:], data1)
-    assert_equal(vfile['version3']['group1/group2/data'][:], data2)
+    assert_equal(vfile['version3']['group1/group2/data1'][:], data2)
 
-    assert list(vfile['version4']) == ['group1', 'data']
+    assert set(vfile['version4']) == {'group1', 'data'}
     assert list(vfile['version4']['group1']) == ['group2']
     assert list(vfile['version4']['group1']['group2']) == ['data1']
     assert_equal(vfile['version4']['data'][:], data1)
-    assert_equal(vfile['version4']['group1/group2/data'][:], data2)
+    assert_equal(vfile['version4']['group1/group2/data1'][:], data2)
 
-    assert list(vfile['version5']) == ['group1', 'data']
+    assert set(vfile['version5']) == {'group1', 'data'}
     assert list(vfile['version5']['group1']) == ['group2']
     assert list(vfile['version5']['group1']['group2']) == ['data1']
     assert_equal(vfile['version5']['data'][:], data1)
-    assert_equal(vfile['version5']['group1/group2/data'][:], data2)
+    assert_equal(vfile['version5']['group1/group2/data1'][:], data2)
