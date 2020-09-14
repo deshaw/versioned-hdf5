@@ -98,6 +98,8 @@ class InMemoryGroup(Group):
         self._check_committed()
         dirname, basename = pp.split(name)
         if dirname:
+            if dirname not in self:
+                self.create_group(dirname)
             self[dirname][basename] = obj
             return
 

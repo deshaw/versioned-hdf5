@@ -1484,3 +1484,10 @@ def test_delete_datasets(vfile):
     assert list(vfile['version5']['group1']['group2']) == ['data1']
     assert_equal(vfile['version5']['data'][:], data1)
     assert_equal(vfile['version5']['group1/group2/data1'][:], data2)
+
+def test_auto_create_group(vfile):
+    with vfile.stage_version('version1') as g:
+        g['a/b/c'] = [0, 1, 2]
+        assert_equal(g['a']['b']['c'][:], [0, 1, 2])
+
+    assert_equal(vfile['version1']['a']['b']['c'][:], [0, 1, 2])
