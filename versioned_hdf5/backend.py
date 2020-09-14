@@ -79,10 +79,16 @@ def write_dataset(f, name, data, chunks=None, compression=None,
         if chunks != tuple(ds.attrs['chunks']):
             raise ValueError("Chunk size specified but doesn't match already existing chunk size")
 
-    if compression or compression_opts:
+    if compression and compression != ds.compression or compression_opts and compression_opts != ds.compression_opts:
         raise ValueError("Compression options can only be specified for the first version of a dataset")
     if fillvalue is not None and fillvalue != ds.fillvalue:
-        raise ValueError(f"fillvalues do not match ({fillvalue} != {ds.fillvalue})")
+        dtype = ds.dtype
+        if dtype.metadata and ('vlen' in dtype.metadata or 'h5py_encoding' in dtype.metadata):
+            # Variable length string dtype. The ds.fillvalue will be None in
+            # this case (see create_virtual_dataset() below)
+            pass
+        else:
+            raise ValueError(f"fillvalues do not match ({fillvalue} != {ds.fillvalue})")
     if data.dtype != ds.dtype:
         raise ValueError(f"dtypes do not match ({data.dtype} != {ds.dtype})")
     # TODO: Handle more than one dimension

@@ -26,7 +26,7 @@ from .slicetools import spaceid_to_slice, as_subchunks, split_chunks
 
 _groups = WeakValueDictionary({})
 class InMemoryGroup(Group):
-    def __new__(cls, bind):
+    def __new__(cls, bind, _committed=False):
         # Make sure each group only corresponds to one InMemoryGroup instance.
         # Otherwise a new instance would lose track of any datasets or
         # subgroups created in the old one.
@@ -37,7 +37,7 @@ class InMemoryGroup(Group):
         _groups[bind] = obj
         return obj
 
-    def __init__(self, bind):
+    def __init__(self, bind, _committed=False):
         if self._initialized:
             return
         self._data = {}
@@ -47,7 +47,7 @@ class InMemoryGroup(Group):
         self._compression_opts = defaultdict(type(None))
         self._parent = None
         self._initialized = True
-        self._committed = False
+        self._committed = _committed
         super().__init__(bind)
 
     def close(self):
@@ -116,8 +116,23 @@ class InMemoryGroup(Group):
 
     def __delitem__(self, name):
         self._check_committed()
+        dirname, basename = pp.split(name)
+        if dirname:
+            if not basename:
+                del self[dirname]
+            else:
+                del self[dirname][basename]
+            return
+
         if name in self._data:
             del self._data[name]
+        elif name in self._subgroups:
+            for i in self[name]:
+                del self[name][i]
+            del self._subgroups[name]
+            super().__delitem__(name)
+        else:
+            raise KeyError(f"{name!r} is not in {self}")
 
     @property
     def parent(self):

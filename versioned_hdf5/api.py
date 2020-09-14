@@ -88,7 +88,7 @@ class VersionedHDF5File:
             raise KeyError(f"Version {version!r} not found")
 
         # TODO: Don't give an in-memory group if the file is read-only
-        return InMemoryGroup(self._versions[version]._id)
+        return InMemoryGroup(self._versions[version]._id, _committed=True)
 
     def get_version_by_timestamp(self, timestamp):
         for version in self._versions:
@@ -99,7 +99,7 @@ class VersionedHDF5File:
                     ts = timestamp.strftime(TIMESTAMP_FMT)
                 if ts == self[version].attrs['timestamp']:
                     # TODO: Don't give an in-memory group if the file is read-only
-                    return InMemoryGroup(self._versions[version]._id)
+                    return InMemoryGroup(self._versions[version]._id, _committed=True)
         raise KeyError(f"Version with timestamp {timestamp} not found")
 
     def __getitem__(self, item):
