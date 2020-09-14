@@ -579,7 +579,8 @@ class InMemoryDataset(Dataset):
                 arr_idx = c.as_subindex(idx)
                 arr[arr_idx.raw] = self.id.data_dict[c][index.raw]
 
-        return arr
+        # Return arr as a scalar if it is shape () (matching h5py)
+        return arr[()]
 
     @with_phil
     def __setitem__(self, args, val):

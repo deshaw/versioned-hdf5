@@ -1491,3 +1491,16 @@ def test_auto_create_group(vfile):
         assert_equal(g['a']['b']['c'][:], [0, 1, 2])
 
     assert_equal(vfile['version1']['a']['b']['c'][:], [0, 1, 2])
+
+def test_scalar():
+    with setup('test.hdf5', 'w') as f:
+        vfile = VersionedHDF5File(f)
+        with vfile.stage_version('version1') as g:
+            dtype = h5py.special_dtype(vlen=bytes)
+            g.create_dataset('bar', data=np.array(['aaa'], dtype='O'), dtype=dtype)
+
+    with h5py.File('test.hdf5', 'r') as f:
+        vfile = VersionedHDF5File(f)
+        assert isinstance(vfile['version1']['bar'], InMemoryDataset)
+        # Should return a scalar, not a shape () array
+        assert isinstance(vfile['version1']['bar'][0], bytes)
