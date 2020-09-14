@@ -6,3 +6,5 @@ coverage:
       default:
         informational: true
     changes: off
+github_checks:
+    annotations: false
