@@ -31,7 +31,6 @@ $ACTIVITIES = [
             'authors',
             'run_tests',
             'build_docs',
-            'changelog',  # Uses files in the news folder to create a changelog for release
             'annotated_tag', # Creates a tag for the new version number
             'push_tag',  # Pushes the tag up to the $TAG_REMOTE
             'ghrelease',  # Creates a Github release entry for the new tag
@@ -44,6 +43,3 @@ $GITHUB_ORG = 'deshaw'  # Github org for Github releases and conda-forge
 $GITHUB_REPO = 'versioned-hdf5'  # Github repo for Github releases and conda-forge
 $CHANGELOG_FILENAME = 'docs/CHANGELOG.md'
 $AUTHORS_FILENAME = 'AUTHORS.md'
-
-
-

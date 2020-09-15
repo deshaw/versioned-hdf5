@@ -1,20 +1,9 @@
 Versioned HDF5 Change Log
 =========================
 
-v1.0
-----
+1.0 (2020-08-03)
+----------------
 
-**Added:**
+**Major Changes**
 
 * First release of Versioned-HDF5.
-
-**Authors:**
-
-* Aaron Meurer
-* Melissa Weber Mendonça
-* Arvid Bessen
-* Saul Shanabrook
-* Anthony Scopatz
-* Marc Udoff
-
-
