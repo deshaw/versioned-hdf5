@@ -12,7 +12,7 @@ def run_tests():
                            'scipy', 'pytest-doctestplus', 'pytest-flakes',
                            'doctr', 'sphinx']):
         pyflakes .
-        python -We:invalid -We::SyntaxWarning -m compileall -f -q ndindex/
+        python -We:invalid -We::SyntaxWarning -m compileall -f -q versioned-hdf5/
         pytest
 
 @activity
