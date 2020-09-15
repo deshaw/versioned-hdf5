@@ -19,6 +19,7 @@
     <script type="text/x-mathjax-config">MathJax.Hub.Config({"tex2jax": {"inlineMath": [["\\(", "\\)"]], "displayMath": [["\\[", "\\]"]], "processRefs": false, "processEnvironments": false}})</script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Authors" href="authors.html" />
     <link rel="prev" title="Design" href="design.html" />
    
   <link rel="stylesheet" href="_static/custom.css" type="text/css" />
@@ -38,21 +39,40 @@
             
   <div class="section" id="versioned-hdf5-change-log">
 <h1>Versioned HDF5 Change Log<a class="headerlink" href="#versioned-hdf5-change-log" title="Permalink to this headline">¶</a></h1>
-<div class="section" id="v1-0">
-<h2>v1.0<a class="headerlink" href="#v1-0" title="Permalink to this headline">¶</a></h2>
-<p><strong>Added:</strong></p>
+<div class="section" id="id1">
+<h2>1.1 (2020-09-15)<a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="major-changes">
+<h3>Major Changes<a class="headerlink" href="#major-changes" title="Permalink to this headline">¶</a></h3>
+<ul class="simple">
+<li><p>Added support for shape-0 datasets.</p></li>
+<li><p>Fix a memory leak where in-memory datasets would not be garbage collected.</p></li>
+<li><p>Added support for empty datasets (size 0).</p></li>
+<li><p>Make sure versioned data is read-only after closing and reopening the file.</p></li>
+<li><p>Allow deleting groups and datasets between versions. Note that currently
+dataset metadata cannot change between versions, even if they are deleted in
+between.</p></li>
+</ul>
+</div>
+<div class="section" id="minor-changes">
+<h3>Minor Changes<a class="headerlink" href="#minor-changes" title="Permalink to this headline">¶</a></h3>
+<ul class="simple">
+<li><p>Most tests now use a temporary directory instead of writing a file in the
+current directory.</p></li>
+<li><p>Fix logic for handling trailing slashes with <code class="docutils literal notranslate"><span class="pre">in</span></code>.</p></li>
+<li><p>Automatically create intermediate groups when creating a dataset.</p></li>
+<li><p>Make indices that should give a scalar object do so instead of giving a
+shape () array.</p></li>
+</ul>
+</div>
+</div>
+<div class="section" id="id2">
+<h2>1.0 (2020-08-03)<a class="headerlink" href="#id2" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="id3">
+<h3>Major Changes<a class="headerlink" href="#id3" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>First release of Versioned-HDF5.</p></li>
 </ul>
-<p><strong>Authors:</strong></p>
-<ul class="simple">
-<li><p>Aaron Meurer</p></li>
-<li><p>Melissa Weber Mendonça</p></li>
-<li><p>Arvid Bessen</p></li>
-<li><p>Saul Shanabrook</p></li>
-<li><p>Anthony Scopatz</p></li>
-<li><p>Marc Udoff</p></li>
-</ul>
+</div>
 </div>
 </div>
 
@@ -94,7 +114,12 @@
 <li class="toctree-l1"><a class="reference internal" href="performance.html">Performance</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reference.html">API Documentation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="design.html">Design</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Versioned HDF5 Change Log</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Versioned HDF5 Change Log</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id1">1.1 (2020-09-15)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id2">1.0 (2020-08-03)</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="authors.html">Authors</a></li>
 </ul>
 
 <div class="relations">
@@ -102,6 +127,7 @@
 <ul>
   <li><a href="index.html">Documentation overview</a><ul>
       <li>Previous: <a href="design.html" title="previous chapter">Design</a></li>
+      <li>Next: <a href="authors.html" title="next chapter">Authors</a></li>
   </ul></li>
 </ul>
 </div>
@@ -136,7 +162,7 @@
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |
-      <a href="_sources/CHANGELOG.md.txt"
+      <a href="_sources/changelog.md.txt"
           rel="nofollow">Page source</a>
     </div>
 

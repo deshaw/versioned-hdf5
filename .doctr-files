@@ -1,4 +1,3 @@
-./CHANGELOG.html
 ./_images/Performance_tests-File_sizes_105_0.png
 ./_images/Performance_tests-File_sizes_108_0.png
 ./_images/Performance_tests-File_sizes_111_0.png
@@ -46,7 +45,8 @@
 ./_images/Performance_tests-IO_99_0.png
 ./_images/graphviz-80fa658bee6bbb3cd10e1e0c194576cc82ad7e0b.svg
 ./_images/graphviz-ecbd24dcde0b77d41d0b20fef4801659bffcea48.svg
-./_sources/CHANGELOG.md.txt
+./_sources/authors.md.txt
+./_sources/changelog.md.txt
 ./_sources/design.md.txt
 ./_sources/index.rst.txt
 ./_sources/installation.rst.txt
@@ -71,6 +71,8 @@
 ./_static/searchtools.js
 ./_static/underscore-1.3.1.js
 ./_static/underscore.js
+./authors.html
+./changelog.html
 ./design.html
 ./genindex.html
 ./index.html
