@@ -1,0 +1,896 @@
+<!-- See https://github.com/bitprophet/alabaster/issues/166 -->
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>I/O Performance for Versioned-HDF5 Files &#8212; Versioned HDF5  documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="_static/graphviz.css" />
+    <script id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/language_data.js"></script>
+    <script async="async" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <script type="text/x-mathjax-config">MathJax.Hub.Config({"tex2jax": {"inlineMath": [["\\(", "\\)"]], "displayMath": [["\\[", "\\]"]], "processRefs": false, "processEnvironments": false}})</script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="API Documentation" href="reference.html" />
+    <link rel="prev" title="Performance Analysis of VersionedHDF5 Files: File sizes" href="performance_filesizes.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <div class="section" id="i-o-performance-for-versioned-hdf5-files">
+<span id="performance-io"></span><h1>I/O Performance for Versioned-HDF5 Files<a class="headerlink" href="#i-o-performance-for-versioned-hdf5-files" title="Permalink to this headline">¶</a></h1>
+<p>For these tests, we have generated <code class="docutils literal notranslate"><span class="pre">.h5</span></code> data files using the
+<code class="docutils literal notranslate"><span class="pre">generate_data.py</span></code> script from the <a class="reference external" href="https://github.com/deshaw/versioned-hdf5">VersionedHDF5
+repository</a>, using the
+standard options (<a class="reference internal" href="performance.html#performance"><span class="std std-ref">see more details in Performance</span></a>.)</p>
+<p>We performed the following tests:</p>
+<ol class="arabic simple">
+<li><p><a class="reference external" href="#test-1-large-fraction-changes-sparse">Test Large Fraction Changes Sparse</a></p></li>
+<li><p><a class="reference external" href="#test-2-mostly-appends-sparse">Test Mostly Appends Sparse</a></p></li>
+<li><p><a class="reference external" href="#test-3-small-fraction-changes-sparse">Test Small Fraction Changes Sparse</a></p></li>
+<li><p><a class="reference external" href="#test-4-large-fraction-changes-sparse-constant-size">Test Large Fraction Changes (Constant Array Size) Sparse</a></p></li>
+<li><p><a class="reference external" href="#test-5-mostly-appends-dense">Test Mostly Appends Dense</a></p></li>
+</ol>
+<p>The <code class="docutils literal notranslate"><span class="pre">.h5</span></code> files used in these tests should be generated separately,
+using the <code class="docutils literal notranslate"><span class="pre">performance_tests.py</span></code> script from <code class="docutils literal notranslate"><span class="pre">analysis</span></code> folder.</p>
+<div class="section" id="setup">
+<h2>Setup<a class="headerlink" href="#setup" title="Permalink to this headline">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">h5py</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">performance_tests</span>
+<span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
+<span class="kn">from</span> <span class="nn">versioned_hdf5</span> <span class="kn">import</span> <span class="n">VersionedHDF5File</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="test-1-large-fraction-changes-sparse">
+<h2>Test 1: Large fraction changes (sparse)<a class="headerlink" href="#test-1-large-fraction-changes-sparse" title="Permalink to this headline">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">testname</span> <span class="o">=</span> <span class="s2">&quot;test_large_fraction_changes_sparse&quot;</span>
+</pre></div>
+</div>
+<div class="section" id="reading-in-sequential-mode">
+<h3>Reading in sequential mode<a class="headerlink" href="#reading-in-sequential-mode" title="Permalink to this headline">¶</a></h3>
+<p>For this test, we’ll read data from all versions in a file,
+sequentially.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">read_times</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+    <span class="n">h5pyfile</span> <span class="o">=</span> <span class="n">h5py</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s1">&#39;r+&#39;</span><span class="p">)</span>
+    <span class="n">vfile</span> <span class="o">=</span> <span class="n">VersionedHDF5File</span><span class="p">(</span><span class="n">h5pyfile</span><span class="p">)</span>
+    <span class="n">t0</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">vname</span> <span class="ow">in</span> <span class="n">vfile</span><span class="o">.</span><span class="n">_versions</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">vname</span> <span class="o">!=</span> <span class="s1">&#39;__first_version__&#39;</span><span class="p">:</span>
+            <span class="n">version</span> <span class="o">=</span> <span class="n">vfile</span><span class="p">[</span><span class="n">vname</span><span class="p">]</span>
+            <span class="n">group_key</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">version</span><span class="o">.</span><span class="n">keys</span><span class="p">())[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">val</span> <span class="o">=</span> <span class="n">version</span><span class="p">[</span><span class="n">group_key</span><span class="p">][</span><span class="s1">&#39;val&#39;</span><span class="p">]</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span><span class="o">-</span><span class="n">t0</span>
+    <span class="n">h5pyfile</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="n">vfile</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">t</span>
+</pre></div>
+</div>
+<p>To keep this test short, we’ll only analyze the tests using <strong>no
+compression</strong>, and <strong>chunk size</strong> <span class="math notranslate nohighlight">\(2^{14}\)</span>. Note that this can be
+changed in the lines below if desired.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">compression</span> <span class="o">=</span> <span class="s2">&quot;None&quot;</span>
+<span class="n">exponent</span> <span class="o">=</span> <span class="mi">14</span>
+</pre></div>
+</div>
+<p>Plotting with respect to the number of versions, we get the following:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">rtimes</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="mi">1000</span><span class="p">,</span> <span class="mi">5000</span><span class="p">]</span>
+<span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">num_transactions</span><span class="p">:</span>
+    <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">.h5&quot;</span>
+    <span class="n">rtimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_times</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>
+
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">rtimes</span><span class="p">,</span> <span class="s1">&#39;o-&#39;</span><span class="p">)</span>
+<span class="n">selected</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">]</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">)[</span><span class="n">selected</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Sequential read time (in sec) for </span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Number of transactions&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/Performance_tests-IO_15_0.png" src="_images/Performance_tests-IO_15_0.png" />
+<p>As expected, read times increase for files with a larger number of
+versions, but the growth is close to linear.</p>
+</div>
+<div class="section" id="reading-specific-version">
+<h3>Reading specific version<a class="headerlink" href="#reading-specific-version" title="Permalink to this headline">¶</a></h3>
+<p>For this test, we’ll compute the times required to read a specific
+version from the versioned-hdf5 file.</p>
+<p><strong>Note</strong>. Although possible, it is not recommended to read versions
+using integer indexing as the performance of reading versions from their
+name it far superior.</p>
+<p>In the code below you can choose to read a random version from the file,
+or the version which is approximately at half of the version set (for
+reproducibility reasons).</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">read_version</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+    <span class="n">h5pyfile</span> <span class="o">=</span> <span class="n">h5py</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s1">&#39;r+&#39;</span><span class="p">)</span>
+    <span class="n">vfile</span> <span class="o">=</span> <span class="n">VersionedHDF5File</span><span class="p">(</span><span class="n">h5pyfile</span><span class="p">)</span>
+    <span class="c1"># If you want to choose a version at random,</span>
+    <span class="c1"># N = len(vfile._versions.keys())</span>
+    <span class="c1"># index = np.random.randint(0, N)</span>
+    <span class="n">index</span> <span class="o">=</span> <span class="n">n</span> <span class="o">//</span> <span class="mi">2</span>
+    <span class="n">vname</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">vfile</span><span class="o">.</span><span class="n">_versions</span><span class="o">.</span><span class="n">keys</span><span class="p">())[</span><span class="n">index</span><span class="p">]</span>
+    <span class="n">t0</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+    <span class="n">version</span> <span class="o">=</span> <span class="n">vfile</span><span class="p">[</span><span class="n">vname</span><span class="p">]</span>
+    <span class="c1"># It is not recommended to use integer indexing for</span>
+    <span class="c1"># performance reasons:</span>
+    <span class="c1"># e.g. version = vfile[-index]</span>
+    <span class="c1"># This is much slower than reading from a version name.</span>
+    <span class="n">group_key</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">version</span><span class="o">.</span><span class="n">keys</span><span class="p">())[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">val</span> <span class="o">=</span> <span class="n">version</span><span class="p">[</span><span class="n">group_key</span><span class="p">][</span><span class="s1">&#39;val&#39;</span><span class="p">]</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span><span class="o">-</span><span class="n">t0</span>
+    <span class="n">h5pyfile</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="n">vfile</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">t</span>
+</pre></div>
+</div>
+<p>The next plot contains a set of 20 reads for the middle element of each
+file (each line in the figure represents a run). It is expected that
+there are variations in the read times, as this fluctuates with the
+system load while running the test.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="mi">1000</span><span class="p">,</span> <span class="mi">5000</span><span class="p">]</span>
+
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">6</span><span class="p">))</span>
+
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">20</span><span class="p">):</span>
+    <span class="n">vtimes</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">):</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">num_transactions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">.h5&quot;</span>
+        <span class="n">vtimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_version</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">vtimes</span><span class="p">,</span> <span class="s1">&#39;*-&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">)[</span><span class="n">selected</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Time (in sec) to read specific version for </span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Number of transactions&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/Performance_tests-IO_21_0.png" src="_images/Performance_tests-IO_21_0.png" />
+<p>From this test, we can see that reading an arbitrary version from the
+file is very slightly affected by the number of versions in the file.</p>
+</div>
+<div class="section" id="reading-first-version-vs-reading-latest-version">
+<h3>Reading first version vs. reading latest version<a class="headerlink" href="#reading-first-version-vs-reading-latest-version" title="Permalink to this headline">¶</a></h3>
+<p>Next, we’ll compare the times necessary to read the first version and
+the latest version on each file.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">read_first</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+    <span class="n">h5pyfile</span> <span class="o">=</span> <span class="n">h5py</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s1">&#39;r+&#39;</span><span class="p">)</span>
+    <span class="n">vfile</span> <span class="o">=</span> <span class="n">VersionedHDF5File</span><span class="p">(</span><span class="n">h5pyfile</span><span class="p">)</span>
+    <span class="n">t0</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+    <span class="n">version</span> <span class="o">=</span> <span class="n">vfile</span><span class="p">[</span><span class="s1">&#39;initial_version&#39;</span><span class="p">]</span>
+    <span class="n">group_key</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">version</span><span class="o">.</span><span class="n">keys</span><span class="p">())[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">val</span> <span class="o">=</span> <span class="n">version</span><span class="p">[</span><span class="n">group_key</span><span class="p">][</span><span class="s1">&#39;val&#39;</span><span class="p">]</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span><span class="o">-</span><span class="n">t0</span>
+    <span class="n">h5pyfile</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="n">vfile</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">t</span>
+</pre></div>
+</div>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="mi">1000</span><span class="p">,</span> <span class="mi">5000</span><span class="p">]</span>
+
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">6</span><span class="p">))</span>
+
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">20</span><span class="p">):</span>
+    <span class="n">ftimes</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">):</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">num_transactions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">.h5&quot;</span>
+        <span class="n">ftimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_first</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">ftimes</span><span class="p">,</span> <span class="s1">&#39;*-&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">)[</span><span class="n">selected</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Time (in sec) to read first version for </span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Number of transactions&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/Performance_tests-IO_26_0.png" src="_images/Performance_tests-IO_26_0.png" />
+<p>Note that, on average, the time required to read the contents of the
+first version written to the file do not increase significantly with the
+number of versions stored in the file.</p>
+<p>The Versioned HDF5 file stores the latest version as the last to be
+stored in the file. For comparison, we will also measure reading times
+for files generated without versioning (i.e. with no use of Versioned
+HDF5). Note that these should be similar data.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">read_last</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+    <span class="n">h5pyfile</span> <span class="o">=</span> <span class="n">h5py</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s1">&#39;r+&#39;</span><span class="p">)</span>
+    <span class="n">vfile</span> <span class="o">=</span> <span class="n">VersionedHDF5File</span><span class="p">(</span><span class="n">h5pyfile</span><span class="p">)</span>
+    <span class="n">t0</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+    <span class="c1">#</span>
+    <span class="c1"># Current version is 0</span>
+    <span class="c1"># This is the same as</span>
+    <span class="c1"># version = vfile[vfile._versions.attrs[&#39;current_version&#39;]]</span>
+    <span class="c1">#</span>
+    <span class="n">version</span> <span class="o">=</span> <span class="n">vfile</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">group_key</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">version</span><span class="o">.</span><span class="n">keys</span><span class="p">())[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">val</span> <span class="o">=</span> <span class="n">version</span><span class="p">[</span><span class="n">group_key</span><span class="p">][</span><span class="s1">&#39;val&#39;</span><span class="p">]</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span><span class="o">-</span><span class="n">t0</span>
+    <span class="n">h5pyfile</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="n">vfile</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">t</span>
+</pre></div>
+</div>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">read_no_versions</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+    <span class="n">h5pyfile</span> <span class="o">=</span> <span class="n">h5py</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s1">&#39;r+&#39;</span><span class="p">)</span>
+    <span class="n">t0</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+    <span class="n">val</span> <span class="o">=</span> <span class="n">h5pyfile</span><span class="p">[</span><span class="nb">list</span><span class="p">(</span><span class="n">h5pyfile</span><span class="o">.</span><span class="n">keys</span><span class="p">())[</span><span class="mi">0</span><span class="p">]][</span><span class="s1">&#39;val&#39;</span><span class="p">]</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span><span class="o">-</span><span class="n">t0</span>
+    <span class="n">h5pyfile</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">t</span>
+</pre></div>
+</div>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="mi">1000</span><span class="p">,</span> <span class="mi">5000</span><span class="p">]</span>
+
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+
+<span class="c1"># We only do one run for the unversioned files.</span>
+<span class="n">notimes</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">):</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">num_transactions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+    <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">_no_versions.h5&quot;</span>
+    <span class="n">notimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_no_versions</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">notimes</span><span class="p">,</span> <span class="s1">&#39;ko-&#39;</span><span class="p">,</span> <span class="n">ms</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">([</span><span class="s2">&quot;No versions&quot;</span><span class="p">],</span> <span class="n">loc</span><span class="o">=</span><span class="s2">&quot;upper left&quot;</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">20</span><span class="p">):</span>
+    <span class="n">ltimes</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">):</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">num_transactions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">.h5&quot;</span>
+        <span class="n">ltimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_last</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">ltimes</span><span class="p">,</span> <span class="s1">&#39;*-&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">)[</span><span class="n">selected</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Time (in sec) to read latest version for </span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Number of transactions&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/Performance_tests-IO_31_0.png" src="_images/Performance_tests-IO_31_0.png" />
+<p>In this case, we can see that:</p>
+<ul class="simple">
+<li><p>on average, reading the latest version on a VersionedHDF5File is ~5x slower than reading an unversioned file;</p></li>
+<li><p>the time required to read the latest version from a Versioned HDF5 file increases modestly with the number of versions stored in the file.</p></li>
+</ul>
+</div>
+</div>
+<div class="section" id="test-2-mostly-appends-sparse">
+<h2>Test 2: Mostly appends (Sparse)<a class="headerlink" href="#test-2-mostly-appends-sparse" title="Permalink to this headline">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">testname</span> <span class="o">=</span> <span class="s2">&quot;test_mostly_appends_sparse&quot;</span>
+</pre></div>
+</div>
+<p>Once again, for shortness, we’ll only consider</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">compression</span> <span class="o">=</span> <span class="s2">&quot;None&quot;</span>
+<span class="n">exponent</span> <span class="o">=</span> <span class="mi">14</span>
+</pre></div>
+</div>
+<div class="section" id="id1">
+<h3>Reading in sequential mode<a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h3>
+<p>If we read data from each version of the file, sequentially, we obtain
+the following:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">rtimes</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">25</span><span class="p">,</span> <span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">]</span>
+<span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">num_transactions</span><span class="p">:</span>
+    <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">.h5&quot;</span>
+    <span class="n">rtimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_times</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>
+
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">rtimes</span><span class="p">,</span> <span class="s1">&#39;o-&#39;</span><span class="p">)</span>
+<span class="n">selected</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">]</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">)[</span><span class="n">selected</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Sequential read time (in sec) for </span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Number of transactions&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/Performance_tests-IO_39_0.png" src="_images/Performance_tests-IO_39_0.png" />
+<p>In this case, we can see that the increase in the time required to read
+the datasets from the VersionedHDF5File grows quadratically with the
+number of transactions stored in the file. This is consistent with the
+increase in the size of the dataset, which also grows quickly with each
+new version commited to file.</p>
+</div>
+<div class="section" id="id2">
+<h3>Reading specific version<a class="headerlink" href="#id2" title="Permalink to this headline">¶</a></h3>
+<p>Now, let’s see the times required to read a specific version from each
+file.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">25</span><span class="p">,</span> <span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">]</span>
+
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">20</span><span class="p">):</span>
+    <span class="n">vtimes</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">):</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">num_transactions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">.h5&quot;</span>
+        <span class="n">vtimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_version</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">vtimes</span><span class="p">,</span> <span class="s1">&#39;*-&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Time (in sec) to read random version for </span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Number of transactions&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/Performance_tests-IO_43_0.png" src="_images/Performance_tests-IO_43_0.png" />
+<p>In this case, we can see a very clear increase in the time required to
+read versions from the file as the number of transactions increases.
+Again, this can be explained in part by the size of the datasets being
+read from file, as they grow in size with each new transaction.</p>
+</div>
+<div class="section" id="id3">
+<h3>Reading first version vs. reading latest version<a class="headerlink" href="#id3" title="Permalink to this headline">¶</a></h3>
+<p>Looking at the times required to read the first version and the latest
+version of the files, we get the following results.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">25</span><span class="p">,</span> <span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">]</span>
+
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">20</span><span class="p">):</span>
+    <span class="n">ftimes</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">):</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">num_transactions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">.h5&quot;</span>
+        <span class="n">ftimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_first</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">ftimes</span><span class="p">,</span> <span class="s1">&#39;*-&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Time (in sec) to read first version for </span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Number of transactions&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/Performance_tests-IO_47_0.png" src="_images/Performance_tests-IO_47_0.png" />
+<p>In this case, there is no significant increase in the time required to
+read the first version of the file as the number of transactions
+increases.</p>
+<p>For the latest version, the results are as follows.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">25</span><span class="p">,</span> <span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">]</span>
+
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+
+<span class="n">notimes</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">):</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">num_transactions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+    <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">_no_versions.h5&quot;</span>
+    <span class="n">notimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_no_versions</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">notimes</span><span class="p">,</span> <span class="s1">&#39;ko-&#39;</span><span class="p">,</span> <span class="n">ms</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">([</span><span class="s2">&quot;No versions&quot;</span><span class="p">],</span> <span class="n">loc</span><span class="o">=</span><span class="s2">&quot;upper left&quot;</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">20</span><span class="p">):</span>
+    <span class="n">ltimes</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">):</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">num_transactions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">.h5&quot;</span>
+        <span class="n">ltimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_last</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">ltimes</span><span class="p">,</span> <span class="s1">&#39;*-&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">)[</span><span class="n">selected</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Time (in sec) to read latest version for </span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Number of transactions&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/Performance_tests-IO_50_0.png" src="_images/Performance_tests-IO_50_0.png" />
+<p>Note that here we can see the impact of storing all versions of the
+growing datasets on the VersionedHDF5File. While the unversioned file
+can be read in constant time, irrespective of the number of transactions
+commited, the versioned file suffers a slight drop in read performance
+(for 500 transactions, this amounts to an average difference of ~10x in
+seconds.)</p>
+</div>
+</div>
+<div class="section" id="test-3-small-fraction-changes-sparse">
+<h2>Test 3: Small Fraction Changes (Sparse)<a class="headerlink" href="#test-3-small-fraction-changes-sparse" title="Permalink to this headline">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">testname</span> <span class="o">=</span> <span class="s2">&quot;test_small_fraction_changes_sparse&quot;</span>
+</pre></div>
+</div>
+<div class="section" id="id4">
+<h3>Reading in sequential mode<a class="headerlink" href="#id4" title="Permalink to this headline">¶</a></h3>
+<p>Once again, we only consider</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">compression</span> <span class="o">=</span> <span class="s2">&quot;None&quot;</span>
+<span class="n">exponent</span> <span class="o">=</span> <span class="mi">14</span>
+</pre></div>
+</div>
+<p>Reading all versions in a file sequentially gives the following result.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">rtimes</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="mi">1000</span><span class="p">,</span> <span class="mi">5000</span><span class="p">]</span>
+<span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">num_transactions</span><span class="p">:</span>
+    <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">.h5&quot;</span>
+    <span class="n">rtimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_times</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>
+
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">rtimes</span><span class="p">,</span> <span class="s1">&#39;o-&#39;</span><span class="p">)</span>
+<span class="n">selected</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">]</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">)[</span><span class="n">selected</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Sequential read time (in sec) for </span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Number of transactions&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/Performance_tests-IO_58_0.png" src="_images/Performance_tests-IO_58_0.png" />
+<p>In this test, the sequential read times grow linearly with respect to
+the number of transactions commited to file.</p>
+</div>
+<div class="section" id="id5">
+<h3>Reading specific version<a class="headerlink" href="#id5" title="Permalink to this headline">¶</a></h3>
+<p>The times required to read a specific version from each file are
+similarly slightly affected by the number of existing versions in the
+file, as can be seen below.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="mi">1000</span><span class="p">,</span> <span class="mi">5000</span><span class="p">]</span>
+
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">20</span><span class="p">):</span>
+    <span class="n">vtimes</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">):</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">num_transactions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">.h5&quot;</span>
+        <span class="n">vtimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_version</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">vtimes</span><span class="p">,</span> <span class="s1">&#39;*-&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">)[</span><span class="n">selected</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Time (in sec) to read random version for </span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Number of transactions&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/Performance_tests-IO_62_0.png" src="_images/Performance_tests-IO_62_0.png" />
+<p>In this test, we can see there is again a slight increase in the time
+required to read a given version from each file as the number of
+transactions grows, similar to what we observe in
+<code class="docutils literal notranslate"><span class="pre">test_large_fraction_changes_sparse</span></code>.</p>
+</div>
+<div class="section" id="id6">
+<h3>Reading first version vs. reading latest version<a class="headerlink" href="#id6" title="Permalink to this headline">¶</a></h3>
+<p>Reading the first version from each file results in the following:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="mi">1000</span><span class="p">,</span> <span class="mi">5000</span><span class="p">]</span>
+
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">20</span><span class="p">):</span>
+    <span class="n">ftimes</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">):</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">num_transactions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">.h5&quot;</span>
+        <span class="n">ftimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_first</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">ftimes</span><span class="p">,</span> <span class="s1">&#39;*-&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">)[</span><span class="n">selected</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Time (in sec) to read first version for </span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Number of transactions&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/Performance_tests-IO_66_0.png" src="_images/Performance_tests-IO_66_0.png" />
+<p>Comparing reading the latest version from a Versioned HDF5 file with an
+unversioned file (black line in the plot) results in the following:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="mi">1000</span><span class="p">,</span> <span class="mi">5000</span><span class="p">]</span>
+
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+
+<span class="n">notimes</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">):</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">num_transactions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+    <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">_no_versions.h5&quot;</span>
+    <span class="n">notimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_no_versions</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">notimes</span><span class="p">,</span> <span class="s1">&#39;ko-&#39;</span><span class="p">,</span> <span class="n">ms</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">([</span><span class="s2">&quot;No versions&quot;</span><span class="p">],</span> <span class="n">loc</span><span class="o">=</span><span class="s2">&quot;upper left&quot;</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">20</span><span class="p">):</span>
+    <span class="n">ltimes</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">):</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">num_transactions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">.h5&quot;</span>
+        <span class="n">ltimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_last</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">ltimes</span><span class="p">,</span> <span class="s1">&#39;*-&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">)[</span><span class="n">selected</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Time (in sec) to read latest version for </span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Number of transactions&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/Performance_tests-IO_68_0.png" src="_images/Performance_tests-IO_68_0.png" />
+<p>In this case, we can see that:</p>
+<ul class="simple">
+<li><p>reading the latest version is not as performant as reading an unversioned file;</p></li>
+<li><p>the time required to read the latest version from a Versioned HDF5 file increases modestly with the number of versions stored in the file;</p></li>
+<li><p>these results are similar to the ones obtained in <code class="docutils literal notranslate"><span class="pre">test_large_fraction_changes_sparse</span></code>.</p></li>
+</ul>
+</div>
+</div>
+<div class="section" id="test-4-large-fraction-changes-sparse-constant-size">
+<h2>Test 4: Large Fraction Changes (Sparse) - Constant Size<a class="headerlink" href="#test-4-large-fraction-changes-sparse-constant-size" title="Permalink to this headline">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">testname</span> <span class="o">=</span> <span class="s2">&quot;test_large_fraction_constant_sparse&quot;</span>
+</pre></div>
+</div>
+<p>Once more,</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">compression</span> <span class="o">=</span> <span class="s2">&quot;None&quot;</span>
+<span class="n">exponent</span> <span class="o">=</span> <span class="mi">14</span>
+</pre></div>
+</div>
+<div class="section" id="id7">
+<h3>Reading in sequential mode<a class="headerlink" href="#id7" title="Permalink to this headline">¶</a></h3>
+<p>Reading all versions from each file sequentially gives the following.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">rtimes</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="mi">1000</span><span class="p">,</span> <span class="mi">5000</span><span class="p">]</span>
+
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+
+<span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">num_transactions</span><span class="p">:</span>
+    <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">.h5&quot;</span>
+    <span class="n">rtimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_times</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">rtimes</span><span class="p">,</span> <span class="s1">&#39;o-&#39;</span><span class="p">)</span>
+<span class="n">selected</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">]</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">)[</span><span class="n">selected</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Sequential read time (in sec) for </span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Number of transactions&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/Performance_tests-IO_76_0.png" src="_images/Performance_tests-IO_76_0.png" />
+<p>Again, the time required to read all versions in each file grows
+linearly with the number of transactions stored in each file.</p>
+</div>
+<div class="section" id="id8">
+<h3>Reading specific version<a class="headerlink" href="#id8" title="Permalink to this headline">¶</a></h3>
+<p>The times required to read a specific version from each file are
+similarly unnaffected by the number of existing versions in the file.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="mi">1000</span><span class="p">,</span> <span class="mi">5000</span><span class="p">]</span>
+
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">20</span><span class="p">):</span>
+    <span class="n">vtimes</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">):</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">num_transactions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">.h5&quot;</span>
+        <span class="n">vtimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_version</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">vtimes</span><span class="p">,</span> <span class="s1">&#39;*-&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">)[</span><span class="n">selected</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Time (in sec) to read random version for </span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Number of transactions&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/Performance_tests-IO_80_0.png" src="_images/Performance_tests-IO_80_0.png" />
+<p>From this test, we can see that reading an arbitrary version from the
+file is only very slightly affected by the number of versions in the
+file.</p>
+</div>
+<div class="section" id="id9">
+<h3>Reading first version vs. reading latest version<a class="headerlink" href="#id9" title="Permalink to this headline">¶</a></h3>
+<p>Finally, let’s read the first version of each file.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="mi">1000</span><span class="p">,</span> <span class="mi">5000</span><span class="p">]</span>
+
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">20</span><span class="p">):</span>
+    <span class="n">ftimes</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">):</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">num_transactions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">.h5&quot;</span>
+        <span class="n">ftimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_first</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">ftimes</span><span class="p">,</span> <span class="s1">&#39;*-&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">)[</span><span class="n">selected</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Time (in sec) to read first version for </span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Number of transactions&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/Performance_tests-IO_84_0.png" src="_images/Performance_tests-IO_84_0.png" />
+<p>Comparing versioned and unversioned files for the latest version results
+in the following:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="mi">1000</span><span class="p">,</span> <span class="mi">5000</span><span class="p">]</span>
+
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+
+<span class="n">notimes</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">):</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">num_transactions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+    <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">_no_versions.h5&quot;</span>
+    <span class="n">notimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_no_versions</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">notimes</span><span class="p">,</span> <span class="s1">&#39;ko-&#39;</span><span class="p">,</span> <span class="n">ms</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">([</span><span class="s2">&quot;No versions&quot;</span><span class="p">],</span> <span class="n">loc</span><span class="o">=</span><span class="s2">&quot;upper left&quot;</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">50</span><span class="p">):</span>
+    <span class="n">ltimes</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">):</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">num_transactions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">.h5&quot;</span>
+        <span class="n">ltimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_last</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">ltimes</span><span class="p">,</span> <span class="s1">&#39;*-&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">)[</span><span class="n">selected</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Time (in sec) to read latest version for </span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Number of transactions&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/Performance_tests-IO_86_0.png" src="_images/Performance_tests-IO_86_0.png" />
+<p>In this case, we can see that:</p>
+<ul class="simple">
+<li><p>reading the latest version is not as performant as reading an unversioned file;</p></li>
+<li><p>the time required to read the latest version from a Versioned HDF5 file increases very modestly with the number of versions stored in the file.</p></li>
+</ul>
+</div>
+</div>
+<div class="section" id="test-5-mostly-appends-dense">
+<h2>Test 5: Mostly appends (Dense)<a class="headerlink" href="#test-5-mostly-appends-dense" title="Permalink to this headline">¶</a></h2>
+<p><strong>Note that this test includes a two-dimensional dataset.</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">testname</span> <span class="o">=</span> <span class="s2">&quot;test_mostly_appends_dense&quot;</span>
+</pre></div>
+</div>
+<p>Since this is a two-dimensional dataset, we have observed that a chunk
+size like the one used in previous examples will generate very large
+files, and will show a poor performance overall. In this case, we have
+chosen a chunk size of <span class="math notranslate nohighlight">\(2^8\)</span> as a sensible value for the current
+tests.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">compression</span> <span class="o">=</span> <span class="s2">&quot;None&quot;</span>
+<span class="n">exponent</span> <span class="o">=</span> <span class="mi">8</span>
+</pre></div>
+</div>
+<div class="section" id="id10">
+<h3>Reading in sequential mode<a class="headerlink" href="#id10" title="Permalink to this headline">¶</a></h3>
+<p>When we read all versions in sequential mode for this test, the results
+are as follows.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">rtimes</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">25</span><span class="p">,</span> <span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">]</span>
+<span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">num_transactions</span><span class="p">:</span>
+    <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_None.h5&quot;</span>
+    <span class="n">rtimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_times</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>
+
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">rtimes</span><span class="p">,</span> <span class="s1">&#39;o-&#39;</span><span class="p">)</span>
+<span class="n">selected</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">]</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">)[</span><span class="n">selected</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Sequential read time (in sec) for </span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Number of transactions&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/Performance_tests-IO_95_0.png" src="_images/Performance_tests-IO_95_0.png" />
+<p>Note that this behaviour is not directly comparable to
+<code class="docutils literal notranslate"><span class="pre">test_mostly_appends_sparse</span></code>, as we have used a different chunk size
+and the dataset contains two-dimensional data. In this case, the
+increase in the time needed to read the dataset is close to linear.</p>
+</div>
+<div class="section" id="id11">
+<h3>Reading specific version<a class="headerlink" href="#id11" title="Permalink to this headline">¶</a></h3>
+<p>Now, let’s see the times required to read a specific version from each
+file.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">25</span><span class="p">,</span> <span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">]</span>
+
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">20</span><span class="p">):</span>
+    <span class="n">vtimes</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">):</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">num_transactions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">.h5&quot;</span>
+        <span class="n">vtimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_version</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">vtimes</span><span class="p">,</span> <span class="s1">&#39;*-&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Time (in sec) to read random version for </span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Number of transactions&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/Performance_tests-IO_99_0.png" src="_images/Performance_tests-IO_99_0.png" />
+<p>For this case, there is no marked increase in the time required to read
+a specific version from the file with respect to the number of versions.</p>
+</div>
+<div class="section" id="id12">
+<h3>Reading first version vs. reading latest version<a class="headerlink" href="#id12" title="Permalink to this headline">¶</a></h3>
+<p>Reading the first version of each of these files results in the
+following.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">25</span><span class="p">,</span> <span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">]</span>
+
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">20</span><span class="p">):</span>
+    <span class="n">ftimes</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">):</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">num_transactions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">.h5&quot;</span>
+        <span class="n">ftimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_first</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">ftimes</span><span class="p">,</span> <span class="s1">&#39;*-&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Time (in sec) to read first version for </span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Number of transactions&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/Performance_tests-IO_103_0.png" src="_images/Performance_tests-IO_103_0.png" />
+<p>For the latest version, once again comparing with the unversioned file,
+we have the following results:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">25</span><span class="p">,</span> <span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">]</span>
+
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+
+<span class="n">notimes</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">):</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">num_transactions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+    <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">_no_versions.h5&quot;</span>
+    <span class="n">notimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_no_versions</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">notimes</span><span class="p">,</span> <span class="s1">&#39;ko-&#39;</span><span class="p">,</span> <span class="n">ms</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">([</span><span class="s2">&quot;No versions&quot;</span><span class="p">],</span> <span class="n">loc</span><span class="o">=</span><span class="s2">&quot;upper left&quot;</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">20</span><span class="p">):</span>
+    <span class="n">ltimes</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">):</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">num_transactions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">exponent</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">compression</span><span class="si">}</span><span class="s2">.h5&quot;</span>
+        <span class="n">ltimes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_last</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">,</span> <span class="n">ltimes</span><span class="p">,</span> <span class="s1">&#39;*-&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">num_transactions</span><span class="p">)[</span><span class="n">selected</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Time (in sec) to read latest version for </span><span class="si">{</span><span class="n">testname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Number of transactions&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="_images/Performance_tests-IO_105_0.png" src="_images/Performance_tests-IO_105_0.png" />
+<p>In this case:</p>
+<ul class="simple">
+<li><p>There is no marked increase in the time required to read the latest version with respect to the number of versions in each file;</p></li>
+<li><p>Reading a versioned file is, on average, 5x slower than reading a file containing only the last version of the data.</p></li>
+</ul>
+</div>
+</div>
+<div class="section" id="summary">
+<h2>Summary<a class="headerlink" href="#summary" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">test_mostly_appends_sparse</span></code> shows the worst performance, with a
+considerable increase in the times required to read the latest
+version with respect to the number of transactions in the file.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">test_large_fraction_changes_sparse</span></code>,
+<code class="docutils literal notranslate"><span class="pre">test_small_fraction_changes_sparse</span></code> and
+<code class="docutils literal notranslate"><span class="pre">test_large_fraction_constant_sparse</span></code> show better results in those
+same tests.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">test_mostly_appends_dense</span></code> includes a two-dimensional dataset, and
+this does not seem to hinder performance of the versioning beyond
+what is observed in other one-dimensional tests.</p></li>
+<li><p>The same behaviour can be observed when reading a specific version
+from each file.</p></li>
+<li><p>This reflects what we observe in file sizes and can be partially
+explained by the increase in the dimension of the arrays which are
+stored at each version.</p></li>
+<li><p>Reading the first version is, in all tests, seemingly unaffected by
+the number of transactions involved in the file.</p></li>
+</ul>
+</div>
+</div>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">Versioned HDF5</a></h1>
+
+
+
+
+
+
+
+
+
+
+    
+
+<p>
+<a class="badge" href="https://travis-ci.org/deshaw/versioned-hdf5">
+    <img
+        alt="https://secure.travis-ci.org/deshaw/versioned-hdf5.svg?branch=master"
+        src="https://secure.travis-ci.org/deshaw/versioned-hdf5.svg?branch=master"
+    />
+</a>
+</p>
+
+
+<h3>Navigation</h3>
+<p class="caption"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="performance.html">Performance</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="performance_filesizes.html">Performance Analysis of VersionedHDF5 Files: File sizes</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">I/O Performance for Versioned-HDF5 Files</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="reference.html">API Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="design.html">Design</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Versioned HDF5 Change Log</a></li>
+<li class="toctree-l1"><a class="reference internal" href="authors.html">Authors</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+  <li><a href="performance.html">Performance</a><ul>
+      <li>Previous: <a href="performance_filesizes.html" title="previous chapter">Performance Analysis of VersionedHDF5 Files: File sizes</a></li>
+      <li>Next: <a href="reference.html" title="next chapter">API Documentation</a></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    
+    <div class="footer">
+      &copy;2020, Quansight.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.2.1</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="_sources/performance_io.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+    <span id="forkongithub"><a href="https://github.com/deshaw/versioned-hdf5">Fork me on GitHub</a></span>
+  </body>
+</html>
