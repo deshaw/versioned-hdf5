@@ -643,12 +643,68 @@ def test_getitem_by_timestamp(vfile):
     with vfile.stage_version('version1') as group:
         group.create_dataset('test_data', data=data)
 
-    v = vfile['version1']
-    ts = datetime.datetime.strptime(v.attrs['timestamp'], TIMESTAMP_FMT)
-    assert vfile[ts] == v
+    v1 = vfile['version1']
+    ts1 = datetime.datetime.strptime(v1.attrs['timestamp'], TIMESTAMP_FMT)
+    assert vfile[ts1] == v1
+    assert vfile.get_version_by_timestamp(ts1) == v1
+    assert vfile.get_version_by_timestamp(ts1, exact=True) == v1
 
-    dt = np.datetime64(ts.replace(tzinfo=None))
-    assert vfile[dt] == v
+    dt1 = np.datetime64(ts1.replace(tzinfo=None))
+    assert vfile[dt1] == v1
+    assert vfile.get_version_by_timestamp(dt1) == v1
+    assert vfile.get_version_by_timestamp(dt1, exact=True) == v1
+
+    minute = datetime.timedelta(minutes=1)
+    second = datetime.timedelta(seconds=1)
+
+    ts2 = ts1 + minute
+    dt2 = np.datetime64(ts2.replace(tzinfo=None))
+
+    with vfile.stage_version('version2', timestamp=ts2) as group:
+        group['test_data'][0] += 1
+
+    v2 = vfile['version2']
+    assert vfile[ts2] == v2
+    assert vfile.get_version_by_timestamp(ts2) == v2
+    assert vfile.get_version_by_timestamp(ts2, exact=True) == v2
+
+    assert vfile[dt2] == v2
+    assert vfile.get_version_by_timestamp(dt2) == v2
+    assert vfile.get_version_by_timestamp(dt2, exact=True) == v2
+
+
+    ts2_1 = ts2 + second
+    dt2_1 = np.datetime64(ts2_1.replace(tzinfo=None))
+
+    assert vfile[ts2_1] == v2
+    assert vfile.get_version_by_timestamp(ts2_1) == v2
+    raises(KeyError, lambda: vfile.get_version_by_timestamp(ts2_1, exact=True))
+
+    assert vfile[dt2_1] == v2
+    assert vfile.get_version_by_timestamp(dt2_1) == v2
+    raises(KeyError, lambda: vfile.get_version_by_timestamp(dt2_1, exact=True))
+
+    ts1_1 = ts1 + second
+    dt1_1 = np.datetime64(ts1_1.replace(tzinfo=None))
+
+    assert vfile[ts1_1] == v1
+    assert vfile.get_version_by_timestamp(ts1_1) == v1
+    raises(KeyError, lambda: vfile.get_version_by_timestamp(ts1_1, exact=True))
+
+    assert vfile[dt1_1] == v1
+    assert vfile.get_version_by_timestamp(dt1_1) == v1
+    raises(KeyError, lambda: vfile.get_version_by_timestamp(dt1_1, exact=True))
+
+    ts0 = ts1 - second
+    dt0 = np.datetime64(ts0.replace(tzinfo=None))
+
+    raises(KeyError, lambda: vfile[ts0] == v1)
+    raises(KeyError, lambda: vfile.get_version_by_timestamp(ts0) == v1)
+    raises(KeyError, lambda: vfile.get_version_by_timestamp(ts0, exact=True))
+
+    raises(KeyError, lambda: vfile[dt0] == v1)
+    raises(KeyError, lambda: vfile.get_version_by_timestamp(dt0) == v1)
+    raises(KeyError, lambda: vfile.get_version_by_timestamp(dt0, exact=True))
 
 
 def test_nonroot(vfile):

@@ -90,8 +90,8 @@ class VersionedHDF5File:
         # TODO: Don't give an in-memory group if the file is read-only
         return InMemoryGroup(self._versions[version]._id, _committed=True)
 
-    def get_version_by_timestamp(self, timestamp):
-        version = get_version_by_timestamp(self.f, timestamp)
+    def get_version_by_timestamp(self, timestamp, exact=False):
+        version = get_version_by_timestamp(self.f, timestamp, exact=exact)
         # TODO: Don't give an in-memory group if the file is read-only
         return InMemoryGroup(self._versions[version]._id, _committed=True)
 
