@@ -149,6 +149,18 @@ def get_nth_previous_version(f, version_name, n):
 
     return version
 
+def get_version_by_timestamp(f, timestamp):
+    versions = f['_version_data/versions']
+    for version in versions:
+        if version != '__first_version__':
+            if isinstance(timestamp, np.datetime64):
+                ts = f"{timestamp.astype(datetime.datetime)}+0000"
+            else:
+                ts = timestamp.strftime(TIMESTAMP_FMT)
+            if ts == versions[version].attrs['timestamp']:
+                return version
+    raise KeyError(f"Version with timestamp {timestamp} not found")
+
 def set_current_version(f, version_name):
     versions = f['_version_data/versions']
     if version_name not in versions:

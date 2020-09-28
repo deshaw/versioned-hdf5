@@ -11,8 +11,8 @@ import datetime
 
 from .backend import initialize
 from .versions import (create_version_group, commit_version,
-                       get_nth_previous_version, set_current_version,
-                       all_versions, delete_version, TIMESTAMP_FMT)
+                       get_version_by_timestamp, get_nth_previous_version,
+                       set_current_version, all_versions, delete_version, )
 from .wrappers import InMemoryGroup
 
 
@@ -91,16 +91,9 @@ class VersionedHDF5File:
         return InMemoryGroup(self._versions[version]._id, _committed=True)
 
     def get_version_by_timestamp(self, timestamp):
-        for version in self._versions:
-            if version != '__first_version__':
-                if isinstance(timestamp, np.datetime64):
-                    ts = f"{timestamp.astype(datetime.datetime)}+0000"
-                else:
-                    ts = timestamp.strftime(TIMESTAMP_FMT)
-                if ts == self[version].attrs['timestamp']:
-                    # TODO: Don't give an in-memory group if the file is read-only
-                    return InMemoryGroup(self._versions[version]._id, _committed=True)
-        raise KeyError(f"Version with timestamp {timestamp} not found")
+        version = get_version_by_timestamp(self.f, timestamp)
+        # TODO: Don't give an in-memory group if the file is read-only
+        return InMemoryGroup(self._versions[version]._id, _committed=True)
 
     def __getitem__(self, item):
         if item is None:
