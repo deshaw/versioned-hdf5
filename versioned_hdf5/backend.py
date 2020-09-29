@@ -14,10 +14,15 @@ def get_chunks(shape, dtype, chunk_size):
     return (chunk_size,)
 
 def initialize(f):
+    import datetime
+    from .versions import TIMESTAMP_FMT
+
     version_data = f.create_group('_version_data')
     versions = version_data.create_group('versions')
     versions.create_group('__first_version__')
     versions.attrs['current_version'] = '__first_version__'
+    ts = datetime.datetime.now(datetime.timezone.utc)
+    versions['__first_version__'].attrs['timestamp'] = ts.strftime(TIMESTAMP_FMT)
 
 
 def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
