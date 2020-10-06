@@ -169,20 +169,20 @@ class InMemoryGroup(Group):
             n = dirname
         return group
 
-    def create_dataset(self, name, shape=None, dtype=None, fillvalue=None, **kwds):
+    def create_dataset(self, name, shape=None, dtype=None, data=None, fillvalue=None, **kwds):
         self._check_committed()
         dirname, data_name = pp.split(name)
         if dirname and dirname not in self:
             self.create_group(dirname)
         if 'maxshape' in kwds and any(i != None for i in kwds['maxshape']):
             warnings.warn("The maxshape parameter is currently ignored for versioned datasets.")
-        data = _make_new_dset(shape=shape, dtype=dtype, fillvalue=fillvalue, **kwds)
+        data = _make_new_dset(data=data, shape=shape, dtype=dtype, fillvalue=fillvalue, **kwds)
+        if shape is None:
+            shape = data.shape
         if fillvalue is not None and isinstance(data, np.ndarray):
             data = InMemoryArrayDataset(name, data, parent=self, fillvalue=fillvalue)
         if data is None:
             data = InMemorySparseDataset(name, shape=shape, dtype=dtype, fillvalue=fillvalue)
-        else:
-            shape = data.shape
         chunks = kwds.get('chunks')
         if chunks in [True, None]:
             if len(shape) == 1:
@@ -199,8 +199,8 @@ class InMemoryGroup(Group):
         self.set_compression(name, kwds.get('compression'))
         self.set_compression_opts(name, kwds.get('compression_opts'))
         self[name] = data
-        if 'dtype' in kwds:
-            self[name]._dtype = kwds['dtype']
+        if dtype is not None:
+            self[name]._dtype = dtype
         return self[name]
 
     def __iter__(self):
