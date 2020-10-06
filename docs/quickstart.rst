@@ -48,9 +48,9 @@ used to expose versioned data by version name::
 
   >>> v2 = versioned_file['version2']
   >>> v2
-  <InMemoryGroup "/_version_data/versions/version2" (1 members)>
+  <Committed InMemoryGroup "/_version_data/versions/version2">
   >>> v2['mydataset']
-  <HDF5 dataset "mydataset": shape (10000,), type "<f8">
+  <InMemoryArrayDataset "mydataset": shape (10000,), type "<f8">
 
 To access the actual data stored in version ``version2``, we use the same syntax
 as ``h5py``::
@@ -68,6 +68,61 @@ as ``h5py``::
    group read-only, so modifications made outside of this library could result
    in breaking things.
 
-When you are done manipulating data, use ``fileobject.close()`` to make sure the
-HDF5 file is written properly to disk. Note that the ``VersionedHDF5File``
-object does not need to be closed.
+When you are done manipulating data, both the ``h5py`` and ``VersionedHDF5File``
+objects must be closed to make sure the HDF5 file is written properly to disk
+(including data about versions.) This can be achieved by
+
+.. code::
+
+  >>> fileobject.close()
+  >>> versioned_file.close()
+
+
+Other Options
+-------------
+
+When a version is committed to a VersionedHDF5File, a timestamp is automatically
+added to it. The timestamp for each version can be retrieved via the version's
+`attrs`::
+
+  >>> versioned_file['version1'].attrs['timestamp']
+
+Since the HDF5 specification does not currently support writing
+`datetime.datetime` or `numpy.datetime` objects to HDF5 files, these timestamps
+are stored as strings, using the following format::
+
+  `"%Y-%m-%d %H:%M:%S.%f%z"`
+
+The timestamps are registered in UTC. For more details on the format string
+above, see the `datetime.datetime.strftime` function documentation.
+
+The timestamp can also be used as an index to retrieve a chosen version from the
+file. In this case, either a `datetime.datetime` or a `numpy.datetime64` object
+must be used as a key. For example, if
+
+.. code::
+
+  >>> t = datetime.datetime.now(datetime.timezone.utc)
+
+then using
+
+.. code::
+
+  >>> versioned_file[t]
+
+returns the version with timestamp equal to `t` (converted to a string according
+to the format mentioned above).
+
+It is also possible to assign a timestamp manually to a file. Again, this
+requires using either a `datetime.datetime` or a `numpy.datetime64` object as
+the timestamp::
+
+  >>> ts = datetime.datetime(2020, 6, 29, 23, 58, 21, 116470, tzinfo=datetime.timezone.utc)
+  >>> with versioned_file.stage_version('version1', timestamp=ts) as group:
+  >>>    group['mydataset'] = data
+
+Now::
+
+  >>> versioned_file[ts]
+
+returns the same as `versioned_file['version1']`.

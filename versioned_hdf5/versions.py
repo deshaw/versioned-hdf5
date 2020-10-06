@@ -1,10 +1,14 @@
 from uuid import uuid4
 from collections import defaultdict
 
+from h5py import Dataset, Group
+import datetime
 import numpy as np
 
 from .backend import write_dataset, write_dataset_chunks, create_virtual_dataset
 from .wrappers import InMemoryGroup, InMemoryDataset, InMemoryArrayDataset, InMemorySparseDataset
+
+TIMESTAMP_FMT = "%Y-%m-%d %H:%M:%S.%f%z"
 
 def create_version_group(f, version_name, prev_version=None):
     versions = f['_version_data/versions']
@@ -30,7 +34,12 @@ def create_version_group(f, version_name, prev_version=None):
     prev_group = versions[prev_version]
 
     def _get(name, item):
-        group[name] = item
+        if isinstance(item, (Group, InMemoryGroup)):
+            group.create_group(name)
+        elif isinstance(item, Dataset):
+            group[name] = item
+        else:
+            raise NotImplementedError(f"{type(item)}")
         for k, v in item.attrs.items():
             group[name].attrs[k] = v
 
@@ -38,8 +47,9 @@ def create_version_group(f, version_name, prev_version=None):
     return group
 
 def commit_version(version_group, datasets, *,
-                   make_current=True, chunk_size=None,
-                   compression=None, compression_opts=None):
+                   make_current=True, chunks=None,
+                   compression=None, compression_opts=None,
+                   timestamp=None):
     """
     Create a new version
 
@@ -64,7 +74,7 @@ def commit_version(version_group, datasets, *,
     versions = version_group.parent
     f = versions.parent.parent
 
-    chunk_size = chunk_size or defaultdict(type(None))
+    chunks = chunks or defaultdict(type(None))
     compression = compression or defaultdict(type(None))
     compression_opts = compression_opts or defaultdict(type(None))
 
@@ -79,27 +89,45 @@ def commit_version(version_group, datasets, *,
         else:
             attrs = {}
 
-        shape = data.shape
         if isinstance(data, InMemoryDataset):
             data = data.id.data_dict
         if isinstance(data, dict):
-            if chunk_size[name] is not None:
+            if chunks[name] is not None:
                 raise NotImplementedError("Specifying chunk size with dict data")
             slices = write_dataset_chunks(f, name, data)
         elif isinstance(data, InMemorySparseDataset):
             slices = write_dataset(f, name, np.array([]),
-                                   chunk_size=chunk_size[name],
+                                   chunks=chunks[name],
                                    compression=compression[name],
                                    compression_opts=compression_opts[name],
                                    fillvalue=fillvalue)
         else:
-            slices = write_dataset(f, name, data, chunk_size=chunk_size[name],
+            slices = write_dataset(f, name, data, chunks=chunks[name],
                                    compression=compression[name],
                                    compression_opts=compression_opts[name],
                                    fillvalue=fillvalue)
+        if isinstance(data, dict):
+            raw_data = f['_version_data'][name]['raw_data']
+            shape = tuple([max(c.args[i].stop for c in slices) for i in range(len(tuple(raw_data.attrs['chunks'])))])
+        else:
+            shape = data.shape
         create_virtual_dataset(f, version_name, name, shape, slices, attrs=attrs,
                                fillvalue=fillvalue)
     version_group.attrs['committed'] = True
+
+    if timestamp is not None:
+        if isinstance(timestamp, datetime.datetime):
+            if timestamp.tzinfo != datetime.timezone.utc:
+                raise ValueError("timestamp must be in UTC")
+            version_group.attrs['timestamp'] = timestamp.strftime(TIMESTAMP_FMT)
+        elif isinstance(timestamp, np.datetime64):
+            version_group.attrs['timestamp'] = f"{timestamp.astype(datetime.datetime)}+0000"
+        else:
+            raise TypeError("timestamp data must be either a datetime.datetime or numpy.datetime64 object")
+    else:
+        ts = datetime.datetime.now(datetime.timezone.utc)
+        version_group.attrs['timestamp'] = ts.strftime(TIMESTAMP_FMT)
+
 
 def delete_version(f, version_name, new_current=None):
     """
@@ -131,6 +159,32 @@ def get_nth_previous_version(f, version_name, n):
             raise IndexError(f"{version_name!r} has fewer than {n} versions before it")
 
     return version
+
+def get_version_by_timestamp(f, timestamp, exact=False):
+    versions = f['_version_data/versions']
+    if isinstance(timestamp, np.datetime64):
+        ts = f"{timestamp.astype(datetime.datetime)}+0000"
+    else:
+        ts = timestamp.strftime(TIMESTAMP_FMT)
+    best_match = '__first_version__'
+    best_ts = versions[best_match].attrs['timestamp']
+    for version in versions:
+        version_ts = versions[version].attrs['timestamp']
+        if version != '__first_version__':
+            if exact:
+                if ts == version_ts:
+                    return version
+            else:
+                # Find the version whose timestamp is closest to ts and before
+                # it.
+                if best_ts < version_ts <= ts:
+                    best_match = version
+                    best_ts = version_ts
+    if best_match == '__first_version__':
+        if exact:
+            raise KeyError(f"Version with timestamp {timestamp} not found")
+        raise KeyError(f"Version with timestamp before {timestamp} not found")
+    return best_match
 
 def set_current_version(f, version_name):
     versions = f['_version_data/versions']

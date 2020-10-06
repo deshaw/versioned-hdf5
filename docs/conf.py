@@ -31,8 +31,12 @@ nitpicky = True
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
+    'myst_parser',
     'sphinx.ext.autodoc',
+    'sphinx.ext.graphviz',
 ]
+
+graphviz_output_format = 'svg'
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -51,13 +55,26 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 html_theme = 'alabaster'
 
 html_theme_options = {
-    'github_user': 'Quansight',
+    'github_user': 'deshaw',
     'github_repo': 'versioned-hdf5',
     'github_banner': False, # https://github.com/bitprophet/alabaster/issues/166
     'github_button': False,
     # 'logo_name': True,
     'travis_button': True,
     'show_related': True,
+
+    # Remove gray background from inline code
+    'code_bg': '#FFFFFF',
+
+    # Originally 940px
+    'page_width': '1000px',
+
+    # Fonts
+    'font_family': "Palatino, 'goudy old style', 'minion pro', 'bell mt', Georgia, 'Hiragino Mincho Pro', serif",
+    'font_size': '18px',
+    'code_font_family': "'Menlo', 'DejaVu Sans Mono', 'Consolas', 'Bitstream Vera Sans Mono', monospace",
+    'code_font_size': '0.85em',
+
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,

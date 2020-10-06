@@ -14,10 +14,12 @@ matrix:
     - python: 3.8
       env:
         - TESTS=true
-        - DOCS=true
         - COVERAGE=true
-        # Doctr deploy key for Quansight/versioned-hdf5
-        - secure: "jg/COrBzXofBRQF++aWI6LkOGzsB1BcnGLd6zsCdk8lhg1Av1csO4nToGne8YPPAcDTjo16p71i4WaJmhyBd3+wuQmonjXLXMj3+Go7KsnZ6xbRtecqL/kW2AbHyxmlo6zILxrIUnFeYfAYOock+E0LDtelZJrKvbt2p+4B4zitE0cTt8Gabs/eb1fmZiNPYkbVOPqeF6W82NJ0enTBz0l1k7pNlBv60nU0sGOohzr6chx8wNrqcln9Uet7DR0NrMvTrEWQaBK4pydCT/f4BGJyBtQOv87spee+HCsWFJtJbx1XCR2oeiFijsnvUtN52BwyJiRQmCUE8+5Wmk31BhrlAu9O8C1w6j3MJWj9B7HAsNO0NOG+hPcro9CsTzMOTYmlHebtXVKB/m2qSYv5/LWW8995MAErzT2HXfIdJAZYlWmIUUfDQ39sFez4g7RCzTks14CCSgtiRxbFtw8VWLqnmcv0+K8KAtEXu+JixuA9FNLxyt4C/+TGfgt/iJqV/I5qh4zg5CmG9ePqE2A2AhX6gIA+1L7wI+ogRg7QwjaA8B+rZNFShJDusF2aJuSiy32ofhiD1KaAC6U1c+G0Lmq0hN3F4ZifaJSYycxgS5SCmELt0zhSOWXPPsrf1XY+SoWpHun+FW4q8Pb57zA6JLsOhK+4230b8V+xNLksAZ+8="
+    - python: 3.8
+      env:
+        - DOCS=true
+        # Doctr deploy key for deshaw/versioned-hdf5
+        - secure: "fljdGv06C2vYYXLXc1mmMH7c6DafXYXApsZ0sZakzMiEg8H+KP2FCrgcspHnaeWnUmqnORzLQVN4xSF2Ee4MnnruwT56lcNdR0OzdOF1TM3pcZL8coIdtc8YAfX7ChK5rKawJNaZi4j0po7CLfSV0oDr1zTxr3ZoVfHWJjWyw0F8+kWHZakQyt0ZvhX3uXJaRcEOdtHP+oELmtIasYzLsBlgt7WhHUZ3EmasQ13CwA8O+nk0i6COSMeV9j9bbzl47vTH0OxnYIZGjKzWdvAYHFl3Y5lXrq4pN1i93kQcLs2pEmxoNf1WHPUNmCcWWca0ElqIgGpjSBIe7/E0HOf/yVZ6UuaiGsLhQn2QDY5wCSKjxC1V+7Co73jlus8nki8y25Sm1K973C3XvfK7iMS9tDhlRsgdOfg0oJDiHk4czS8S683Xo1J0quk8eiFlwgs+pz98Ps1AbCP6choaX5aRXwhCoE12s3qsUXcOX7D6CepMh0NLiB8wAR2Wk+cQaW4VkRjDHC74b9msBsXYMZpm077ckAzL1yW0ieslvwiUdvlOLkXu/Yz/ZeeUwKUclPvkHUS4JpcWwPNX17i3ofdyOpjglB0WmwH7rBwa5E5abH4VYW24fUstlAMzrXd6mV5EKd/qqJFHzexuNdiLGQE2g886as2Owz3VQTGHU0GaB8Y="
 
 install:
   - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh;
@@ -28,17 +30,18 @@ install:
   - conda config --add channels conda-forge
   - conda update -q conda
   - conda info -a
-  - conda create -n test-environment python=$TRAVIS_PYTHON_VERSION h5py numpy ndindex pyflakes pytest pytest-doctestplus doctr sphinx pytest-cov
+  - conda create -n test-environment python=$TRAVIS_PYTHON_VERSION h5py numpy scipy ndindex pyflakes pytest pytest-doctestplus pytest-flakes doctr sphinx pytest-cov myst-parser graphviz
   - source activate test-environment
 
 script:
   - set -e
-  - pyflakes .
   - python -We:invalid -We::SyntaxWarning -m compileall -f -q versioned_hdf5/
   - if [[ "${COVERAGE}" == "true" ]]; then
         PYTEST_FLAGS="--cov=./";
     fi
-  - pytest $PYTEST_FLAGS
+  - if [[ "${TESTS}" == "true" ]]; then
+        pytest $PYTEST_FLAGS;
+    fi
   # # Make sure it installs
   # - python setup.py install
   - if [[ "${DOCS}" == "true" ]]; then
@@ -46,6 +49,11 @@ script:
         make html;
         cd ..;
         doctr deploy .;
+        if [[ "${TRAVIS_BRANCH}" == "master" ]]; then
+            doctr deploy .;
+        else
+            doctr deploy --no-require-master "_docs-$TRAVIS_BRANCH";
+        fi
     fi
   - if [[ "${COVERAGE}" == "true" ]]; then
         bash <(curl -s https://codecov.io/bash) || echo "Codecov did not collect coverage reports";
