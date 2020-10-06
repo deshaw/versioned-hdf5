@@ -92,7 +92,7 @@ class InMemoryGroup(Group):
             if not res.is_virtual:
                 # This must be from a sparse dataset. create_virtual_dataset()
                 # with an empty produces a dataset that isn't virtual.
-                self._data[name] = InMemorySparseDataset.from_dataset(res)
+                self._data[name] = InMemorySparseDataset.from_dataset(res, parent=self)
             else:
                 self._data[name] = InMemoryDataset(res.id, parent=self)
             return self._data[name]
@@ -182,7 +182,8 @@ class InMemoryGroup(Group):
         if fillvalue is not None and isinstance(data, np.ndarray):
             data = InMemoryArrayDataset(name, data, parent=self, fillvalue=fillvalue)
         if data is None:
-            data = InMemorySparseDataset(name, shape=shape, dtype=dtype, fillvalue=fillvalue)
+            data = InMemorySparseDataset(name, shape=shape, dtype=dtype,
+                                         parent=self, fillvalue=fillvalue)
         chunks = kwds.get('chunks')
         if chunks in [True, None]:
             if len(shape) == 1:
@@ -719,6 +720,7 @@ class DatasetLike:
     shape
     dtype
     _fillvalue
+    parent (the parent group)
     """
     @property
     def size(self):
@@ -770,6 +772,15 @@ class DatasetLike:
         for i in range(shape[0]):
             yield self[i]
 
+
+    @property
+    def compression(self):
+        return self.parent.compression[self.name]
+
+    @property
+    def compression_opts(self):
+        return self.parent.compression_opts[self.name]
+
 class InMemoryArrayDataset(DatasetLike):
     """
     Class that looks like a h5py.Dataset but is backed by an array
@@ -800,18 +811,6 @@ class InMemoryArrayDataset(DatasetLike):
             return self._dtype
         return self._array.dtype
 
-    @property
-    def chunks(self):
-        return self.parent.chunks[self.name]
-
-    @property
-    def compression(self):
-        return self.parent.compression[self.name]
-
-    @property
-    def compression_opts(self):
-        return self.parent.compression_opts[self.name]
-
     def __getitem__(self, item):
         return self.array.__getitem__(item)
 
@@ -821,6 +820,10 @@ class InMemoryArrayDataset(DatasetLike):
 
     def __array__(self, dtype=None):
         return self.array
+
+    @property
+    def chunks(self):
+        return self.parent.chunks[self.name]
 
     def resize(self, size, axis=None):
         self.parent._check_committed()
@@ -852,7 +855,7 @@ class InMemorySparseDataset(DatasetLike):
     """
     Class that looks like a Dataset that has no data (only the fillvalue)
     """
-    def __init__(self, name, shape, dtype, chunks=None, fillvalue=None):
+    def __init__(self, name, *, shape, dtype, parent, chunks=None, fillvalue=None):
         if shape is None:
             raise TypeError("shape must be specified for sparse datasets")
         self.name = name
@@ -866,6 +869,7 @@ class InMemorySparseDataset(DatasetLike):
             else:
                 raise NotImplementedError("chunks must be specified for multi-dimensional datasets")
         self.chunks = chunks
+        self.parent = parent
 
         # This works like a mix between InMemoryArrayDataset and
         # InMemoryDatasetID. Explicit array data is stored in a data_dict like
@@ -874,9 +878,11 @@ class InMemorySparseDataset(DatasetLike):
         self.data_dict = {}
 
     @classmethod
-    def from_dataset(cls, dataset):
+    def from_dataset(cls, dataset, parent=None):
         # np.testing.assert_equal(dataset[()], dataset.fillvalue)
-        return cls(dataset.name, dataset.shape, dataset.dtype, dataset.fillvalue)
+        return cls(dataset.name, shape=dataset.shape, dtype=dataset.dtype,
+                   parent=parent or dataset.parent, chunks=dataset.chunks,
+                   fillvalue=dataset.fillvalue)
 
     def resize(self, size, axis=None):
         if axis is not None:
