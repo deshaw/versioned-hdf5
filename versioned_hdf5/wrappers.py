@@ -12,7 +12,7 @@ from h5py._hl import filters
 from h5py._hl.selections import guess_shape
 from h5py._hl.vds import VDSmap
 
-from ndindex import Tuple, Slice, ndindex
+from ndindex import ndindex, Tuple, Slice
 
 import numpy as np
 
@@ -89,7 +89,12 @@ class InMemoryGroup(Group):
             self._subgroups[name] = self.__class__(res.id)
             return self._subgroups[name]
         elif isinstance(res, Dataset):
-            self._data[name] = InMemoryDataset(res.id, parent=self)
+            if not res.is_virtual:
+                # This must be from a sparse dataset. create_virtual_dataset()
+                # with an empty produces a dataset that isn't virtual.
+                self._data[name] = InMemorySparseDataset.from_dataset(res, parent=self)
+            else:
+                self._data[name] = InMemoryDataset(res.id, parent=self)
             return self._data[name]
         else:
             raise NotImplementedError(f"Cannot handle {type(res)!r}")
@@ -109,7 +114,7 @@ class InMemoryGroup(Group):
             self._subgroups[name] = InMemoryGroup(obj.id)
         elif isinstance(obj, InMemoryGroup):
             self._subgroups[name] = obj
-        elif isinstance(obj, InMemoryArrayDataset):
+        elif isinstance(obj, (InMemoryArrayDataset, InMemorySparseDataset)):
             self._data[name] = obj
         else:
             self._data[name] = InMemoryArrayDataset(name, np.asarray(obj), parent=self)
@@ -164,17 +169,21 @@ class InMemoryGroup(Group):
             n = dirname
         return group
 
-    def create_dataset(self, name, **kwds):
+    def create_dataset(self, name, shape=None, dtype=None, data=None, fillvalue=None, **kwds):
         self._check_committed()
         dirname, data_name = pp.split(name)
         if dirname and dirname not in self:
             self.create_group(dirname)
         if 'maxshape' in kwds and any(i != None for i in kwds['maxshape']):
             warnings.warn("The maxshape parameter is currently ignored for versioned datasets.")
-        data = _make_new_dset(**kwds)
-        shape = data.shape
-        if 'fillvalue' in kwds:
-            data = InMemoryArrayDataset(name, data, parent=self, fillvalue=kwds['fillvalue'])
+        data = _make_new_dset(data=data, shape=shape, dtype=dtype, fillvalue=fillvalue, **kwds)
+        if shape is None:
+            shape = data.shape
+        if fillvalue is not None and isinstance(data, np.ndarray):
+            data = InMemoryArrayDataset(name, data, parent=self, fillvalue=fillvalue)
+        if data is None:
+            data = InMemorySparseDataset(name, shape=shape, dtype=dtype,
+                                         parent=self, fillvalue=fillvalue)
         chunks = kwds.get('chunks')
         if chunks in [True, None]:
             if len(shape) == 1:
@@ -191,8 +200,8 @@ class InMemoryGroup(Group):
         self.set_compression(name, kwds.get('compression'))
         self.set_compression_opts(name, kwds.get('compression_opts'))
         self[name] = data
-        if 'dtype' in kwds:
-            self[name]._dtype = kwds['dtype']
+        if dtype is not None:
+            self[name]._dtype = dtype
         return self[name]
 
     def __iter__(self):
@@ -699,7 +708,80 @@ class InMemoryDataset(Dataset):
                 val_idx = c.as_subindex(idx)
                 self.id.data_dict[c][index.raw] = val[val_idx.raw]
 
-class InMemoryArrayDataset:
+
+class DatasetLike:
+    """
+    Superclass for classes that look like h5py.Dataset
+
+    Subclasses should have the following properties defined (properties
+    starting with an underscore will be computed if they are None)
+
+    name
+    shape
+    dtype
+    _fillvalue
+    parent (the parent group)
+    """
+    @property
+    def size(self):
+        return np.prod(self.shape)
+
+    @property
+    def fillvalue(self):
+         if self._fillvalue is not None:
+             return self._fillvalue
+         if self.dtype.metadata:
+             # Custom h5py string dtype. Make sure to use a fillvalue of ''
+             if 'vlen' in self.dtype.metadata:
+                 return self.dtype.metadata['vlen']()
+             elif 'h5py_encoding' in self.dtype.metadata:
+                 return b''
+         return np.zeros((), dtype=self.dtype)[()]
+
+    @property
+    def ndim(self):
+        return len(self.shape)
+
+    def __len__(self):
+        return self.len()
+
+    def len(self):
+        """
+        Length of the first axis
+        """
+        shape = self.shape
+        if len(shape) == 0:
+            raise TypeError("Attempt to take len() of scalar dataset")
+        return shape[0]
+
+    def __repr__(self):
+        name = pp.basename(pp.normpath(self.name))
+        namestr = '"%s"' % (name if name != '' else '/')
+        return '<%s %s: shape %s, type "%s">' % (
+                self.__class__.__name__, namestr, self.shape, self.dtype.str
+            )
+
+    def __iter__(self):
+        """ Iterate over the first axis.  TypeError if scalar.
+
+        BEWARE: Modifications to the yielded data are *NOT* written to file.
+        """
+        shape = self.shape
+        if len(shape) == 0:
+            raise TypeError("Can't iterate over a scalar dataset")
+        for i in range(shape[0]):
+            yield self[i]
+
+
+    @property
+    def compression(self):
+        return self.parent.compression[self.name]
+
+    @property
+    def compression_opts(self):
+        return self.parent.compression_opts[self.name]
+
+class InMemoryArrayDataset(DatasetLike):
     """
     Class that looks like a h5py.Dataset but is backed by an array
     """
@@ -724,42 +806,10 @@ class InMemoryArrayDataset:
         return self._array.shape
 
     @property
-    def size(self):
-        return np.prod(self.shape)
-
-    @property
     def dtype(self):
         if self._dtype is not None:
             return self._dtype
         return self._array.dtype
-
-    @property
-    def fillvalue(self):
-         if self._fillvalue is not None:
-             return self._fillvalue
-         if self.dtype.metadata:
-             # Custom h5py string dtype. Make sure to use a fillvalue of ''
-             if 'vlen' in self.dtype.metadata:
-                 return self.dtype.metadata['vlen']()
-             elif 'h5py_encoding' in self.dtype.metadata:
-                 return b''
-         return np.zeros((), dtype=self.dtype)[()]
-
-    @property
-    def ndim(self):
-        return len(self._array.shape)
-
-    @property
-    def chunks(self):
-        return self.parent.chunks[self.name]
-
-    @property
-    def compression(self):
-        return self.parent.compression[self.name]
-
-    @property
-    def compression_opts(self):
-        return self.parent.compression_opts[self.name]
 
     def __getitem__(self, item):
         return self.array.__getitem__(item)
@@ -768,38 +818,12 @@ class InMemoryArrayDataset:
         self.parent._check_committed()
         self.array.__setitem__(item, value)
 
-    def __len__(self):
-        return self.len()
-
-    def len(self):
-        """
-        Length of the first axis
-        """
-        shape = self.shape
-        if len(shape) == 0:
-            raise TypeError("Attempt to take len() of scalar dataset")
-        return shape[0]
-
     def __array__(self, dtype=None):
         return self.array
 
-    def __repr__(self):
-        name = pp.basename(pp.normpath(self.name))
-        namestr = '"%s"' % (name if name != '' else '/')
-        return '<InMemoryArrayDataset %s: shape %s, type "%s">' % (
-                namestr, self.shape, self.dtype.str
-            )
-
-    def __iter__(self):
-        """ Iterate over the first axis.  TypeError if scalar.
-
-        BEWARE: Modifications to the yielded data are *NOT* written to file.
-        """
-        shape = self.shape
-        if len(shape) == 0:
-            raise TypeError("Can't iterate over a scalar dataset")
-        for i in range(shape[0]):
-            yield self[i]
+    @property
+    def chunks(self):
+        return self.parent.chunks[self.name]
 
     def resize(self, size, axis=None):
         self.parent._check_committed()
@@ -826,6 +850,63 @@ class InMemoryArrayDataset:
             new_array = np.full(size, self.fillvalue, dtype=self.dtype)
             new_array[old_shape_idx.as_subindex(new_shape_idx).raw] = self.array[new_shape_idx.as_subindex(old_shape_idx).raw]
             self.array = new_array
+
+class InMemorySparseDataset(DatasetLike):
+    """
+    Class that looks like a Dataset that has no data (only the fillvalue)
+    """
+    def __init__(self, name, *, shape, dtype, parent, chunks=None, fillvalue=None):
+        if shape is None:
+            raise TypeError("shape must be specified for sparse datasets")
+        self.name = name
+        self.shape = shape
+        self.dtype = np.dtype(dtype)
+        self.attrs = {}
+        self._fillvalue = fillvalue
+        if chunks in [True, None]:
+            if len(shape) == 1:
+                chunks = (DEFAULT_CHUNK_SIZE,)
+            else:
+                raise NotImplementedError("chunks must be specified for multi-dimensional datasets")
+        self.chunks = chunks
+        self.parent = parent
+
+        # This works like a mix between InMemoryArrayDataset and
+        # InMemoryDatasetID. Explicit array data is stored in a data_dict like
+        # with InMemoryDatasetID, but unlike it, missing data (which equals
+        # the fill value) is omitted.
+        self.data_dict = {}
+
+    @classmethod
+    def from_dataset(cls, dataset, parent=None):
+        # np.testing.assert_equal(dataset[()], dataset.fillvalue)
+        return cls(dataset.name, shape=dataset.shape, dtype=dataset.dtype,
+                   parent=parent or dataset.parent, chunks=dataset.chunks,
+                   fillvalue=dataset.fillvalue)
+
+    def resize(self, size, axis=None):
+        if axis is not None:
+            if not (axis >=0 and axis < self.ndim):
+                raise ValueError("Invalid axis (0 to %s allowed)" % (self.ndim-1))
+            try:
+                newlen = int(size)
+            except TypeError:
+                raise TypeError("Argument must be a single int if axis is specified")
+            size = list(self.shape)
+            size[axis] = newlen
+
+        size = tuple(size)
+        if len(size) > 1:
+            raise NotImplementedError("More than one dimension is not yet supported")
+        self.shape = size
+
+    def __getitem__(self, index):
+        idx = ndindex(index)
+        newshape = idx.newshape(self.shape)
+        return np.full(newshape, self.fillvalue, dtype=self.dtype)
+
+    def __setitem__(self, index, value):
+        raise NotImplementedError("Setting elements of sparse datasets")
 
 class InMemoryDatasetID(h5d.DatasetID):
     def __init__(self, _id):

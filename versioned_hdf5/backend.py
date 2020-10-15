@@ -170,9 +170,8 @@ def write_dataset_chunks(f, name, data_dict):
         ds[c] = data_s
     return slices
 
-def create_virtual_dataset(f, version_name, name, slices, attrs=None, fillvalue=None):
+def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fillvalue=None):
     raw_data = f['_version_data'][name]['raw_data']
-    chunks = tuple(raw_data.attrs['chunks'])
     slices = {c: s.reduce() for c, s in slices.items()}
 
     if len(raw_data) == 0:
@@ -181,8 +180,6 @@ def create_virtual_dataset(f, version_name, name, slices, attrs=None, fillvalue=
         vs = VirtualSource('.', name=raw_data.name, shape=(1,), dtype=raw_data.dtype)
         layout[0] = vs[()]
     else:
-        shape = tuple([max(c.args[i].stop for c in slices) for i in range(len(chunks))])
-
         # Chunks in the raw dataset are expanded along the first dimension only.
         # Since the chunks are pointed to by virtual datasets, it doesn't make
         # sense to expand the chunks in the raw dataset along multiple dimensions

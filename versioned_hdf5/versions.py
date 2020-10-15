@@ -6,7 +6,7 @@ import datetime
 import numpy as np
 
 from .backend import write_dataset, write_dataset_chunks, create_virtual_dataset
-from .wrappers import InMemoryGroup, InMemoryDataset, InMemoryArrayDataset
+from .wrappers import InMemoryGroup, InMemoryDataset, InMemoryArrayDataset, InMemorySparseDataset
 
 TIMESTAMP_FMT = "%Y-%m-%d %H:%M:%S.%f%z"
 
@@ -83,7 +83,7 @@ def commit_version(version_group, datasets, *,
 
     for name, data in datasets.items():
         fillvalue = None
-        if isinstance(data, (InMemoryDataset, InMemoryArrayDataset)):
+        if isinstance(data, (InMemoryDataset, InMemoryArrayDataset, InMemorySparseDataset)):
             attrs = data.attrs
             fillvalue = data.fillvalue
         else:
@@ -95,12 +95,23 @@ def commit_version(version_group, datasets, *,
             if chunks[name] is not None:
                 raise NotImplementedError("Specifying chunk size with dict data")
             slices = write_dataset_chunks(f, name, data)
+        elif isinstance(data, InMemorySparseDataset):
+            slices = write_dataset(f, name, np.array([]),
+                                   chunks=chunks[name],
+                                   compression=compression[name],
+                                   compression_opts=compression_opts[name],
+                                   fillvalue=fillvalue)
         else:
             slices = write_dataset(f, name, data, chunks=chunks[name],
                                    compression=compression[name],
                                    compression_opts=compression_opts[name],
                                    fillvalue=fillvalue)
-        create_virtual_dataset(f, version_name, name, slices, attrs=attrs,
+        if isinstance(data, dict):
+            raw_data = f['_version_data'][name]['raw_data']
+            shape = tuple([max(c.args[i].stop for c in slices) for i in range(len(tuple(raw_data.attrs['chunks'])))])
+        else:
+            shape = data.shape
+        create_virtual_dataset(f, version_name, name, shape, slices, attrs=attrs,
                                fillvalue=fillvalue)
     version_group.attrs['committed'] = True
 

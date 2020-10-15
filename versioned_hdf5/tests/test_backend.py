@@ -343,7 +343,7 @@ def test_create_virtual_dataset(h5file):
                                 np.concatenate((2*np.ones((DEFAULT_CHUNK_SIZE,)),
                                                 3*np.ones((DEFAULT_CHUNK_SIZE,)))))
 
-        virtual_data = create_virtual_dataset(f, 'test_version', 'test_data',
+        virtual_data = create_virtual_dataset(f, 'test_version', 'test_data', (3*DEFAULT_CHUNK_SIZE,),
             {**slices1,
              Tuple(Slice(2*DEFAULT_CHUNK_SIZE, 3*DEFAULT_CHUNK_SIZE, 1),):
              slices2[(Slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE, 1),)]})
@@ -361,7 +361,8 @@ def test_create_virtual_dataset_multidimension(h5file):
     data = np.ones(shape)
     slices1 = write_dataset(h5file, 'test_data', data, chunks=chunks)
 
-    virtual_data = create_virtual_dataset(h5file, 'test_version1', 'test_data', slices1)
+    virtual_data = create_virtual_dataset(h5file, 'test_version1',
+                                          'test_data', shape, slices1)
 
     assert virtual_data.shape == shape
     assert_equal(virtual_data[:], 1)
@@ -375,7 +376,8 @@ def test_create_virtual_dataset_multidimension(h5file):
 
     slices2 = write_dataset(h5file, 'test_data', data2, chunks=chunks)
 
-    virtual_data2 = create_virtual_dataset(h5file, 'test_version2', 'test_data', slices2)
+    virtual_data2 = create_virtual_dataset(h5file, 'test_version2',
+                                           'test_data', shape, slices2)
 
     assert virtual_data2.shape == shape
     for n, (i, j, k) in enumerate(itertools.product([0, 1], repeat=3)):
@@ -393,6 +395,7 @@ def test_create_virtual_dataset_offset(h5file):
                                             3*np.ones((DEFAULT_CHUNK_SIZE - 2,)))))
 
     virtual_data = create_virtual_dataset(h5file, 'test_version', 'test_data',
+                                          (3*DEFAULT_CHUNK_SIZE - 2,),
         {**slices1,
          Tuple(Slice(2*DEFAULT_CHUNK_SIZE, 3*DEFAULT_CHUNK_SIZE - 2, 1),):
          slices2[(Slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE - 2, 1),)]})
@@ -416,7 +419,8 @@ def test_create_virtual_dataset_offset_multidimension(h5file):
 
     slices2 = write_dataset(h5file, 'test_data', data2, chunks=chunks)
 
-    virtual_data = create_virtual_dataset(h5file, 'test_version', 'test_data', slices2)
+    virtual_data = create_virtual_dataset(h5file, 'test_version', 'test_data',
+                                          shape2, slices2)
 
     assert virtual_data.shape == shape2
     assert_equal(virtual_data[()], data2)
