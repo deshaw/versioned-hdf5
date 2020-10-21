@@ -192,7 +192,8 @@ def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fil
         vs = VirtualSource('.', name=raw_data.name, shape=raw_data.shape, dtype=raw_data.dtype)
 
         for c, s in slices.items():
-            # TODO: This needs to handle more than one dimension
+            if c.isempty():
+                continue
             idx = Tuple(s, *Tuple(*[slice(0, i) for i in shape]).as_subindex(c).args[1:])
             assert c.newshape(shape) == vs[idx.raw].shape, (c, shape, s)
             layout[c.raw] = vs[idx.raw]
@@ -212,4 +213,5 @@ def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fil
     if attrs:
         for k, v in attrs.items():
             virtual_data.attrs[k] = v
+    virtual_data.attrs['raw_data'] = raw_data.name
     return virtual_data
