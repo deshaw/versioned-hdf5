@@ -89,12 +89,7 @@ class InMemoryGroup(Group):
             self._subgroups[name] = self.__class__(res.id)
             return self._subgroups[name]
         elif isinstance(res, Dataset):
-            if not res.is_virtual:
-                # This must be from a sparse dataset. create_virtual_dataset()
-                # with an empty produces a dataset that isn't virtual.
-                self._data[name] = InMemorySparseDataset.from_dataset(res, parent=self)
-            else:
-                self._data[name] = InMemoryDataset(res.id, parent=self)
+            self._data[name] = InMemoryDataset(res.id, parent=self)
             return self._data[name]
         else:
             raise NotImplementedError(f"Cannot handle {type(res)!r}")
@@ -576,9 +571,12 @@ class InMemoryDataset(Dataset):
         idx = ndindex(args).reduce(self.shape)
 
         arr = np.ndarray(idx.newshape(self.shape), new_dtype, order='C')
+        fill = np.broadcast_to(self.fillvalue, self.chunks)
 
         for c, index in as_subchunks(idx, self.shape, self.chunks):
-            if isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
+            if c not in self.id.data_dict:
+                a = self.id.data_dict[c] = fill
+            elif isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
                 raw_idx = Tuple(self.id.data_dict[c], *[slice(0, len(i)) for i
                                                         in c.args[1:]]).raw
                 a = self.id._read_chunk(raw_idx)
@@ -696,9 +694,17 @@ class InMemoryDataset(Dataset):
         idx = ndindex(args).reduce(self.shape)
 
         val = np.broadcast_to(val, idx.newshape(self.shape))
+        fill = np.broadcast_to(self.fillvalue, self.chunks)
 
         for c, index in as_subchunks(idx, self.shape, self.chunks):
-            if isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
+            if c not in self.id.data_dict:
+                # TODO: Handle this more efficiently if there are many chunks
+                # without explicit data (see
+                # https://github.com/Quansight/ndindex/issues/45). This would
+                # also make things more efficient for the non-sparse case as
+                # well.
+                a = self.id.data_dict[c] = fill.copy()
+            elif isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
                 raw_idx = Tuple(self.id.data_dict[c], *[slice(0, len(i)) for i
                                                         in c.args[1:]]).raw
                 a = self.id._read_chunk(raw_idx)
