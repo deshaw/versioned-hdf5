@@ -176,10 +176,11 @@ class InMemoryGroup(Group):
             shape = data.shape
         if fillvalue is not None and isinstance(data, np.ndarray):
             data = InMemoryArrayDataset(name, data, parent=self, fillvalue=fillvalue)
+        chunks = kwds.get('chunks')
         if data is None:
             data = InMemorySparseDataset(name, shape=shape, dtype=dtype,
-                                         parent=self, fillvalue=fillvalue)
-        chunks = kwds.get('chunks')
+                                         parent=self, fillvalue=fillvalue,
+                                         chunks=chunks)
         if chunks in [True, None]:
             if len(shape) == 1:
                 chunks = (DEFAULT_CHUNK_SIZE,)
