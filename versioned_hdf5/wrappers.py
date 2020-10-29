@@ -572,16 +572,15 @@ class InMemoryDataset(Dataset):
         idx = ndindex(args).reduce(self.shape)
 
         arr = np.ndarray(idx.newshape(self.shape), new_dtype, order='C')
-        fill = np.broadcast_to(self.fillvalue, self.chunks)
 
         for c, index in as_subchunks(idx, self.shape, self.chunks):
             if c not in self.id.data_dict:
-                a = self.id.data_dict[c] = fill
+                fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
+                self.id.data_dict[c] = fill
             elif isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
                 raw_idx = Tuple(self.id.data_dict[c], *[slice(0, len(i)) for i
                                                         in c.args[1:]]).raw
-                a = self.id._read_chunk(raw_idx)
-                self.id.data_dict[c] = a
+                self.id.data_dict[c] = self.id._read_chunk(raw_idx)
 
             if self.id.data_dict[c].size != 0:
                 arr_idx = c.as_subindex(idx)
@@ -695,7 +694,6 @@ class InMemoryDataset(Dataset):
         idx = ndindex(args).reduce(self.shape)
 
         val = np.broadcast_to(val, idx.newshape(self.shape))
-        fill = np.broadcast_to(self.fillvalue, self.chunks)
 
         for c, index in as_subchunks(idx, self.shape, self.chunks):
             if c not in self.id.data_dict:
@@ -704,15 +702,20 @@ class InMemoryDataset(Dataset):
                 # https://github.com/Quansight/ndindex/issues/45). This would
                 # also make things more efficient for the non-sparse case as
                 # well.
-                a = self.id.data_dict[c] = fill.copy()
+
+                # Broadcasted arrays do not actually consume memory
+                fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
+                self.id.data_dict[c] = fill.copy()
             elif isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
                 raw_idx = Tuple(self.id.data_dict[c], *[slice(0, len(i)) for i
                                                         in c.args[1:]]).raw
-                a = self.id._read_chunk(raw_idx)
-                self.id.data_dict[c] = a
+                self.id.data_dict[c] = self.id._read_chunk(raw_idx)
 
             if self.id.data_dict[c].size != 0:
                 val_idx = c.as_subindex(idx)
+                if not self.id.data_dict[c].flags.writeable:
+                    # self.id.data_dict[c] is a broadcasted array from above
+                    self.id.data_dict[c] = self.id.data_dict[c].copy()
                 self.id.data_dict[c][index.raw] = val[val_idx.raw]
 
 
@@ -908,12 +911,42 @@ class InMemorySparseDataset(DatasetLike):
         self.shape = size
 
     def __getitem__(self, index):
-        idx = ndindex(index)
+        idx = ndindex(index).reduce(self.shape)
+
         newshape = idx.newshape(self.shape)
-        return np.full(newshape, self.fillvalue, dtype=self.dtype)
+        arr = np.full(newshape, self.fillvalue, dtype=self.dtype)
+
+        for c, index in as_subchunks(idx, self.shape, self.chunks):
+            if c not in self.data_dict:
+                fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
+                self.data_dict[c] = fill
+
+            if self.data_dict[c].size != 0:
+                arr_idx = c.as_subindex(idx)
+                arr[arr_idx.raw] = self.data_dict[c][index.raw]
+
+        # Return arr as a scalar if it is shape () (matching h5py)
+        return arr[()]
 
     def __setitem__(self, index, value):
-        raise NotImplementedError("Setting elements of sparse datasets")
+        self.parent._check_committed()
+
+        idx = ndindex(index).reduce(self.shape)
+
+        val = np.broadcast_to(value, idx.newshape(self.shape))
+
+        for c, index in as_subchunks(idx, self.shape, self.chunks):
+            if c not in self.data_dict:
+                # Broadcasted arrays do not actually consume memory
+                fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
+                self.data_dict[c] = fill
+
+            if self.data_dict[c].size != 0:
+                val_idx = c.as_subindex(idx)
+                if not self.data_dict[c].flags.writeable:
+                    # self.data_dict[c] is a broadcasted array from above
+                    self.data_dict[c] = self.data_dict[c].copy()
+                self.data_dict[c][index.raw] = val[val_idx.raw]
 
 class InMemoryDatasetID(h5d.DatasetID):
     def __init__(self, _id):
