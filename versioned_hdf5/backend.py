@@ -137,9 +137,6 @@ def write_dataset_chunks(f, name, data_dict):
     shape = tuple(max(c.args[i].stop for c in data_dict) for i in
                   range(len(chunks)))
     all_chunks = list(split_chunks(shape, chunks))
-    for c in all_chunks:
-        if c not in data_dict:
-            raise ValueError(f"data_dict does not include all chunks ({c})")
     for c in data_dict:
         if c not in all_chunks:
             raise ValueError(f"data_dict contains extra chunks ({c})")
