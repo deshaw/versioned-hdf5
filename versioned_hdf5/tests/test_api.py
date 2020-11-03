@@ -14,7 +14,7 @@ from .helpers import setup
 from ..backend import DEFAULT_CHUNK_SIZE
 from ..api import VersionedHDF5File
 from ..versions import TIMESTAMP_FMT
-from ..wrappers import InMemoryArrayDataset, InMemoryDataset
+from ..wrappers import InMemoryArrayDataset, InMemoryDataset, InMemorySparseDataset
 
 
 def test_stage_version(vfile):
@@ -1560,3 +1560,78 @@ def test_scalar():
         assert isinstance(vfile['version1']['bar'], InMemoryDataset)
         # Should return a scalar, not a shape () array
         assert isinstance(vfile['version1']['bar'][0], bytes)
+
+def test_sparse(vfile):
+    with vfile.stage_version('version1') as g:
+        g.create_dataset('test_data', shape=(10_000, 10_000), dtype=np.dtype('int64'), data=None,
+              chunks=(100, 100), fillvalue=1)
+        assert isinstance(g['test_data'], InMemorySparseDataset)
+        assert g['test_data'][0, 0] == 1
+        assert g['test_data'][0, 1] == 1
+        assert g['test_data'][200, 1] == 1
+
+        g['test_data'][0, 0] = 2
+        assert g['test_data'][0, 0] == 2
+        assert g['test_data'][0, 1] == 1
+        assert g['test_data'][200, 1] == 1
+
+
+    with vfile.stage_version('version2') as g:
+        assert isinstance(g['test_data'], InMemoryDataset)
+        assert g['test_data'][0, 0] == 2
+        assert g['test_data'][0, 1] == 1
+        assert g['test_data'][200, 1] == 1
+
+        g['test_data'][200, 1] = 3
+
+        assert g['test_data'][0, 0] == 2
+        assert g['test_data'][0, 1] == 1
+        assert g['test_data'][200, 1] == 3
+
+    assert vfile['version1']['test_data'][0, 0] == 2
+    assert vfile['version1']['test_data'][0, 1] == 1
+    assert vfile['version1']['test_data'][200, 1] == 1
+
+    assert vfile['version2']['test_data'][0, 0] == 2
+    assert vfile['version2']['test_data'][0, 1] == 1
+    assert vfile['version2']['test_data'][200, 1] == 3
+
+def test_sparse_large(vfile):
+    # This is currently inefficient in terms of time, but test that it isn't
+    # inefficient in terms of memory.
+    with vfile.stage_version('version1') as g:
+        # test_data would be 100GB if stored entirely in memory. We use a huge
+        # chunk size to avoid taking too long with the current code that loops
+        # over all chunk indices.
+        g.create_dataset('test_data', shape=(100_000_000_000,), data=None,
+                         chunks=(10_000_000,), fillvalue=0.)
+        assert isinstance(g['test_data'], InMemorySparseDataset)
+        assert g['test_data'][0] == 0
+        assert g['test_data'][1] == 0
+        assert g['test_data'][20_000_000] == 0
+
+        g['test_data'][0] = 1
+        assert g['test_data'][0] == 1
+        assert g['test_data'][1] == 0
+        assert g['test_data'][20_000_000] == 0
+
+
+    with vfile.stage_version('version2') as g:
+        assert isinstance(g['test_data'], InMemoryDataset)
+        assert g['test_data'][0] == 1
+        assert g['test_data'][1] == 0
+        assert g['test_data'][20_000_000] == 0
+
+        g['test_data'][20_000_000] = 2
+
+        assert g['test_data'][0] == 1
+        assert g['test_data'][1] == 0
+        assert g['test_data'][20_000_000] == 2
+
+    assert vfile['version1']['test_data'][0] == 1
+    assert vfile['version1']['test_data'][1] == 0
+    assert vfile['version1']['test_data'][20_000_000] == 0
+
+    assert vfile['version2']['test_data'][0] == 1
+    assert vfile['version2']['test_data'][1] == 0
+    assert vfile['version2']['test_data'][20_000_000] == 2
