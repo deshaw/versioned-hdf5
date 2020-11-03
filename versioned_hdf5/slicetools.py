@@ -80,13 +80,13 @@ def split_chunks(shape, chunks):
 
     """
     if len(shape) != len(chunks):
-        raise ValueError("chunks shape must equal the array shape")
+        raise ValueError("chunks dimensions must equal the array dimensions")
     if len(shape) == 0:
         # chunk_size = 1
         yield Tuple(Slice(0))
     else:
         if len(shape) != len(chunks):
-            raise ValueError("chunks shape must equal the array shape")
+            raise ValueError("chunks dimensions must equal the array dimensions")
 
     d = [math.ceil(i/c) for i, c in zip(shape, chunks)]
     if 0 in d:
