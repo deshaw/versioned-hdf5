@@ -96,11 +96,12 @@ def commit_version(version_group, datasets, *,
                 raise NotImplementedError("Specifying chunk size with dict data")
             slices = write_dataset_chunks(f, name, data)
         elif isinstance(data, InMemorySparseDataset):
-            slices = write_dataset(f, name, np.array([]),
-                                   chunks=chunks[name],
+            write_dataset(f, name, np.empty((0,)*len(data.shape),
+                                                     dtype=data.dtype), chunks=chunks[name],
                                    compression=compression[name],
                                    compression_opts=compression_opts[name],
                                    fillvalue=fillvalue)
+            slices = write_dataset_chunks(f, name, data.data_dict)
         else:
             slices = write_dataset(f, name, data, chunks=chunks[name],
                                    compression=compression[name],
