@@ -737,25 +737,24 @@ def test_attrs(vfile):
         group.create_dataset('test_data', data=data)
 
         test_data = group['test_data']
-        assert test_data.attrs == {}
+        assert 'test_attr' not in test_data.attrs
         test_data.attrs['test_attr'] = 0
 
-    assert vfile['version1']['test_data'].attrs == \
-        dict(vfile.f['_version_data']['versions']['version1']['test_data'].attrs) == \
-             {'test_attr': 0}
+    assert vfile['version1']['test_data'].attrs['test_attr'] == \
+        vfile.f['_version_data']['versions']['version1']['test_data'].attrs['test_attr'] == 0
+
 
     with vfile.stage_version('version2') as group:
         test_data = group['test_data']
-        assert test_data.attrs == {'test_attr': 0}
+        assert test_data.attrs['test_attr'] == 0
         test_data.attrs['test_attr'] = 1
 
-    assert vfile['version1']['test_data'].attrs == \
-        dict(vfile.f['_version_data']['versions']['version1']['test_data'].attrs) == \
-             {'test_attr': 0}
+    assert vfile['version1']['test_data'].attrs['test_attr'] == \
+        vfile.f['_version_data']['versions']['version1']['test_data'].attrs['test_attr'] == 0
 
-    assert vfile['version2']['test_data'].attrs == \
-        dict(vfile.f['_version_data']['versions']['version2']['test_data'].attrs) == \
-             {'test_attr': 1}
+
+    assert vfile['version2']['test_data'].attrs['test_attr'] == \
+        vfile.f['_version_data']['versions']['version2']['test_data'].attrs['test_attr'] == 1
 
 
 def test_auto_delete(vfile):
