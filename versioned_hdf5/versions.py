@@ -89,12 +89,14 @@ def commit_version(version_group, datasets, *,
         else:
             attrs = {}
 
+        shape = None
         if isinstance(data, InMemoryDataset):
+            shape = data.shape
             data = data.id.data_dict
         if isinstance(data, dict):
             if chunks[name] is not None:
                 raise NotImplementedError("Specifying chunk size with dict data")
-            slices = write_dataset_chunks(f, name, data)
+            slices = write_dataset_chunks(f, name, data, shape=shape)
         elif isinstance(data, InMemorySparseDataset):
             write_dataset(f, name, np.empty((0,)*len(data.shape),
                                                      dtype=data.dtype), chunks=chunks[name],
@@ -107,11 +109,12 @@ def commit_version(version_group, datasets, *,
                                    compression=compression[name],
                                    compression_opts=compression_opts[name],
                                    fillvalue=fillvalue)
-        if isinstance(data, dict):
-            raw_data = f['_version_data'][name]['raw_data']
-            shape = tuple([max(c.args[i].stop for c in slices) for i in range(len(tuple(raw_data.attrs['chunks'])))])
-        else:
-            shape = data.shape
+        if shape is None:
+            if isinstance(data, dict):
+                raw_data = f['_version_data'][name]['raw_data']
+                shape = tuple([max(c.args[i].stop for c in slices) for i in range(len(tuple(raw_data.attrs['chunks'])))])
+            else:
+                shape = data.shape
         create_virtual_dataset(f, version_name, name, shape, slices, attrs=attrs,
                                fillvalue=fillvalue)
     version_group.attrs['committed'] = True

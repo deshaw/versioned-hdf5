@@ -121,7 +121,7 @@ def write_dataset(f, name, data, chunks=None, compression=None,
             ds[idx.raw] = data[s.raw]
     return slices
 
-def write_dataset_chunks(f, name, data_dict):
+def write_dataset_chunks(f, name, data_dict, shape=None):
     """
     data_dict should be a dictionary mapping chunk_size index to either an
     array for that chunk, or a slice into the raw data for that chunk
@@ -134,8 +134,9 @@ def write_dataset_chunks(f, name, data_dict):
     chunks = tuple(ds.attrs['chunks'])
     chunk_size = chunks[0]
 
-    shape = tuple(max(c.args[i].stop for c in data_dict) for i in
-                  range(len(chunks)))
+    if shape is None:
+        shape = tuple(max(c.args[i].stop for c in data_dict) for i in
+                      range(len(chunks)))
     all_chunks = list(split_chunks(shape, chunks))
     for c in data_dict:
         if c not in all_chunks:
