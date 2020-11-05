@@ -121,7 +121,7 @@ def write_dataset(f, name, data, chunks=None, compression=None,
             ds[idx.raw] = data[s.raw]
     return slices
 
-def write_dataset_chunks(f, name, data_dict):
+def write_dataset_chunks(f, name, data_dict, shape=None):
     """
     data_dict should be a dictionary mapping chunk_size index to either an
     array for that chunk, or a slice into the raw data for that chunk
@@ -134,12 +134,10 @@ def write_dataset_chunks(f, name, data_dict):
     chunks = tuple(ds.attrs['chunks'])
     chunk_size = chunks[0]
 
-    shape = tuple(max(c.args[i].stop for c in data_dict) for i in
-                  range(len(chunks)))
+    if shape is None:
+        shape = tuple(max(c.args[i].stop for c in data_dict) for i in
+                      range(len(chunks)))
     all_chunks = list(split_chunks(shape, chunks))
-    for c in all_chunks:
-        if c not in data_dict:
-            raise ValueError(f"data_dict does not include all chunks ({c})")
     for c in data_dict:
         if c not in all_chunks:
             raise ValueError(f"data_dict contains extra chunks ({c})")
@@ -192,7 +190,8 @@ def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fil
         vs = VirtualSource('.', name=raw_data.name, shape=raw_data.shape, dtype=raw_data.dtype)
 
         for c, s in slices.items():
-            # TODO: This needs to handle more than one dimension
+            if c.isempty():
+                continue
             idx = Tuple(s, *Tuple(*[slice(0, i) for i in shape]).as_subindex(c).args[1:])
             assert c.newshape(shape) == vs[idx.raw].shape, (c, shape, s)
             layout[c.raw] = vs[idx.raw]
@@ -212,4 +211,5 @@ def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fil
     if attrs:
         for k, v in attrs.items():
             virtual_data.attrs[k] = v
+    virtual_data.attrs['raw_data'] = raw_data.name
     return virtual_data

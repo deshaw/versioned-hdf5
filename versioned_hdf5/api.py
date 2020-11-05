@@ -150,6 +150,8 @@ class VersionedHDF5File:
         `prev_version` for any future `stage_version` call.
 
         """
+        if self._closed:
+            raise ValueError("File is closed")
         old_current = self.current_version
         group = create_version_group(self.f, version_name,
                                      prev_version=prev_version)

@@ -5,7 +5,7 @@ Much of this code is modified from code in h5py. See the LICENSE file for the
 h5py license.
 """
 
-from h5py import Empty, Dataset, Datatype, Group, h5d, h5i, h5p, h5s, h5t, h5r
+from h5py import Empty, Dataset, Datatype, Group, h5a, h5d, h5i, h5p, h5s, h5t, h5r
 from h5py._hl.base import guess_dtype, with_phil, phil
 from h5py._hl.dataset import _LEGACY_GZIP_COMPRESSION_VALS
 from h5py._hl import filters
@@ -89,12 +89,7 @@ class InMemoryGroup(Group):
             self._subgroups[name] = self.__class__(res.id)
             return self._subgroups[name]
         elif isinstance(res, Dataset):
-            if not res.is_virtual:
-                # This must be from a sparse dataset. create_virtual_dataset()
-                # with an empty produces a dataset that isn't virtual.
-                self._data[name] = InMemorySparseDataset.from_dataset(res, parent=self)
-            else:
-                self._data[name] = InMemoryDataset(res.id, parent=self)
+            self._data[name] = InMemoryDataset(res.id, parent=self)
             return self._data[name]
         else:
             raise NotImplementedError(f"Cannot handle {type(res)!r}")
@@ -181,10 +176,11 @@ class InMemoryGroup(Group):
             shape = data.shape
         if fillvalue is not None and isinstance(data, np.ndarray):
             data = InMemoryArrayDataset(name, data, parent=self, fillvalue=fillvalue)
+        chunks = kwds.get('chunks')
         if data is None:
             data = InMemorySparseDataset(name, shape=shape, dtype=dtype,
-                                         parent=self, fillvalue=fillvalue)
-        chunks = kwds.get('chunks')
+                                         parent=self, fillvalue=fillvalue,
+                                         chunks=chunks)
         if chunks in [True, None]:
             if len(shape) == 1:
                 chunks = (DEFAULT_CHUNK_SIZE,)
@@ -578,11 +574,13 @@ class InMemoryDataset(Dataset):
         arr = np.ndarray(idx.newshape(self.shape), new_dtype, order='C')
 
         for c, index in as_subchunks(idx, self.shape, self.chunks):
-            if isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
+            if c not in self.id.data_dict:
+                fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
+                self.id.data_dict[c] = fill
+            elif isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
                 raw_idx = Tuple(self.id.data_dict[c], *[slice(0, len(i)) for i
                                                         in c.args[1:]]).raw
-                a = self.id._read_chunk(raw_idx)
-                self.id.data_dict[c] = a
+                self.id.data_dict[c] = self.id._read_chunk(raw_idx)
 
             if self.id.data_dict[c].size != 0:
                 arr_idx = c.as_subindex(idx)
@@ -698,14 +696,26 @@ class InMemoryDataset(Dataset):
         val = np.broadcast_to(val, idx.newshape(self.shape))
 
         for c, index in as_subchunks(idx, self.shape, self.chunks):
-            if isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
+            if c not in self.id.data_dict:
+                # TODO: Handle this more efficiently if there are many chunks
+                # without explicit data (see
+                # https://github.com/Quansight/ndindex/issues/45). This would
+                # also make things more efficient for the non-sparse case as
+                # well.
+
+                # Broadcasted arrays do not actually consume memory
+                fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
+                self.id.data_dict[c] = fill.copy()
+            elif isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
                 raw_idx = Tuple(self.id.data_dict[c], *[slice(0, len(i)) for i
                                                         in c.args[1:]]).raw
-                a = self.id._read_chunk(raw_idx)
-                self.id.data_dict[c] = a
+                self.id.data_dict[c] = self.id._read_chunk(raw_idx)
 
             if self.id.data_dict[c].size != 0:
                 val_idx = c.as_subindex(idx)
+                if not self.id.data_dict[c].flags.writeable:
+                    # self.id.data_dict[c] is a broadcasted array from above
+                    self.id.data_dict[c] = self.id.data_dict[c].copy()
                 self.id.data_dict[c][index.raw] = val[val_idx.raw]
 
 
@@ -901,12 +911,42 @@ class InMemorySparseDataset(DatasetLike):
         self.shape = size
 
     def __getitem__(self, index):
-        idx = ndindex(index)
+        idx = ndindex(index).reduce(self.shape)
+
         newshape = idx.newshape(self.shape)
-        return np.full(newshape, self.fillvalue, dtype=self.dtype)
+        arr = np.full(newshape, self.fillvalue, dtype=self.dtype)
+
+        for c, index in as_subchunks(idx, self.shape, self.chunks):
+            if c not in self.data_dict:
+                fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
+                self.data_dict[c] = fill
+
+            if self.data_dict[c].size != 0:
+                arr_idx = c.as_subindex(idx)
+                arr[arr_idx.raw] = self.data_dict[c][index.raw]
+
+        # Return arr as a scalar if it is shape () (matching h5py)
+        return arr[()]
 
     def __setitem__(self, index, value):
-        raise NotImplementedError("Setting elements of sparse datasets")
+        self.parent._check_committed()
+
+        idx = ndindex(index).reduce(self.shape)
+
+        val = np.broadcast_to(value, idx.newshape(self.shape))
+
+        for c, index in as_subchunks(idx, self.shape, self.chunks):
+            if c not in self.data_dict:
+                # Broadcasted arrays do not actually consume memory
+                fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
+                self.data_dict[c] = fill
+
+            if self.data_dict[c].size != 0:
+                val_idx = c.as_subindex(idx)
+                if not self.data_dict[c].flags.writeable:
+                    # self.data_dict[c] is a broadcasted array from above
+                    self.data_dict[c] = self.data_dict[c].copy()
+                self.data_dict[c][index.raw] = val[val_idx.raw]
 
 class InMemoryDatasetID(h5d.DatasetID):
     def __init__(self, _id):
@@ -917,12 +957,24 @@ class InMemoryDatasetID(h5d.DatasetID):
             self._shape = sid.get_simple_extent_dims()
 
         dcpl = self.get_create_plist()
+        is_virtual = dcpl.get_layout() == h5d.VIRTUAL
+
+        attr = h5a.open(self, b'raw_data')
+        htype = h5t.py_create(attr.dtype)
+        _arr = np.ndarray(attr.shape, dtype=attr.dtype, order='C')
+        attr.read(_arr, mtype=htype)
+        raw_data_name = _arr[()]
+
+        if not is_virtual:
+            # A dataset created with only a fillvalue will be nonvirtual,
+            # since create_virtual_dataset makes a nonvirtual dataset when
+            # there are no virtual sources.
+            slice_map = {}
         # Same as dataset.get_virtual_sources
-        if 0 in self._shape:
+        elif 0 in self._shape:
             # Work around https://github.com/h5py/h5py/issues/1660
             empty_idx = Tuple().expand(self._shape)
             slice_map = {empty_idx: empty_idx}
-            raw_data_name = dcpl.get_virtual_dsetname(0)
         else:
             virtual_sources = [
                     VDSmap(dcpl.get_virtual_vspace(j),
@@ -933,7 +985,7 @@ class InMemoryDatasetID(h5d.DatasetID):
 
             slice_map = {spaceid_to_slice(i.vspace): spaceid_to_slice(i.src_space)
                          for i in virtual_sources}
-            raw_data_name = virtual_sources[0].dset_name
+            assert raw_data_name == virtual_sources[0].dset_name
             assert all(i.dset_name == raw_data_name for i in virtual_sources)
 
         # slice_map = {i.args[0]: j.args[0] for i, j in slice_map.items()}
