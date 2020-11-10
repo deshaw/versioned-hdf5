@@ -14,7 +14,14 @@ matrix:
     - python: 3.8
       env:
         - TESTS=true
+    - python: 3.9
+      env:
+        - TESTS=true
         - COVERAGE=true
+    - python: 3.7
+      env:
+        - TESTS=true
+        - H5PY=2.10
     - python: 3.8
       env:
         - DOCS=true
@@ -30,7 +37,7 @@ install:
   - conda config --add channels conda-forge
   - conda update -q conda
   - conda info -a
-  - conda create -n test-environment python=$TRAVIS_PYTHON_VERSION h5py numpy scipy ndindex pyflakes pytest pytest-doctestplus pytest-flakes doctr sphinx pytest-cov myst-parser graphviz
+  - conda create -n test-environment python=$TRAVIS_PYTHON_VERSION h5py=$H5PY numpy scipy ndindex pyflakes pytest pytest-doctestplus pytest-flakes doctr sphinx pytest-cov myst-parser graphviz
   - source activate test-environment
 
 script:
