@@ -212,4 +212,5 @@ def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fil
         for k, v in attrs.items():
             virtual_data.attrs[k] = v
     virtual_data.attrs['raw_data'] = raw_data.name
+    virtual_data.attrs['chunks'] = raw_data.chunks
     return virtual_data

@@ -353,6 +353,22 @@ def test_create_virtual_dataset(h5file):
         assert_equal(virtual_data[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
         assert virtual_data.dtype == np.float64
 
+@mark.setup_args(version_name='test_version')
+def test_create_virtual_dataset_attrs(h5file):
+    with h5file as f:
+        slices1 = write_dataset(f, 'test_data', np.ones((2*DEFAULT_CHUNK_SIZE,)))
+        slices2 = write_dataset(f, 'test_data',
+                                np.concatenate((2*np.ones((DEFAULT_CHUNK_SIZE,)),
+                                                3*np.ones((DEFAULT_CHUNK_SIZE,)))))
+
+        attrs = {"attribute": "value"}
+        virtual_data = create_virtual_dataset(f, 'test_version', 'test_data', (3*DEFAULT_CHUNK_SIZE,),
+            {**slices1,
+             Tuple(Slice(2*DEFAULT_CHUNK_SIZE, 3*DEFAULT_CHUNK_SIZE, 1),):
+             slices2[(Slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE,
+                            1),)]}, attrs=attrs)
+
+        assert dict(virtual_data.attrs) == {**attrs, "raw_data": '/_version_data/test_data/raw_data', "chunks": np.array([DEFAULT_CHUNK_SIZE])}
 
 @mark.setup_args(version_name=['test_version1', 'test_version2'])
 def test_create_virtual_dataset_multidimension(h5file):
