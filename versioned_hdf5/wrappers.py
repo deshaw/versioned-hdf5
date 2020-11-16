@@ -963,7 +963,7 @@ class InMemoryDatasetID(h5d.DatasetID):
         htype = h5t.py_create(attr.dtype)
         _arr = np.ndarray(attr.shape, dtype=attr.dtype, order='C')
         attr.read(_arr, mtype=htype)
-        raw_data_name = _arr[()]
+        raw_data_name = _arr[()].decode('utf-8')
 
         if not is_virtual:
             # A dataset created with only a fillvalue will be nonvirtual,
