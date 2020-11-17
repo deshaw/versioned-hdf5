@@ -5,7 +5,7 @@ Versioned HDF5 Change Log
 
 ## Major Changes
 
-- Add support for sparse datasets (data=None).
+- Add support for sparse datasets (`data=None`).
 - Store the chunks on an attribute of the dataset.
 - versioned-hdf5 is currently pinned to `h5py<3`. h5py 3 support will be added
   in a future version.
