@@ -17,7 +17,7 @@ setuptools.setup(
     packages=['versioned_hdf5', 'versioned_hdf5.tests'],
     license="BSD",
     install_requires=[
-        "h5py",
+        "h5py<3",
         "numpy",
         "ndindex>=1.3",
     ],
