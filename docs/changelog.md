@@ -1,6 +1,17 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.2 (2020-11-17)
+
+## Major Changes
+
+- Add support for sparse datasets (data=None).
+- Store the chunks on an attribute of the dataset.
+- versioned-hdf5 is currently pinned to `h5py<3`. h5py 3 support will be added
+  in a future version.
+- `VersionedHDF5File[timestamp]` now returns the closest version before
+  `timestamp` if there is no version at `timestamp`.
+
 ## 1.1 (2020-09-15)
 
 ### Major Changes
