@@ -40,9 +40,23 @@
   <div class="section" id="versioned-hdf5-change-log">
 <h1>Versioned HDF5 Change Log<a class="headerlink" href="#versioned-hdf5-change-log" title="Permalink to this headline">¶</a></h1>
 <div class="section" id="id1">
-<h2>1.1 (2020-09-15)<a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h2>
+<h2>1.2 (2020-11-17)<a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h2>
+</div>
 <div class="section" id="major-changes">
-<h3>Major Changes<a class="headerlink" href="#major-changes" title="Permalink to this headline">¶</a></h3>
+<h2>Major Changes<a class="headerlink" href="#major-changes" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li><p>Add support for sparse datasets (<code class="docutils literal notranslate"><span class="pre">data=None</span></code>).</p></li>
+<li><p>Store the chunks on an attribute of the dataset.</p></li>
+<li><p>versioned-hdf5 is currently pinned to <code class="docutils literal notranslate"><span class="pre">h5py&lt;3</span></code>. h5py 3 support will be added
+in a future version.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">VersionedHDF5File[timestamp]</span></code> now returns the closest version before
+<code class="docutils literal notranslate"><span class="pre">timestamp</span></code> if there is no version at <code class="docutils literal notranslate"><span class="pre">timestamp</span></code>.</p></li>
+</ul>
+</div>
+<div class="section" id="id2">
+<h2>1.1 (2020-09-15)<a class="headerlink" href="#id2" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="id3">
+<h3>Major Changes<a class="headerlink" href="#id3" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Added support for shape-0 datasets.</p></li>
 <li><p>Fix a memory leak where in-memory datasets would not be garbage collected.</p></li>
@@ -65,10 +79,10 @@ shape () array.</p></li>
 </ul>
 </div>
 </div>
-<div class="section" id="id2">
-<h2>1.0 (2020-08-03)<a class="headerlink" href="#id2" title="Permalink to this headline">¶</a></h2>
-<div class="section" id="id3">
-<h3>Major Changes<a class="headerlink" href="#id3" title="Permalink to this headline">¶</a></h3>
+<div class="section" id="id4">
+<h2>1.0 (2020-08-03)<a class="headerlink" href="#id4" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="id5">
+<h3>Major Changes<a class="headerlink" href="#id5" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>First release of Versioned-HDF5.</p></li>
 </ul>
@@ -115,8 +129,10 @@ shape () array.</p></li>
 <li class="toctree-l1"><a class="reference internal" href="reference.html">API Documentation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="design.html">Design</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Versioned HDF5 Change Log</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#id1">1.1 (2020-09-15)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id2">1.0 (2020-08-03)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id1">1.2 (2020-11-17)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#major-changes">Major Changes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id2">1.1 (2020-09-15)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id4">1.0 (2020-08-03)</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="authors.html">Authors</a></li>
