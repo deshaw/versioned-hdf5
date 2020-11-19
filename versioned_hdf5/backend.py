@@ -68,12 +68,13 @@ def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
     dataset.attrs['chunks'] = chunks
     return write_dataset(f, name, data, chunks=chunks)
 
-def write_dataset(f, name, data, chunks=None, compression=None,
+def write_dataset(f, name, data, chunks=None, dtype=None, compression=None,
                   compression_opts=None, fillvalue=None):
 
     if name not in f['_version_data']:
-        return create_base_dataset(f, name, data=data, chunks=chunks,
-            compression=compression, compression_opts=compression_opts, fillvalue=fillvalue)
+        return create_base_dataset(f, name, data=data, dtype=dtype,
+                                   chunks=chunks, compression=compression,
+                                   compression_opts=compression_opts, fillvalue=fillvalue)
 
     ds = f['_version_data'][name]['raw_data']
     if isinstance(chunks, int) and not isinstance(chunks, bool):
@@ -83,6 +84,10 @@ def write_dataset(f, name, data, chunks=None, compression=None,
     else:
         if chunks != tuple(ds.attrs['chunks']):
             raise ValueError("Chunk size specified but doesn't match already existing chunk size")
+
+    if dtype is not None:
+        if dtype != ds.dtype:
+            raise ValueError("dtype specified but doesn't match already existing dtype")
 
     if compression and compression != ds.compression or compression_opts and compression_opts != ds.compression_opts:
         raise ValueError("Compression options can only be specified for the first version of a dataset")
