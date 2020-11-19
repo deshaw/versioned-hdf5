@@ -219,3 +219,27 @@ def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fil
     virtual_data.attrs['raw_data'] = raw_data.name
     virtual_data.attrs['chunks'] = raw_data.chunks
     return virtual_data
+
+def recreate_dataset(f, name):
+    from .versions import all_versions
+
+    raw_data = f['_version_data'][name]['raw_data']
+    if '__tmp__' not in f['_version_data']:
+        tmp = f['_version_data'].create_group('__tmp__')
+        initialize(tmp)
+    else:
+        tmp = f['_version_data/__tmp__']
+
+    dtype = raw_data.dtype
+    chunks = raw_data.chunks
+    compression = raw_data.compression
+    compression_opts = raw_data.compression_opts
+    fillvalue = raw_data.fillvalue
+
+    for version in all_versions(f):
+        if name in f['_version_data/versions'][version]:
+            write_dataset(tmp, name,
+                          f['_version_data/versions'][version][name][()],
+                          dtype=dtype, chunks=chunks, compression=compression,
+                          compression_opts=compression_opts,
+                          fillvalue=fillvalue)
