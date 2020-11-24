@@ -220,15 +220,16 @@ def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fil
     virtual_data.attrs['chunks'] = raw_data.chunks
     return virtual_data
 
-def recreate_dataset(f, name):
+def recreate_dataset(f, name, newf):
+    """
+    Recreate dataset from all versions into newf
+
+    newf should be a versioned hdf5 file/group that is already initialized (it
+    may or may not be in the same physical file as f).
+    """
     from .versions import all_versions
 
     raw_data = f['_version_data'][name]['raw_data']
-    if '__tmp__' not in f['_version_data']:
-        tmp = f['_version_data'].create_group('__tmp__')
-        initialize(tmp)
-    else:
-        tmp = f['_version_data/__tmp__']
 
     dtype = raw_data.dtype
     chunks = raw_data.chunks
@@ -243,3 +244,11 @@ def recreate_dataset(f, name):
                           dtype=dtype, chunks=chunks, compression=compression,
                           compression_opts=compression_opts,
                           fillvalue=fillvalue)
+
+def tmp_group(f):
+    if '__tmp__' not in f['_version_data']:
+        tmp = f['_version_data'].create_group('__tmp__')
+        initialize(tmp)
+    else:
+        tmp = f['_version_data/__tmp__']
+    return tmp
