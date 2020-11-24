@@ -228,6 +228,7 @@ def recreate_dataset(f, name, newf):
     may or may not be in the same physical file as f).
     """
     from .versions import all_versions
+    from .wrappers import InMemoryGroup
 
     raw_data = f['_version_data'][name]['raw_data']
 
@@ -237,13 +238,29 @@ def recreate_dataset(f, name, newf):
     compression_opts = raw_data.compression_opts
     fillvalue = raw_data.fillvalue
 
+    first = True
     for version in all_versions(f):
         if name in f['_version_data/versions'][version]:
-            write_dataset(tmp, name,
-                          f['_version_data/versions'][version][name][()],
-                          dtype=dtype, chunks=chunks, compression=compression,
-                          compression_opts=compression_opts,
-                          fillvalue=fillvalue)
+            group = InMemoryGroup(f['_version_data/versions'][version].id, _committed=True)
+            dataset = group[name]
+            if first:
+                create_base_dataset(newf, name,
+                                    data=np.empty((0,)*len(dataset.shape),
+                                                  dtype=dtype),
+                                    dtype=dtype,
+                                    chunks=chunks,
+                                    compression=compression,
+                                    compression_opts=compression_opts,
+                                    fillvalue=fillvalue)
+                first = False
+            # Read in all the chunks of the dataset (we can't assume the new
+            # hash table has the raw data in the same locations, even if the
+            # data is unchanged).
+            for c, index in dataset.data_dict.copy().items():
+                if isinstance(index, Slice):
+                    dataset[c.raw]
+                    assert not isinstance(dataset.data_dict[c], Slice)
+            write_dataset_chunks(newf, name, dataset.data_dict)
 
 def tmp_group(f):
     if '__tmp__' not in f['_version_data']:
