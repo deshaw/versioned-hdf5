@@ -1595,6 +1595,37 @@ def test_sparse(vfile):
     assert vfile['version2']['test_data'][0, 1] == 1
     assert vfile['version2']['test_data'][200, 1] == 3
 
+def test_sparse_empty(vfile):
+    with vfile.stage_version('version1') as g:
+        g.create_dataset('test_data', shape=(10_000, 10_000), dtype=np.dtype('int64'), data=None,
+              chunks=(100, 100), fillvalue=1)
+        # Don't read or write any data from the sparse dataset
+
+    assert vfile['version1']['test_data'][0, 0] == 1
+    assert vfile['version1']['test_data'][0, 1] == 1
+    assert vfile['version1']['test_data'][200, 1] == 1
+
+    with vfile.stage_version('version2') as g:
+        assert isinstance(g['test_data'], InMemoryDataset)
+        assert g['test_data'][0, 0] == 1
+        assert g['test_data'][0, 1] == 1
+        assert g['test_data'][200, 1] == 1
+
+        g['test_data'][0, 0] = 2
+        g['test_data'][200, 1] = 2
+
+        assert g['test_data'][0, 0] == 2
+        assert g['test_data'][0, 1] == 1
+        assert g['test_data'][200, 1] == 2
+
+    assert vfile['version1']['test_data'][0, 0] == 1
+    assert vfile['version1']['test_data'][0, 1] == 1
+    assert vfile['version1']['test_data'][200, 1] == 1
+
+    assert vfile['version2']['test_data'][0, 0] == 2
+    assert vfile['version2']['test_data'][0, 1] == 1
+    assert vfile['version2']['test_data'][200, 1] == 2
+
 def test_sparse_large(vfile):
     # This is currently inefficient in terms of time, but test that it isn't
     # inefficient in terms of memory.

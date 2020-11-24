@@ -103,7 +103,7 @@ def commit_version(version_group, datasets, *,
                                    compression=compression[name],
                                    compression_opts=compression_opts[name],
                                    fillvalue=fillvalue)
-            slices = write_dataset_chunks(f, name, data.data_dict)
+            slices = write_dataset_chunks(f, name, data.data_dict, shape=data.shape)
         else:
             slices = write_dataset(f, name, data, chunks=chunks[name],
                                    compression=compression[name],
