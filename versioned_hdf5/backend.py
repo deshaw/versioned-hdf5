@@ -7,6 +7,9 @@ from .slicetools import split_chunks
 
 DEFAULT_CHUNK_SIZE = 2**12
 
+def normalize_dtype(dtype):
+    return np.array([], dtype=dtype).dtype
+
 def get_chunks(shape, dtype, chunk_size):
     # TODO: Implement this
     if len(shape) > 1:
@@ -39,9 +42,6 @@ def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
         shape = (shape,) if isinstance(shape, int) else tuple(shape)
         if data is not None and (np.product(shape, dtype=np.ulonglong) != np.product(data.shape, dtype=np.ulonglong)):
             raise ValueError("Shape tuple is incompatible with data")
-    if dtype is None:
-        # https://github.com/h5py/h5py/issues/1474
-        dtype = data.dtype
 
     ndims = len(shape)
     if isinstance(chunks, int) and not isinstance(chunks, bool):
@@ -52,6 +52,11 @@ def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
         else:
             raise NotImplementedError("chunks must be specified for multi-dimensional datasets")
     group = f['_version_data'].create_group(name)
+
+    if dtype is None:
+        # https://github.com/h5py/h5py/issues/1474
+        dtype = data.dtype
+    dtype = normalize_dtype(dtype)
     if dtype.metadata and ('vlen' in dtype.metadata or 'h5py_encoding' in dtype.metadata):
         # h5py string dtype
         # (https://h5py.readthedocs.io/en/2.10.0/strings.html). Setting the
