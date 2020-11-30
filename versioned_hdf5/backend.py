@@ -225,7 +225,7 @@ def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fil
     virtual_data.attrs['chunks'] = raw_data.chunks
     return virtual_data
 
-def recreate_dataset(f, name, newf):
+def recreate_dataset(f, name, newf, callback=None):
     """
     Recreate dataset from all versions into newf
 
@@ -248,6 +248,17 @@ def recreate_dataset(f, name, newf):
         if name in f['_version_data/versions'][version]:
             group = InMemoryGroup(f['_version_data/versions'][version].id, _committed=True)
             dataset = group[name]
+            if callback:
+                new_dataset = callback(dataset, group, version)
+                if dataset is None:
+                    continue
+
+                dtype = new_dataset.dtype
+                chunks = new_dataset.chunks
+                compression = new_dataset.compression
+                compression_opts = new_dataset.compression_opts
+                fillvalue = new_dataset.fillvalue
+
             if first:
                 create_base_dataset(newf, name,
                                     data=np.empty((0,)*len(dataset.shape),
