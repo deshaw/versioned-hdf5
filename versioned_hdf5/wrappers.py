@@ -444,6 +444,34 @@ class InMemoryDataset(Dataset):
         self._attrs = dict(super().attrs)
         self.data_dict = self.id.data_dict
 
+    def as_dtype(self, name, dtype, parent, casting='unsafe'):
+        """
+        Return a copy of `self` as a new dataset with the given `name` and `dtype`
+        in the group `parent`.
+
+        `casting` should be as in the numpy astype() method.
+
+        """
+        if self.fillvalue is not None:
+            new_fillvalue = self.fillvalue.astype(dtype, casting=casting)
+        else:
+            new_fillvalue = None
+        new_data_dict = {}
+        for c, index in self.data_dict.copy().items():
+            if isinstance(index, Slice):
+                self[c.raw]
+                assert not isinstance(self.data_dict[c], Slice)
+            new_data_dict[c] = self.data_dict[c].astype(dtype, casting=casting)
+        new_dataset = InMemorySparseDataset.from_data_dict(name,
+                                                           new_data_dict,
+                                                           shape=self.shape,
+                                                           dtype=dtype,
+                                                           parent=parent,
+                                                           chunks=self.chunks,
+                                                           fillvalue=new_fillvalue)
+        parent[name] = new_dataset
+        return new_dataset
+
     @property
     def fillvalue(self):
          if super().fillvalue is not None:
@@ -740,7 +768,7 @@ class DatasetLike:
     @property
     def fillvalue(self):
          if self._fillvalue is not None:
-             return self._fillvalue
+             return np.array([self._fillvalue], dtype=self.dtype)[0]
          if self.dtype.metadata:
              # Custom h5py string dtype. Make sure to use a fillvalue of ''
              if 'vlen' in self.dtype.metadata:
@@ -803,6 +831,16 @@ class InMemoryArrayDataset(DatasetLike):
         self.attrs = {}
         self.parent = parent
         self._fillvalue = fillvalue
+
+    def as_dtype(self, name, dtype, parent, casting='unsafe'):
+        """
+        Return a copy of `self` as a new dataset with the given `name` and `dtype`
+        in the group `parent`.
+
+        `casting` should be as in the numpy astype() method.
+
+        """
+        return self.__class__(name, self.array.astype(dtype, casting=casting), parent=parent)
 
     @property
     def array(self):
@@ -887,6 +925,38 @@ class InMemorySparseDataset(DatasetLike):
         # with InMemoryDatasetID, but unlike it, missing data (which equals
         # the fill value) is omitted.
         self.data_dict = {}
+
+    def as_dtype(self, name, dtype, parent, casting='unsafe'):
+        """
+        Return a copy of `self` as a new dataset with the given `name` and `dtype`
+        in the group `parent`.
+
+        `casting` should be as in the numpy astype() method.
+
+        """
+        if self.fillvalue is not None:
+            new_fillvalue = self.fillvalue.astype(dtype, casting=casting)
+        else:
+            new_fillvalue = None
+        new_data_dict = {}
+        for c, index in self.data_dict.copy().items():
+            new_data_dict[c] = self.data_dict[c].astype(dtype, casting=casting)
+
+        return self.from_data_dict(name, new_data_dict, dtype=dtype,
+                                   parent=parent, fillvalue=new_fillvalue,
+                                   chunks=self.chunks, shape=self.shape)
+
+    @classmethod
+    def from_data_dict(cls, name, data_dict, *, shape, dtype, parent,
+                       chunks, fillvalue=None):
+        """
+        Create a InMemorySparseDataset from a data dict.
+
+        This does not do any consistency checks with the metadata provide.
+        """
+        dataset = cls(name, shape=shape, dtype=dtype, parent=parent, chunks=chunks, fillvalue=fillvalue)
+        dataset.data_dict = data_dict
+        return dataset
 
     @classmethod
     def from_dataset(cls, dataset, parent=None):
