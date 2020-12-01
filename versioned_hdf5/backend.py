@@ -246,19 +246,19 @@ def recreate_dataset(f, name, newf, callback=None):
     first = True
     for version in all_versions(f):
         if name in f['_version_data/versions'][version]:
-            group = InMemoryGroup(f['_version_data/versions'][version].id, _committed=True)
+            group = InMemoryGroup(f['_version_data/versions'][version].id,
+                                  _committed=True)
             dataset = group[name]
             if callback:
-                new_dataset = callback(dataset, group, version)
+                dataset = callback(dataset, group, version)
                 if dataset is None:
                     continue
 
-                dtype = new_dataset.dtype
-                chunks = new_dataset.chunks
-                compression = new_dataset.compression
-                compression_opts = new_dataset.compression_opts
-                fillvalue = new_dataset.fillvalue
-
+                dtype = dataset.dtype
+                chunks = dataset.chunks
+                compression = dataset.compression
+                compression_opts = dataset.compression_opts
+                fillvalue = dataset.fillvalue
             if first:
                 create_base_dataset(newf, name,
                                     data=np.empty((0,)*len(dataset.shape),
