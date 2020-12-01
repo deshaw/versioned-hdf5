@@ -254,11 +254,13 @@ def recreate_dataset(f, name, newf, callback=None):
                 if dataset is None:
                     continue
 
-                dtype = dataset.dtype
-                chunks = dataset.chunks
-                compression = dataset.compression
-                compression_opts = dataset.compression_opts
-                fillvalue = dataset.fillvalue
+            dtype = dataset.dtype
+            shape = dataset.shape
+            chunks = dataset.chunks
+            compression = dataset.compression
+            compression_opts = dataset.compression_opts
+            fillvalue = dataset.fillvalue
+            attrs = dataset.attrs
             if first:
                 create_base_dataset(newf, name,
                                     data=np.empty((0,)*len(dataset.shape),
