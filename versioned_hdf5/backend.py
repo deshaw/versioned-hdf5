@@ -244,13 +244,13 @@ def recreate_dataset(f, name, newf, callback=None):
     fillvalue = raw_data.fillvalue
 
     first = True
-    for version in all_versions(f):
-        if name in f['_version_data/versions'][version]:
-            group = InMemoryGroup(f['_version_data/versions'][version].id,
+    for version_name in all_versions(f):
+        if name in f['_version_data/versions'][version_name]:
+            group = InMemoryGroup(f['_version_data/versions'][version_name].id,
                                   _committed=True)
             dataset = group[name]
             if callback:
-                dataset = callback(dataset, group, version)
+                dataset = callback(dataset, group, version_name)
                 if dataset is None:
                     continue
 
@@ -278,12 +278,21 @@ def recreate_dataset(f, name, newf, callback=None):
                 if isinstance(index, Slice):
                     dataset[c.raw]
                     assert not isinstance(dataset.data_dict[c], Slice)
-            write_dataset_chunks(newf, name, dataset.data_dict)
+            slices = write_dataset_chunks(newf, name, dataset.data_dict)
+            create_virtual_dataset(newf, version_name, name, shape, slices,
+                                   attrs=attrs, fillvalue=fillvalue)
 
 def tmp_group(f):
+    from .versions import all_versions
+
     if '__tmp__' not in f['_version_data']:
         tmp = f['_version_data'].create_group('__tmp__')
         initialize(tmp)
+        for version_name in all_versions(f):
+            group = f['_version_data/versions'][version_name]
+            new_group = tmp['_version_data/versions'].create_group(version_name)
+            for k, v in group.attrs.items():
+                new_group.attrs[k] = v
     else:
         tmp = f['_version_data/__tmp__']
     return tmp
