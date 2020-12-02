@@ -231,6 +231,19 @@ def recreate_dataset(f, name, newf, callback=None):
 
     newf should be a versioned hdf5 file/group that is already initialized (it
     may or may not be in the same physical file as f).
+
+    callback should be a function with the signature
+
+    callback(dataset, version_name)
+
+    It will be called on every dataset in every version. It should return the
+    dataset to be used for the new version. The dataset and its containing
+    group should not be modified in-place. If a new copy of a dataset is to be
+    used, it should be one of the dataset classes in versioned_hdf5.wrappers,
+    and should placed in a temporary group, which may be deleted after
+    recreate_dataset() is done. The callback may also return None, in which
+    case the dataset is deleted for the given version.
+
     """
     from .versions import all_versions
     from .wrappers import InMemoryGroup
