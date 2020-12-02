@@ -248,9 +248,10 @@ def recreate_dataset(f, name, newf, callback=None):
         if name in f['_version_data/versions'][version_name]:
             group = InMemoryGroup(f['_version_data/versions'][version_name].id,
                                   _committed=True)
+
             dataset = group[name]
             if callback:
-                dataset = callback(dataset, group, version_name)
+                dataset = callback(dataset, version_name)
                 if dataset is None:
                     continue
 
