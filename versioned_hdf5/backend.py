@@ -246,7 +246,7 @@ def recreate_dataset(f, name, newf, callback=None):
 
     """
     from .versions import all_versions
-    from .wrappers import InMemoryGroup
+    from .wrappers import InMemoryGroup, InMemoryDataset, InMemorySparseDataset
 
     raw_data = f['_version_data'][name]['raw_data']
 
@@ -288,11 +288,14 @@ def recreate_dataset(f, name, newf, callback=None):
             # Read in all the chunks of the dataset (we can't assume the new
             # hash table has the raw data in the same locations, even if the
             # data is unchanged).
-            for c, index in dataset.data_dict.copy().items():
-                if isinstance(index, Slice):
-                    dataset[c.raw]
-                    assert not isinstance(dataset.data_dict[c], Slice)
-            slices = write_dataset_chunks(newf, name, dataset.data_dict)
+            if isinstance(dataset, (InMemoryDataset, InMemorySparseDataset)):
+                for c, index in dataset.data_dict.copy().items():
+                    if isinstance(index, Slice):
+                        dataset[c.raw]
+                        assert not isinstance(dataset.data_dict[c], Slice)
+                slices = write_dataset_chunks(newf, name, dataset.data_dict)
+            else:
+                slices = write_dataset(newf, name, dataset)
             create_virtual_dataset(newf, version_name, name, shape, slices,
                                    attrs=attrs, fillvalue=fillvalue)
 
