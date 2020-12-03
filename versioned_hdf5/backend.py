@@ -313,3 +313,20 @@ def tmp_group(f):
     else:
         tmp = f['_version_data/__tmp__']
     return tmp
+
+def delete_version(f, version):
+    versions = f['_version_data/versions']
+
+    def callback(dataset, version_name):
+        if version_name == version:
+            return
+        return dataset
+
+    newf = tmp_group(f)
+
+    def _get(name):
+        recreate_dataset(f, name, newf, callback=callback)
+
+    versions[version].visit(_get)
+
+    del newf['_version_data/versions'][version]
