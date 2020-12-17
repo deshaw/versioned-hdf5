@@ -44,6 +44,10 @@ def as_subchunks(idx, shape, chunks):
         Tuple(slice(0, 5, 1), 0)
 
     """
+    from ndindex.chunking import ChunkSize
+    yield from ChunkSize(chunks).as_subchunks(idx, shape)
+    return
+
     idx = ndindex(idx)
     for c in split_chunks(shape, chunks):
         try:
