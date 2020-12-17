@@ -1,6 +1,8 @@
 import numpy as np
-from h5py import VirtualLayout, VirtualSource
+from h5py import VirtualLayout, VirtualSource, Dataset
 from ndindex import Slice, ndindex, Tuple
+
+import posixpath as pp
 
 from .hashtable import Hashtable
 from .slicetools import split_chunks
@@ -330,3 +332,22 @@ def delete_version(f, version):
     versions[version].visit(_get)
 
     del newf['_version_data/versions'][version]
+
+def swap(old, new):
+    """
+    Swap every dataset in old with the corresponding one in new
+
+    Datasets in old that aren't in new are ignored.
+    """
+    move_names = []
+    def _move(name, object):
+        if isinstance(object, Dataset):
+            if name in new:
+                move_names.append(name)
+
+    old.visititems(_move)
+    print(move_names)
+    for name in move_names:
+        old.move(name, pp.join(new.name, name + '__tmp__'))
+        new.move(name, pp.join(old.name, name))
+        new.move(name + '_tmp', name)
