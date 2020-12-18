@@ -1,9 +1,8 @@
 import numpy as np
 from h5py import VirtualLayout, VirtualSource
-from ndindex import Slice, ndindex, Tuple
+from ndindex import Slice, ndindex, Tuple, ChunkSize
 
 from .hashtable import Hashtable
-from .slicetools import split_chunks
 
 DEFAULT_CHUNK_SIZE = 2**12
 
@@ -61,7 +60,7 @@ def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
             raise ValueError("Non-default fillvalue not supported for variable length strings")
         fillvalue = None
     dataset = group.create_dataset('raw_data', shape=(0,) + chunks[1:],
-                                   chunks=chunks, maxshape=(None,) + chunks[1:],
+                                   chunks=tuple(chunks), maxshape=(None,) + chunks[1:],
                                    dtype=dtype, compression=compression,
                                    compression_opts=compression_opts,
                                    fillvalue=fillvalue)
@@ -104,7 +103,7 @@ def write_dataset(f, name, data, chunks=None, compression=None,
     chunk_size = chunks[0]
 
     if len(data.shape) != 0:
-        for s in split_chunks(data.shape, chunks):
+        for s in ChunkSize(chunks).indices(data.shape):
             idx = hashtable.largest_index
             data_s = data[s.raw]
             raw_slice = Slice(idx*chunk_size, idx*chunk_size + data_s.shape[0])
@@ -137,7 +136,7 @@ def write_dataset_chunks(f, name, data_dict, shape=None):
     if shape is None:
         shape = tuple(max(c.args[i].stop for c in data_dict) for i in
                       range(len(chunks)))
-    all_chunks = list(split_chunks(shape, chunks))
+    all_chunks = list(ChunkSize(chunks).indices(shape))
     for c in data_dict:
         if c not in all_chunks:
             raise ValueError(f"data_dict contains extra chunks ({c})")
