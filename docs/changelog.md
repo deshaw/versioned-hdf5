@@ -1,6 +1,17 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.2.1 (2020-12-30)
+
+## Minor Changes
+
+- Python 3.6 support has been dropped. The lowest version of Python now
+  supported is 3.7.
+- Fix creating a completely empty sparse dataset
+- Use ndindex.ChunkSize internally. This is the beginning of an overhaul that
+  improves the performance of many operations. ndindex 1.5 or newer is now
+  required.
+
 ## 1.2 (2020-11-17)
 
 ## Major Changes
