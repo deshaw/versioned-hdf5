@@ -39,7 +39,21 @@
   <div class="section" id="versioned-hdf5-change-log">
 <h1>Versioned HDF5 Change Log<a class="headerlink" href="#versioned-hdf5-change-log" title="Permalink to this headline">¶</a></h1>
 <div class="section" id="id1">
-<h2>1.2 (2020-11-17)<a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h2>
+<h2>1.2.1 (2020-12-30)<a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h2>
+</div>
+<div class="section" id="minor-changes">
+<h2>Minor Changes<a class="headerlink" href="#minor-changes" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li><p>Python 3.6 support has been dropped. The lowest version of Python now
+supported is 3.7.</p></li>
+<li><p>Fix creating a completely empty sparse dataset</p></li>
+<li><p>Use ndindex.ChunkSize internally. This is the beginning of an overhaul that
+improves the performance of many operations. ndindex 1.5 or newer is now
+required.</p></li>
+</ul>
+</div>
+<div class="section" id="id2">
+<h2>1.2 (2020-11-17)<a class="headerlink" href="#id2" title="Permalink to this headline">¶</a></h2>
 </div>
 <div class="section" id="major-changes">
 <h2>Major Changes<a class="headerlink" href="#major-changes" title="Permalink to this headline">¶</a></h2>
@@ -52,10 +66,10 @@ in a future version.</p></li>
 <code class="docutils literal notranslate"><span class="pre">timestamp</span></code> if there is no version at <code class="docutils literal notranslate"><span class="pre">timestamp</span></code>.</p></li>
 </ul>
 </div>
-<div class="section" id="id2">
-<h2>1.1 (2020-09-15)<a class="headerlink" href="#id2" title="Permalink to this headline">¶</a></h2>
 <div class="section" id="id3">
-<h3>Major Changes<a class="headerlink" href="#id3" title="Permalink to this headline">¶</a></h3>
+<h2>1.1 (2020-09-15)<a class="headerlink" href="#id3" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="id4">
+<h3>Major Changes<a class="headerlink" href="#id4" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Added support for shape-0 datasets.</p></li>
 <li><p>Fix a memory leak where in-memory datasets would not be garbage collected.</p></li>
@@ -66,8 +80,8 @@ dataset metadata cannot change between versions, even if they are deleted in
 between.</p></li>
 </ul>
 </div>
-<div class="section" id="minor-changes">
-<h3>Minor Changes<a class="headerlink" href="#minor-changes" title="Permalink to this headline">¶</a></h3>
+<div class="section" id="id5">
+<h3>Minor Changes<a class="headerlink" href="#id5" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Most tests now use a temporary directory instead of writing a file in the
 current directory.</p></li>
@@ -78,10 +92,10 @@ shape () array.</p></li>
 </ul>
 </div>
 </div>
-<div class="section" id="id4">
-<h2>1.0 (2020-08-03)<a class="headerlink" href="#id4" title="Permalink to this headline">¶</a></h2>
-<div class="section" id="id5">
-<h3>Major Changes<a class="headerlink" href="#id5" title="Permalink to this headline">¶</a></h3>
+<div class="section" id="id6">
+<h2>1.0 (2020-08-03)<a class="headerlink" href="#id6" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="id7">
+<h3>Major Changes<a class="headerlink" href="#id7" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>First release of Versioned-HDF5.</p></li>
 </ul>
@@ -128,10 +142,12 @@ shape () array.</p></li>
 <li class="toctree-l1"><a class="reference internal" href="reference.html">API Documentation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="design.html">Design</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Versioned HDF5 Change Log</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#id1">1.2 (2020-11-17)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id1">1.2.1 (2020-12-30)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#minor-changes">Minor Changes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id2">1.2 (2020-11-17)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#major-changes">Major Changes</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id2">1.1 (2020-09-15)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id4">1.0 (2020-08-03)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id3">1.1 (2020-09-15)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id6">1.0 (2020-08-03)</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="authors.html">Authors</a></li>
@@ -173,7 +189,7 @@ shape () array.</p></li>
       &copy;2020, Quansight.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.4.1</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.4.2</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |
