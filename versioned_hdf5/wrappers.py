@@ -502,13 +502,13 @@ class InMemoryDataset(Dataset):
 
         old_shape_idx = Tuple(*[Slice(0, i) for i in old_shape])
         new_data_dict = {}
-        for c in self.chunks.indices(size):
+        for c, index in self.chunks.as_subchunks(old_shape_idx, size):
             if c in data_dict:
                 new_data_dict[c] = data_dict[c]
             else:
                 a = self[c.raw]
                 data = np.full(c.newshape(size), self.fillvalue, dtype=self.dtype)
-                data[old_shape_idx.as_subindex(c).raw] = a
+                data[index.raw] = a
                 new_data_dict[c] = data
 
         self.id.data_dict = new_data_dict
