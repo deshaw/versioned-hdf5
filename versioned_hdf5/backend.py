@@ -192,7 +192,7 @@ def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fil
             if c.isempty():
                 continue
             idx = Tuple(s, *Tuple(*[slice(0, i) for i in shape]).as_subindex(c).args[1:])
-            assert c.newshape(shape) == vs[idx.raw].shape, (c, shape, s)
+            # assert c.newshape(shape) == vs[idx.raw].shape, (c, shape, s)
             layout[c.raw] = vs[idx.raw]
 
     dtype = raw_data.dtype
