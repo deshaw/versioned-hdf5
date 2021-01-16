@@ -136,10 +136,10 @@ def write_dataset_chunks(f, name, data_dict, shape=None):
     if shape is None:
         shape = tuple(max(c.args[i].stop for c in data_dict) for i in
                       range(len(chunks)))
-    all_chunks = list(ChunkSize(chunks).indices(shape))
-    for c in data_dict:
-        if c not in all_chunks:
-            raise ValueError(f"data_dict contains extra chunks ({c})")
+    # all_chunks = list(ChunkSize(chunks).indices(shape))
+    # for c in data_dict:
+    #     if c not in all_chunks:
+    #         raise ValueError(f"data_dict contains extra chunks ({c})")
 
     hashtable = Hashtable(f, name)
     slices = {i: None for i in data_dict}
