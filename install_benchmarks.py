@@ -24,17 +24,18 @@ def print(*args):
 
 def run(command, *args, **kwargs):
     print(' '.join(command))
+    kwargs.setdefault('check', True)
     return subprocess.run(command, *args, **kwargs)
 
 def main():
     commit, env_dir, build_dir = sys.argv[1:]
 
-    copy_env_dir(env_dir)
+    copy_env_dir(env_dir, commit)
     install_dependencies(commit, env_dir)
 
     install_versioned_hdf5(build_dir)
 
-def copy_env_dir(env_dir):
+def copy_env_dir(env_dir, commit):
     # asv reuses the env dir between runs. But it's simpler for us if we just
     # restart from scratch, rather than trying to build an uninstall script.
     # So what we do is copy the raw env dir into a template directory, then
@@ -45,16 +46,19 @@ def copy_env_dir(env_dir):
         # This is the first time we've run
         print("Creating template env directory", template_dir)
         run(['cp', '-R', env_dir, template_dir])
-    run(['mv', env_dir + '/project', 'project'])
     run(['rm', '-rf', env_dir])
     run(['cp', '-R', template_dir, env_dir])
-    run(['mv', 'project', env_dir + '/project'])
+    # asv checks out the project in the env directory, which we just reset. So
+    # checkout it out to the correct commit.
+    os.chdir(os.path.join(env_dir, 'project'))
+    run(['git', 'checkout', commit])
     os.chdir(env_dir)
 
 def install_dependencies(commit, env_dir):
     # Check if HEAD is after the ndindex_16_commit.
     # See https://stackoverflow.com/questions/3005392/how-can-i-tell-if-one-commit-is-a-descendant-of-another-commit
-    p = run(['git', 'merge-base', '--is-ancestor', ndindex_16_commit, commit])
+    p = run(['git', 'merge-base', '--is-ancestor', ndindex_16_commit, commit],
+            check=False)
     if p.returncode == 1:
         print("Installing ndindex 1.5")
         install(env_dir, ndindex_version='=1.5')
