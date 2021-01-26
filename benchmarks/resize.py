@@ -1,3 +1,5 @@
+# Benchmarks from https://github.com/deshaw/versioned-hdf5/issues/155
+
 import h5py
 import numpy as np
 from versioned_hdf5 import VersionedHDF5File
