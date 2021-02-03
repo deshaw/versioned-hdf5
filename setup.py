@@ -19,7 +19,7 @@ setuptools.setup(
     install_requires=[
         "h5py<3",
         "numpy",
-        "ndindex>=1.5",
+        "ndindex>=1.5.1",
     ],
     classifiers=[
         "Programming Language :: Python :: 3",

@@ -63,11 +63,8 @@ def install_dependencies(commit, env_dir):
         print("Installing ndindex 1.5")
         install(env_dir, ndindex_version='=1.5')
     elif p.returncode == 0:
-        print("Installing ndindex 1.6")
-        # install(env_dir, ndindex_version='=1.6')
-        # Replace this with the above when ndindex 1.6 is released.
-        install(env_dir, ndindex_version='')
-        run(['python', '-m', 'pip', 'install', 'git+https://github.com/asmeurer/ndindex.git@performance2'])
+        print("Installing ndindex >=1.5.1")
+        install(env_dir, ndindex_version='>=1.5.1')
     else:
         raise RuntimeError(f"Error checking commit history for benchmarks install (git gave return code {p.returncode})")
 
