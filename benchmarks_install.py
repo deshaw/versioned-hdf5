@@ -61,7 +61,7 @@ def install_dependencies(commit, env_dir):
             check=False)
     if p.returncode == 1:
         print("Installing ndindex 1.5")
-        install(env_dir, ndindex_version='=1.5')
+        install(env_dir, ndindex_version='==1.5')
     elif p.returncode == 0:
         print("Installing ndindex >=1.5.1")
         install(env_dir, ndindex_version='>=1.5.1')
