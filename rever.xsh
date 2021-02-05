@@ -11,7 +11,7 @@ def run_tests():
                            'ndindex', 'pyflakes', 'pytest-cov',
                            'scipy', 'pytest-doctestplus', 'pytest-flakes',
                            'doctr', 'sphinx']):
-        pyflakes .
+        pyflakes versioned-hdf5/
         python -We:invalid -We::SyntaxWarning -m compileall -f -q versioned_hdf5/
         pytest
 
