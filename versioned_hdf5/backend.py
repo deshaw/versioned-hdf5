@@ -136,10 +136,10 @@ def write_dataset_chunks(f, name, data_dict, shape=None):
     if shape is None:
         shape = tuple(max(c.args[i].stop for c in data_dict) for i in
                       range(len(chunks)))
-    all_chunks = list(ChunkSize(chunks).indices(shape))
-    for c in data_dict:
-        if c not in all_chunks:
-            raise ValueError(f"data_dict contains extra chunks ({c})")
+    # all_chunks = list(ChunkSize(chunks).indices(shape))
+    # for c in data_dict:
+    #     if c not in all_chunks:
+    #         raise ValueError(f"data_dict contains extra chunks ({c})")
 
     hashtable = Hashtable(f, name)
     slices = {i: None for i in data_dict}
@@ -191,8 +191,10 @@ def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fil
         for c, s in slices.items():
             if c.isempty():
                 continue
-            idx = Tuple(s, *Tuple(*[slice(0, i) for i in shape]).as_subindex(c).args[1:])
-            assert c.newshape(shape) == vs[idx.raw].shape, (c, shape, s)
+            # idx = Tuple(s, *Tuple(*[slice(0, i) for i in shape[1:]]).as_subindex(Tuple(*c.args[1:])).args)
+            S = [Slice(0, shape[i], 1).as_subindex(c.args[i]) for i in range(1, len(shape))]
+            idx = Tuple(s, *S)
+            # assert c.newshape(shape) == vs[idx.raw].shape, (c, shape, s)
             layout[c.raw] = vs[idx.raw]
 
     dtype = raw_data.dtype

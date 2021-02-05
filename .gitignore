@@ -1,6 +1,9 @@
 *.h5
 *.hdf5
 
+# airspeed velocity (benchmarks)
+.asv/
+
 *.lprof
 
 # Byte-compiled / optimized / DLL files
