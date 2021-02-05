@@ -1,6 +1,18 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.2.2 (2020-02-04)
+
+## Minor Changes
+
+- Many improvements to performance throughout the library.
+
+- Added a benchmarking suite using [airspeed
+  velocity](https://asv.readthedocs.io/en/stable/). Graphs of the benchmarks
+  can be viewed at <https://deshaw.github.io/versioned-hdf5/benchmarks/>.
+
+- Versioned HDF5 now depends on ndindex version 1.5.1 or greater.
+
 ## 1.2.1 (2020-12-30)
 
 ## Minor Changes
