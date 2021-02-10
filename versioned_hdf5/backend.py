@@ -355,16 +355,21 @@ def swap(old, new):
             # recreate them, pointing to the new raw_data.
             oldd = old[name]
             newd = new[name]
+            def _normalize(path):
+                return path if path.endswith('/') else path + '/'
+            def _replace_prefix(path, name1, name2):
+                """Replace the prefix name1 with name2 in path"""
+                name1 = _normalize(name1)
+                name2 = _normalize(name2)
+                return name2 + path[len(name1):]
             def _new_vds_layout(d, name1, name2):
                 """Recreate a VirtualLayout for d, replacing name1 with name2 in the source dset name"""
-                name1 = name1 if name1.endswith('/') else name1 + '/'
-                name2 = name2 if name2.endswith('/') else name2 + '/'
                 virtual_sources = d.virtual_sources()
                 layout = VirtualLayout(d.shape, dtype=d.dtype)
                 for vmap in virtual_sources:
                     vspace, fname, dset_name, src_space = vmap
                     assert dset_name.startswith(name1)
-                    dset_name = name2 + dset_name[len(name1):]
+                    dset_name = _replace_prefix(dset_name, name1, name2)
                     fname = fname.encode('utf-8')
                     new_vmap = VDSmap(vspace, fname, dset_name, src_space)
                     layout.sources.append(new_vmap)
@@ -373,10 +378,20 @@ def swap(old, new):
             new_layout = _new_vds_layout(newd, new.name, old.name)
             old_fillvalue = old[name].fillvalue
             new_fillvalue = new[name].fillvalue
+            old_attrs = dict(old[name].attrs)
+            new_attrs = dict(new[name].attrs)
             del old[name]
             old.create_virtual_dataset(name, new_layout, fillvalue=new_fillvalue)
+            for k, v in new_attrs.items():
+                if isinstance(v, str) and v.startswith(new.name):
+                    v = _replace_prefix(v, new.name, old.name)
+                old[name].attrs[k] = v
             del new[name]
             new.create_virtual_dataset(name, old_layout, fillvalue=old_fillvalue)
+            for k, v in old_attrs.items():
+                if isinstance(v, str) and v.startswith(old.name):
+                    v = _replace_prefix(v, old.name, new.name)
+                new[name].attrs[k] = v
         else:
             old.move(name, pp.join(new.name, name + '__tmp'))
             new.move(name, pp.join(old.name, name))
