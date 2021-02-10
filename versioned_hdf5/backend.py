@@ -347,8 +347,7 @@ def swap(old, new):
                 move_names.append(name)
 
     old.visititems(_move)
-    print(move_names)
     for name in move_names:
-        old.move(name, pp.join(new.name, name + '__tmp__'))
+        old.move(name, pp.join(new.name, name + '__tmp'))
         new.move(name, pp.join(old.name, name))
-        new.move(name + '_tmp', name)
+        new.move(name + '__tmp', name)
