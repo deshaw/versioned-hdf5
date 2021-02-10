@@ -1060,7 +1060,7 @@ class InMemoryDatasetID(h5d.DatasetID):
 
             slice_map = {spaceid_to_slice(i.vspace): spaceid_to_slice(i.src_space)
                          for i in virtual_sources}
-            assert raw_data_name == virtual_sources[0].dset_name
+            assert raw_data_name == virtual_sources[0].dset_name, (raw_data_name, virtual_sources[0].dset_name)
             assert all(i.dset_name == raw_data_name for i in virtual_sources)
 
         # slice_map = {i.args[0]: j.args[0] for i, j in slice_map.items()}
