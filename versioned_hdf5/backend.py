@@ -1,6 +1,7 @@
 import numpy as np
 from h5py import VirtualLayout, VirtualSource, Dataset
 from h5py._hl.vds import VDSmap
+from h5py.h5i import get_name
 from ndindex import Slice, ndindex, Tuple, ChunkSize
 
 import posixpath as pp
@@ -341,6 +342,8 @@ def swap(old, new):
 
     Datasets in old that aren't in new are ignored.
     """
+    from .wrappers import _groups
+
     move_names = []
     def _move(name, object):
         if isinstance(object, Dataset):
@@ -393,6 +396,13 @@ def swap(old, new):
                     v = _replace_prefix(v, old.name, new.name)
                 new[name].attrs[k] = v
         else:
+            # Invalidate any InMemoryGroups that point to these groups
+            delete = []
+            for bind in _groups:
+                if get_name(bind).startswith(get_name(old.id)) or get_name(bind).startswith(get_name(new.id)):
+                    delete.append(bind)
+            for d in delete:
+                del _groups[d]
             old.move(name, pp.join(new.name, name + '__tmp'))
             new.move(name, pp.join(old.name, name))
             new.move(name + '__tmp', name)
