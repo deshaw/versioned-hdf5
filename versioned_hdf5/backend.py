@@ -334,7 +334,22 @@ def delete_version(f, version):
 
     versions[version].visit(_get)
 
-    del newf['_version_data/versions'][version]
+    swap(f, newf)
+    # swap() will swap out the datasets that are left intact. Any dataset in
+    # the version that is not in newf should be deleted entirely, as that
+    # means that it only existed in this version.
+    to_delete = []
+    def _visit(name, object):
+        if isinstance(object, Dataset):
+            if name not in newf['_version_data']:
+                to_delete.append(name)
+    versions[version].visititems(_visit)
+
+    for name in to_delete:
+        del f['_version_data'][name]
+    del f['_version_data/versions'][version]
+
+    del newf[newf.name]
 
 def swap(old, new):
     """
