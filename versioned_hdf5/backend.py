@@ -1,5 +1,6 @@
 import numpy as np
 from h5py import VirtualLayout, VirtualSource, Dataset
+from h5py._hl.vds import VDSmap
 from ndindex import Slice, ndindex, Tuple, ChunkSize
 
 import posixpath as pp
@@ -348,6 +349,35 @@ def swap(old, new):
 
     old.visititems(_move)
     for name in move_names:
-        old.move(name, pp.join(new.name, name + '__tmp'))
-        new.move(name, pp.join(old.name, name))
-        new.move(name + '__tmp', name)
+        if new[name].is_virtual:
+            # We cannot simply move virtual datasets, because they will still
+            # point to the old raw_data location. So instead, we have to
+            # recreate them, pointing to the new raw_data.
+            oldd = old[name]
+            newd = new[name]
+            def _new_vds_layout(d, name1, name2):
+                """Recreate a VirtualLayout for d, replacing name1 with name2 in the source dset name"""
+                name1 = name1 if name1.endswith('/') else name1 + '/'
+                name2 = name2 if name2.endswith('/') else name2 + '/'
+                virtual_sources = d.virtual_sources()
+                layout = VirtualLayout(d.shape, dtype=d.dtype)
+                for vmap in virtual_sources:
+                    vspace, fname, dset_name, src_space = vmap
+                    assert dset_name.startswith(name1)
+                    dset_name = name2 + dset_name[len(name1):]
+                    fname = fname.encode('utf-8')
+                    new_vmap = VDSmap(vspace, fname, dset_name, src_space)
+                    layout.sources.append(new_vmap)
+                return layout
+            old_layout = _new_vds_layout(oldd, old.name, new.name)
+            new_layout = _new_vds_layout(newd, new.name, old.name)
+            old_fillvalue = old[name].fillvalue
+            new_fillvalue = new[name].fillvalue
+            del old[name]
+            old.create_virtual_dataset(name, new_layout, fillvalue=new_fillvalue)
+            del new[name]
+            new.create_virtual_dataset(name, old_layout, fillvalue=old_fillvalue)
+        else:
+            old.move(name, pp.join(new.name, name + '__tmp'))
+            new.move(name, pp.join(old.name, name))
+            new.move(name + '__tmp', name)
