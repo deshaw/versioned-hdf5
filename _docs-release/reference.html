@@ -14,8 +14,6 @@
     <script src="_static/jquery.js"></script>
     <script src="_static/underscore.js"></script>
     <script src="_static/doctools.js"></script>
-    <script async="async" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
-    <script type="text/x-mathjax-config">MathJax.Hub.Config({"tex2jax": {"inlineMath": [["\\(", "\\)"]], "displayMath": [["\\[", "\\]"]], "processRefs": false, "processEnvironments": false}})</script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="next" title="Design" href="design.html" />
@@ -40,7 +38,7 @@
 <span id="api-documentation"></span><h1>API Documentation<a class="headerlink" href="#module-versioned_hdf5" title="Permalink to this headline">¶</a></h1>
 <dl class="py class">
 <dt id="versioned_hdf5.VersionedHDF5File">
-<em class="property">class </em><code class="sig-prename descclassname">versioned_hdf5.</code><code class="sig-name descname">VersionedHDF5File</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">f</span></em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">versioned_hdf5.</span></code><code class="sig-name descname"><span class="pre">VersionedHDF5File</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">f</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File" title="Permalink to this definition">¶</a></dt>
 <dd><p>A Versioned HDF5 File</p>
 <p>This is the main entry-point of the library. To use a versioned HDF5 file,
 pass a h5py file to constructor. The methods on the resulting object can
@@ -77,13 +75,13 @@ this library could result in breaking things.</p>
 should be closed separately.)</p>
 <dl class="py method">
 <dt id="versioned_hdf5.VersionedHDF5File.close">
-<code class="sig-name descname">close</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.close" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname"><span class="pre">close</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.close" title="Permalink to this definition">¶</a></dt>
 <dd><p>Make sure the VersionedHDF5File object is no longer reachable.</p>
 </dd></dl>
 
 <dl class="py method">
 <dt id="versioned_hdf5.VersionedHDF5File.current_version">
-<em class="property">property </em><code class="sig-name descname">current_version</code><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.current_version" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">current_version</span></code><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.current_version" title="Permalink to this definition">¶</a></dt>
 <dd><p>The current version.</p>
 <p>The current version is used as the default previous version to
 <a class="reference internal" href="#versioned_hdf5.VersionedHDF5File.stage_version" title="versioned_hdf5.VersionedHDF5File.stage_version"><code class="xref py py-func docutils literal notranslate"><span class="pre">stage_version()</span></code></a>, and is also used for negative integer version
@@ -92,7 +90,7 @@ indexing (the current version is <code class="code docutils literal notranslate"
 
 <dl class="py method">
 <dt id="versioned_hdf5.VersionedHDF5File.stage_version">
-<code class="sig-name descname">stage_version</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">version_name</span><span class="p">:</span> <span class="n">str</span></em>, <em class="sig-param"><span class="n">prev_version</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">make_current</span><span class="o">=</span><span class="default_value">True</span></em>, <em class="sig-param"><span class="n">timestamp</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.stage_version" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname"><span class="pre">stage_version</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">version_name</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prev_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">make_current</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timestamp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.stage_version" title="Permalink to this definition">¶</a></dt>
 <dd><p>Return a context manager to stage a new version</p>
 <p>The context manager returns a group, which should be modified in-place
 to build the new version. When the context manager exits, the new
@@ -190,7 +188,7 @@ as the current version. The current version is used as the default
       &copy;2020, Quansight.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.4.3</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.5.1</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |
