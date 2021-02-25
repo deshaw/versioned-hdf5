@@ -1665,3 +1665,13 @@ def test_sparse_large(vfile):
     assert vfile['version2']['test_data'][0] == 1
     assert vfile['version2']['test_data'][1] == 0
     assert vfile['version2']['test_data'][20_000_000] == 2
+
+def test_empty_dataset_str_dtype(vfile):
+    # Issue #161. Make sure the dtype is maintained correctly for empty
+    # datasets with custom string dtypes.
+    with vfile.stage_version('version1') as g:
+        g.create_dataset('bar', data=np.array(['a', 'b', 'c'], dtype='S5'), dtype=np.dtype('S5'))
+        g['bar'].resize((0,))
+    with vfile.stage_version('version2') as g:
+        g['bar'].resize((3,))
+        g['bar'][:] = np.array(['a', 'b', 'c'], dtype='S5')

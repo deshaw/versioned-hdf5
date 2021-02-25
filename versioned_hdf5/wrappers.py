@@ -698,15 +698,9 @@ class InMemoryDataset(Dataset):
 
         for c in self.chunks.as_subchunks(idx, self.shape):
             if c not in self.id.data_dict:
-                # TODO: Handle this more efficiently if there are many chunks
-                # without explicit data (see
-                # https://github.com/Quansight/ndindex/issues/45). This would
-                # also make things more efficient for the non-sparse case as
-                # well.
-
                 # Broadcasted arrays do not actually consume memory
                 fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
-                self.id.data_dict[c] = fill.copy()
+                self.id.data_dict[c] = fill.astype(self.dtype)
             elif isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
                 raw_idx = Tuple(self.id.data_dict[c], *[slice(0, len(i)) for i
                                                         in c.args[1:]]).raw
