@@ -30,6 +30,11 @@ def create_version_group(f, version_name, prev_version=None):
     group.attrs['prev_version'] = prev_version
     group.attrs['committed'] = False
 
+    # Placeholder timestamp, just so the attr is there in case something calls
+    # get_version_by_timestamp before the version is committed.
+    ts = datetime.datetime.now(datetime.timezone.utc)
+    group.attrs['timestamp'] = ts.strftime(TIMESTAMP_FMT)
+
     # Copy everything over from the previous version
     prev_group = versions[prev_version]
 
