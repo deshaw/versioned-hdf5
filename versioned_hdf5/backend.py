@@ -168,6 +168,9 @@ def write_dataset_chunks(f, name, data_dict, shape=None):
     return slices
 
 def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fillvalue=None):
+    from h5py._hl.selections import select
+    from h5py._hl.vds import VDSmap
+
     raw_data = f['_version_data'][name]['raw_data']
     slices = {c: s.reduce() for c, s in slices.items()}
 
@@ -186,7 +189,7 @@ def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fil
                 raise ValueError(f"Inconsistent slices dictionary ({c.args[0]}, {s})")
 
         layout = VirtualLayout(shape, dtype=raw_data.dtype)
-        vs = VirtualSource('.', name=raw_data.name, shape=raw_data.shape, dtype=raw_data.dtype)
+        # vs = VirtualSource('.', name=raw_data.name, shape=raw_data.shape, dtype=raw_data.dtype)
 
         for c, s in slices.items():
             if c.isempty():
@@ -195,7 +198,19 @@ def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fil
             S = [Slice(0, shape[i], 1).as_subindex(c.args[i]) for i in range(1, len(shape))]
             idx = Tuple(s, *S)
             # assert c.newshape(shape) == vs[idx.raw].shape, (c, shape, s)
-            layout[c.raw] = vs[idx.raw]
+
+            # This is equivalent to
+            #
+            # layout[c.raw] = vs[idx.raw]
+            #
+            # But it is faster because vs[idx.raw] does a deepcopy(vs), which
+            # is slow.
+            vs_sel = select(raw_data.shape, idx.raw, dsid=None)
+            layout_sel = select(shape, c.raw, dsid=None)
+            layout.sources.append(VDSmap(layout_sel.id,
+                                   '.',
+                                   raw_data.name,
+                                   vs_sel.id))
 
     dtype = raw_data.dtype
     if dtype.metadata and ('vlen' in dtype.metadata or 'h5py_encoding' in dtype.metadata):
