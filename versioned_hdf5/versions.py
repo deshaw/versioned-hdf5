@@ -1,5 +1,6 @@
 from uuid import uuid4
 from collections import defaultdict
+import posixpath as pp
 
 from h5py import Dataset, Group
 import datetime
@@ -76,6 +77,7 @@ def commit_version(version_group, datasets, *,
     version_name = version_group.name.rsplit('/', 1)[1]
     versions = version_group.parent
     f = versions.parent.parent
+    prev_version = versions[version_group.attrs['prev_version']]
 
     chunks = chunks or defaultdict(type(None))
     compression = compression or defaultdict(type(None))
@@ -97,7 +99,19 @@ def commit_version(version_group, datasets, *,
         shape = None
         if isinstance(data, InMemoryDataset):
             shape = data.shape
-            data = data.id.data_dict
+            if data.id._data_dict is None:
+                # The virtual dataset was not changed from the previous
+                # version. Just copy it to the new version directly.
+                assert data.name.startswith(prev_version.name + '/')
+                data_name = data.name[len(prev_version.name + '/'):]
+                data_copy_name = pp.join(version_group.name, data_name)
+                version_group.copy(data, data_copy_name)
+                data_copy = f[data_copy_name]
+                data_copy.attrs.clear()
+                for k, v in data.attrs.items():
+                    data_copy.attrs[k] = v
+                continue
+            data = data.id._data_dict
         if isinstance(data, dict):
             if chunks[name] is not None:
                 raise NotImplementedError("Specifying chunk size with dict data")
