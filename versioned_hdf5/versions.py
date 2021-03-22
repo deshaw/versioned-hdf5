@@ -11,6 +11,13 @@ from .wrappers import InMemoryGroup, DatasetWrapper, InMemoryDataset, InMemoryAr
 TIMESTAMP_FMT = "%Y-%m-%d %H:%M:%S.%f%z"
 
 def create_version_group(f, version_name, prev_version=None):
+    """
+    Create the version group for a new version.
+
+    prev_version should be a pre-existing version name, None, or ''
+    If it is None, it defaults to the current version. If it is '', it creates
+    a version with no parent version.
+    """
     versions = f['_version_data/versions']
 
     if prev_version == '':
@@ -52,10 +59,6 @@ def commit_version(version_group, datasets, *,
                    timestamp=None):
     """
     Create a new version
-
-    prev_version should be a pre-existing version name, None, or ''
-    If it is None, it defaults to the current version. If it is '', it creates
-    a version with no parent version.
 
     datasets should be a dictionary mapping {path: dataset}, where `dataset`
     is either a numpy array, or a dictionary mapping {chunk_index:
