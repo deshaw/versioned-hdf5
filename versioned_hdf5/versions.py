@@ -6,7 +6,7 @@ import datetime
 import numpy as np
 
 from .backend import write_dataset, write_dataset_chunks, create_virtual_dataset
-from .wrappers import InMemoryGroup, InMemoryDataset, InMemoryArrayDataset, InMemorySparseDataset
+from .wrappers import InMemoryGroup, DatasetWrapper, InMemoryDataset, InMemoryArrayDataset, InMemorySparseDataset
 
 TIMESTAMP_FMT = "%Y-%m-%d %H:%M:%S.%f%z"
 
@@ -83,6 +83,8 @@ def commit_version(version_group, datasets, *,
 
     for name, data in datasets.items():
         fillvalue = None
+        if isinstance(data, DatasetWrapper):
+            data = data.dataset
         if isinstance(data, (InMemoryDataset, InMemoryArrayDataset, InMemorySparseDataset)):
             attrs = data.attrs
             fillvalue = data.fillvalue

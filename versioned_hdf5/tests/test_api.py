@@ -14,7 +14,8 @@ from .helpers import setup
 from ..backend import DEFAULT_CHUNK_SIZE
 from ..api import VersionedHDF5File
 from ..versions import TIMESTAMP_FMT
-from ..wrappers import InMemoryArrayDataset, InMemoryDataset, InMemorySparseDataset
+from ..wrappers import (InMemoryArrayDataset, InMemoryDataset,
+                        InMemorySparseDataset, DatasetWrapper)
 
 
 def test_stage_version(vfile):
@@ -1340,12 +1341,14 @@ def test_check_committed(vfile):
     # Incorrectly uses g from the previous version (InMemoryDataset)
     with raises(ValueError, match="committed"):
         with vfile.stage_version('version3'):
-            assert isinstance(g2['test_data'], InMemoryDataset)
+            assert isinstance(g2['test_data'], DatasetWrapper)
+            assert isinstance(g2['test_data'].dataset, InMemoryDataset)
             g2['test_data'][0] = 1
 
     with raises(ValueError, match="committed"):
         with vfile.stage_version('version3'):
-            assert isinstance(g2['test_data'], InMemoryDataset)
+            assert isinstance(g2['test_data'], DatasetWrapper)
+            assert isinstance(g2['test_data'].dataset, InMemoryDataset)
             g2['test_data'].resize((100,))
 
     assert repr(g) == '<Committed InMemoryGroup "/_version_data/versions/version1">'
@@ -1400,7 +1403,8 @@ def test_string_dtypes():
             assert file['0']['name'][10] == typ(), dt.metadata
 
             with file.stage_version('1') as sv:
-                assert isinstance(sv['name'], InMemoryDataset)
+                assert isinstance(sv['name'], DatasetWrapper)
+                assert isinstance(sv['name'].dataset, InMemoryDataset)
                 sv['name'].resize((12,))
 
             assert file['1']['name'].dtype == dt
@@ -1556,7 +1560,8 @@ def test_scalar():
 
     with h5py.File('test.hdf5', 'r') as f:
         vfile = VersionedHDF5File(f)
-        assert isinstance(vfile['version1']['bar'], InMemoryDataset)
+        assert isinstance(vfile['version1']['bar'], DatasetWrapper)
+        assert isinstance(vfile['version1']['bar'].dataset, InMemoryDataset)
         # Should return a scalar, not a shape () array
         assert isinstance(vfile['version1']['bar'][0], bytes)
 
@@ -1576,7 +1581,8 @@ def test_sparse(vfile):
 
 
     with vfile.stage_version('version2') as g:
-        assert isinstance(g['test_data'], InMemoryDataset)
+        assert isinstance(g['test_data'], DatasetWrapper)
+        assert isinstance(g['test_data'].dataset, InMemoryDataset)
         assert g['test_data'][0, 0] == 2
         assert g['test_data'][0, 1] == 1
         assert g['test_data'][200, 1] == 1
@@ -1606,7 +1612,8 @@ def test_sparse_empty(vfile):
     assert vfile['version1']['test_data'][200, 1] == 1
 
     with vfile.stage_version('version2') as g:
-        assert isinstance(g['test_data'], InMemoryDataset)
+        assert isinstance(g['test_data'], DatasetWrapper)
+        assert isinstance(g['test_data'].dataset, InMemoryDataset)
         assert g['test_data'][0, 0] == 1
         assert g['test_data'][0, 1] == 1
         assert g['test_data'][200, 1] == 1
@@ -1647,7 +1654,8 @@ def test_sparse_large(vfile):
 
 
     with vfile.stage_version('version2') as g:
-        assert isinstance(g['test_data'], InMemoryDataset)
+        assert isinstance(g['test_data'], DatasetWrapper)
+        assert isinstance(g['test_data'].dataset, InMemoryDataset)
         assert g['test_data'][0] == 1
         assert g['test_data'][1] == 0
         assert g['test_data'][20_000_000] == 0

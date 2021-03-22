@@ -89,7 +89,7 @@ class InMemoryGroup(Group):
             self._subgroups[name] = self.__class__(res.id)
             return self._subgroups[name]
         elif isinstance(res, Dataset):
-            self._data[name] = InMemoryDataset(res.id, parent=self)
+            self._data[name] = DatasetWrapper(InMemoryDataset(res.id, parent=self))
             return self._data[name]
         else:
             raise NotImplementedError(f"Cannot handle {type(res)!r}")
@@ -104,12 +104,12 @@ class InMemoryGroup(Group):
             return
 
         if isinstance(obj, Dataset):
-            self._data[name] = InMemoryDataset(obj.id, parent=self)
+            self._data[name] = DatasetWrapper(InMemoryDataset(obj.id, parent=self))
         elif isinstance(obj, Group):
             self._subgroups[name] = InMemoryGroup(obj.id)
         elif isinstance(obj, InMemoryGroup):
             self._subgroups[name] = obj
-        elif isinstance(obj, (InMemoryArrayDataset, InMemorySparseDataset)):
+        elif isinstance(obj, DatasetLike):
             self._data[name] = obj
         else:
             self._data[name] = InMemoryArrayDataset(name, np.asarray(obj), parent=self)
@@ -231,7 +231,7 @@ class InMemoryGroup(Group):
         def _get(name, item):
             if name in res:
                 return
-            if isinstance(item, (Dataset, InMemoryArrayDataset, np.ndarray)):
+            if isinstance(item, (Dataset, DatasetLike, np.ndarray)):
                 res[name] = item
 
         self.visititems(_get)
@@ -945,6 +945,24 @@ class InMemorySparseDataset(DatasetLike):
                     self.data_dict[c] = self.data_dict[c].copy()
                 chunk_idx = idx.as_subindex(c)
                 self.data_dict[c][chunk_idx.raw] = val[val_idx.raw]
+
+class DatasetWrapper(DatasetLike):
+    def __init__(self, dataset):
+        self.dataset = dataset
+
+    def __getattr__(self, attr):
+        return getattr(self.dataset, attr)
+
+    def __setitem__(self, index, value):
+        if isinstance(self.dataset, InMemoryDataset) and ndindex(index).expand(self.shape) == Tuple().expand(self.shape):
+            self.dataset = InMemoryArrayDataset(self.name,
+                                                np.broadcast_to(value, self.shape).astype(self.dtype),
+                                                self.parent, fillvalue=self.fillvalue)
+            return
+        self.dataset.__setitem__(index, value)
+
+    def __getitem__(self, index):
+        return self.dataset.__getitem__(index)
 
 class InMemoryDatasetID(h5d.DatasetID):
     def __init__(self, _id):
