@@ -195,7 +195,7 @@ def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fil
             if c.isempty():
                 continue
             # idx = Tuple(s, *Tuple(*[slice(0, i) for i in shape[1:]]).as_subindex(Tuple(*c.args[1:])).args)
-            S = [Slice(0, c.args[i].stop - c.args[i].start) for i in range(1, len(shape))]
+            S = [Slice(0, len(c.args[i])) for i in range(1, len(shape))]
             idx = Tuple(s, *S)
             # assert c.newshape(shape) == vs[idx.raw].shape, (c, shape, s)
 
