@@ -1,13 +1,13 @@
 Versioned HDF5 Change Log
 =========================
 
-## 1.2.3 (2020-02-25)
+## 1.2.3 (2021-02-25)
 
 ## Minor Changes
 
 - Fix the length of str dtype not being maintained from the fillvalue.
 
-## 1.2.2 (2020-02-04)
+## 1.2.2 (2021-02-04)
 
 ## Minor Changes
 
