@@ -198,6 +198,8 @@ def get_version_by_timestamp(f, timestamp, exact=False):
                 if ts == version_ts:
                     return version
             else:
+                if ts == version_ts:
+                    return version
                 # Find the version whose timestamp is closest to ts and before
                 # it.
                 if best_ts < version_ts <= ts:
