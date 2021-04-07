@@ -14,4 +14,4 @@ cp -R .asv/html benchmarks
 git add benchmarks
 git commit -m "Update benchmarks"
 git checkout -
-git push gh-pages
+git push origin gh-pages
