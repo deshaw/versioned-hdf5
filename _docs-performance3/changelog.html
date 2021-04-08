@@ -1,0 +1,241 @@
+<!-- See https://github.com/bitprophet/alabaster/issues/166 -->
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17: http://docutils.sourceforge.net/" />
+
+    <title>Versioned HDF5 Change Log &#8212; Versioned HDF5  documentation</title>
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="_static/graphviz.css" />
+    <script id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/doctools.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Authors" href="authors.html" />
+    <link rel="prev" title="Design" href="design.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="versioned-hdf5-change-log">
+<h1>Versioned HDF5 Change Log<a class="headerlink" href="#versioned-hdf5-change-log" title="Permalink to this headline">¶</a></h1>
+<section id="id1">
+<h2>1.2.4 (2021-02-08)<a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h2>
+</section>
+<section id="major-changes">
+<h2>Major Changes<a class="headerlink" href="#major-changes" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li><p>Many improvements to performance throughout the library, particularly for
+datasets with many chunks, and for looking up versions by timestamp. This
+also sets up potential future performance improvements by automatically
+converting sparse staged datasets to fully in-memory.</p></li>
+<li><p>Add some additional benchmarks to the benchmark suite.</p></li>
+</ul>
+</section>
+<section id="id2">
+<h2>1.2.3 (2021-02-25)<a class="headerlink" href="#id2" title="Permalink to this headline">¶</a></h2>
+<section id="minor-changes">
+<h3>Minor Changes<a class="headerlink" href="#minor-changes" title="Permalink to this headline">¶</a></h3>
+<ul class="simple">
+<li><p>Fix the length of str dtype not being maintained from the fillvalue.</p></li>
+</ul>
+</section>
+</section>
+<section id="id3">
+<h2>1.2.2 (2021-02-04)<a class="headerlink" href="#id3" title="Permalink to this headline">¶</a></h2>
+<section id="id4">
+<h3>Minor Changes<a class="headerlink" href="#id4" title="Permalink to this headline">¶</a></h3>
+<ul class="simple">
+<li><p>Many improvements to performance throughout the library.</p></li>
+<li><p>Added a benchmarking suite using <a class="reference external" href="https://asv.readthedocs.io/en/stable/">airspeed
+velocity</a>. Graphs of the benchmarks
+can be viewed at <a class="reference external" href="https://deshaw.github.io/versioned-hdf5/benchmarks/">https://deshaw.github.io/versioned-hdf5/benchmarks/</a>.</p></li>
+<li><p>Versioned HDF5 now depends on ndindex version 1.5.1 or greater.</p></li>
+</ul>
+</section>
+</section>
+<section id="id5">
+<h2>1.2.1 (2020-12-30)<a class="headerlink" href="#id5" title="Permalink to this headline">¶</a></h2>
+<section id="id6">
+<h3>Minor Changes<a class="headerlink" href="#id6" title="Permalink to this headline">¶</a></h3>
+<ul class="simple">
+<li><p>Python 3.6 support has been dropped. The lowest version of Python now
+supported is 3.7.</p></li>
+<li><p>Fix creating a completely empty sparse dataset</p></li>
+<li><p>Use ndindex.ChunkSize internally. This is the beginning of an overhaul that
+improves the performance of many operations. ndindex 1.5 or newer is now
+required.</p></li>
+</ul>
+</section>
+</section>
+<section id="id7">
+<h2>1.2 (2020-11-17)<a class="headerlink" href="#id7" title="Permalink to this headline">¶</a></h2>
+<section id="id8">
+<h3>Major Changes<a class="headerlink" href="#id8" title="Permalink to this headline">¶</a></h3>
+<ul class="simple">
+<li><p>Add support for sparse datasets (<code class="docutils literal notranslate"><span class="pre">data=None</span></code>).</p></li>
+<li><p>Store the chunks on an attribute of the dataset.</p></li>
+<li><p>versioned-hdf5 is currently pinned to <code class="docutils literal notranslate"><span class="pre">h5py&lt;3</span></code>. h5py 3 support will be added
+in a future version.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">VersionedHDF5File[timestamp]</span></code> now returns the closest version before
+<code class="docutils literal notranslate"><span class="pre">timestamp</span></code> if there is no version at <code class="docutils literal notranslate"><span class="pre">timestamp</span></code>.</p></li>
+</ul>
+</section>
+</section>
+<section id="id9">
+<h2>1.1 (2020-09-15)<a class="headerlink" href="#id9" title="Permalink to this headline">¶</a></h2>
+<section id="id10">
+<h3>Major Changes<a class="headerlink" href="#id10" title="Permalink to this headline">¶</a></h3>
+<ul class="simple">
+<li><p>Added support for shape-0 datasets.</p></li>
+<li><p>Fix a memory leak where in-memory datasets would not be garbage collected.</p></li>
+<li><p>Added support for empty datasets (size 0).</p></li>
+<li><p>Make sure versioned data is read-only after closing and reopening the file.</p></li>
+<li><p>Allow deleting groups and datasets between versions. Note that currently
+dataset metadata cannot change between versions, even if they are deleted in
+between.</p></li>
+</ul>
+</section>
+<section id="id11">
+<h3>Minor Changes<a class="headerlink" href="#id11" title="Permalink to this headline">¶</a></h3>
+<ul class="simple">
+<li><p>Most tests now use a temporary directory instead of writing a file in the
+current directory.</p></li>
+<li><p>Fix logic for handling trailing slashes with <code class="docutils literal notranslate"><span class="pre">in</span></code>.</p></li>
+<li><p>Automatically create intermediate groups when creating a dataset.</p></li>
+<li><p>Make indices that should give a scalar object do so instead of giving a
+shape () array.</p></li>
+</ul>
+</section>
+</section>
+<section id="id12">
+<h2>1.0 (2020-08-03)<a class="headerlink" href="#id12" title="Permalink to this headline">¶</a></h2>
+<section id="id13">
+<h3>Major Changes<a class="headerlink" href="#id13" title="Permalink to this headline">¶</a></h3>
+<ul class="simple">
+<li><p>First release of Versioned-HDF5.</p></li>
+</ul>
+</section>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">Versioned HDF5</a></h1>
+
+
+
+
+
+
+
+
+
+
+    
+
+<p>
+<a class="badge" href="https://travis-ci.org/deshaw/versioned-hdf5">
+    <img
+        alt="https://secure.travis-ci.org/deshaw/versioned-hdf5.svg?branch=master"
+        src="https://secure.travis-ci.org/deshaw/versioned-hdf5.svg?branch=master"
+    />
+</a>
+</p>
+
+
+<h3>Navigation</h3>
+<p><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="performance.html">Performance</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reference.html">API Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="design.html">Design</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Versioned HDF5 Change Log</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id1">1.2.4 (2021-02-08)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#major-changes">Major Changes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id2">1.2.3 (2021-02-25)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id3">1.2.2 (2021-02-04)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id5">1.2.1 (2020-12-30)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id7">1.2 (2020-11-17)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id9">1.1 (2020-09-15)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id12">1.0 (2020-08-03)</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="authors.html">Authors</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="design.html" title="previous chapter">Design</a></li>
+      <li>Next: <a href="authors.html" title="next chapter">Authors</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    
+    <div class="footer">
+      &copy;2020, Quansight.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.5.3</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="_sources/changelog.md.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+    <span id="forkongithub"><a href="https://github.com/deshaw/versioned-hdf5">Fork me on GitHub</a></span>
+  </body>
+</html>

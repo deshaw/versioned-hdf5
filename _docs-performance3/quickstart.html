@@ -1,0 +1,250 @@
+<!-- See https://github.com/bitprophet/alabaster/issues/166 -->
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17: http://docutils.sourceforge.net/" />
+
+    <title>Quickstart Guide &#8212; Versioned HDF5  documentation</title>
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="_static/graphviz.css" />
+    <script id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/doctools.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Installation" href="installation.html" />
+    <link rel="prev" title="Versioned HDF5" href="index.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="quickstart-guide">
+<h1>Quickstart Guide<a class="headerlink" href="#quickstart-guide" title="Permalink to this headline">¶</a></h1>
+<p>Let’s say you have an HDF5 file with contents that might change over time. You
+may add or remove datasets, change the contents of the data or the metadata, and
+would like to keep a record of which changes occurred when, and a way to recover
+previous versions of this file. Versioned HDF5 allows you to do that by building
+a versioning API on top of h5py.</p>
+<p>First, you must open an <code class="docutils literal notranslate"><span class="pre">.h5</span></code> file and create a <a class="reference external" href="http://docs.h5py.org/en/stable/high/file.html">h5py File Object</a> in write mode:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">h5py</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">fileobject</span> <span class="o">=</span> <span class="n">h5py</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="s1">&#39;filename.h5&#39;</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Now, you can use the <a class="reference internal" href="reference.html#versioned_hdf5.VersionedHDF5File" title="versioned_hdf5.VersionedHDF5File"><code class="xref any py py-class docutils literal notranslate"><span class="pre">VersionedHDF5File</span></code></a> constructor on this file object to
+create a versioned HDF5 file object:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">versioned_hdf5</span> <span class="kn">import</span> <span class="n">VersionedHDF5File</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">versioned_file</span> <span class="o">=</span> <span class="n">VersionedHDF5File</span><span class="p">(</span><span class="n">fileobject</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>You can see that this <code class="docutils literal notranslate"><span class="pre">versioned_file</span></code> object has the following attributes:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">f</span></code>: the original <code class="docutils literal notranslate"><span class="pre">h5py</span></code> File Object;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">current_version</span></code>: at this point, it should return <code class="docutils literal notranslate"><span class="pre">__first_version__</span></code>,
+as we haven’t created any additional versions.</p></li>
+</ul>
+</div></blockquote>
+<p>To create a new version, use the <a class="reference internal" href="reference.html#versioned_hdf5.VersionedHDF5File.stage_version" title="versioned_hdf5.VersionedHDF5File.stage_version"><code class="xref any py py-meth docutils literal notranslate"><span class="pre">stage_version</span></code></a> function. For example, if
+we do</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">versioned_file</span><span class="o">.</span><span class="n">stage_version</span><span class="p">(</span><span class="s1">&#39;version2&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">group</span><span class="p">:</span>
+<span class="gp">... </span>    <span class="n">group</span><span class="p">[</span><span class="s1">&#39;mydataset&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">10000</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The context manager returns a h5py <em>group</em> object, which should be modified
+in-place to build the new version. When the context manager exits, the version
+will be written to the file. This has two effects. First, the h5py file object
+<code class="docutils literal notranslate"><span class="pre">fileobject</span></code> now has metadata associated with versions:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">fileobject</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<span class="go">&lt;KeysViewHDF5 [&#39;_version_data&#39;]&gt;</span>
+</pre></div>
+</div>
+<p>All the data from the versioned HDF5 file is stored in the <code class="docutils literal notranslate"><span class="pre">_version_data</span></code>
+group on the file, but this should not be accessed directly: any interaction
+with the versioning should happen through the API. <code class="docutils literal notranslate"><span class="pre">versioned_file</span></code> can now be
+used to expose versioned data by version name:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">v2</span> <span class="o">=</span> <span class="n">versioned_file</span><span class="p">[</span><span class="s1">&#39;version2&#39;</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">v2</span>
+<span class="go">&lt;Committed InMemoryGroup &quot;/_version_data/versions/version2&quot;&gt;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">v2</span><span class="p">[</span><span class="s1">&#39;mydataset&#39;</span><span class="p">]</span>
+<span class="go">&lt;InMemoryArrayDataset &quot;mydataset&quot;: shape (10000,), type &quot;&lt;f8&quot;&gt;</span>
+</pre></div>
+</div>
+<p>To access the actual data stored in version <code class="docutils literal notranslate"><span class="pre">version2</span></code>, we use the same syntax
+as <code class="docutils literal notranslate"><span class="pre">h5py</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">dataset</span> <span class="o">=</span> <span class="n">v2</span><span class="p">[</span><span class="s1">&#39;mydataset&#39;</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dataset</span><span class="p">[()]</span>
+<span class="go">array([1., 1., 1., ..., 1., 1., 1.])</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Versioned HDF5 files have a special structure and should not be modified
+directly. Also note that once a version is created in the file, it should be
+treated as read-only. Some protections are in place to prevent accidental
+modification, but it is not possible in the HDF5 layer to make a dataset or
+group read-only, so modifications made outside of this library could result
+in breaking things.</p>
+</div>
+<p>When you are done manipulating data, both the <code class="docutils literal notranslate"><span class="pre">h5py</span></code> and <code class="docutils literal notranslate"><span class="pre">VersionedHDF5File</span></code>
+objects must be closed to make sure the HDF5 file is written properly to disk
+(including data about versions.) This can be achieved by</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">fileobject</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">versioned_file</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</pre></div>
+</div>
+<section id="other-options">
+<h2>Other Options<a class="headerlink" href="#other-options" title="Permalink to this headline">¶</a></h2>
+<p>When a version is committed to a VersionedHDF5File, a timestamp is automatically
+added to it. The timestamp for each version can be retrieved via the version’s
+<code class="code docutils literal notranslate"><span class="pre">attrs</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">versioned_file</span><span class="p">[</span><span class="s1">&#39;version1&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;timestamp&#39;</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>Since the HDF5 specification does not currently support writing
+<code class="code docutils literal notranslate"><span class="pre">datetime.datetime</span></code> or <code class="code docutils literal notranslate"><span class="pre">numpy.datetime</span></code> objects to HDF5 files, these timestamps
+are stored as strings, using the following format:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>`&quot;%Y-%m-%d %H:%M:%S.%f%z&quot;`
+</pre></div>
+</div>
+<p>The timestamps are registered in UTC. For more details on the format string
+above, see the <code class="code docutils literal notranslate"><span class="pre">datetime.datetime.strftime</span></code> function documentation.</p>
+<p>The timestamp can also be used as an index to retrieve a chosen version from the
+file. In this case, either a <code class="code docutils literal notranslate"><span class="pre">datetime.datetime</span></code> or a <code class="code docutils literal notranslate"><span class="pre">numpy.datetime64</span></code> object
+must be used as a key. For example, if</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">(</span><span class="n">datetime</span><span class="o">.</span><span class="n">timezone</span><span class="o">.</span><span class="n">utc</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>then using</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">versioned_file</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>returns the version with timestamp equal to <code class="code docutils literal notranslate"><span class="pre">t</span></code> (converted to a string according
+to the format mentioned above).</p>
+<p>It is also possible to assign a timestamp manually to a file. Again, this
+requires using either a <code class="code docutils literal notranslate"><span class="pre">datetime.datetime</span></code> or a <code class="code docutils literal notranslate"><span class="pre">numpy.datetime64</span></code> object as
+the timestamp:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">ts</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">(</span><span class="mi">2020</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">29</span><span class="p">,</span> <span class="mi">23</span><span class="p">,</span> <span class="mi">58</span><span class="p">,</span> <span class="mi">21</span><span class="p">,</span> <span class="mi">116470</span><span class="p">,</span> <span class="n">tzinfo</span><span class="o">=</span><span class="n">datetime</span><span class="o">.</span><span class="n">timezone</span><span class="o">.</span><span class="n">utc</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">versioned_file</span><span class="o">.</span><span class="n">stage_version</span><span class="p">(</span><span class="s1">&#39;version1&#39;</span><span class="p">,</span> <span class="n">timestamp</span><span class="o">=</span><span class="n">ts</span><span class="p">)</span> <span class="k">as</span> <span class="n">group</span><span class="p">:</span>
+<span class="gp">&gt;&gt;&gt; </span>   <span class="n">group</span><span class="p">[</span><span class="s1">&#39;mydataset&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">data</span>
+</pre></div>
+</div>
+<p>Now:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">versioned_file</span><span class="p">[</span><span class="n">ts</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>returns the same as <code class="code docutils literal notranslate"><span class="pre">versioned_file['version1']</span></code>.</p>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">Versioned HDF5</a></h1>
+
+
+
+
+
+
+
+
+
+
+    
+
+<p>
+<a class="badge" href="https://travis-ci.org/deshaw/versioned-hdf5">
+    <img
+        alt="https://secure.travis-ci.org/deshaw/versioned-hdf5.svg?branch=master"
+        src="https://secure.travis-ci.org/deshaw/versioned-hdf5.svg?branch=master"
+    />
+</a>
+</p>
+
+
+<h3>Navigation</h3>
+<p><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Quickstart Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#other-options">Other Options</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="performance.html">Performance</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reference.html">API Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="design.html">Design</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Versioned HDF5 Change Log</a></li>
+<li class="toctree-l1"><a class="reference internal" href="authors.html">Authors</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="index.html" title="previous chapter">Versioned HDF5</a></li>
+      <li>Next: <a href="installation.html" title="next chapter">Installation</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    
+    <div class="footer">
+      &copy;2020, Quansight.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.5.3</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="_sources/quickstart.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+    <span id="forkongithub"><a href="https://github.com/deshaw/versioned-hdf5">Fork me on GitHub</a></span>
+  </body>
+</html>
