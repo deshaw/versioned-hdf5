@@ -97,27 +97,27 @@ def write_dataset(f, name, data, chunks=None, compression=None,
         raise ValueError(f"dtypes do not match ({data.dtype} != {ds.dtype})")
     # TODO: Handle more than one dimension
     old_shape = ds.shape
-    hashtable = Hashtable(f, name)
     slices = {}
     slices_to_write = {}
     chunk_size = chunks[0]
 
-    if len(data.shape) != 0:
-        for s in ChunkSize(chunks).indices(data.shape):
-            idx = hashtable.largest_index
-            data_s = data[s.raw]
-            raw_slice = Slice(idx*chunk_size, idx*chunk_size + data_s.shape[0])
-            data_hash = hashtable.hash(data_s)
-            raw_slice2 = hashtable.setdefault(data_hash, raw_slice)
-            if raw_slice2 == raw_slice:
-                slices_to_write[raw_slice] = s
-            slices[s] = raw_slice2
+    with Hashtable(f, name) as hashtable:
+        if len(data.shape) != 0:
+            for s in ChunkSize(chunks).indices(data.shape):
+                idx = hashtable.largest_index
+                data_s = data[s.raw]
+                raw_slice = Slice(idx*chunk_size, idx*chunk_size + data_s.shape[0])
+                data_hash = hashtable.hash(data_s)
+                raw_slice2 = hashtable.setdefault(data_hash, raw_slice)
+                if raw_slice2 == raw_slice:
+                    slices_to_write[raw_slice] = s
+                slices[s] = raw_slice2
 
-        ds.resize((old_shape[0] + len(slices_to_write)*chunk_size,) + chunks[1:])
-        for raw_slice, s in slices_to_write.items():
-            data_s = data[s.raw]
-            idx = Tuple(raw_slice, *[slice(0, i) for i in data_s.shape[1:]])
-            ds[idx.raw] = data[s.raw]
+            ds.resize((old_shape[0] + len(slices_to_write)*chunk_size,) + chunks[1:])
+            for raw_slice, s in slices_to_write.items():
+                data_s = data[s.raw]
+                idx = Tuple(raw_slice, *[slice(0, i) for i in data_s.shape[1:]])
+                ds[idx.raw] = data[s.raw]
     return slices
 
 def write_dataset_chunks(f, name, data_dict, shape=None):
@@ -141,23 +141,23 @@ def write_dataset_chunks(f, name, data_dict, shape=None):
     #     if c not in all_chunks:
     #         raise ValueError(f"data_dict contains extra chunks ({c})")
 
-    hashtable = Hashtable(f, name)
-    slices = {i: None for i in data_dict}
-    data_to_write = {}
-    for chunk, data_s in data_dict.items():
-        if not isinstance(data_s, (slice, tuple, Tuple, Slice)) and data_s.dtype != ds.dtype:
-            raise ValueError(f"dtypes do not match ({data_s.dtype} != {ds.dtype})")
+    with Hashtable(f, name) as hashtable:
+        slices = {i: None for i in data_dict}
+        data_to_write = {}
+        for chunk, data_s in data_dict.items():
+            if not isinstance(data_s, (slice, tuple, Tuple, Slice)) and data_s.dtype != ds.dtype:
+                raise ValueError(f"dtypes do not match ({data_s.dtype} != {ds.dtype})")
 
-        idx = hashtable.largest_index
-        if isinstance(data_s, (slice, tuple, Tuple, Slice)):
-            slices[chunk] = ndindex(data_s)
-        else:
-            raw_slice = Slice(idx*chunk_size, idx*chunk_size + data_s.shape[0])
-            data_hash = hashtable.hash(data_s)
-            raw_slice2 = hashtable.setdefault(data_hash, raw_slice)
-            if raw_slice2 == raw_slice:
-                data_to_write[raw_slice] = data_s
-            slices[chunk] = raw_slice2
+            idx = hashtable.largest_index
+            if isinstance(data_s, (slice, tuple, Tuple, Slice)):
+                slices[chunk] = ndindex(data_s)
+            else:
+                raw_slice = Slice(idx*chunk_size, idx*chunk_size + data_s.shape[0])
+                data_hash = hashtable.hash(data_s)
+                raw_slice2 = hashtable.setdefault(data_hash, raw_slice)
+                if raw_slice2 == raw_slice:
+                    data_to_write[raw_slice] = data_s
+                slices[chunk] = raw_slice2
 
     assert None not in slices.values()
     old_shape = ds.shape
