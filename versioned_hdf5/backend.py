@@ -172,6 +172,7 @@ def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fil
     from h5py._hl.vds import VDSmap
 
     raw_data = f['_version_data'][name]['raw_data']
+    raw_data_shape = raw_data.shape
     slices = {c: s.reduce() for c, s in slices.items()}
 
     if len(raw_data) == 0:
@@ -205,7 +206,7 @@ def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fil
             #
             # But it is faster because vs[idx.raw] does a deepcopy(vs), which
             # is slow.
-            vs_sel = select(raw_data.shape, idx.raw, dsid=None)
+            vs_sel = select(raw_data_shape, idx.raw, dsid=None)
             layout_sel = select(shape, c.raw, dsid=None)
             layout.sources.append(VDSmap(layout_sel.id,
                                    '.',
