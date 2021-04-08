@@ -89,7 +89,7 @@ class InMemoryGroup(Group):
             self._subgroups[name] = self.__class__(res.id)
             return self._subgroups[name]
         elif isinstance(res, Dataset):
-            self._data[name] = InMemoryDataset(res.id, parent=self)
+            self._data[name] = DatasetWrapper(InMemoryDataset(res.id, parent=self))
             return self._data[name]
         else:
             raise NotImplementedError(f"Cannot handle {type(res)!r}")
@@ -104,12 +104,12 @@ class InMemoryGroup(Group):
             return
 
         if isinstance(obj, Dataset):
-            self._data[name] = InMemoryDataset(obj.id, parent=self)
+            self._data[name] = DatasetWrapper(InMemoryDataset(obj.id, parent=self))
         elif isinstance(obj, Group):
             self._subgroups[name] = InMemoryGroup(obj.id)
         elif isinstance(obj, InMemoryGroup):
             self._subgroups[name] = obj
-        elif isinstance(obj, (InMemoryArrayDataset, InMemorySparseDataset)):
+        elif isinstance(obj, DatasetLike):
             self._data[name] = obj
         else:
             self._data[name] = InMemoryArrayDataset(name, np.asarray(obj), parent=self)
@@ -231,7 +231,7 @@ class InMemoryGroup(Group):
         def _get(name, item):
             if name in res:
                 return
-            if isinstance(item, (Dataset, InMemoryArrayDataset, np.ndarray)):
+            if isinstance(item, (Dataset, DatasetLike, np.ndarray)):
                 res[name] = item
 
         self.visititems(_get)
@@ -946,16 +946,31 @@ class InMemorySparseDataset(DatasetLike):
                 chunk_idx = idx.as_subindex(c)
                 self.data_dict[c][chunk_idx.raw] = val[val_idx.raw]
 
+class DatasetWrapper(DatasetLike):
+    def __init__(self, dataset):
+        self.dataset = dataset
+
+    def __getattr__(self, attr):
+        return getattr(self.dataset, attr)
+
+    def __setitem__(self, index, value):
+        if isinstance(self.dataset, InMemoryDataset) and ndindex(index).expand(self.shape) == Tuple().expand(self.shape):
+            self.dataset = InMemoryArrayDataset(self.name,
+                                                np.broadcast_to(value, self.shape).astype(self.dtype),
+                                                self.parent, fillvalue=self.fillvalue)
+            return
+        self.dataset.__setitem__(index, value)
+
+    def __getitem__(self, index):
+        return self.dataset.__getitem__(index)
+
 class InMemoryDatasetID(h5d.DatasetID):
     def __init__(self, _id):
         # super __init__ is handled by DatasetID.__cinit__ automatically
-        self.data_dict = {}
+        self._data_dict = None
         with phil:
             sid = self.get_space()
             self._shape = sid.get_simple_extent_dims()
-
-        dcpl = self.get_create_plist()
-        is_virtual = dcpl.get_layout() == h5d.VIRTUAL
 
         attr = h5a.open(self, b'raw_data')
         htype = h5t.py_create(attr.dtype)
@@ -963,50 +978,67 @@ class InMemoryDatasetID(h5d.DatasetID):
         attr.read(_arr, mtype=htype)
         raw_data_name = _arr[()]
 
-        if not is_virtual:
-            # A dataset created with only a fillvalue will be nonvirtual,
-            # since create_virtual_dataset makes a nonvirtual dataset when
-            # there are no virtual sources.
-            slice_map = {}
-        # Same as dataset.get_virtual_sources
-        elif 0 in self._shape:
-            # Work around https://github.com/h5py/h5py/issues/1660
-            empty_idx = Tuple().expand(self._shape)
-            slice_map = {empty_idx: empty_idx}
-        else:
-            virtual_sources = [
-                    VDSmap(dcpl.get_virtual_vspace(j),
-                           dcpl.get_virtual_filename(j),
-                           dcpl.get_virtual_dsetname(j),
-                           dcpl.get_virtual_srcspace(j))
-                    for j in range(dcpl.get_virtual_count())]
-
-            slice_map = {spaceid_to_slice(i.vspace): spaceid_to_slice(i.src_space)
-                         for i in virtual_sources}
-            assert raw_data_name == virtual_sources[0].dset_name
-            assert all(i.dset_name == raw_data_name for i in virtual_sources)
-
-        # slice_map = {i.args[0]: j.args[0] for i, j in slice_map.items()}
         fid = h5i.get_file_id(self)
         g = Group(fid)
         self.raw_data = g[raw_data_name]
         self.chunks = tuple(self.raw_data.attrs['chunks'])
 
-        for s in slice_map:
-            src_idx = slice_map[s]
-            if isinstance(src_idx, Tuple):
-                # The pointers to the raw data should only be slices, since
-                # the raw data chunks are extended in the first dimension
-                # only.
-                assert src_idx != Tuple()
-                assert len(src_idx.args) == len(self.chunks)
-                src_idx = src_idx.args[0]
-            assert isinstance(src_idx, Slice)
-            self.data_dict[s] = src_idx
-
         fillvalue_a = np.empty((1,), dtype=self.dtype)
+        dcpl = self.get_create_plist()
         dcpl.get_fill_value(fillvalue_a)
         self.fillvalue = fillvalue_a[0]
+
+    @property
+    def data_dict(self):
+        if self._data_dict is None:
+            self._data_dict = {}
+
+            dcpl = self.get_create_plist()
+            is_virtual = dcpl.get_layout() == h5d.VIRTUAL
+
+
+            if not is_virtual:
+                # A dataset created with only a fillvalue will be nonvirtual,
+                # since create_virtual_dataset makes a nonvirtual dataset when
+                # there are no virtual sources.
+                slice_map = {}
+            # Same as dataset.get_virtual_sources
+            elif 0 in self._shape:
+                # Work around https://github.com/h5py/h5py/issues/1660
+                empty_idx = Tuple().expand(self._shape)
+                slice_map = {empty_idx: empty_idx}
+            else:
+                virtual_sources = [
+                        VDSmap(dcpl.get_virtual_vspace(j),
+                               dcpl.get_virtual_filename(j),
+                               dcpl.get_virtual_dsetname(j),
+                               dcpl.get_virtual_srcspace(j))
+                        for j in range(dcpl.get_virtual_count())]
+
+                slice_map = {spaceid_to_slice(i.vspace): spaceid_to_slice(i.src_space)
+                             for i in virtual_sources}
+                assert self.raw_data.name == virtual_sources[0].dset_name
+                assert all(i.dset_name == self.raw_data.name for i in virtual_sources)
+
+            # slice_map = {i.args[0]: j.args[0] for i, j in slice_map.items()}
+
+            for s in slice_map:
+                src_idx = slice_map[s]
+                if isinstance(src_idx, Tuple):
+                    # The pointers to the raw data should only be slices, since
+                    # the raw data chunks are extended in the first dimension
+                    # only.
+                    assert src_idx != Tuple()
+                    assert len(src_idx.args) == len(self.chunks)
+                    src_idx = src_idx.args[0]
+                assert isinstance(src_idx, Slice)
+                self._data_dict[s] = src_idx
+
+        return self._data_dict
+
+    @data_dict.setter
+    def data_dict(self, value):
+        self._data_dict = value
 
     def set_extent(self, shape):
         raise NotImplementedError("Resizing an InMemoryDataset other than via resize()")

@@ -13,7 +13,7 @@ def run_tests():
                            'doctr', 'sphinx']):
         pyflakes versioned_hdf5/
         python -We:invalid -We::SyntaxWarning -m compileall -f -q versioned_hdf5/
-        pytest
+        pytest versioned_hdf5/
 
 @activity
 def build_docs():
