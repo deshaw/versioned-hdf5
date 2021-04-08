@@ -19,7 +19,7 @@ Benchmarks
 ----------
 
 Benchmarks for Versioned HDF5 are published `here
-<https://deshaw.github.io/versioned-hdf5/benchmarks/index.html>`.
+<https://deshaw.github.io/versioned-hdf5/benchmarks/index.html>`_.
 
 Source
 ------
