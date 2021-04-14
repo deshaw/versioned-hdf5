@@ -955,9 +955,12 @@ class DatasetWrapper(DatasetLike):
 
     def __setitem__(self, index, value):
         if isinstance(self.dataset, InMemoryDataset) and ndindex(index).expand(self.shape) == Tuple().expand(self.shape):
-            self.dataset = InMemoryArrayDataset(self.name,
-                                                np.broadcast_to(value, self.shape).astype(self.dtype),
-                                                self.parent, fillvalue=self.fillvalue)
+            new_dataset = InMemoryArrayDataset(self.name,
+                                               np.broadcast_to(value, self.shape).astype(self.dtype),
+                                               self.parent,
+                                               fillvalue=self.fillvalue)
+            new_dataset.attrs = self.dataset.attrs
+            self.dataset = new_dataset
             return
         self.dataset.__setitem__(index, value)
 
