@@ -1,7 +1,13 @@
 Versioned HDF5 Change Log
 =========================
 
-## 1.2.4 (2021-02-08)
+## 1.2.5 (2021-04-15)
+
+## Minor Changes
+
+- Fix a bug where attrs could be deleted from a dataset.
+
+## 1.2.4 (2021-04-08)
 
 ## Major Changes
 
