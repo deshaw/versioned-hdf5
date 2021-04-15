@@ -1683,3 +1683,22 @@ def test_empty_dataset_str_dtype(vfile):
     with vfile.stage_version('version2') as g:
         g['bar'].resize((3,))
         g['bar'][:] = np.array(['a', 'b', 'c'], dtype='S5')
+
+def test_datasetwrapper(vfile):
+    with vfile.stage_version('r0') as sv:
+        sv.create_dataset('bar', data=[1, 2, 3])
+        sv['bar'].attrs['key'] = 0
+        assert isinstance(sv['bar'], InMemoryArrayDataset)
+        assert dict(sv['bar'].attrs) == {'key': 0}
+
+    with vfile.stage_version('r1') as sv:
+        assert isinstance(sv['bar'], DatasetWrapper)
+        assert isinstance(sv['bar'].dataset, InMemoryDataset)
+        assert sv['bar'].attrs['key'] == 0
+        sv['bar'].attrs['key'] = 1
+        assert sv['bar'].attrs['key'] == 1
+
+        sv['bar'][:] = [4, 5, 6]
+        assert isinstance(sv['bar'], DatasetWrapper)
+        assert isinstance(sv['bar'].dataset, InMemoryArrayDataset)
+        assert sv['bar'].attrs['key'] == 1
