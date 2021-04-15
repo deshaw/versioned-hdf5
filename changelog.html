@@ -5,8 +5,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17: http://docutils.sourceforge.net/" />
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Versioned HDF5 Change Log &#8212; Versioned HDF5  documentation</title>
     <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
     <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
@@ -35,12 +34,12 @@
 
           <div class="body" role="main">
             
-  <section id="versioned-hdf5-change-log">
+  <div class="section" id="versioned-hdf5-change-log">
 <h1>Versioned HDF5 Change Log<a class="headerlink" href="#versioned-hdf5-change-log" title="Permalink to this headline">¶</a></h1>
-<section id="id1">
+<div class="section" id="id1">
 <h2>1.2.4 (2021-02-08)<a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h2>
-</section>
-<section id="major-changes">
+</div>
+<div class="section" id="major-changes">
 <h2>Major Changes<a class="headerlink" href="#major-changes" title="Permalink to this headline">¶</a></h2>
 <ul class="simple">
 <li><p>Many improvements to performance throughout the library, particularly for
@@ -49,19 +48,19 @@ also sets up potential future performance improvements by automatically
 converting sparse staged datasets to fully in-memory.</p></li>
 <li><p>Add some additional benchmarks to the benchmark suite.</p></li>
 </ul>
-</section>
-<section id="id2">
+</div>
+<div class="section" id="id2">
 <h2>1.2.3 (2021-02-25)<a class="headerlink" href="#id2" title="Permalink to this headline">¶</a></h2>
-<section id="minor-changes">
+<div class="section" id="minor-changes">
 <h3>Minor Changes<a class="headerlink" href="#minor-changes" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Fix the length of str dtype not being maintained from the fillvalue.</p></li>
 </ul>
-</section>
-</section>
-<section id="id3">
+</div>
+</div>
+<div class="section" id="id3">
 <h2>1.2.2 (2021-02-04)<a class="headerlink" href="#id3" title="Permalink to this headline">¶</a></h2>
-<section id="id4">
+<div class="section" id="id4">
 <h3>Minor Changes<a class="headerlink" href="#id4" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Many improvements to performance throughout the library.</p></li>
@@ -70,11 +69,11 @@ velocity</a>. Graphs of the benchmarks
 can be viewed at <a class="reference external" href="https://deshaw.github.io/versioned-hdf5/benchmarks/">https://deshaw.github.io/versioned-hdf5/benchmarks/</a>.</p></li>
 <li><p>Versioned HDF5 now depends on ndindex version 1.5.1 or greater.</p></li>
 </ul>
-</section>
-</section>
-<section id="id5">
+</div>
+</div>
+<div class="section" id="id5">
 <h2>1.2.1 (2020-12-30)<a class="headerlink" href="#id5" title="Permalink to this headline">¶</a></h2>
-<section id="id6">
+<div class="section" id="id6">
 <h3>Minor Changes<a class="headerlink" href="#id6" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Python 3.6 support has been dropped. The lowest version of Python now
@@ -84,11 +83,11 @@ supported is 3.7.</p></li>
 improves the performance of many operations. ndindex 1.5 or newer is now
 required.</p></li>
 </ul>
-</section>
-</section>
-<section id="id7">
+</div>
+</div>
+<div class="section" id="id7">
 <h2>1.2 (2020-11-17)<a class="headerlink" href="#id7" title="Permalink to this headline">¶</a></h2>
-<section id="id8">
+<div class="section" id="id8">
 <h3>Major Changes<a class="headerlink" href="#id8" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Add support for sparse datasets (<code class="docutils literal notranslate"><span class="pre">data=None</span></code>).</p></li>
@@ -98,11 +97,11 @@ in a future version.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">VersionedHDF5File[timestamp]</span></code> now returns the closest version before
 <code class="docutils literal notranslate"><span class="pre">timestamp</span></code> if there is no version at <code class="docutils literal notranslate"><span class="pre">timestamp</span></code>.</p></li>
 </ul>
-</section>
-</section>
-<section id="id9">
+</div>
+</div>
+<div class="section" id="id9">
 <h2>1.1 (2020-09-15)<a class="headerlink" href="#id9" title="Permalink to this headline">¶</a></h2>
-<section id="id10">
+<div class="section" id="id10">
 <h3>Major Changes<a class="headerlink" href="#id10" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Added support for shape-0 datasets.</p></li>
@@ -113,8 +112,8 @@ in a future version.</p></li>
 dataset metadata cannot change between versions, even if they are deleted in
 between.</p></li>
 </ul>
-</section>
-<section id="id11">
+</div>
+<div class="section" id="id11">
 <h3>Minor Changes<a class="headerlink" href="#id11" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Most tests now use a temporary directory instead of writing a file in the
@@ -124,18 +123,18 @@ current directory.</p></li>
 <li><p>Make indices that should give a scalar object do so instead of giving a
 shape () array.</p></li>
 </ul>
-</section>
-</section>
-<section id="id12">
+</div>
+</div>
+<div class="section" id="id12">
 <h2>1.0 (2020-08-03)<a class="headerlink" href="#id12" title="Permalink to this headline">¶</a></h2>
-<section id="id13">
+<div class="section" id="id13">
 <h3>Major Changes<a class="headerlink" href="#id13" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>First release of Versioned-HDF5.</p></li>
 </ul>
-</section>
-</section>
-</section>
+</div>
+</div>
+</div>
 
 
           </div>
@@ -168,7 +167,7 @@ shape () array.</p></li>
 
 
 <h3>Navigation</h3>
-<p><span class="caption-text">Contents:</span></p>
+<p class="caption"><span class="caption-text">Contents:</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
@@ -225,7 +224,7 @@ shape () array.</p></li>
       &copy;2020, Quansight.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.5.3</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.5.4</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |
