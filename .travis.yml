@@ -14,7 +14,6 @@ matrix:
     - python: 3.8
       env:
         - TESTS=true
-        - COVERAGE=true
     - python: 3.8
       env:
         - DOCS=true
@@ -36,9 +35,6 @@ install:
 script:
   - set -e
   - python -We:invalid -We::SyntaxWarning -m compileall -f -q versioned_hdf5/
-  - if [[ "${COVERAGE}" == "true" ]]; then
-        PYTEST_FLAGS="--cov=./";
-    fi
   - if [[ "${TESTS}" == "true" ]]; then
         pytest $PYTEST_FLAGS;
     fi
@@ -54,7 +50,4 @@ script:
         else
             doctr deploy --no-require-master "_docs-$TRAVIS_BRANCH";
         fi
-    fi
-  - if [[ "${COVERAGE}" == "true" ]]; then
-        bash <(curl -s https://codecov.io/bash) || echo "Codecov did not collect coverage reports";
     fi
