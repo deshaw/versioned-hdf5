@@ -25,7 +25,7 @@ def h5file(tmp_path, request):
     except ValueError as e:
         # Workaround upstream h5py bug. https://github.com/deshaw/versioned-hdf5/issues/162
         if e.args[0] == "Unrecognized type code -1":
-            pass
+            return
         raise
 
 
