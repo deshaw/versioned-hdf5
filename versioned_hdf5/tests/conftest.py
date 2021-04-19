@@ -20,7 +20,13 @@ def h5file(tmp_path, request):
 
     f = setup(file_name=file_name, name=name, version_name=version_name)
     yield f
-    f.close()
+    try:
+        f.close()
+    except ValueError as e:
+        # Workaround upstream h5py bug. https://github.com/deshaw/versioned-hdf5/issues/162
+        if e.args[0] == "Unrecognized type code -1":
+            return
+        raise
 
 
 @yield_fixture

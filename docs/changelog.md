@@ -1,9 +1,32 @@
 Versioned HDF5 Change Log
 =========================
 
-## 1.2.2 (2020-02-04)
+## 1.2.5 (2021-04-15)
 
 ## Minor Changes
+
+- Fix a bug where attrs could be deleted from a dataset.
+
+## 1.2.4 (2021-04-08)
+
+## Major Changes
+
+- Many improvements to performance throughout the library, particularly for
+  datasets with many chunks, and for looking up versions by timestamp. This
+  also sets up potential future performance improvements by automatically
+  converting sparse staged datasets to fully in-memory.
+
+- Add some additional benchmarks to the benchmark suite.
+
+## 1.2.3 (2021-02-25)
+
+### Minor Changes
+
+- Fix the length of str dtype not being maintained from the fillvalue.
+
+## 1.2.2 (2021-02-04)
+
+### Minor Changes
 
 - Many improvements to performance throughout the library.
 
@@ -15,7 +38,7 @@ Versioned HDF5 Change Log
 
 ## 1.2.1 (2020-12-30)
 
-## Minor Changes
+### Minor Changes
 
 - Python 3.6 support has been dropped. The lowest version of Python now
   supported is 3.7.
@@ -26,7 +49,7 @@ Versioned HDF5 Change Log
 
 ## 1.2 (2020-11-17)
 
-## Major Changes
+### Major Changes
 
 - Add support for sparse datasets (`data=None`).
 - Store the chunks on an attribute of the dataset.

@@ -97,27 +97,27 @@ def write_dataset(f, name, data, chunks=None, compression=None,
         raise ValueError(f"dtypes do not match ({data.dtype} != {ds.dtype})")
     # TODO: Handle more than one dimension
     old_shape = ds.shape
-    hashtable = Hashtable(f, name)
     slices = {}
     slices_to_write = {}
     chunk_size = chunks[0]
 
-    if len(data.shape) != 0:
-        for s in ChunkSize(chunks).indices(data.shape):
-            idx = hashtable.largest_index
-            data_s = data[s.raw]
-            raw_slice = Slice(idx*chunk_size, idx*chunk_size + data_s.shape[0])
-            data_hash = hashtable.hash(data_s)
-            raw_slice2 = hashtable.setdefault(data_hash, raw_slice)
-            if raw_slice2 == raw_slice:
-                slices_to_write[raw_slice] = s
-            slices[s] = raw_slice2
+    with Hashtable(f, name) as hashtable:
+        if len(data.shape) != 0:
+            for s in ChunkSize(chunks).indices(data.shape):
+                idx = hashtable.largest_index
+                data_s = data[s.raw]
+                raw_slice = Slice(idx*chunk_size, idx*chunk_size + data_s.shape[0])
+                data_hash = hashtable.hash(data_s)
+                raw_slice2 = hashtable.setdefault(data_hash, raw_slice)
+                if raw_slice2 == raw_slice:
+                    slices_to_write[raw_slice] = s
+                slices[s] = raw_slice2
 
-        ds.resize((old_shape[0] + len(slices_to_write)*chunk_size,) + chunks[1:])
-        for raw_slice, s in slices_to_write.items():
-            data_s = data[s.raw]
-            idx = Tuple(raw_slice, *[slice(0, i) for i in data_s.shape[1:]])
-            ds[idx.raw] = data[s.raw]
+            ds.resize((old_shape[0] + len(slices_to_write)*chunk_size,) + chunks[1:])
+            for raw_slice, s in slices_to_write.items():
+                data_s = data[s.raw]
+                idx = Tuple(raw_slice, *[slice(0, i) for i in data_s.shape[1:]])
+                ds[idx.raw] = data[s.raw]
     return slices
 
 def write_dataset_chunks(f, name, data_dict, shape=None):
@@ -141,23 +141,23 @@ def write_dataset_chunks(f, name, data_dict, shape=None):
     #     if c not in all_chunks:
     #         raise ValueError(f"data_dict contains extra chunks ({c})")
 
-    hashtable = Hashtable(f, name)
-    slices = {i: None for i in data_dict}
-    data_to_write = {}
-    for chunk, data_s in data_dict.items():
-        if not isinstance(data_s, (slice, tuple, Tuple, Slice)) and data_s.dtype != ds.dtype:
-            raise ValueError(f"dtypes do not match ({data_s.dtype} != {ds.dtype})")
+    with Hashtable(f, name) as hashtable:
+        slices = {i: None for i in data_dict}
+        data_to_write = {}
+        for chunk, data_s in data_dict.items():
+            if not isinstance(data_s, (slice, tuple, Tuple, Slice)) and data_s.dtype != ds.dtype:
+                raise ValueError(f"dtypes do not match ({data_s.dtype} != {ds.dtype})")
 
-        idx = hashtable.largest_index
-        if isinstance(data_s, (slice, tuple, Tuple, Slice)):
-            slices[chunk] = ndindex(data_s)
-        else:
-            raw_slice = Slice(idx*chunk_size, idx*chunk_size + data_s.shape[0])
-            data_hash = hashtable.hash(data_s)
-            raw_slice2 = hashtable.setdefault(data_hash, raw_slice)
-            if raw_slice2 == raw_slice:
-                data_to_write[raw_slice] = data_s
-            slices[chunk] = raw_slice2
+            idx = hashtable.largest_index
+            if isinstance(data_s, (slice, tuple, Tuple, Slice)):
+                slices[chunk] = ndindex(data_s)
+            else:
+                raw_slice = Slice(idx*chunk_size, idx*chunk_size + data_s.shape[0])
+                data_hash = hashtable.hash(data_s)
+                raw_slice2 = hashtable.setdefault(data_hash, raw_slice)
+                if raw_slice2 == raw_slice:
+                    data_to_write[raw_slice] = data_s
+                slices[chunk] = raw_slice2
 
     assert None not in slices.values()
     old_shape = ds.shape
@@ -168,7 +168,11 @@ def write_dataset_chunks(f, name, data_dict, shape=None):
     return slices
 
 def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fillvalue=None):
+    from h5py._hl.selections import select
+    from h5py._hl.vds import VDSmap
+
     raw_data = f['_version_data'][name]['raw_data']
+    raw_data_shape = raw_data.shape
     slices = {c: s.reduce() for c, s in slices.items()}
 
     if len(raw_data) == 0:
@@ -186,16 +190,28 @@ def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fil
                 raise ValueError(f"Inconsistent slices dictionary ({c.args[0]}, {s})")
 
         layout = VirtualLayout(shape, dtype=raw_data.dtype)
-        vs = VirtualSource('.', name=raw_data.name, shape=raw_data.shape, dtype=raw_data.dtype)
+        # vs = VirtualSource('.', name=raw_data.name, shape=raw_data.shape, dtype=raw_data.dtype)
 
         for c, s in slices.items():
             if c.isempty():
                 continue
             # idx = Tuple(s, *Tuple(*[slice(0, i) for i in shape[1:]]).as_subindex(Tuple(*c.args[1:])).args)
-            S = [Slice(0, shape[i], 1).as_subindex(c.args[i]) for i in range(1, len(shape))]
+            S = [Slice(0, len(c.args[i])) for i in range(1, len(shape))]
             idx = Tuple(s, *S)
             # assert c.newshape(shape) == vs[idx.raw].shape, (c, shape, s)
-            layout[c.raw] = vs[idx.raw]
+
+            # This is equivalent to
+            #
+            # layout[c.raw] = vs[idx.raw]
+            #
+            # But it is faster because vs[idx.raw] does a deepcopy(vs), which
+            # is slow.
+            vs_sel = select(raw_data_shape, idx.raw, dsid=None)
+            layout_sel = select(shape, c.raw, dsid=None)
+            layout.sources.append(VDSmap(layout_sel.id,
+                                   '.',
+                                   raw_data.name,
+                                   vs_sel.id))
 
     dtype = raw_data.dtype
     if dtype.metadata and ('vlen' in dtype.metadata or 'h5py_encoding' in dtype.metadata):

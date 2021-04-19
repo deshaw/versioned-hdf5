@@ -7,3 +7,4 @@ Authors are sorted by number of commits.
 * Saul Shanabrook
 * Anthony Scopatz
 * Marc Udoff
+* Marc Udoff
