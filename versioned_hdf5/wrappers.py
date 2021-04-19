@@ -791,13 +791,16 @@ class InMemoryArrayDataset(DatasetLike):
     """
     Class that looks like a h5py.Dataset but is backed by an array
     """
-    def __init__(self, name, array, parent, fillvalue=None):
+    def __init__(self, name, array, parent, fillvalue=None, chunks=None):
         self.name = name
         self._array = array
         self._dtype = None
         self.attrs = {}
         self.parent = parent
         self._fillvalue = fillvalue
+        if chunks is None:
+            chunks = parent.chunks[name]
+        self._chunks = chunks
 
     @property
     def array(self):
@@ -829,7 +832,7 @@ class InMemoryArrayDataset(DatasetLike):
 
     @property
     def chunks(self):
-        return self.parent.chunks[self.name]
+        return self._chunks
 
     def resize(self, size, axis=None):
         self.parent._check_committed()
@@ -958,7 +961,7 @@ class DatasetWrapper(DatasetLike):
             new_dataset = InMemoryArrayDataset(self.name,
                                                np.broadcast_to(value, self.shape).astype(self.dtype),
                                                self.parent,
-                                               fillvalue=self.fillvalue)
+                                               fillvalue=self.fillvalue, chunks=self.chunks)
             new_dataset.attrs = self.dataset.attrs
             self.dataset = new_dataset
             return
