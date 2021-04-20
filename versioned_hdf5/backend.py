@@ -206,8 +206,8 @@ def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fil
             #
             # But it is faster because vs[idx.raw] does a deepcopy(vs), which
             # is slow.
-            vs_sel = select(raw_data_shape, idx.raw, dsid=None)
-            layout_sel = select(shape, c.raw, dsid=None)
+            vs_sel = select(raw_data_shape, idx.raw, None)
+            layout_sel = select(shape, c.raw, None)
             layout.sources.append(VDSmap(layout_sel.id,
                                    '.',
                                    raw_data.name,
