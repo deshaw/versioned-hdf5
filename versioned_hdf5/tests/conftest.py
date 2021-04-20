@@ -22,9 +22,13 @@ def h5file(tmp_path, request):
     yield f
     try:
         f.close()
+    # Workaround upstream h5py bug. https://github.com/deshaw/versioned-hdf5/issues/162
     except ValueError as e:
-        # Workaround upstream h5py bug. https://github.com/deshaw/versioned-hdf5/issues/162
         if e.args[0] == "Unrecognized type code -1":
+            return
+        raise
+    except RuntimeError as e:
+        if e.args[0] == "Can't increment id ref count (can't locate ID)":
             return
         raise
 
