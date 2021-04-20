@@ -1,7 +1,7 @@
 import numpy as np
 from numpy.testing import assert_equal
 
-from ndindex import Slice, Tuple
+from ndindex import Slice, Tuple, ChunkSize
 
 from pytest import mark, raises
 
@@ -12,7 +12,6 @@ from .helpers import setup
 from ..backend import (create_base_dataset, write_dataset,
                        create_virtual_dataset, DEFAULT_CHUNK_SIZE,
                        write_dataset_chunks)
-from ..slicetools import split_chunks
 
 CHUNK_SIZE_3D = 2**4  # = cbrt(DEFAULT_CHUNK_SIZE)
 
@@ -189,12 +188,12 @@ def test_write_dataset_chunks(h5file):
 
 
 def test_write_dataset_chunks_multidimension(h5file):
-    chunks = 3*(CHUNK_SIZE_3D,)
+    chunks = ChunkSize(3*(CHUNK_SIZE_3D,))
     shape = (2*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D)
     data = np.zeros(shape)
     slices1 = write_dataset(h5file, 'test_data', data, chunks=chunks)
     data_dict = {}
-    for n, c in enumerate(split_chunks(shape, chunks)):
+    for n, c in enumerate(chunks.indices(shape)):
         if n == 0:
             data_dict[c] = slices1[c]
         else:
@@ -204,9 +203,9 @@ def test_write_dataset_chunks_multidimension(h5file):
     slices2 = write_dataset_chunks(h5file, 'test_data', data_dict)
 
     assert slices1 == {c: slice(0*CHUNK_SIZE_3D, 1*CHUNK_SIZE_3D) for c in
-                       split_chunks(shape, chunks)}
+                       chunks.indices(shape)}
     assert slices2 == {c: slice(i*CHUNK_SIZE_3D, (i+1)*CHUNK_SIZE_3D) for
-                       i, c in enumerate(split_chunks(shape, chunks))}
+                       i, c in enumerate(chunks.indices(shape))}
 
     ds = h5file['/_version_data/test_data/raw_data']
     assert ds.shape == (8*CHUNK_SIZE_3D, CHUNK_SIZE_3D, CHUNK_SIZE_3D)
@@ -244,14 +243,14 @@ def test_write_dataset_offset(h5file):
 
 
 def test_write_dataset_offset_multidimension(h5file):
-    chunks = 3*(CHUNK_SIZE_3D,)
+    chunks = ChunkSize(3*(CHUNK_SIZE_3D,))
     shape = (2*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D)
     data = np.zeros(shape)
     slices1 = write_dataset(h5file, 'test_data', data, chunks=chunks)
     shape2 = (2*CHUNK_SIZE_3D - 2, 2*CHUNK_SIZE_3D - 2,
               2*CHUNK_SIZE_3D - 2)
     data2 = np.empty(shape2)
-    for n, c in enumerate(split_chunks(shape, chunks)):
+    for n, c in enumerate(chunks.indices(shape)):
         data2[c.raw] = n
 
     slices2 = write_dataset(h5file, 'test_data', data2, chunks=chunks)
@@ -328,7 +327,7 @@ def test_write_dataset_offset_multidimension(h5file):
 
     ds = h5file['/_version_data/test_data/raw_data']
     assert ds.shape == (8*CHUNK_SIZE_3D, CHUNK_SIZE_3D, CHUNK_SIZE_3D)
-    for n, c in enumerate(split_chunks(shape2, chunks)):
+    for n, c in enumerate(chunks.indices(shape2)):
         a = np.zeros(chunks)
         a[Tuple(*[slice(0, i) for i in shape2]).as_subindex(c).raw] = n
         assert_equal(ds[n*CHUNK_SIZE_3D:(n+1)*CHUNK_SIZE_3D], a)
@@ -353,6 +352,22 @@ def test_create_virtual_dataset(h5file):
         assert_equal(virtual_data[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
         assert virtual_data.dtype == np.float64
 
+@mark.setup_args(version_name='test_version')
+def test_create_virtual_dataset_attrs(h5file):
+    with h5file as f:
+        slices1 = write_dataset(f, 'test_data', np.ones((2*DEFAULT_CHUNK_SIZE,)))
+        slices2 = write_dataset(f, 'test_data',
+                                np.concatenate((2*np.ones((DEFAULT_CHUNK_SIZE,)),
+                                                3*np.ones((DEFAULT_CHUNK_SIZE,)))))
+
+        attrs = {"attribute": "value"}
+        virtual_data = create_virtual_dataset(f, 'test_version', 'test_data', (3*DEFAULT_CHUNK_SIZE,),
+            {**slices1,
+             Tuple(Slice(2*DEFAULT_CHUNK_SIZE, 3*DEFAULT_CHUNK_SIZE, 1),):
+             slices2[(Slice(1*DEFAULT_CHUNK_SIZE, 2*DEFAULT_CHUNK_SIZE,
+                            1),)]}, attrs=attrs)
+
+        assert dict(virtual_data.attrs) == {**attrs, "raw_data": '/_version_data/test_data/raw_data', "chunks": np.array([DEFAULT_CHUNK_SIZE])}
 
 @mark.setup_args(version_name=['test_version1', 'test_version2'])
 def test_create_virtual_dataset_multidimension(h5file):
@@ -407,14 +422,14 @@ def test_create_virtual_dataset_offset(h5file):
 
 @mark.setup_args(version_name='test_version')
 def test_create_virtual_dataset_offset_multidimension(h5file):
-    chunks = 3*(CHUNK_SIZE_3D,)
+    chunks = ChunkSize(3*(CHUNK_SIZE_3D,))
     shape = (2*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D, 2*CHUNK_SIZE_3D)
     data = np.zeros(shape)
     write_dataset(h5file, 'test_data', data, chunks=chunks)
     shape2 = (2*CHUNK_SIZE_3D - 2, 2*CHUNK_SIZE_3D - 2,
               2*CHUNK_SIZE_3D - 2)
     data2 = np.empty(shape2)
-    for n, c in enumerate(split_chunks(shape, chunks)):
+    for n, c in enumerate(chunks.indices(shape)):
         data2[c.raw] = n
 
     slices2 = write_dataset(h5file, 'test_data', data2, chunks=chunks)

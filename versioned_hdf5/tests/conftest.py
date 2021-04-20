@@ -20,7 +20,17 @@ def h5file(tmp_path, request):
 
     f = setup(file_name=file_name, name=name, version_name=version_name)
     yield f
-    f.close()
+    try:
+        f.close()
+    # Workaround upstream h5py bug. https://github.com/deshaw/versioned-hdf5/issues/162
+    except ValueError as e:
+        if e.args[0] == "Unrecognized type code -1":
+            return
+        raise
+    except RuntimeError as e:
+        if e.args[0] == "Can't increment id ref count (can't locate ID)":
+            return
+        raise
 
 
 @yield_fixture

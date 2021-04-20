@@ -1,16 +1,24 @@
 from uuid import uuid4
 from collections import defaultdict
+import posixpath as pp
 
 from h5py import Dataset, Group
 import datetime
 import numpy as np
 
 from .backend import write_dataset, write_dataset_chunks, create_virtual_dataset
-from .wrappers import InMemoryGroup, InMemoryDataset, InMemoryArrayDataset, InMemorySparseDataset
+from .wrappers import InMemoryGroup, DatasetWrapper, InMemoryDataset, InMemoryArrayDataset, InMemorySparseDataset
 
 TIMESTAMP_FMT = "%Y-%m-%d %H:%M:%S.%f%z"
 
 def create_version_group(f, version_name, prev_version=None):
+    """
+    Create the version group for a new version.
+
+    prev_version should be a pre-existing version name, None, or ''
+    If it is None, it defaults to the current version. If it is '', it creates
+    a version with no parent version.
+    """
     versions = f['_version_data/versions']
 
     if prev_version == '':
@@ -29,6 +37,11 @@ def create_version_group(f, version_name, prev_version=None):
     group = InMemoryGroup(versions.create_group(version_name).id)
     group.attrs['prev_version'] = prev_version
     group.attrs['committed'] = False
+
+    # Placeholder timestamp, just so the attr is there in case something calls
+    # get_version_by_timestamp before the version is committed.
+    ts = datetime.datetime.now(datetime.timezone.utc)
+    group.attrs['timestamp'] = ts.strftime(TIMESTAMP_FMT)
 
     # Copy everything over from the previous version
     prev_group = versions[prev_version]
@@ -53,10 +66,6 @@ def commit_version(version_group, datasets, *,
     """
     Create a new version
 
-    prev_version should be a pre-existing version name, None, or ''
-    If it is None, it defaults to the current version. If it is '', it creates
-    a version with no parent version.
-
     datasets should be a dictionary mapping {path: dataset}, where `dataset`
     is either a numpy array, or a dictionary mapping {chunk_index:
     data_or_slice}, where `data_or_slice` is either an array or a slice
@@ -73,6 +82,7 @@ def commit_version(version_group, datasets, *,
     version_name = version_group.name.rsplit('/', 1)[1]
     versions = version_group.parent
     f = versions.parent.parent
+    prev_version = versions[version_group.attrs['prev_version']]
 
     chunks = chunks or defaultdict(type(None))
     compression = compression or defaultdict(type(None))
@@ -83,6 +93,8 @@ def commit_version(version_group, datasets, *,
 
     for name, data in datasets.items():
         fillvalue = None
+        if isinstance(data, DatasetWrapper):
+            data = data.dataset
         if isinstance(data, (InMemoryDataset, InMemoryArrayDataset, InMemorySparseDataset)):
             attrs = data.attrs
             fillvalue = data.fillvalue
@@ -92,7 +104,19 @@ def commit_version(version_group, datasets, *,
         shape = None
         if isinstance(data, InMemoryDataset):
             shape = data.shape
-            data = data.id.data_dict
+            if data.id._data_dict is None:
+                # The virtual dataset was not changed from the previous
+                # version. Just copy it to the new version directly.
+                assert data.name.startswith(prev_version.name + '/')
+                data_name = data.name[len(prev_version.name + '/'):]
+                data_copy_name = pp.join(version_group.name, data_name)
+                version_group.copy(data, data_copy_name)
+                data_copy = f[data_copy_name]
+                data_copy.attrs.clear()
+                for k, v in data.attrs.items():
+                    data_copy.attrs[k] = v
+                continue
+            data = data.id._data_dict
         if isinstance(data, dict):
             if chunks[name] is not None:
                 raise NotImplementedError("Specifying chunk size with dict data")
@@ -103,7 +127,7 @@ def commit_version(version_group, datasets, *,
                                    compression=compression[name],
                                    compression_opts=compression_opts[name],
                                    fillvalue=fillvalue)
-            slices = write_dataset_chunks(f, name, data.data_dict)
+            slices = write_dataset_chunks(f, name, data.data_dict, shape=data.shape)
         else:
             slices = write_dataset(f, name, data, chunks=chunks[name],
                                    compression=compression[name],
@@ -179,6 +203,8 @@ def get_version_by_timestamp(f, timestamp, exact=False):
                 if ts == version_ts:
                     return version
             else:
+                if ts == version_ts:
+                    return version
                 # Find the version whose timestamp is closest to ts and before
                 # it.
                 if best_ts < version_ts <= ts:

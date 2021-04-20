@@ -1,6 +1,71 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.2.6 (2021-04-20)
+
+## Minor Changes
+
+- Fix a bug where chunks could be deleted from a dataset.
+
+- Workaround an upstream h5py bug in the tests.
+
+## 1.2.5 (2021-04-15)
+
+## Minor Changes
+
+- Fix a bug where attrs could be deleted from a dataset.
+
+## 1.2.4 (2021-04-08)
+
+## Major Changes
+
+- Many improvements to performance throughout the library, particularly for
+  datasets with many chunks, and for looking up versions by timestamp. This
+  also sets up potential future performance improvements by automatically
+  converting sparse staged datasets to fully in-memory.
+
+- Add some additional benchmarks to the benchmark suite.
+
+## 1.2.3 (2021-02-25)
+
+### Minor Changes
+
+- Fix the length of str dtype not being maintained from the fillvalue.
+
+## 1.2.2 (2021-02-04)
+
+### Minor Changes
+
+- Many improvements to performance throughout the library.
+
+- Added a benchmarking suite using [airspeed
+  velocity](https://asv.readthedocs.io/en/stable/). Graphs of the benchmarks
+  can be viewed at <https://deshaw.github.io/versioned-hdf5/benchmarks/>.
+
+- Versioned HDF5 now depends on ndindex version 1.5.1 or greater.
+
+## 1.2.1 (2020-12-30)
+
+### Minor Changes
+
+- Python 3.6 support has been dropped. The lowest version of Python now
+  supported is 3.7.
+- Fix creating a completely empty sparse dataset
+- Use ndindex.ChunkSize internally. This is the beginning of an overhaul that
+  improves the performance of many operations. ndindex 1.5 or newer is now
+  required.
+
+## 1.2 (2020-11-17)
+
+### Major Changes
+
+- Add support for sparse datasets (`data=None`).
+- Store the chunks on an attribute of the dataset.
+- versioned-hdf5 is currently pinned to `h5py<3`. h5py 3 support will be added
+  in a future version.
+- `VersionedHDF5File[timestamp]` now returns the closest version before
+  `timestamp` if there is no version at `timestamp`.
+
 ## 1.1 (2020-09-15)
 
 ### Major Changes

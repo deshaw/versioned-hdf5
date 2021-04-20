@@ -64,6 +64,7 @@ class VersionedHDF5File:
         self._version_data = f['_version_data']
         self._versions = self._version_data['versions']
         self._closed = False
+        self._version_cache = {}
 
     @property
     def current_version(self):
@@ -79,23 +80,38 @@ class VersionedHDF5File:
     @current_version.setter
     def current_version(self, version_name):
         set_current_version(self.f, version_name)
+        self._version_cache.clear()
 
     def get_version_by_name(self, version):
+        if version.startswith('/'):
+            raise ValueError("Versions cannot start with '/'. VersionedHDF5File should not be used to access the top-level of an h5py File.")
+
         if version == '':
             version = '__first_version__'
 
         if version not in self._versions:
             raise KeyError(f"Version {version!r} not found")
 
+        g = self._versions[version]
+        if not g.attrs['committed']:
+            raise ValueError("Version groups cannot accessed from the VersionedHDF5File object before they are committed.")
         # TODO: Don't give an in-memory group if the file is read-only
-        return InMemoryGroup(self._versions[version]._id, _committed=True)
+        return InMemoryGroup(g._id, _committed=True)
 
     def get_version_by_timestamp(self, timestamp, exact=False):
         version = get_version_by_timestamp(self.f, timestamp, exact=exact)
         # TODO: Don't give an in-memory group if the file is read-only
-        return InMemoryGroup(self._versions[version]._id, _committed=True)
+        g = self._versions[version]
+        if not g.attrs['committed']:
+            raise ValueError("Version groups cannot accessed from the VersionedHDF5File object before they are committed.")
+        return InMemoryGroup(g._id, _committed=True)
 
     def __getitem__(self, item):
+        if item in self._version_cache:
+            # We don't cache version names because those are already cheap to
+            # lookup.
+            return self._version_cache[item]
+
         if item is None:
             return self.get_version_by_name(self.current_version)
         elif isinstance(item, str):
@@ -103,10 +119,12 @@ class VersionedHDF5File:
         elif isinstance(item, (int, np.integer)):
             if item > 0:
                 raise IndexError("Integer version slice must be negative")
-            return self.get_version_by_name(get_nth_previous_version(self.f,
+            self._version_cache[item] = self.get_version_by_name(get_nth_previous_version(self.f,
                 self.current_version, -item))
+            return self._version_cache[item]
         elif isinstance(item, (datetime.datetime, np.datetime64)):
-            return self.get_version_by_timestamp(item)
+            self._version_cache[item] = self.get_version_by_timestamp(item)
+            return self._version_cache[item]
         else:
             raise KeyError(f"Don't know how to get the version for {item!r}")
 
@@ -123,6 +141,7 @@ class VersionedHDF5File:
             raise KeyError(item)
         new_current = self.current_version if item != self.current_version else self[item].attrs['prev_version']
         delete_version(self.f, item, new_current)
+        self._version_cache.clear()
 
     def __iter__(self):
         return all_versions(self.f, include_first=False)
@@ -167,6 +186,8 @@ class VersionedHDF5File:
         except:
             delete_version(self.f, version_name, old_current)
             raise
+        finally:
+            self._version_cache.clear()
 
     def close(self):
         """

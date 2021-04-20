@@ -7,18 +7,18 @@ $PROJECT = 'versioned-hdf5'
 def run_tests():
     # Don't use the built-in pytest action because that uses Docker, which is
     # overkill and requires installing Docker
-    with run_in_conda_env(['python=3.8', 'pytest', 'numpy', 'h5py',
+    with run_in_conda_env(['python=3.8', 'pytest', 'numpy', 'h5py<3',
                            'ndindex', 'pyflakes', 'pytest-cov',
                            'scipy', 'pytest-doctestplus', 'pytest-flakes',
                            'doctr', 'sphinx']):
-        pyflakes .
+        pyflakes versioned_hdf5/
         python -We:invalid -We::SyntaxWarning -m compileall -f -q versioned_hdf5/
-        pytest
+        pytest versioned_hdf5/
 
 @activity
 def build_docs():
     with run_in_conda_env(['python=3.8', 'sphinx', 'myst-parser', 'numpy',
-                           'h5py', 'ndindex']):
+                           'h5py<3', 'ndindex']):
         cd docs
         make html
         cd ..
@@ -29,7 +29,6 @@ def annotated_tag():
     git tag -a -m "$GITHUB_REPO $VERSION release" $VERSION
 
 $ACTIVITIES = [
-            'authors',
             'run_tests',
             'build_docs',
             'annotated_tag', # Creates a tag for the new version number
@@ -42,4 +41,3 @@ $PUSH_TAG_REMOTE = 'git@github.com:deshaw/versioned-hdf5.git'  # Repo to push ta
 
 $GITHUB_ORG = 'deshaw'  # Github org for Github releases and conda-forge
 $GITHUB_REPO = 'versioned-hdf5'  # Github repo for Github releases and conda-forge
-$AUTHORS_FILENAME = 'AUTHORS.md'

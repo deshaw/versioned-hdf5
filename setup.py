@@ -17,14 +17,14 @@ setuptools.setup(
     packages=['versioned_hdf5', 'versioned_hdf5.tests'],
     license="BSD",
     install_requires=[
-        "h5py",
+        "h5py<3",
         "numpy",
-        "ndindex>=1.3",
+        "ndindex>=1.5.1",
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: BSD License",
         "Operating System :: OS Independent",
     ],
-    python_requires='>=3.6',
+    python_requires='>=3.7',
 )
