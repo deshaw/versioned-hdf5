@@ -210,6 +210,8 @@ def test_version_name_slicing(vfile):
     assert vfile[-1]['test_data'][0] == 2.0
     assert vfile[-2]['test_data'][0] == 1.0, vfile[-2]
 
+    with raises(ValueError):
+        vfile['/_version_data']
 
 def test_iter_versions(vfile):
     test_data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
@@ -579,14 +581,6 @@ def test_resize_multiple_dimensions(tmp_path, h5file):
         assert version3_2[f'dataset3_{i}'].shape == newshape
         assert_equal(version3_2[f'dataset3_{i}'][()], new_data)
 
-    vfile.close()
-    try:
-        h5file.close()
-    except ValueError:
-        # Work around a bug in h5py. See
-        # https://github.com/deshaw/versioned-hdf5/pull/125
-        pass
-
 def test_getitem(vfile):
     data = np.arange(2*DEFAULT_CHUNK_SIZE)
 
@@ -908,34 +902,34 @@ def test_groups(vfile):
         assert set(group['group1']['group2']) == set(group['group1/group2']) == {'group3', 'test_data2', 'test_data4'}
         assert list(group['group1']['group2']['group3']) == list(group['group1/group2/group3']) == ['test_data3']
 
-        version = vfile['version6']
-        assert_equal(version['group1']['test_data1'], data)
-        assert_equal(version['group1/test_data1'], data)
+    version = vfile['version6']
+    assert_equal(version['group1']['test_data1'], data)
+    assert_equal(version['group1/test_data1'], data)
 
-        assert_equal(version['group1']['group2']['test_data2'], 2*data)
-        assert_equal(version['group1/group2']['test_data2'], 2*data)
-        assert_equal(version['group1']['group2/test_data2'], 2*data)
-        assert_equal(version['group1/group2/test_data2'], 2*data)
+    assert_equal(version['group1']['group2']['test_data2'], 2*data)
+    assert_equal(version['group1/group2']['test_data2'], 2*data)
+    assert_equal(version['group1']['group2/test_data2'], 2*data)
+    assert_equal(version['group1/group2/test_data2'], 2*data)
 
-        assert_equal(version['group1']['group2']['group3']['test_data3'], 3*data)
-        assert_equal(version['group1/group2']['group3']['test_data3'], 3*data)
-        assert_equal(version['group1/group2']['group3/test_data3'], 3*data)
-        assert_equal(version['group1']['group2/group3/test_data3'], 3*data)
-        assert_equal(version['group1/group2/group3/test_data3'], 3*data)
+    assert_equal(version['group1']['group2']['group3']['test_data3'], 3*data)
+    assert_equal(version['group1/group2']['group3']['test_data3'], 3*data)
+    assert_equal(version['group1/group2']['group3/test_data3'], 3*data)
+    assert_equal(version['group1']['group2/group3/test_data3'], 3*data)
+    assert_equal(version['group1/group2/group3/test_data3'], 3*data)
 
-        assert_equal(version['group1']['group2']['test_data4'], 4*data)
-        assert_equal(version['group1/group2']['test_data4'], 4*data)
-        assert_equal(version['group1']['group2/test_data4'], 4*data)
-        assert_equal(version['group1/group2/test_data4'], 4*data)
+    assert_equal(version['group1']['group2']['test_data4'], 4*data)
+    assert_equal(version['group1/group2']['test_data4'], 4*data)
+    assert_equal(version['group1']['group2/test_data4'], 4*data)
+    assert_equal(version['group1/group2/test_data4'], 4*data)
 
-        assert list(version) == ['group1']
-        assert set(version['group1']) == {'group2', 'test_data1'}
-        assert set(version['group1']['group2']) == set(version['group1/group2']) == {'group3', 'test_data2', 'test_data4'}
-        assert list(version['group1']['group2']['group3']) == list(version['group1/group2/group3']) == ['test_data3']
+    assert list(version) == ['group1']
+    assert set(version['group1']) == {'group2', 'test_data1'}
+    assert set(version['group1']['group2']) == set(version['group1/group2']) == {'group3', 'test_data2', 'test_data4'}
+    assert list(version['group1']['group2']['group3']) == list(version['group1/group2/group3']) == ['test_data3']
 
-        with vfile.stage_version('version-bad', '') as group:
-            raises(ValueError, lambda: group.create_dataset('/group1/test_data', data=data))
-            raises(ValueError, lambda: group.create_group('/group1'))
+    with vfile.stage_version('version-bad', '') as group:
+        raises(ValueError, lambda: group.create_dataset('/group1/test_data', data=data))
+        raises(ValueError, lambda: group.create_group('/group1'))
 
 def test_group_contains(vfile):
     data = np.ones(2*DEFAULT_CHUNK_SIZE)
@@ -1253,8 +1247,7 @@ def test_closes(vfile):
     assert vfile.__repr__() == "<Closed VersionedHDF5File>"
 
     reopened_file = VersionedHDF5File(h5pyfile)
-    assert list(reopened_file['/_version_data/versions/__first_version__']) == []
-    assert list(reopened_file['/_version_data/versions/version1']) == list(reopened_file['version1']) == ['test_data']
+    assert list(reopened_file['version1']) == ['test_data']
     assert_equal(reopened_file['version1']['test_data'][()], data)
 
     assert reopened_file._version_data == version_data
@@ -1673,6 +1666,24 @@ def test_sparse_large(vfile):
     assert vfile['version2']['test_data'][0] == 1
     assert vfile['version2']['test_data'][1] == 0
     assert vfile['version2']['test_data'][20_000_000] == 2
+
+def test_no_recursive_version_group_access(vfile):
+    timestamp1 = datetime.datetime.now(datetime.timezone.utc)
+    with vfile.stage_version('version1', timestamp=timestamp1) as g:
+        g.create_dataset('test', data=[1, 2, 3])
+
+    timestamp2 = datetime.datetime.now(datetime.timezone.utc)
+    minute = datetime.timedelta(minutes=1)
+    with vfile.stage_version('version2', timestamp=timestamp2) as g:
+        vfile['version1'] # Doesn't raise
+        raises(ValueError, lambda: vfile['version2'])
+
+        vfile[timestamp1] # Doesn't raise
+        # Without +minute, it will pick the previous version, as the
+        # uncommitted group only has a placeholder timestamp, which will be
+        # after timestamp2. Since this isn't supposed to work in the first
+        # place, this isn't a big deal.
+        raises(ValueError, lambda: vfile[timestamp2+minute])
 
 def test_empty_dataset_str_dtype(vfile):
     # Issue #161. Make sure the dtype is maintained correctly for empty
