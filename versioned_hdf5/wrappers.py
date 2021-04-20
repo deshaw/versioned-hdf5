@@ -982,7 +982,9 @@ class InMemoryDatasetID(h5d.DatasetID):
         htype = h5t.py_create(attr.dtype)
         _arr = np.ndarray(attr.shape, dtype=attr.dtype, order='C')
         attr.read(_arr, mtype=htype)
-        raw_data_name = _arr[()].decode('utf-8')
+        raw_data_name = _arr[()]
+        if isinstance(raw_data_name, bytes):
+            raw_data_name = raw_data_name.decode('utf-8')
 
         fid = h5i.get_file_id(self)
         g = Group(fid)
