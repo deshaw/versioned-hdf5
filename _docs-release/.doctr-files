@@ -45,7 +45,6 @@ _docs-release/_images/Performance_tests-IO_95_0.png
 _docs-release/_images/Performance_tests-IO_99_0.png
 _docs-release/_images/graphviz-80fa658bee6bbb3cd10e1e0c194576cc82ad7e0b.svg
 _docs-release/_images/graphviz-ecbd24dcde0b77d41d0b20fef4801659bffcea48.svg
-_docs-release/_sources/authors.md.txt
 _docs-release/_sources/changelog.md.txt
 _docs-release/_sources/design.md.txt
 _docs-release/_sources/index.rst.txt
@@ -71,7 +70,6 @@ _docs-release/_static/pygments.css
 _docs-release/_static/searchtools.js
 _docs-release/_static/underscore-1.12.0.js
 _docs-release/_static/underscore.js
-_docs-release/authors.html
 _docs-release/changelog.html
 _docs-release/design.html
 _docs-release/genindex.html

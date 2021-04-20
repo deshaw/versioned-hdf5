@@ -1,6 +1,14 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.2.6 (2021-04-20)
+
+## Minor Changes
+
+- Fix a bug where chunks could be deleted from a dataset.
+
+- Workaround an upstream h5py bug in the tests.
+
 ## 1.2.5 (2021-04-15)
 
 ## Minor Changes
