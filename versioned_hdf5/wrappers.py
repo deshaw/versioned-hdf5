@@ -5,7 +5,8 @@ Much of this code is modified from code in h5py. See the LICENSE file for the
 h5py license.
 """
 
-from h5py import Empty, Dataset, Datatype, Group, h5a, h5d, h5i, h5p, h5s, h5t, h5r
+from h5py import (Empty, Dataset, Datatype, Group, h5a, h5d, h5i, h5p, h5s,
+                  h5t, h5r, __version__ as h5py_version)
 from h5py._hl.base import guess_dtype, with_phil, phil
 from h5py._hl.dataset import _LEGACY_GZIP_COMPRESSION_VALS
 from h5py._hl import filters
@@ -450,6 +451,11 @@ class InMemoryDataset(Dataset):
          if self.dtype.metadata:
              # Custom h5py string dtype. Make sure to use a fillvalue of ''
              if 'vlen' in self.dtype.metadata:
+                 # h5py 3 reads str variable length datasets as bytes. See
+                 # https://docs.h5py.org/en/stable/whatsnew/3.0.html#breaking-changes-deprecations.
+                 if (h5py_version.startswith('3') and
+                     self.dtype.metadata['vlen'] == str):
+                     return bytes()
                  return self.dtype.metadata['vlen']()
              elif 'h5py_encoding' in self.dtype.metadata:
                  return self.dtype.type()
@@ -739,6 +745,11 @@ class DatasetLike:
          if self.dtype.metadata:
              # Custom h5py string dtype. Make sure to use a fillvalue of ''
              if 'vlen' in self.dtype.metadata:
+                 # h5py 3 reads str variable length datasets as bytes. See
+                 # https://docs.h5py.org/en/stable/whatsnew/3.0.html#breaking-changes-deprecations.
+                 if (h5py_version.startswith('3') and
+                     self.dtype.metadata['vlen'] == str):
+                     return bytes()
                  return self.dtype.metadata['vlen']()
              elif 'h5py_encoding' in self.dtype.metadata:
                  return b''
