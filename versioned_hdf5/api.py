@@ -83,6 +83,9 @@ class VersionedHDF5File:
         self._version_cache.clear()
 
     def get_version_by_name(self, version):
+        if version.startswith('/'):
+            raise ValueError("Versions cannot start with '/'. VersionedHDF5File should not be used to access the top-level of an h5py File.")
+
         if version == '':
             version = '__first_version__'
 

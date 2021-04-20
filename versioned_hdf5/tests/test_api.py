@@ -210,6 +210,8 @@ def test_version_name_slicing(vfile):
     assert vfile[-1]['test_data'][0] == 2.0
     assert vfile[-2]['test_data'][0] == 1.0, vfile[-2]
 
+    with raises(ValueError):
+        vfile['/_version_data']
 
 def test_iter_versions(vfile):
     test_data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
@@ -1253,8 +1255,7 @@ def test_closes(vfile):
     assert vfile.__repr__() == "<Closed VersionedHDF5File>"
 
     reopened_file = VersionedHDF5File(h5pyfile)
-    assert list(reopened_file['/_version_data/versions/__first_version__']) == []
-    assert list(reopened_file['/_version_data/versions/version1']) == list(reopened_file['version1']) == ['test_data']
+    assert list(reopened_file['version1']) == ['test_data']
     assert_equal(reopened_file['version1']['test_data'][()], data)
 
     assert reopened_file._version_data == version_data
