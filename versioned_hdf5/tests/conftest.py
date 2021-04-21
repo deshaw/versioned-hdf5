@@ -1,10 +1,10 @@
 import os
-from pytest import yield_fixture
+from pytest import fixture
 from .helpers import setup
 from ..api import VersionedHDF5File
 
 
-@yield_fixture
+@fixture
 def h5file(tmp_path, request):
     file_name = os.path.join(tmp_path, 'file.hdf5')
     name = None
@@ -28,12 +28,13 @@ def h5file(tmp_path, request):
             return
         raise
     except RuntimeError as e:
-        if e.args[0] == "Can't increment id ref count (can't locate ID)":
+        if e.args[0] in ["Can't increment id ref count (can't locate ID)",
+                         "Unspecified error in H5Iget_type (return value <0)"]:
             return
         raise
 
 
-@yield_fixture
+@fixture
 def vfile(tmp_path, h5file):
     file = VersionedHDF5File(h5file)
     yield file

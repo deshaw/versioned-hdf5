@@ -1370,9 +1370,16 @@ def test_InMemoryArrayDataset_chunks(vfile):
 
 def test_string_dtypes():
 
-    # Make sure the fillvalue logic works correctly for custom h5py string dtypes.
+    # Make sure the fillvalue logic works correctly for custom h5py string
+    # dtypes.
+
+    # h5py 3 changed variable-length UTF-8 strings to be read in as bytes
+    # instead of str. See
+    # https://docs.h5py.org/en/stable/whatsnew/3.0.html#breaking-changes-deprecations
+    h5py_str_type = bytes if h5py.__version__.startswith('3') else str
+
     for typ, dt in [
-            (str, h5py.string_dtype('utf-8')),
+            (h5py_str_type, h5py.string_dtype('utf-8')),
             (bytes, h5py.string_dtype('ascii')),
             # h5py uses bytes here
             (bytes, h5py.string_dtype('utf-8', length=20)),
@@ -1404,7 +1411,14 @@ def test_string_dtypes():
             assert_equal(file['1']['name'][:10], data, str(dt.metadata))
             assert file['1']['name'][10] == typ(), dt.metadata
             assert file['1']['name'][11] == typ(), dt.metadata
-        f.close()
+
+            # Make sure we are matching the pure h5py behavior
+            f.create_dataset('name', shape=(10,), dtype=dt, data=data,
+                             chunks=(10,), maxshape=(None,))
+            f['name'].resize((11,))
+            assert f['name'].dtype == dt
+            assert_equal(f['name'][:10], data)
+            assert f['name'][10] == typ(), dt.metadata
 
 def test_empty(vfile):
     with vfile.stage_version('version1') as g:
