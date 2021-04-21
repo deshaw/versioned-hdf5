@@ -15,15 +15,18 @@ class Hashtable(MutableMapping):
 
     General usage should look like
 
-        h = Hashtable(f, name)
-        data_hash = h.hash(data[raw_slice])
-        raw_slice = h.setdefault(data_hash, raw_slice)
+        with Hashtable(f, name) as h:
+            data_hash = h.hash(data[raw_slice])
+            raw_slice = h.setdefault(data_hash, raw_slice)
 
     where setdefault will insert the hash into the table if it
     doesn't exist, and return the existing entry otherwise.
 
     hashtable.largest_index is the largest index in the array that has slices
     mapped to it.
+
+    Note that for performance reasons, the hashtable does not write to the
+    dataset until you call write() or it exit as a context manager.
 
     """
     def __init__(self, f, name, chunk_size=None):
@@ -38,7 +41,8 @@ class Hashtable(MutableMapping):
             self._create_hashtable()
         self._largest_index = None
 
-        self.hash_table = f['_version_data'][name]['hash_table']
+        self.hash_table = f['_version_data'][name]['hash_table'][:]
+        self.hash_table_dataset = f['_version_data'][name]['hash_table']
 
     hash_function = hashlib.sha256
     hash_size = hash_function().digest_size
@@ -49,13 +53,24 @@ class Hashtable(MutableMapping):
     @property
     def largest_index(self):
         if self._largest_index is None:
-            self._largest_index = self.hash_table.attrs['largest_index']
+            self._largest_index = self.hash_table_dataset.attrs['largest_index']
         return self._largest_index
 
     @largest_index.setter
     def largest_index(self, value):
         self._largest_index = value
-        self.hash_table.attrs['largest_index'] = value
+
+    def write(self):
+        self.hash_table_dataset.attrs['largest_index'] = self.largest_index
+        self.hash_table_dataset[:] = self.hash_table
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is not None:
+            return
+        self.write()
 
     def _create_hashtable(self):
         f = self.f
@@ -69,7 +84,6 @@ class Hashtable(MutableMapping):
                                                  chunks=(self.chunk_size,),
                                                  maxshape=(None,))
         hash_table.attrs['largest_index'] = 0
-        self.hash_table = hash_table
         self._d = {}
         self._indices = {}
 
@@ -112,7 +126,11 @@ class Hashtable(MutableMapping):
             self._indices[key] = self.largest_index
             self.largest_index += 1
             if self.largest_index >= self.hash_table.shape[0]:
-                self.hash_table.resize((self.hash_table.shape[0] + self.chunk_size,))
+                newshape = (self.hash_table.shape[0] + self.chunk_size,)
+                self.hash_table_dataset.resize(newshape)
+                new_hash_table = np.zeros(newshape, dtype=self.hash_table.dtype)
+                new_hash_table[:self.hash_table.shape[0]] = self.hash_table
+                self.hash_table = new_hash_table
         self._d[key] = Slice(value)
 
     def __delitem__(self, key):

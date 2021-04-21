@@ -14,7 +14,8 @@ from .helpers import setup
 from ..backend import DEFAULT_CHUNK_SIZE
 from ..api import VersionedHDF5File
 from ..versions import TIMESTAMP_FMT
-from ..wrappers import InMemoryArrayDataset, InMemoryDataset, InMemorySparseDataset
+from ..wrappers import (InMemoryArrayDataset, InMemoryDataset,
+                        InMemorySparseDataset, DatasetWrapper)
 
 
 def test_stage_version(vfile):
@@ -209,6 +210,8 @@ def test_version_name_slicing(vfile):
     assert vfile[-1]['test_data'][0] == 2.0
     assert vfile[-2]['test_data'][0] == 1.0, vfile[-2]
 
+    with raises(ValueError):
+        vfile['/_version_data']
 
 def test_iter_versions(vfile):
     test_data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
@@ -578,14 +581,6 @@ def test_resize_multiple_dimensions(tmp_path, h5file):
         assert version3_2[f'dataset3_{i}'].shape == newshape
         assert_equal(version3_2[f'dataset3_{i}'][()], new_data)
 
-    vfile.close()
-    try:
-        h5file.close()
-    except ValueError:
-        # Work around a bug in h5py. See
-        # https://github.com/deshaw/versioned-hdf5/pull/125
-        pass
-
 def test_getitem(vfile):
     data = np.arange(2*DEFAULT_CHUNK_SIZE)
 
@@ -907,34 +902,34 @@ def test_groups(vfile):
         assert set(group['group1']['group2']) == set(group['group1/group2']) == {'group3', 'test_data2', 'test_data4'}
         assert list(group['group1']['group2']['group3']) == list(group['group1/group2/group3']) == ['test_data3']
 
-        version = vfile['version6']
-        assert_equal(version['group1']['test_data1'], data)
-        assert_equal(version['group1/test_data1'], data)
+    version = vfile['version6']
+    assert_equal(version['group1']['test_data1'], data)
+    assert_equal(version['group1/test_data1'], data)
 
-        assert_equal(version['group1']['group2']['test_data2'], 2*data)
-        assert_equal(version['group1/group2']['test_data2'], 2*data)
-        assert_equal(version['group1']['group2/test_data2'], 2*data)
-        assert_equal(version['group1/group2/test_data2'], 2*data)
+    assert_equal(version['group1']['group2']['test_data2'], 2*data)
+    assert_equal(version['group1/group2']['test_data2'], 2*data)
+    assert_equal(version['group1']['group2/test_data2'], 2*data)
+    assert_equal(version['group1/group2/test_data2'], 2*data)
 
-        assert_equal(version['group1']['group2']['group3']['test_data3'], 3*data)
-        assert_equal(version['group1/group2']['group3']['test_data3'], 3*data)
-        assert_equal(version['group1/group2']['group3/test_data3'], 3*data)
-        assert_equal(version['group1']['group2/group3/test_data3'], 3*data)
-        assert_equal(version['group1/group2/group3/test_data3'], 3*data)
+    assert_equal(version['group1']['group2']['group3']['test_data3'], 3*data)
+    assert_equal(version['group1/group2']['group3']['test_data3'], 3*data)
+    assert_equal(version['group1/group2']['group3/test_data3'], 3*data)
+    assert_equal(version['group1']['group2/group3/test_data3'], 3*data)
+    assert_equal(version['group1/group2/group3/test_data3'], 3*data)
 
-        assert_equal(version['group1']['group2']['test_data4'], 4*data)
-        assert_equal(version['group1/group2']['test_data4'], 4*data)
-        assert_equal(version['group1']['group2/test_data4'], 4*data)
-        assert_equal(version['group1/group2/test_data4'], 4*data)
+    assert_equal(version['group1']['group2']['test_data4'], 4*data)
+    assert_equal(version['group1/group2']['test_data4'], 4*data)
+    assert_equal(version['group1']['group2/test_data4'], 4*data)
+    assert_equal(version['group1/group2/test_data4'], 4*data)
 
-        assert list(version) == ['group1']
-        assert set(version['group1']) == {'group2', 'test_data1'}
-        assert set(version['group1']['group2']) == set(version['group1/group2']) == {'group3', 'test_data2', 'test_data4'}
-        assert list(version['group1']['group2']['group3']) == list(version['group1/group2/group3']) == ['test_data3']
+    assert list(version) == ['group1']
+    assert set(version['group1']) == {'group2', 'test_data1'}
+    assert set(version['group1']['group2']) == set(version['group1/group2']) == {'group3', 'test_data2', 'test_data4'}
+    assert list(version['group1']['group2']['group3']) == list(version['group1/group2/group3']) == ['test_data3']
 
-        with vfile.stage_version('version-bad', '') as group:
-            raises(ValueError, lambda: group.create_dataset('/group1/test_data', data=data))
-            raises(ValueError, lambda: group.create_group('/group1'))
+    with vfile.stage_version('version-bad', '') as group:
+        raises(ValueError, lambda: group.create_dataset('/group1/test_data', data=data))
+        raises(ValueError, lambda: group.create_group('/group1'))
 
 def test_group_contains(vfile):
     data = np.ones(2*DEFAULT_CHUNK_SIZE)
@@ -1252,8 +1247,7 @@ def test_closes(vfile):
     assert vfile.__repr__() == "<Closed VersionedHDF5File>"
 
     reopened_file = VersionedHDF5File(h5pyfile)
-    assert list(reopened_file['/_version_data/versions/__first_version__']) == []
-    assert list(reopened_file['/_version_data/versions/version1']) == list(reopened_file['version1']) == ['test_data']
+    assert list(reopened_file['version1']) == ['test_data']
     assert_equal(reopened_file['version1']['test_data'][()], data)
 
     assert reopened_file._version_data == version_data
@@ -1340,12 +1334,14 @@ def test_check_committed(vfile):
     # Incorrectly uses g from the previous version (InMemoryDataset)
     with raises(ValueError, match="committed"):
         with vfile.stage_version('version3'):
-            assert isinstance(g2['test_data'], InMemoryDataset)
+            assert isinstance(g2['test_data'], DatasetWrapper)
+            assert isinstance(g2['test_data'].dataset, InMemoryDataset)
             g2['test_data'][0] = 1
 
     with raises(ValueError, match="committed"):
         with vfile.stage_version('version3'):
-            assert isinstance(g2['test_data'], InMemoryDataset)
+            assert isinstance(g2['test_data'], DatasetWrapper)
+            assert isinstance(g2['test_data'].dataset, InMemoryDataset)
             g2['test_data'].resize((100,))
 
     assert repr(g) == '<Committed InMemoryGroup "/_version_data/versions/version1">'
@@ -1374,9 +1370,16 @@ def test_InMemoryArrayDataset_chunks(vfile):
 
 def test_string_dtypes():
 
-    # Make sure the fillvalue logic works correctly for custom h5py string dtypes.
+    # Make sure the fillvalue logic works correctly for custom h5py string
+    # dtypes.
+
+    # h5py 3 changed variable-length UTF-8 strings to be read in as bytes
+    # instead of str. See
+    # https://docs.h5py.org/en/stable/whatsnew/3.0.html#breaking-changes-deprecations
+    h5py_str_type = bytes if h5py.__version__.startswith('3') else str
+
     for typ, dt in [
-            (str, h5py.string_dtype('utf-8')),
+            (h5py_str_type, h5py.string_dtype('utf-8')),
             (bytes, h5py.string_dtype('ascii')),
             # h5py uses bytes here
             (bytes, h5py.string_dtype('utf-8', length=20)),
@@ -1400,14 +1403,22 @@ def test_string_dtypes():
             assert file['0']['name'][10] == typ(), dt.metadata
 
             with file.stage_version('1') as sv:
-                assert isinstance(sv['name'], InMemoryDataset)
+                assert isinstance(sv['name'], DatasetWrapper)
+                assert isinstance(sv['name'].dataset, InMemoryDataset)
                 sv['name'].resize((12,))
 
             assert file['1']['name'].dtype == dt
             assert_equal(file['1']['name'][:10], data, str(dt.metadata))
             assert file['1']['name'][10] == typ(), dt.metadata
             assert file['1']['name'][11] == typ(), dt.metadata
-        f.close()
+
+            # Make sure we are matching the pure h5py behavior
+            f.create_dataset('name', shape=(10,), dtype=dt, data=data,
+                             chunks=(10,), maxshape=(None,))
+            f['name'].resize((11,))
+            assert f['name'].dtype == dt
+            assert_equal(f['name'][:10], data)
+            assert f['name'][10] == typ(), dt.metadata
 
 def test_empty(vfile):
     with vfile.stage_version('version1') as g:
@@ -1556,7 +1567,8 @@ def test_scalar():
 
     with h5py.File('test.hdf5', 'r') as f:
         vfile = VersionedHDF5File(f)
-        assert isinstance(vfile['version1']['bar'], InMemoryDataset)
+        assert isinstance(vfile['version1']['bar'], DatasetWrapper)
+        assert isinstance(vfile['version1']['bar'].dataset, InMemoryDataset)
         # Should return a scalar, not a shape () array
         assert isinstance(vfile['version1']['bar'][0], bytes)
 
@@ -1576,7 +1588,8 @@ def test_sparse(vfile):
 
 
     with vfile.stage_version('version2') as g:
-        assert isinstance(g['test_data'], InMemoryDataset)
+        assert isinstance(g['test_data'], DatasetWrapper)
+        assert isinstance(g['test_data'].dataset, InMemoryDataset)
         assert g['test_data'][0, 0] == 2
         assert g['test_data'][0, 1] == 1
         assert g['test_data'][200, 1] == 1
@@ -1606,7 +1619,8 @@ def test_sparse_empty(vfile):
     assert vfile['version1']['test_data'][200, 1] == 1
 
     with vfile.stage_version('version2') as g:
-        assert isinstance(g['test_data'], InMemoryDataset)
+        assert isinstance(g['test_data'], DatasetWrapper)
+        assert isinstance(g['test_data'].dataset, InMemoryDataset)
         assert g['test_data'][0, 0] == 1
         assert g['test_data'][0, 1] == 1
         assert g['test_data'][200, 1] == 1
@@ -1647,7 +1661,8 @@ def test_sparse_large(vfile):
 
 
     with vfile.stage_version('version2') as g:
-        assert isinstance(g['test_data'], InMemoryDataset)
+        assert isinstance(g['test_data'], DatasetWrapper)
+        assert isinstance(g['test_data'].dataset, InMemoryDataset)
         assert g['test_data'][0] == 1
         assert g['test_data'][1] == 0
         assert g['test_data'][20_000_000] == 0
@@ -1665,3 +1680,53 @@ def test_sparse_large(vfile):
     assert vfile['version2']['test_data'][0] == 1
     assert vfile['version2']['test_data'][1] == 0
     assert vfile['version2']['test_data'][20_000_000] == 2
+
+def test_no_recursive_version_group_access(vfile):
+    timestamp1 = datetime.datetime.now(datetime.timezone.utc)
+    with vfile.stage_version('version1', timestamp=timestamp1) as g:
+        g.create_dataset('test', data=[1, 2, 3])
+
+    timestamp2 = datetime.datetime.now(datetime.timezone.utc)
+    minute = datetime.timedelta(minutes=1)
+    with vfile.stage_version('version2', timestamp=timestamp2) as g:
+        vfile['version1'] # Doesn't raise
+        raises(ValueError, lambda: vfile['version2'])
+
+        vfile[timestamp1] # Doesn't raise
+        # Without +minute, it will pick the previous version, as the
+        # uncommitted group only has a placeholder timestamp, which will be
+        # after timestamp2. Since this isn't supposed to work in the first
+        # place, this isn't a big deal.
+        raises(ValueError, lambda: vfile[timestamp2+minute])
+
+def test_empty_dataset_str_dtype(vfile):
+    # Issue #161. Make sure the dtype is maintained correctly for empty
+    # datasets with custom string dtypes.
+    with vfile.stage_version('version1') as g:
+        g.create_dataset('bar', data=np.array(['a', 'b', 'c'], dtype='S5'), dtype=np.dtype('S5'))
+        g['bar'].resize((0,))
+    with vfile.stage_version('version2') as g:
+        g['bar'].resize((3,))
+        g['bar'][:] = np.array(['a', 'b', 'c'], dtype='S5')
+
+def test_datasetwrapper(vfile):
+    with vfile.stage_version('r0') as sv:
+        sv.create_dataset('bar', data=[1, 2, 3], chunks=(2,))
+        sv['bar'].attrs['key'] = 0
+        assert isinstance(sv['bar'], InMemoryArrayDataset)
+        assert dict(sv['bar'].attrs) == {'key': 0}
+        assert sv['bar'].chunks == (2,)
+
+    with vfile.stage_version('r1') as sv:
+        assert isinstance(sv['bar'], DatasetWrapper)
+        assert isinstance(sv['bar'].dataset, InMemoryDataset)
+        assert sv['bar'].attrs['key'] == 0
+        sv['bar'].attrs['key'] = 1
+        assert sv['bar'].attrs['key'] == 1
+        assert sv['bar'].chunks == (2,)
+
+        sv['bar'][:] = [4, 5, 6]
+        assert isinstance(sv['bar'], DatasetWrapper)
+        assert isinstance(sv['bar'].dataset, InMemoryArrayDataset)
+        assert sv['bar'].attrs['key'] == 1
+        assert sv['bar'].chunks == (2,)
