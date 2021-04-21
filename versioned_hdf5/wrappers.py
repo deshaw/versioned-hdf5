@@ -443,7 +443,10 @@ class InMemoryDataset(Dataset):
         super().__init__(InMemoryDatasetID(bind.id), **kwargs)
         self._parent = parent
         self._attrs = dict(super().attrs)
-        self.data_dict = self.id.data_dict
+
+    @property
+    def data_dict(self):
+        return self.id.data_dict
 
     def as_dtype(self, name, dtype, parent, casting='unsafe'):
         """
