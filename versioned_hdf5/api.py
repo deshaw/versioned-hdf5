@@ -67,6 +67,14 @@ class VersionedHDF5File:
         self._version_cache = {}
 
     @property
+    def closed(self):
+        if self._closed:
+            return self._closed
+        if not self.f.id:
+            self._closed = True
+        return self._closed
+
+    @property
     def current_version(self):
         """
         The current version.
@@ -107,6 +115,8 @@ class VersionedHDF5File:
         return InMemoryGroup(g._id, _committed=True)
 
     def __getitem__(self, item):
+        if self.closed:
+            raise ValueError("File is closed")
         if item in self._version_cache:
             # We don't cache version names because those are already cheap to
             # lookup.
@@ -169,7 +179,7 @@ class VersionedHDF5File:
         `prev_version` for any future `stage_version` call.
 
         """
-        if self._closed:
+        if self.closed:
             raise ValueError("File is closed")
         old_current = self.current_version
         group = create_version_group(self.f, version_name,
@@ -205,7 +215,7 @@ class VersionedHDF5File:
 
         These messages are intended to be similar to h5py messages.
         """
-        if self._closed:
+        if self.closed:
             return "<Closed VersionedHDF5File>"
         else:
             return f"<VersionedHDF5File object \"{self.f.filename}\" (mode" \
