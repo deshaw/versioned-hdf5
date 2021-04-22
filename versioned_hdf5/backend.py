@@ -261,7 +261,7 @@ def recreate_dataset(f, name, newf, callback=None):
     dataset to be used for the new version. The dataset and its containing
     group should not be modified in-place. If a new copy of a dataset is to be
     used, it should be one of the dataset classes in versioned_hdf5.wrappers,
-    and should placed in a temporary group, which may be deleted after
+    and should placed in a temporary group, which you may delete after
     recreate_dataset() is done. The callback may also return None, in which
     case the dataset is deleted for the given version.
 
