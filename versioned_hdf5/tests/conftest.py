@@ -1,10 +1,10 @@
 import os
-from pytest import yield_fixture
+from pytest import fixture
 from .helpers import setup
 from ..api import VersionedHDF5File
 
 
-@yield_fixture
+@fixture
 def h5file(tmp_path, request):
     file_name = os.path.join(tmp_path, 'file.hdf5')
     name = None
@@ -20,10 +20,21 @@ def h5file(tmp_path, request):
 
     f = setup(file_name=file_name, name=name, version_name=version_name)
     yield f
-    f.close()
+    try:
+        f.close()
+    # Workaround upstream h5py bug. https://github.com/deshaw/versioned-hdf5/issues/162
+    except ValueError as e:
+        if e.args[0] == "Unrecognized type code -1":
+            return
+        raise
+    except RuntimeError as e:
+        if e.args[0] in ["Can't increment id ref count (can't locate ID)",
+                         "Unspecified error in H5Iget_type (return value <0)"]:
+            return
+        raise
 
 
-@yield_fixture
+@fixture
 def vfile(tmp_path, h5file):
     file = VersionedHDF5File(h5file)
     yield file

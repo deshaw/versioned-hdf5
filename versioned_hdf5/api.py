@@ -83,19 +83,28 @@ class VersionedHDF5File:
         self._version_cache.clear()
 
     def get_version_by_name(self, version):
+        if version.startswith('/'):
+            raise ValueError("Versions cannot start with '/'. VersionedHDF5File should not be used to access the top-level of an h5py File.")
+
         if version == '':
             version = '__first_version__'
 
         if version not in self._versions:
             raise KeyError(f"Version {version!r} not found")
 
+        g = self._versions[version]
+        if not g.attrs['committed']:
+            raise ValueError("Version groups cannot accessed from the VersionedHDF5File object before they are committed.")
         # TODO: Don't give an in-memory group if the file is read-only
-        return InMemoryGroup(self._versions[version]._id, _committed=True)
+        return InMemoryGroup(g._id, _committed=True)
 
     def get_version_by_timestamp(self, timestamp, exact=False):
         version = get_version_by_timestamp(self.f, timestamp, exact=exact)
         # TODO: Don't give an in-memory group if the file is read-only
-        return InMemoryGroup(self._versions[version]._id, _committed=True)
+        g = self._versions[version]
+        if not g.attrs['committed']:
+            raise ValueError("Version groups cannot accessed from the VersionedHDF5File object before they are committed.")
+        return InMemoryGroup(g._id, _committed=True)
 
     def __getitem__(self, item):
         if item in self._version_cache:

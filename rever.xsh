@@ -29,7 +29,6 @@ def annotated_tag():
     git tag -a -m "$GITHUB_REPO $VERSION release" $VERSION
 
 $ACTIVITIES = [
-            'authors',
             'run_tests',
             'build_docs',
             'annotated_tag', # Creates a tag for the new version number
@@ -42,4 +41,3 @@ $PUSH_TAG_REMOTE = 'git@github.com:deshaw/versioned-hdf5.git'  # Repo to push ta
 
 $GITHUB_ORG = 'deshaw'  # Github org for Github releases and conda-forge
 $GITHUB_REPO = 'versioned-hdf5'  # Github repo for Github releases and conda-forge
-$AUTHORS_FILENAME = 'AUTHORS.md'

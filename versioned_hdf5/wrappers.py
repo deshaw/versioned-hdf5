@@ -5,7 +5,8 @@ Much of this code is modified from code in h5py. See the LICENSE file for the
 h5py license.
 """
 
-from h5py import Empty, Dataset, Datatype, Group, h5a, h5d, h5i, h5p, h5s, h5t, h5r
+from h5py import (Empty, Dataset, Datatype, Group, h5a, h5d, h5i, h5p, h5s,
+                  h5t, h5r, __version__ as h5py_version)
 from h5py._hl.base import guess_dtype, with_phil, phil
 from h5py._hl.dataset import _LEGACY_GZIP_COMPRESSION_VALS
 from h5py._hl import filters
@@ -450,6 +451,11 @@ class InMemoryDataset(Dataset):
          if self.dtype.metadata:
              # Custom h5py string dtype. Make sure to use a fillvalue of ''
              if 'vlen' in self.dtype.metadata:
+                 # h5py 3 reads str variable length datasets as bytes. See
+                 # https://docs.h5py.org/en/stable/whatsnew/3.0.html#breaking-changes-deprecations.
+                 if (h5py_version.startswith('3') and
+                     self.dtype.metadata['vlen'] == str):
+                     return bytes()
                  return self.dtype.metadata['vlen']()
              elif 'h5py_encoding' in self.dtype.metadata:
                  return self.dtype.type()
@@ -739,6 +745,11 @@ class DatasetLike:
          if self.dtype.metadata:
              # Custom h5py string dtype. Make sure to use a fillvalue of ''
              if 'vlen' in self.dtype.metadata:
+                 # h5py 3 reads str variable length datasets as bytes. See
+                 # https://docs.h5py.org/en/stable/whatsnew/3.0.html#breaking-changes-deprecations.
+                 if (h5py_version.startswith('3') and
+                     self.dtype.metadata['vlen'] == str):
+                     return bytes()
                  return self.dtype.metadata['vlen']()
              elif 'h5py_encoding' in self.dtype.metadata:
                  return b''
@@ -791,13 +802,16 @@ class InMemoryArrayDataset(DatasetLike):
     """
     Class that looks like a h5py.Dataset but is backed by an array
     """
-    def __init__(self, name, array, parent, fillvalue=None):
+    def __init__(self, name, array, parent, fillvalue=None, chunks=None):
         self.name = name
         self._array = array
         self._dtype = None
         self.attrs = {}
         self.parent = parent
         self._fillvalue = fillvalue
+        if chunks is None:
+            chunks = parent.chunks[name]
+        self._chunks = chunks
 
     @property
     def array(self):
@@ -829,7 +843,7 @@ class InMemoryArrayDataset(DatasetLike):
 
     @property
     def chunks(self):
-        return self.parent.chunks[self.name]
+        return self._chunks
 
     def resize(self, size, axis=None):
         self.parent._check_committed()
@@ -955,9 +969,12 @@ class DatasetWrapper(DatasetLike):
 
     def __setitem__(self, index, value):
         if isinstance(self.dataset, InMemoryDataset) and ndindex(index).expand(self.shape) == Tuple().expand(self.shape):
-            self.dataset = InMemoryArrayDataset(self.name,
-                                                np.broadcast_to(value, self.shape).astype(self.dtype),
-                                                self.parent, fillvalue=self.fillvalue)
+            new_dataset = InMemoryArrayDataset(self.name,
+                                               np.broadcast_to(value, self.shape).astype(self.dtype),
+                                               self.parent,
+                                               fillvalue=self.fillvalue, chunks=self.chunks)
+            new_dataset.attrs = self.dataset.attrs
+            self.dataset = new_dataset
             return
         self.dataset.__setitem__(index, value)
 
@@ -977,6 +994,8 @@ class InMemoryDatasetID(h5d.DatasetID):
         _arr = np.ndarray(attr.shape, dtype=attr.dtype, order='C')
         attr.read(_arr, mtype=htype)
         raw_data_name = _arr[()]
+        if isinstance(raw_data_name, bytes):
+            raw_data_name = raw_data_name.decode('utf-8')
 
         fid = h5i.get_file_id(self)
         g = Group(fid)
