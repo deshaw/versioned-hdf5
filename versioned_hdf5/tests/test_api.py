@@ -1233,6 +1233,7 @@ def test_closes(vfile):
     with vfile.stage_version('version1') as g:
         g.create_dataset('test_data', data=data)
     assert vfile._closed is False
+    assert vfile.closed is False
 
     version_data = vfile._version_data
     versions = vfile._versions
@@ -1241,10 +1242,11 @@ def test_closes(vfile):
     vfile.close()
 
     assert vfile._closed is True
+    assert vfile.closed is True
     raises(AttributeError, lambda: vfile.f)
     raises(AttributeError, lambda: vfile._version_data)
     raises(AttributeError, lambda: vfile._versions)
-    assert vfile.__repr__() == "<Closed VersionedHDF5File>"
+    assert repr(vfile) == "<Closed VersionedHDF5File>"
 
     reopened_file = VersionedHDF5File(h5pyfile)
     assert list(reopened_file['version1']) == ['test_data']
@@ -1253,6 +1255,12 @@ def test_closes(vfile):
     assert reopened_file._version_data == version_data
     assert reopened_file._versions == versions
 
+    # Close the underlying file
+    h5pyfile.close()
+    assert vfile.closed is True
+    raises(ValueError, lambda: vfile['version1'])
+    raises(ValueError, lambda: vfile['version2'])
+    assert repr(vfile) == "<Closed VersionedHDF5File>"
 
 def test_scalar_dataset():
     for data1, data2 in [
