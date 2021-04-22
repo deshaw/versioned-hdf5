@@ -367,6 +367,32 @@ def delete_version(f, version):
 
     del newf[newf.name]
 
+def modify_metadata(f, dataset_name, chunks=None):
+    from .wrappers import (InMemoryGroup, DatasetWrapper, InMemoryDataset,
+                           InMemoryArrayDataset)
+
+    def callback(dataset, version_name):
+        _chunks = chunks or dataset.chunks
+        if isinstance(dataset, DatasetWrapper):
+            dataset = dataset.dataset
+        if isinstance(dataset, (InMemoryDataset, InMemoryArrayDataset)):
+            new_dataset = InMemoryArrayDataset(dataset.name, dataset[()], tmp_parent,
+                                               fillvalue=dataset.fillvalue,
+                                               chunks=_chunks)
+        else:
+            raise NotImplementedError(type(dataset))
+
+        return new_dataset
+
+    newf = tmp_group(f)
+    tmp_parent = InMemoryGroup(newf.create_group('__tmp_parent__').id)
+
+    recreate_dataset(f, dataset_name, newf, callback=callback)
+
+    swap(f, newf)
+
+    del newf[newf.name]
+
 def swap(old, new):
     """
     Swap every dataset in old with the corresponding one in new
