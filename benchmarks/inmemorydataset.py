@@ -2,7 +2,12 @@ import os
 
 import h5py
 from versioned_hdf5 import VersionedHDF5File
-from versioned_hdf5.wrappers import InMemoryDataset, DatasetWrapper
+from versioned_hdf5.wrappers import InMemoryDataset
+try:
+    from versioned_hdf5.wrappers import DatasetWrapper
+except ImportError:
+    class DatasetWrapper:
+        pass
 
 import numpy as np
 
