@@ -30,12 +30,12 @@ class TimeInMemoryDataset:
         self.file.close()
         os.remove('bench.hdf5')
 
-    def time_getattr(self):
+    def time_getitem(self):
         dataset = self.versioned_file['version1']['data']
         assert isinstance(dataset, InMemoryDataset) or isinstance(dataset, DatasetWrapper) and isinstance(dataset.dataset, InMemoryDataset)
         dataset[:, 0, 0:6]
 
-    def time_setattr(self):
+    def time_setitem(self):
         with self.versioned_file.stage_version('version2') as g:
             dataset = g['data']
             assert isinstance(dataset, InMemoryDataset) or isinstance(dataset, DatasetWrapper) and isinstance(dataset.dataset, InMemoryDataset)
