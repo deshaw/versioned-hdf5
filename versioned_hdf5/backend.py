@@ -376,7 +376,8 @@ def modify_metadata(f, dataset_name, chunks=None):
         if isinstance(dataset, DatasetWrapper):
             dataset = dataset.dataset
         if isinstance(dataset, (InMemoryDataset, InMemoryArrayDataset)):
-            new_dataset = InMemoryArrayDataset(dataset.name, dataset[()], tmp_parent,
+            name = dataset.name[len(dataset.parent.name)+1:]
+            new_dataset = InMemoryArrayDataset(name, dataset[()], tmp_parent,
                                                fillvalue=dataset.fillvalue,
                                                chunks=_chunks)
         else:
