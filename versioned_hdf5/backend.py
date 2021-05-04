@@ -368,7 +368,7 @@ def delete_version(f, version):
 
     del newf[newf.name]
 
-def modify_metadata(f, dataset_name, chunks=None, compression=None,
+def modify_metadata(f, dataset_name, *, chunks=None, compression=None,
                     compression_opts=None, dtype=None, fillvalue=None):
     from .wrappers import (InMemoryGroup, DatasetWrapper, InMemoryDataset,
                            InMemoryArrayDataset, InMemorySparseDataset)
