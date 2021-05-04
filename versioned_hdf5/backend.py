@@ -4,6 +4,7 @@ from h5py._hl.vds import VDSmap
 from h5py.h5i import get_name
 from ndindex import Slice, ndindex, Tuple, ChunkSize
 
+from copy import deepcopy
 import posixpath as pp
 
 from .hashtable import Hashtable
@@ -368,25 +369,41 @@ def delete_version(f, version):
     del newf[newf.name]
 
 def modify_metadata(f, dataset_name, chunks=None, compression=None,
-                    compression_opts=None, dtype=None):
+                    compression_opts=None, dtype=None, fillvalue=None):
     from .wrappers import (InMemoryGroup, DatasetWrapper, InMemoryDataset,
-                           InMemoryArrayDataset)
+                           InMemoryArrayDataset, InMemorySparseDataset)
 
     def callback(dataset, version_name):
         _chunks = chunks or dataset.chunks
+        _fillvalue = fillvalue or dataset.fillvalue
+
         if isinstance(dataset, DatasetWrapper):
             dataset = dataset.dataset
+
+        name = dataset.name[len(dataset.parent.name)+1:]
         if isinstance(dataset, (InMemoryDataset, InMemoryArrayDataset)):
-            name = dataset.name[len(dataset.parent.name)+1:]
             new_dataset = InMemoryArrayDataset(name, dataset[()], tmp_parent,
-                                               fillvalue=dataset.fillvalue,
+                                               fillvalue=_fillvalue,
                                                chunks=_chunks)
-            if compression:
-                new_dataset.compression = compression
-            if compression_opts:
-                new_dataset.compression_opts = compression_opts
+            if _fillvalue:
+                new_dataset[new_dataset == dataset.fillvalue] = _fillvalue
+        elif isinstance(dataset, InMemorySparseDataset):
+            new_dataset = InMemorySparseDataset(name, shape=dataset.shape,
+                                                dtype=dataset.dtype,
+                                                parent=tmp_parent,
+                                                chunks=_chunks,
+                                                fillvalue=_fillvalue)
+            new_dataset.data_dict = deepcopy(dataset.data_dict)
+            if _fillvalue:
+                for a in new_dataset.data_dict.values():
+                    a[a == dataset.fillvalue] = _fillvalue
         else:
             raise NotImplementedError(type(dataset))
+
+        if compression:
+            new_dataset.compression = compression
+        if compression_opts:
+            new_dataset.compression_opts = compression_opts
 
         if dtype:
             return new_dataset.as_dtype(name, dtype, tmp_parent)

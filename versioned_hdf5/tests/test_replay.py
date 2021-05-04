@@ -12,16 +12,16 @@ def setup_modify_metadata(file):
         g['test_data'][2000] = 2.
         g.create_dataset('test_data3', data=[1, 2, 3, 4], chunks=(1000,))
 
-def check_modify_metadata_data(file):
+def check_modify_metadata_data(file, test_data_fillvalue=1.):
     assert file['version1']['test_data'].shape == (10000,)
     assert file['version1']['test_data'][0] == 0.
-    assert np.all(file['version1']['test_data'][1:] == 1.)
+    assert np.all(file['version1']['test_data'][1:] == test_data_fillvalue)
 
     assert file['version2']['test_data'].shape == (10000,)
     assert file['version2']['test_data'][0] == 0.
-    assert np.all(file['version2']['test_data'][1:2000] == 1.)
+    assert np.all(file['version2']['test_data'][1:2000] == test_data_fillvalue)
     assert file['version2']['test_data'][2000] == 2.
-    assert np.all(file['version2']['test_data'][2001:] == 1.)
+    assert np.all(file['version2']['test_data'][2001:] == test_data_fillvalue)
 
     assert file['version1']['test_data2'].shape == (3,)
     assert np.all(file['version1']['test_data2'][:] == [1, 2, 3])
@@ -152,6 +152,76 @@ def test_modify_metadata_dtype(vfile):
     assert f['_version_data']['test_data']['raw_data'].dtype == np.float64
     assert f['_version_data']['test_data2']['raw_data'].dtype == np.float64
     assert f['_version_data']['test_data3']['raw_data'].dtype == np.int64
+
+    # Make sure the tmp group group has been destroyed.
+    assert list(f['_version_data']) == ['test_data', 'test_data2', 'test_data3', 'versions']
+
+def test_modify_metadata_fillvalue1(vfile):
+    setup_modify_metadata(vfile)
+
+    f = vfile.f
+
+    assert vfile['version1']['test_data'].fillvalue == 1.
+    assert vfile['version2']['test_data'].fillvalue == 1.
+
+    assert vfile['version1']['test_data2'].fillvalue == 0
+    assert vfile['version2']['test_data2'].fillvalue == 0
+
+    assert vfile['version2']['test_data3'].fillvalue == 0
+
+    assert f['_version_data']['test_data']['raw_data'].fillvalue == 1.
+    assert f['_version_data']['test_data2']['raw_data'].fillvalue == 0
+    assert f['_version_data']['test_data3']['raw_data'].fillvalue == 0
+
+    modify_metadata(f, 'test_data', fillvalue=3.)
+    check_modify_metadata_data(vfile, test_data_fillvalue=3.)
+
+    assert vfile['version1']['test_data'].fillvalue == 3.
+    assert vfile['version2']['test_data'].fillvalue == 3.
+
+    assert vfile['version1']['test_data2'].fillvalue == 0
+    assert vfile['version2']['test_data2'].fillvalue == 0
+
+    assert vfile['version2']['test_data3'].fillvalue == 0
+
+    assert f['_version_data']['test_data']['raw_data'].fillvalue == 3.
+    assert f['_version_data']['test_data2']['raw_data'].fillvalue == 0
+    assert f['_version_data']['test_data3']['raw_data'].fillvalue == 0
+
+    # Make sure the tmp group group has been destroyed.
+    assert list(f['_version_data']) == ['test_data', 'test_data2', 'test_data3', 'versions']
+
+def test_modify_metadata_fillvalue2(vfile):
+    setup_modify_metadata(vfile)
+
+    f = vfile.f
+
+    assert vfile['version1']['test_data'].fillvalue == 1.
+    assert vfile['version2']['test_data'].fillvalue == 1.
+
+    assert vfile['version1']['test_data2'].fillvalue == 0
+    assert vfile['version2']['test_data2'].fillvalue == 0
+
+    assert vfile['version2']['test_data3'].fillvalue == 0
+
+    assert f['_version_data']['test_data']['raw_data'].fillvalue == 1.
+    assert f['_version_data']['test_data2']['raw_data'].fillvalue == 0
+    assert f['_version_data']['test_data3']['raw_data'].fillvalue == 0
+
+    modify_metadata(f, 'test_data2', fillvalue=3)
+    check_modify_metadata_data(vfile)
+
+    assert vfile['version1']['test_data'].fillvalue == 1.
+    assert vfile['version2']['test_data'].fillvalue == 1.
+
+    assert vfile['version1']['test_data2'].fillvalue == 3
+    assert vfile['version2']['test_data2'].fillvalue == 3
+
+    assert vfile['version2']['test_data3'].fillvalue == 0
+
+    assert f['_version_data']['test_data']['raw_data'].fillvalue == 1.
+    assert f['_version_data']['test_data2']['raw_data'].fillvalue == 3
+    assert f['_version_data']['test_data3']['raw_data'].fillvalue == 0
 
     # Make sure the tmp group group has been destroyed.
     assert list(f['_version_data']) == ['test_data', 'test_data2', 'test_data3', 'versions']
