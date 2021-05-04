@@ -90,13 +90,16 @@ class InMemoryGroup(Group):
             self._subgroups[name] = self.__class__(res.id)
             return self._subgroups[name]
         elif isinstance(res, Dataset):
-            self._data[name] = DatasetWrapper(InMemoryDataset(res.id, parent=self))
+            self._add_to_data(name, res)
             return self._data[name]
         else:
             raise NotImplementedError(f"Cannot handle {type(res)!r}")
 
     def __setitem__(self, name, obj):
         self._check_committed()
+        self._add_to_data(name, obj)
+
+    def _add_to_data(self, name, obj):
         dirname, basename = pp.split(name)
         if dirname:
             if dirname not in self:
@@ -105,13 +108,17 @@ class InMemoryGroup(Group):
             return
 
         if isinstance(obj, Dataset):
-            self._data[name] = DatasetWrapper(InMemoryDataset(obj.id, parent=self))
+            wrapped_dataset = self._data[name] = DatasetWrapper(InMemoryDataset(obj.id, parent=self))
+            self.set_compression(name, wrapped_dataset.dataset.id.raw_data.compression)
+            self.set_compression_opts(name, wrapped_dataset.dataset.id.raw_data.compression_opts)
         elif isinstance(obj, Group):
             self._subgroups[name] = InMemoryGroup(obj.id)
         elif isinstance(obj, InMemoryGroup):
             self._subgroups[name] = obj
         elif isinstance(obj, DatasetLike):
             self._data[name] = obj
+            self.set_compression(name, obj.compression)
+            self.set_compression_opts(name, obj.compression_opts)
         else:
             self._data[name] = InMemoryArrayDataset(name, np.asarray(obj), parent=self)
 
@@ -447,6 +454,28 @@ class InMemoryDataset(Dataset):
     @property
     def data_dict(self):
         return self.id.data_dict
+
+    @property
+    def compression(self):
+        name = self.name
+        if self.parent.name in name:
+            name = name[len(self.parent.name)+1:]
+        return self.parent.compression[name]
+
+    @compression.setter
+    def compression(self, value):
+        self.parent.set_compression(self.item, value)
+
+    @property
+    def compression_opts(self):
+        name = self.name
+        if self.parent.name in name:
+            name = name[len(self.parent.name)+1:]
+        return self.parent.compression_opts[self.name]
+
+    @compression_opts.setter
+    def compression_opts(self, value):
+        self.parent.set_compression_opts(self.name, value)
 
     def as_dtype(self, name, dtype, parent, casting='unsafe'):
         """
@@ -821,14 +850,33 @@ class DatasetLike:
         for i in range(shape[0]):
             yield self[i]
 
-
     @property
     def compression(self):
-        return self.parent.compression[self.name]
+        name = self.name
+        if self.parent.name in name:
+            name = name[len(self.parent.name)+1:]
+        return self.parent.compression[name]
+
+    @compression.setter
+    def compression(self, value):
+        name = self.name
+        if self.parent.name in name:
+            name = name[len(self.parent.name)+1:]
+        self.parent.set_compression(name, value)
 
     @property
     def compression_opts(self):
-        return self.parent.compression_opts[self.name]
+        name = self.name
+        if self.parent.name in name:
+            name = name[len(self.parent.name)+1:]
+        return self.parent.compression_opts[name]
+
+    @compression_opts.setter
+    def compression_opts(self, value):
+        name = self.name
+        if self.parent.name in name:
+            name = name[len(self.parent.name)+1:]
+        self.parent.set_compression_opts(name, value)
 
 class InMemoryArrayDataset(DatasetLike):
     """
