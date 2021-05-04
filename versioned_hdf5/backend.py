@@ -388,11 +388,12 @@ def modify_metadata(f, dataset_name, chunks=None):
     newf = tmp_group(f)
     tmp_parent = InMemoryGroup(newf.create_group('__tmp_parent__').id)
 
-    recreate_dataset(f, dataset_name, newf, callback=callback)
+    try:
+        recreate_dataset(f, dataset_name, newf, callback=callback)
 
-    swap(f, newf)
-
-    del newf[newf.name]
+        swap(f, newf)
+    finally:
+        del newf[newf.name]
 
 def swap(old, new):
     """
