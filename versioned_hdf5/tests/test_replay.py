@@ -119,3 +119,39 @@ def test_modify_metadata_chunks(vfile):
 
     # Make sure the tmp group group has been destroyed.
     assert list(f['_version_data']) == ['test_data', 'test_data2', 'test_data3', 'versions']
+
+def test_modify_metadata_dtype(vfile):
+    setup_modify_metadata(vfile)
+
+    f = vfile.f
+
+    assert vfile['version1']['test_data'].dtype == np.float64
+    assert vfile['version2']['test_data'].dtype == np.float64
+
+    assert vfile['version1']['test_data2'].dtype == np.int64
+    assert vfile['version2']['test_data2'].dtype == np.int64
+
+    assert vfile['version2']['test_data3'].dtype == np.int64
+
+    assert f['_version_data']['test_data']['raw_data'].dtype == np.float64
+    assert f['_version_data']['test_data2']['raw_data'].dtype == np.int64
+    assert f['_version_data']['test_data3']['raw_data'].dtype == np.int64
+
+    modify_metadata(f, 'test_data2', dtype=np.float64)
+    check_modify_metadata_data(vfile)
+
+
+    assert vfile['version1']['test_data'].dtype == np.float64
+    assert vfile['version2']['test_data'].dtype == np.float64
+
+    assert vfile['version1']['test_data2'].dtype == np.float64
+    assert vfile['version2']['test_data2'].dtype == np.float64
+
+    assert vfile['version2']['test_data3'].dtype == np.int64
+
+    assert f['_version_data']['test_data']['raw_data'].dtype == np.float64
+    assert f['_version_data']['test_data2']['raw_data'].dtype == np.float64
+    assert f['_version_data']['test_data3']['raw_data'].dtype == np.int64
+
+    # Make sure the tmp group group has been destroyed.
+    assert list(f['_version_data']) == ['test_data', 'test_data2', 'test_data3', 'versions']
