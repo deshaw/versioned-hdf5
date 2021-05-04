@@ -370,6 +370,33 @@ def delete_version(f, version):
 
 def modify_metadata(f, dataset_name, *, chunks=None, compression=None,
                     compression_opts=None, dtype=None, fillvalue=None):
+
+    """
+    Modify metadata for a versioned dataset in-place.
+
+    The metadata is modified for all versions containing a dataset.
+
+    `f` should be the h5py file or versioned_hdf5 VersionedHDF5File object.
+
+    `dataset_name` is the name of the dataset in the version group(s).
+
+    Metadata that may be modified are
+
+    chunks: must be compatible with the array shape
+    compression: see h5py.Group.create_dataset()
+    compression_opts: see h5py.Group.create_dataset()
+    dtype: all data in the dataset is cast to the new dtype
+    fillvalue: see the note below
+
+    If set to `None` (the default), the give metadata is not modified.
+
+    Note for fillvalue, all values equal to the old fillvalue are updated to
+    be the new fillvalue, regardless of whether they are explicitly stored or
+    represented sparsely in the underlying HDF5 dataset. Also note that
+    datasets without an explicitly set fillvalue have a default fillvalue
+    equal to the default value of the dtype (e.g., 0. for float dtypes).
+
+    """
     from .wrappers import (InMemoryGroup, DatasetWrapper, InMemoryDataset,
                            InMemoryArrayDataset, InMemorySparseDataset)
     from .api import VersionedHDF5File
