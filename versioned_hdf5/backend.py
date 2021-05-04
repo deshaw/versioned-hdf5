@@ -462,7 +462,7 @@ def swap(old, new):
             # Invalidate any InMemoryGroups that point to these groups
             delete = []
             for bind in _groups:
-                if get_name(bind) and get_name(bind).startswith(get_name(old.id)) or get_name(bind).startswith(get_name(new.id)):
+                if get_name(bind) and (get_name(bind).startswith(get_name(old.id)) or get_name(bind).startswith(get_name(new.id))):
                     delete.append(bind)
             for d in delete:
                 del _groups[d]
