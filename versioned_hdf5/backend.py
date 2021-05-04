@@ -367,7 +367,7 @@ def delete_version(f, version):
 
     del newf[newf.name]
 
-def modify_metadata(f, dataset_name, chunks=None):
+def modify_metadata(f, dataset_name, chunks=None, compression=None, compression_opts=None):
     from .wrappers import (InMemoryGroup, DatasetWrapper, InMemoryDataset,
                            InMemoryArrayDataset)
 
@@ -380,6 +380,10 @@ def modify_metadata(f, dataset_name, chunks=None):
             new_dataset = InMemoryArrayDataset(name, dataset[()], tmp_parent,
                                                fillvalue=dataset.fillvalue,
                                                chunks=_chunks)
+            if compression:
+                new_dataset.compression = compression
+            if compression_opts:
+                new_dataset.compression_opts = compression_opts
         else:
             raise NotImplementedError(type(dataset))
 
