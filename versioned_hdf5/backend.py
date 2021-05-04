@@ -372,6 +372,10 @@ def modify_metadata(f, dataset_name, *, chunks=None, compression=None,
                     compression_opts=None, dtype=None, fillvalue=None):
     from .wrappers import (InMemoryGroup, DatasetWrapper, InMemoryDataset,
                            InMemoryArrayDataset, InMemorySparseDataset)
+    from .api import VersionedHDF5File
+
+    if isinstance(f, VersionedHDF5File):
+        f = f.f
 
     def callback(dataset, version_name):
         _chunks = chunks or dataset.chunks
