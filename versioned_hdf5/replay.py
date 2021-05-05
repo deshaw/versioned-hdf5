@@ -19,23 +19,26 @@ from .backend import (create_base_dataset, write_dataset,
 
 def recreate_dataset(f, name, newf, callback=None):
     """
-    Recreate dataset from all versions into newf
+    Recreate dataset from all versions into `newf`
 
-    newf should be a versioned hdf5 file/group that is already initialized (it
-    may or may not be in the same physical file as f).
+    `newf` should be a versioned hdf5 file/group that is already initialized
+    (it may or may not be in the same physical file as f). Typically `newf`
+    should be `tmp_group(f)` (see :func:`tmp_group`).
 
-    callback should be a function with the signature
+    `callback` should be a function with the signature
 
-    callback(dataset, version_name)
+        callback(dataset, version_name)
 
     It will be called on every dataset in every version. It should return the
     dataset to be used for the new version. The dataset and its containing
     group should not be modified in-place. If a new copy of a dataset is to be
     used, it should be one of the dataset classes in versioned_hdf5.wrappers,
     and should placed in a temporary group, which you may delete after
-    recreate_dataset() is done. The callback may also return None, in which
+    `recreate_dataset()` is done. The callback may also return None, in which
     case the dataset is deleted for the given version.
 
+    Note: this function is only for advanced usage. Typical use-cases should
+    use :func:`delete_version()` or :func:`modify_metadata()`.
     """
     if isinstance(f, VersionedHDF5File):
         f = f.f
@@ -92,6 +95,9 @@ def recreate_dataset(f, name, newf, callback=None):
                                    attrs=attrs, fillvalue=fillvalue)
 
 def tmp_group(f):
+    """
+    Create a temporary group in `f` for use with :func:`recreate_dataset`.
+    """
     if isinstance(f, VersionedHDF5File):
         f = f.f
 
@@ -109,7 +115,7 @@ def tmp_group(f):
 
 def delete_version(f, version):
     """
-    Completely delete the version `version` from the versioned file f.
+    Completely delete the version named `version` from the versioned file `f`.
 
     This function should be used instead of deleting the version group
     directly, as this will not delete the underlying data that is unique to
@@ -162,15 +168,15 @@ def modify_metadata(f, dataset_name, *, chunks=None, compression=None,
 
     Metadata that may be modified are
 
-    chunks: must be compatible with the array shape
-    compression: see h5py.Group.create_dataset()
-    compression_opts: see h5py.Group.create_dataset()
-    dtype: all data in the dataset is cast to the new dtype
-    fillvalue: see the note below
+    - `chunks`: must be compatible with the dataset shape
+    - `compression`: see `h5py.Group.create_dataset()`
+    - `compression_opts`: see `h5py.Group.create_dataset()`
+    - `dtype`: all data in the dataset is cast to the new dtype
+    - `fillvalue`: see the note below
 
-    If set to `None` (the default), the give metadata is not modified.
+    If set to `None` (the default), the given metadata is not modified.
 
-    Note for fillvalue, all values equal to the old fillvalue are updated to
+    Note for `fillvalue`, all values equal to the old fillvalue are updated to
     be the new fillvalue, regardless of whether they are explicitly stored or
     represented sparsely in the underlying HDF5 dataset. Also note that
     datasets without an explicitly set fillvalue have a default fillvalue
