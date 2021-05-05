@@ -106,7 +106,7 @@ def tmp_group(f):
 
 def delete_version(f, version):
     """
-    Completely delete version 'version' from the versioned file f
+    Completely delete the version `version` from the versioned file f.
     """
     if isinstance(f, VersionedHDF5File):
         f = f.f
