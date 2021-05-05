@@ -103,6 +103,9 @@ def tmp_group(f):
     return tmp
 
 def delete_version(f, version):
+    """
+    Completely delete version 'version' from the versioned file f
+    """
     versions = f['_version_data/versions']
 
     def callback(dataset, version_name):
