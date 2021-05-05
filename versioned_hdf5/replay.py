@@ -92,6 +92,9 @@ def recreate_dataset(f, name, newf, callback=None):
                                    attrs=attrs, fillvalue=fillvalue)
 
 def tmp_group(f):
+    if isinstance(f, VersionedHDF5File):
+        f = f.f
+
     if '__tmp__' not in f['_version_data']:
         tmp = f['_version_data'].create_group('__tmp__')
         initialize(tmp)
