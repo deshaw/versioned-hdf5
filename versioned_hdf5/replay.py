@@ -37,6 +37,8 @@ def recreate_dataset(f, name, newf, callback=None):
     case the dataset is deleted for the given version.
 
     """
+    if isinstance(f, VersionedHDF5File):
+        f = f.f
 
     raw_data = f['_version_data'][name]['raw_data']
 
@@ -106,6 +108,9 @@ def delete_version(f, version):
     """
     Completely delete version 'version' from the versioned file f
     """
+    if isinstance(f, VersionedHDF5File):
+        f = f.f
+
     versions = f['_version_data/versions']
 
     def callback(dataset, version_name):
