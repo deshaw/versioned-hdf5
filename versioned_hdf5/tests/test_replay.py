@@ -1,6 +1,6 @@
 import numpy as np
 
-from versioned_hdf5.backend import modify_metadata
+from versioned_hdf5.replay import modify_metadata
 
 def setup_modify_metadata(file):
     with file.stage_version('version1') as g:
