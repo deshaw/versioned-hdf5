@@ -1,6 +1,35 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.3 (2021-05-07)
+
+## Major Changes
+
+- Support h5py 3. h5py 2.10 is also still officially supported.
+
+- Add functionality to replay versions. This allows mutating old versions.
+
+- Add new helper functions {any}`delete_version` and {any}`modify_metadata`
+  to delete a version and modify metadata on a dataset that must be the same
+  across versions, such as chunk size or dtype.
+
+- Add helper function {any}`recreate_dataset` for more advanced version
+  replaying functionality.
+
+## Minor Changes
+
+- Disallow accessing vfile[version] before version has been committed. Doing
+  so previously could lead to inconsistencies.
+
+- Disallow accessing non-versioned groups from VersionedHDF5File.
+
+- Better error messages from VersionedHDF5File when the underlying file is
+  closed.
+
+- Remove codecov.
+
+- Some improvements to the benchmarking suite.
+
 ## 1.2.6 (2021-04-20)
 
 ## Minor Changes

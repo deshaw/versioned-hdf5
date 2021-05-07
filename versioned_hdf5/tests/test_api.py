@@ -525,6 +525,7 @@ def test_resize_unaligned(vfile):
             assert_equal(group[ds_name][:], np.arange((i + 1) * 1000))
 
 
+@mark.slow
 def test_resize_multiple_dimensions(tmp_path, h5file):
     # Test semantics against raw HDF5
 

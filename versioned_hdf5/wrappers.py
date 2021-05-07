@@ -90,13 +90,16 @@ class InMemoryGroup(Group):
             self._subgroups[name] = self.__class__(res.id)
             return self._subgroups[name]
         elif isinstance(res, Dataset):
-            self._data[name] = DatasetWrapper(InMemoryDataset(res.id, parent=self))
+            self._add_to_data(name, res)
             return self._data[name]
         else:
             raise NotImplementedError(f"Cannot handle {type(res)!r}")
 
     def __setitem__(self, name, obj):
         self._check_committed()
+        self._add_to_data(name, obj)
+
+    def _add_to_data(self, name, obj):
         dirname, basename = pp.split(name)
         if dirname:
             if dirname not in self:
@@ -105,13 +108,17 @@ class InMemoryGroup(Group):
             return
 
         if isinstance(obj, Dataset):
-            self._data[name] = DatasetWrapper(InMemoryDataset(obj.id, parent=self))
+            wrapped_dataset = self._data[name] = DatasetWrapper(InMemoryDataset(obj.id, parent=self))
+            self.set_compression(name, wrapped_dataset.dataset.id.raw_data.compression)
+            self.set_compression_opts(name, wrapped_dataset.dataset.id.raw_data.compression_opts)
         elif isinstance(obj, Group):
             self._subgroups[name] = InMemoryGroup(obj.id)
         elif isinstance(obj, InMemoryGroup):
             self._subgroups[name] = obj
         elif isinstance(obj, DatasetLike):
             self._data[name] = obj
+            self.set_compression(name, obj.compression)
+            self.set_compression_opts(name, obj.compression_opts)
         else:
             self._data[name] = InMemoryArrayDataset(name, np.asarray(obj), parent=self)
 
@@ -445,6 +452,60 @@ class InMemoryDataset(Dataset):
         self._attrs = dict(super().attrs)
 
     @property
+    def data_dict(self):
+        return self.id.data_dict
+
+    @property
+    def compression(self):
+        name = self.name
+        if self.parent.name in name:
+            name = name[len(self.parent.name)+1:]
+        return self.parent.compression[name]
+
+    @compression.setter
+    def compression(self, value):
+        self.parent.set_compression(self.item, value)
+
+    @property
+    def compression_opts(self):
+        name = self.name
+        if self.parent.name in name:
+            name = name[len(self.parent.name)+1:]
+        return self.parent.compression_opts[self.name]
+
+    @compression_opts.setter
+    def compression_opts(self, value):
+        self.parent.set_compression_opts(self.name, value)
+
+    def as_dtype(self, name, dtype, parent, casting='unsafe'):
+        """
+        Return a copy of `self` as a new dataset with the given `name` and `dtype`
+        in the group `parent`.
+
+        `casting` should be as in the numpy astype() method.
+
+        """
+        if self.fillvalue is not None:
+            new_fillvalue = self.fillvalue.astype(dtype, casting=casting)
+        else:
+            new_fillvalue = None
+        new_data_dict = {}
+        for c, index in self.data_dict.copy().items():
+            if isinstance(index, Slice):
+                self[c.raw]
+                assert not isinstance(self.data_dict[c], Slice)
+            new_data_dict[c] = self.data_dict[c].astype(dtype, casting=casting)
+        new_dataset = InMemorySparseDataset.from_data_dict(name,
+                                                           new_data_dict,
+                                                           shape=self.shape,
+                                                           dtype=dtype,
+                                                           parent=parent,
+                                                           chunks=self.chunks,
+                                                           fillvalue=new_fillvalue)
+        parent[name] = new_dataset
+        return new_dataset
+
+    @property
     def fillvalue(self):
          if super().fillvalue is not None:
              return super().fillvalue
@@ -741,7 +802,7 @@ class DatasetLike:
     @property
     def fillvalue(self):
          if self._fillvalue is not None:
-             return self._fillvalue
+             return np.array([self._fillvalue], dtype=self.dtype)[0]
          if self.dtype.metadata:
              # Custom h5py string dtype. Make sure to use a fillvalue of ''
              if 'vlen' in self.dtype.metadata:
@@ -789,14 +850,33 @@ class DatasetLike:
         for i in range(shape[0]):
             yield self[i]
 
-
     @property
     def compression(self):
-        return self.parent.compression[self.name]
+        name = self.name
+        if self.parent.name in name:
+            name = name[len(self.parent.name)+1:]
+        return self.parent.compression[name]
+
+    @compression.setter
+    def compression(self, value):
+        name = self.name
+        if self.parent.name in name:
+            name = name[len(self.parent.name)+1:]
+        self.parent.set_compression(name, value)
 
     @property
     def compression_opts(self):
-        return self.parent.compression_opts[self.name]
+        name = self.name
+        if self.parent.name in name:
+            name = name[len(self.parent.name)+1:]
+        return self.parent.compression_opts[name]
+
+    @compression_opts.setter
+    def compression_opts(self, value):
+        name = self.name
+        if self.parent.name in name:
+            name = name[len(self.parent.name)+1:]
+        self.parent.set_compression_opts(name, value)
 
 class InMemoryArrayDataset(DatasetLike):
     """
@@ -812,6 +892,16 @@ class InMemoryArrayDataset(DatasetLike):
         if chunks is None:
             chunks = parent.chunks[name]
         self._chunks = chunks
+
+    def as_dtype(self, name, dtype, parent, casting='unsafe'):
+        """
+        Return a copy of `self` as a new dataset with the given `name` and `dtype`
+        in the group `parent`.
+
+        `casting` should be as in the numpy astype() method.
+
+        """
+        return self.__class__(name, self.array.astype(dtype, casting=casting), parent=parent)
 
     @property
     def array(self):
@@ -896,6 +986,38 @@ class InMemorySparseDataset(DatasetLike):
         # with InMemoryDatasetID, but unlike it, missing data (which equals
         # the fill value) is omitted.
         self.data_dict = {}
+
+    def as_dtype(self, name, dtype, parent, casting='unsafe'):
+        """
+        Return a copy of `self` as a new dataset with the given `name` and `dtype`
+        in the group `parent`.
+
+        `casting` should be as in the numpy astype() method.
+
+        """
+        if self.fillvalue is not None:
+            new_fillvalue = self.fillvalue.astype(dtype, casting=casting)
+        else:
+            new_fillvalue = None
+        new_data_dict = {}
+        for c, index in self.data_dict.copy().items():
+            new_data_dict[c] = self.data_dict[c].astype(dtype, casting=casting)
+
+        return self.from_data_dict(name, new_data_dict, dtype=dtype,
+                                   parent=parent, fillvalue=new_fillvalue,
+                                   chunks=self.chunks, shape=self.shape)
+
+    @classmethod
+    def from_data_dict(cls, name, data_dict, *, shape, dtype, parent,
+                       chunks, fillvalue=None):
+        """
+        Create a InMemorySparseDataset from a data dict.
+
+        This does not do any consistency checks with the metadata provide.
+        """
+        dataset = cls(name, shape=shape, dtype=dtype, parent=parent, chunks=chunks, fillvalue=fillvalue)
+        dataset.data_dict = data_dict
+        return dataset
 
     @classmethod
     def from_dataset(cls, dataset, parent=None):

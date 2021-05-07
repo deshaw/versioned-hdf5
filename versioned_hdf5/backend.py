@@ -6,6 +6,9 @@ from .hashtable import Hashtable
 
 DEFAULT_CHUNK_SIZE = 2**12
 
+def normalize_dtype(dtype):
+    return np.array([], dtype=dtype).dtype
+
 def get_chunks(shape, dtype, chunk_size):
     # TODO: Implement this
     if len(shape) > 1:
@@ -38,9 +41,6 @@ def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
         shape = (shape,) if isinstance(shape, int) else tuple(shape)
         if data is not None and (np.product(shape, dtype=np.ulonglong) != np.product(data.shape, dtype=np.ulonglong)):
             raise ValueError("Shape tuple is incompatible with data")
-    if dtype is None:
-        # https://github.com/h5py/h5py/issues/1474
-        dtype = data.dtype
 
     ndims = len(shape)
     if isinstance(chunks, int) and not isinstance(chunks, bool):
@@ -51,6 +51,11 @@ def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
         else:
             raise NotImplementedError("chunks must be specified for multi-dimensional datasets")
     group = f['_version_data'].create_group(name)
+
+    if dtype is None:
+        # https://github.com/h5py/h5py/issues/1474
+        dtype = data.dtype
+    dtype = normalize_dtype(dtype)
     if dtype.metadata and ('vlen' in dtype.metadata or 'h5py_encoding' in dtype.metadata):
         # h5py string dtype
         # (https://h5py.readthedocs.io/en/2.10.0/strings.html). Setting the
@@ -67,12 +72,13 @@ def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
     dataset.attrs['chunks'] = chunks
     return write_dataset(f, name, data, chunks=chunks)
 
-def write_dataset(f, name, data, chunks=None, compression=None,
+def write_dataset(f, name, data, chunks=None, dtype=None, compression=None,
                   compression_opts=None, fillvalue=None):
 
     if name not in f['_version_data']:
-        return create_base_dataset(f, name, data=data, chunks=chunks,
-            compression=compression, compression_opts=compression_opts, fillvalue=fillvalue)
+        return create_base_dataset(f, name, data=data, dtype=dtype,
+                                   chunks=chunks, compression=compression,
+                                   compression_opts=compression_opts, fillvalue=fillvalue)
 
     ds = f['_version_data'][name]['raw_data']
     if isinstance(chunks, int) and not isinstance(chunks, bool):
@@ -82,6 +88,10 @@ def write_dataset(f, name, data, chunks=None, compression=None,
     else:
         if chunks != tuple(ds.attrs['chunks']):
             raise ValueError("Chunk size specified but doesn't match already existing chunk size")
+
+    if dtype is not None:
+        if dtype != ds.dtype:
+            raise ValueError("dtype specified but doesn't match already existing dtype")
 
     if compression and compression != ds.compression or compression_opts and compression_opts != ds.compression_opts:
         raise ValueError("Compression options can only be specified for the first version of a dataset")
