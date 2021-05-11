@@ -82,6 +82,7 @@ shapes = range(5, 25, 5) # 5, 10, 15, 20
 chunks = (10, 10, 10)
 @pytest.mark.parametrize('oldshape,newshape',
                          itertools.combinations_with_replacement(itertools.product(shapes, repeat=3), 2))
+@pytest.mark.slow
 def test_InMemoryArrayDataset_resize_multidimension(oldshape, newshape, h5file):
     # Test semantics against raw HDF5
     a = np.arange(np.product(oldshape)).reshape(oldshape)
