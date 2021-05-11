@@ -34,11 +34,16 @@
 
           <div class="body" role="main">
             
-  <div class="section" id="module-versioned_hdf5">
-<span id="api-documentation"></span><h1>API Documentation<a class="headerlink" href="#module-versioned_hdf5" title="Permalink to this headline">¶</a></h1>
+  <div class="section" id="api-documentation">
+<h1>API Documentation<a class="headerlink" href="#api-documentation" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="module-versioned_hdf5.api">
+<span id="versionedhdf5file"></span><h2>VersionedHDF5File<a class="headerlink" href="#module-versioned_hdf5.api" title="Permalink to this headline">¶</a></h2>
+<p>Public API functions</p>
+<p>Everything outside of this file is considered internal API and is subject to
+change.</p>
 <dl class="py class">
-<dt id="versioned_hdf5.VersionedHDF5File">
-<em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">versioned_hdf5.</span></code><code class="sig-name descname"><span class="pre">VersionedHDF5File</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">f</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File" title="Permalink to this definition">¶</a></dt>
+<dt id="versioned_hdf5.api.VersionedHDF5File">
+<em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">versioned_hdf5.api.</span></code><code class="sig-name descname"><span class="pre">VersionedHDF5File</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">f</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.api.VersionedHDF5File" title="Permalink to this definition">¶</a></dt>
 <dd><p>A Versioned HDF5 File</p>
 <p>This is the main entry-point of the library. To use a versioned HDF5 file,
 pass a h5py file to constructor. The methods on the resulting object can
@@ -60,7 +65,7 @@ this library could result in breaking things.</p>
 </pre></div>
 </div>
 <p>This returns a group containing the datasets for that version.</p>
-<p>To create a new version, use <a class="reference internal" href="#versioned_hdf5.VersionedHDF5File.stage_version" title="versioned_hdf5.VersionedHDF5File.stage_version"><code class="xref py py-func docutils literal notranslate"><span class="pre">stage_version()</span></code></a>.</p>
+<p>To create a new version, use <a class="reference internal" href="#versioned_hdf5.api.VersionedHDF5File.stage_version" title="versioned_hdf5.api.VersionedHDF5File.stage_version"><code class="xref py py-func docutils literal notranslate"><span class="pre">stage_version()</span></code></a>.</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">file</span><span class="o">.</span><span class="n">stage_version</span><span class="p">(</span><span class="s1">&#39;version2&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">group</span><span class="p">:</span> 
 <span class="gp">... </span>    <span class="n">group</span><span class="p">[</span><span class="s1">&#39;dataset&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="o">...</span> <span class="c1"># Modify the group</span>
 <span class="gp">...</span>
@@ -74,23 +79,23 @@ this library could result in breaking things.</p>
 <p>to close the <code class="code docutils literal notranslate"><span class="pre">VersionedHDF5File</span></code> object (note that the <code class="code docutils literal notranslate"><span class="pre">h5py</span></code> file object
 should be closed separately.)</p>
 <dl class="py method">
-<dt id="versioned_hdf5.VersionedHDF5File.close">
-<code class="sig-name descname"><span class="pre">close</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.close" title="Permalink to this definition">¶</a></dt>
+<dt id="versioned_hdf5.api.VersionedHDF5File.close">
+<code class="sig-name descname"><span class="pre">close</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.api.VersionedHDF5File.close" title="Permalink to this definition">¶</a></dt>
 <dd><p>Make sure the VersionedHDF5File object is no longer reachable.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt id="versioned_hdf5.VersionedHDF5File.current_version">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">current_version</span></code><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.current_version" title="Permalink to this definition">¶</a></dt>
+<dt id="versioned_hdf5.api.VersionedHDF5File.current_version">
+<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">current_version</span></code><a class="headerlink" href="#versioned_hdf5.api.VersionedHDF5File.current_version" title="Permalink to this definition">¶</a></dt>
 <dd><p>The current version.</p>
 <p>The current version is used as the default previous version to
-<a class="reference internal" href="#versioned_hdf5.VersionedHDF5File.stage_version" title="versioned_hdf5.VersionedHDF5File.stage_version"><code class="xref py py-func docutils literal notranslate"><span class="pre">stage_version()</span></code></a>, and is also used for negative integer version
+<a class="reference internal" href="#versioned_hdf5.api.VersionedHDF5File.stage_version" title="versioned_hdf5.api.VersionedHDF5File.stage_version"><code class="xref py py-func docutils literal notranslate"><span class="pre">stage_version()</span></code></a>, and is also used for negative integer version
 indexing (the current version is <code class="code docutils literal notranslate"><span class="pre">self[0]</span></code>).</p>
 </dd></dl>
 
 <dl class="py method">
-<dt id="versioned_hdf5.VersionedHDF5File.stage_version">
-<code class="sig-name descname"><span class="pre">stage_version</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">version_name</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prev_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">make_current</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timestamp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.VersionedHDF5File.stage_version" title="Permalink to this definition">¶</a></dt>
+<dt id="versioned_hdf5.api.VersionedHDF5File.stage_version">
+<code class="sig-name descname"><span class="pre">stage_version</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">version_name</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prev_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">make_current</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timestamp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.api.VersionedHDF5File.stage_version" title="Permalink to this definition">¶</a></dt>
 <dd><p>Return a context manager to stage a new version</p>
 <p>The context manager returns a group, which should be modified in-place
 to build the new version. When the context manager exits, the new
@@ -108,6 +113,81 @@ as the current version. The current version is used as the default
 
 </dd></dl>
 
+</div>
+<div class="section" id="version-replaying">
+<h2>Version Replaying<a class="headerlink" href="#version-replaying" title="Permalink to this headline">¶</a></h2>
+<p>The functions in this module allow replaying versions in a file in-place, in
+order to globally modify metadata across all versions that otherwise cannot be
+changed across versions, such as the dtype of a dataset. This also allows
+editing data in old versions, and deleting datasets or versions.</p>
+<span class="target" id="module-versioned_hdf5.replay"></span><dl class="py function">
+<dt id="versioned_hdf5.replay.delete_version">
+<code class="sig-prename descclassname"><span class="pre">versioned_hdf5.replay.</span></code><code class="sig-name descname"><span class="pre">delete_version</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">f</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">version</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.replay.delete_version" title="Permalink to this definition">¶</a></dt>
+<dd><p>Completely delete the version named <code class="code docutils literal notranslate"><span class="pre">version</span></code> from the versioned file <code class="code docutils literal notranslate"><span class="pre">f</span></code>.</p>
+<p>This function should be used instead of deleting the version group
+directly, as this will not delete the underlying data that is unique to
+the version.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt id="versioned_hdf5.replay.modify_metadata">
+<code class="sig-prename descclassname"><span class="pre">versioned_hdf5.replay.</span></code><code class="sig-name descname"><span class="pre">modify_metadata</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">f</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dataset_name</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">chunks</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">compression</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">compression_opts</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fillvalue</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.replay.modify_metadata" title="Permalink to this definition">¶</a></dt>
+<dd><p>Modify metadata for a versioned dataset in-place.</p>
+<p>The metadata is modified for all versions containing a dataset.</p>
+<p><code class="code docutils literal notranslate"><span class="pre">f</span></code> should be the h5py file or versioned_hdf5 VersionedHDF5File object.</p>
+<p><code class="code docutils literal notranslate"><span class="pre">dataset_name</span></code> is the name of the dataset in the version group(s).</p>
+<p>Metadata that may be modified are</p>
+<ul class="simple">
+<li><p><code class="code docutils literal notranslate"><span class="pre">chunks</span></code>: must be compatible with the dataset shape</p></li>
+<li><p><code class="code docutils literal notranslate"><span class="pre">compression</span></code>: see <code class="code docutils literal notranslate"><span class="pre">h5py.Group.create_dataset()</span></code></p></li>
+<li><p><code class="code docutils literal notranslate"><span class="pre">compression_opts</span></code>: see <code class="code docutils literal notranslate"><span class="pre">h5py.Group.create_dataset()</span></code></p></li>
+<li><p><code class="code docutils literal notranslate"><span class="pre">dtype</span></code>: all data in the dataset is cast to the new dtype</p></li>
+<li><p><code class="code docutils literal notranslate"><span class="pre">fillvalue</span></code>: see the note below</p></li>
+</ul>
+<p>If set to <code class="code docutils literal notranslate"><span class="pre">None</span></code> (the default), the given metadata is not modified.</p>
+<p>Note for <code class="code docutils literal notranslate"><span class="pre">fillvalue</span></code>, all values equal to the old fillvalue are updated to
+be the new fillvalue, regardless of whether they are explicitly stored or
+represented sparsely in the underlying HDF5 dataset. Also note that
+datasets without an explicitly set fillvalue have a default fillvalue
+equal to the default value of the dtype (e.g., 0. for float dtypes).</p>
+</dd></dl>
+
+<dl class="py function">
+<dt id="versioned_hdf5.replay.recreate_dataset">
+<code class="sig-prename descclassname"><span class="pre">versioned_hdf5.replay.</span></code><code class="sig-name descname"><span class="pre">recreate_dataset</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">f</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">newf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">callback</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.replay.recreate_dataset" title="Permalink to this definition">¶</a></dt>
+<dd><p>Recreate dataset from all versions into <code class="code docutils literal notranslate"><span class="pre">newf</span></code></p>
+<p><code class="code docutils literal notranslate"><span class="pre">newf</span></code> should be a versioned hdf5 file/group that is already initialized
+(it may or may not be in the same physical file as f). Typically <code class="code docutils literal notranslate"><span class="pre">newf</span></code>
+should be <code class="code docutils literal notranslate"><span class="pre">tmp_group(f)</span></code> (see <a class="reference internal" href="#versioned_hdf5.replay.tmp_group" title="versioned_hdf5.replay.tmp_group"><code class="xref py py-func docutils literal notranslate"><span class="pre">tmp_group()</span></code></a>).</p>
+<p><code class="code docutils literal notranslate"><span class="pre">callback</span></code> should be a function with the signature</p>
+<blockquote>
+<div><p>callback(dataset, version_name)</p>
+</div></blockquote>
+<p>It will be called on every dataset in every version. It should return the
+dataset to be used for the new version. The dataset and its containing
+group should not be modified in-place. If a new copy of a dataset is to be
+used, it should be one of the dataset classes in versioned_hdf5.wrappers,
+and should placed in a temporary group, which you may delete after
+<code class="code docutils literal notranslate"><span class="pre">recreate_dataset()</span></code> is done. The callback may also return None, in which
+case the dataset is deleted for the given version.</p>
+<p>Note: this function is only for advanced usage. Typical use-cases should
+use <a class="reference internal" href="#versioned_hdf5.replay.delete_version" title="versioned_hdf5.replay.delete_version"><code class="xref py py-func docutils literal notranslate"><span class="pre">delete_version()</span></code></a> or <a class="reference internal" href="#versioned_hdf5.replay.modify_metadata" title="versioned_hdf5.replay.modify_metadata"><code class="xref py py-func docutils literal notranslate"><span class="pre">modify_metadata()</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt id="versioned_hdf5.replay.swap">
+<code class="sig-prename descclassname"><span class="pre">versioned_hdf5.replay.</span></code><code class="sig-name descname"><span class="pre">swap</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">old</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">new</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.replay.swap" title="Permalink to this definition">¶</a></dt>
+<dd><p>Swap every dataset in old with the corresponding one in new</p>
+<p>Datasets in old that aren’t in new are ignored.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt id="versioned_hdf5.replay.tmp_group">
+<code class="sig-prename descclassname"><span class="pre">versioned_hdf5.replay.</span></code><code class="sig-name descname"><span class="pre">tmp_group</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">f</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#versioned_hdf5.replay.tmp_group" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a temporary group in <code class="code docutils literal notranslate"><span class="pre">f</span></code> for use with <a class="reference internal" href="#versioned_hdf5.replay.recreate_dataset" title="versioned_hdf5.replay.recreate_dataset"><code class="xref py py-func docutils literal notranslate"><span class="pre">recreate_dataset()</span></code></a>.</p>
+</dd></dl>
+
+</div>
 </div>
 
 
@@ -146,7 +226,11 @@ as the current version. The current version is used as the default
 <li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="performance.html">Performance</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">API Documentation</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">API Documentation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#module-versioned_hdf5.api">VersionedHDF5File</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#version-replaying">Version Replaying</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="design.html">Design</a></li>
 <li class="toctree-l1"><a class="reference internal" href="changelog.html">Versioned HDF5 Change Log</a></li>
 </ul>
