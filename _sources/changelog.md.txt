@@ -1,6 +1,13 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.3.1 (2021-05-20)
+
+## Minor Changes
+
+- Avoid some unnecessary precomputation in the hashtable object. This improves
+  the performance for files that have many versions in them.
+
 ## 1.3 (2021-05-07)
 
 ## Major Changes
