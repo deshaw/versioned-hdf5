@@ -84,7 +84,6 @@ class Hashtable(MutableMapping):
                                                  chunks=(self.chunk_size,),
                                                  maxshape=(None,))
         hash_table.attrs['largest_index'] = 0
-        self._d = {}
         self._indices = {}
 
     def _load_hashtable(self):
@@ -92,12 +91,13 @@ class Hashtable(MutableMapping):
         largest_index = hash_table.attrs['largest_index']
         hash_table_arr = hash_table[:largest_index]
         hashes = bytes(hash_table_arr['hash'])
-        shapes = hash_table_arr['shape']
-        self._d = {hashes[i*self.hash_size:(i+1)*self.hash_size]: Slice(*shapes[i]) for i in range(largest_index)}
-        self._indices = {k: i for i, k in enumerate(self._d)}
+        hashes = [hashes[i*self.hash_size:(i+1)*self.hash_size] for i in range(largest_index)]
+        self._indices = {k: i for i, k in enumerate(hashes)}
 
     def __getitem__(self, key):
-        return self._d[key]
+        i = self._indices[key]
+        shapes = self.hash_table['shape']
+        return Slice(*shapes[i])
 
     def __setitem__(self, key, value):
         if not isinstance(key, bytes):
@@ -117,7 +117,7 @@ class Hashtable(MutableMapping):
             raise ValueError("only step-1 slices are supported")
 
         kv = (list(key), (value.start, value.stop))
-        if key in self._d:
+        if key in self._indices:
             if bytes(self.hash_table[self._indices[key]])[0] != key:
                 raise ValueError("The key %s is already in the hashtable under another index.")
             self.hash_table[self._indices[key]] = kv
@@ -131,13 +131,12 @@ class Hashtable(MutableMapping):
                 new_hash_table = np.zeros(newshape, dtype=self.hash_table.dtype)
                 new_hash_table[:self.hash_table.shape[0]] = self.hash_table
                 self.hash_table = new_hash_table
-        self._d[key] = Slice(value)
 
     def __delitem__(self, key):
         raise NotImplementedError
 
     def __iter__(self):
-        return iter(self._d)
+        return iter(self._indices)
 
     def __len__(self):
-        return len(self._d)
+        return len(self._indices)
