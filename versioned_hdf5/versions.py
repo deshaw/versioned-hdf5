@@ -149,9 +149,9 @@ def commit_version(version_group, datasets, *,
                 raise ValueError("timestamp must be in UTC")
             version_group.attrs['timestamp'] = timestamp.strftime(TIMESTAMP_FMT)
         elif isinstance(timestamp, np.datetime64):
-            version_group.attrs['timestamp'] = f"{timestamp.astype(datetime.datetime)}+0000"
+            version_group.attrs['timestamp'] = timestamp.astype(datetime.datetime).replace(tzinfo=datetime.timezone.utc).strftime(TIMESTAMP_FMT)
         else:
-            raise TypeError("timestamp data must be either a datetime.datetime or numpy.datetime64 object")
+            raise TypeError("timestamp must be either a datetime.datetime or numpy.datetime64 object")
     else:
         ts = datetime.datetime.now(datetime.timezone.utc)
         version_group.attrs['timestamp'] = ts.strftime(TIMESTAMP_FMT)
@@ -191,9 +191,13 @@ def get_nth_previous_version(f, version_name, n):
 def get_version_by_timestamp(f, timestamp, exact=False):
     versions = f['_version_data/versions']
     if isinstance(timestamp, np.datetime64):
-        ts = f"{timestamp.astype(datetime.datetime)}+0000"
-    else:
+        ts = timestamp.astype(datetime.datetime).replace(tzinfo=datetime.timezone.utc).strftime(TIMESTAMP_FMT)
+    elif isinstance(timestamp, datetime.datetime):
+        if timestamp.tzinfo != datetime.timezone.utc:
+            raise ValueError("timestamp must be in UTC")
         ts = timestamp.strftime(TIMESTAMP_FMT)
+    else:
+        raise TypeError("timestamp must be either a datetime.datetime or numpy.datetime64 object")
     best_match = '__first_version__'
     best_ts = versions[best_match].attrs['timestamp']
     for version in versions:
