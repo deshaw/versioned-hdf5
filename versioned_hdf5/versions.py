@@ -145,7 +145,7 @@ def commit_version(version_group, datasets, *,
 
     if timestamp is not None:
         if isinstance(timestamp, datetime.datetime):
-            if timestamp.tzinfo != datetime.timezone.utc:
+            if timestamp.utcoffset() != datetime.timedelta(0):
                 raise ValueError("timestamp must be in UTC")
             version_group.attrs['timestamp'] = timestamp.strftime(TIMESTAMP_FMT)
         elif isinstance(timestamp, np.datetime64):
@@ -193,7 +193,7 @@ def get_version_by_timestamp(f, timestamp, exact=False):
     if isinstance(timestamp, np.datetime64):
         ts = timestamp.astype(datetime.datetime).replace(tzinfo=datetime.timezone.utc).strftime(TIMESTAMP_FMT)
     elif isinstance(timestamp, datetime.datetime):
-        if timestamp.tzinfo != datetime.timezone.utc:
+        if timestamp.utcoffset() != datetime.timedelta(0):
             raise ValueError("timestamp must be in UTC")
         ts = timestamp.strftime(TIMESTAMP_FMT)
     else:
