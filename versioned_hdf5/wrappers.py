@@ -1181,6 +1181,13 @@ class InMemoryDatasetID(h5d.DatasetID):
     def data_dict(self, value):
         self._data_dict = value
 
+    @property
+    def has_arrays(self):
+        if self._data_dict is None:
+            return False
+        return any(isinstance(i, np.ndarray) for i in
+                   self._data_dict.values())
+
     def set_extent(self, shape):
         raise NotImplementedError("Resizing an InMemoryDataset other than via resize()")
 
