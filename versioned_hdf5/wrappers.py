@@ -1197,6 +1197,3 @@ class InMemoryDatasetID(h5d.DatasetID):
 
     def write(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
         raise NotImplementedError("Writing to an InMemoryDataset other than via __setitem__")
-
-    def read(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
-        raise NotImplementedError("Reading from an InMemoryDataset other than via __getitem__")
