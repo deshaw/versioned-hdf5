@@ -640,6 +640,9 @@ class InMemoryDataset(Dataset):
 
         arr = np.ndarray(idx.newshape(self.shape), new_dtype, order='C')
 
+        if not self.id.has_arrays:
+            return super().__getitem__(args)
+
         for c in self.chunks.as_subchunks(idx, self.shape):
             if c not in self.id.data_dict:
                 fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
