@@ -50,7 +50,7 @@ jobs:
           set -e
 
           conda activate test-environment
-          python -We:invalid -We::SyntaxWarning -m compileall -f -q ndindex/
+          python -We:invalid -We::SyntaxWarning -m compileall -f -q versioned_hdf5/
           PYTEST_FLAGS="$PYTEST_FLAGS -v"
           pytest $PYTEST_FLAGS
           # Make sure it installs
