@@ -1190,8 +1190,9 @@ class InMemoryDatasetID(h5d.DatasetID):
         """
         Whether reading directly from the underlying dataset is OK
 
-        If this is True, then calling h5py.Dataset.__getitem__ on the Dataset
-        can be used, which may be faster than InMemoryDataset.__getitem__.
+        If this is True, then h5py.Dataset.__getitem__ can be used, which may
+        be faster than InMemoryDataset.__getitem__. This will happen in
+        particular when reading a read-only dataset.
 
         """
         if (self._data_dict is not None
