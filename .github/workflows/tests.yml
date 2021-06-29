@@ -1,0 +1,57 @@
+name: Tests
+on: [push, pull_request]
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.7', '3.8', '3.9']
+        h5py-version: ['2.10', '3']
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install Dependencies
+        run: |
+          set -x
+          set -e
+          # $CONDA is an environment variable pointing to the root of the miniconda directory
+          echo $CONDA/bin >> $GITHUB_PATH
+          conda config --set always_yes yes --set changeps1 no
+          conda config --add channels conda-forge
+          conda update -q conda
+          conda info -a
+          conda create -n test-environment python=${{ matrix.python-version }} h5py=${{ matrix.h5py-version }} numpy scipy ndindex>=1.5.1 pyflakes pytest pytest-doctestplus pytest-flakes doctr sphinx pytest-cov myst-parser graphviz
+          conda init
+
+      - name: Run Tests
+        run: |
+          # Copied from .bashrc. We can't just source .bashrc because it exits
+          # when the shell isn't interactive.
+
+          # >>> conda initialize >>>
+          # !! Contents within this block are managed by 'conda init' !!
+          __conda_setup="$('/usr/share/miniconda/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+          if [ $? -eq 0 ]; then
+              eval "$__conda_setup"
+          else
+              if [ -f "/usr/share/miniconda/etc/profile.d/conda.sh" ]; then
+                  . "/usr/share/miniconda/etc/profile.d/conda.sh"
+              else
+                  export PATH="/usr/share/miniconda/bin:$PATH"
+              fi
+          fi
+          unset __conda_setup
+          # <<< conda initialize <<<
+
+          set -x
+          set -e
+
+          conda activate test-environment
+          python -We:invalid -We::SyntaxWarning -m compileall -f -q versioned_hdf5/
+          PYTEST_FLAGS="$PYTEST_FLAGS -v"
+          pytest $PYTEST_FLAGS
+          # Make sure it installs
+          python setup.py install
