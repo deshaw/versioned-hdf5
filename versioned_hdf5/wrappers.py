@@ -640,7 +640,7 @@ class InMemoryDataset(Dataset):
 
         arr = np.ndarray(idx.newshape(self.shape), new_dtype, order='C')
 
-        if not self.id.has_arrays:
+        if self.id.can_read_direct:
             return super().__getitem__(args)
 
         for c in self.chunks.as_subchunks(idx, self.shape):
@@ -1113,6 +1113,7 @@ class InMemoryDatasetID(h5d.DatasetID):
         with phil:
             sid = self.get_space()
             self._shape = sid.get_simple_extent_dims()
+        self._reshaped = False
 
         attr = h5a.open(self, b'raw_data')
         htype = h5t.py_create(attr.dtype)
@@ -1185,11 +1186,20 @@ class InMemoryDatasetID(h5d.DatasetID):
         self._data_dict = value
 
     @property
-    def has_arrays(self):
-        if self._data_dict is None:
+    def can_read_direct(self):
+        """
+        Whether reading directly from the underlying dataset is OK
+
+        If this is True, then calling h5py.Dataset.__getitem__ on the Dataset
+        can be used, which may be faster than InMemoryDataset.__getitem__.
+
+        """
+        if (self._data_dict is not None
+            and any(isinstance(i, np.ndarray) for i in self._data_dict.values())):
             return False
-        return any(isinstance(i, np.ndarray) for i in
-                   self._data_dict.values())
+        if self._reshaped:
+            return False
+        return True
 
     def set_extent(self, shape):
         raise NotImplementedError("Resizing an InMemoryDataset other than via resize()")
@@ -1201,6 +1211,7 @@ class InMemoryDatasetID(h5d.DatasetID):
     @shape.setter
     def shape(self, size):
         self._shape = size
+        self._reshaped = True
 
     def _read_chunk(self, chunk_idx):
         return self.raw_data[chunk_idx]
