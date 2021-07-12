@@ -253,13 +253,16 @@ def swap(old, new):
             # recreate them, pointing to the new raw_data.
             oldd = old[name]
             newd = new[name]
+
             def _normalize(path):
                 return path if path.endswith('/') else path + '/'
+
             def _replace_prefix(path, name1, name2):
                 """Replace the prefix name1 with name2 in path"""
                 name1 = _normalize(name1)
                 name2 = _normalize(name2)
                 return name2 + path[len(name1):]
+
             def _new_vds_layout(d, name1, name2):
                 """Recreate a VirtualLayout for d, replacing name1 with name2 in the source dset name"""
                 virtual_sources = d.virtual_sources()
@@ -270,8 +273,15 @@ def swap(old, new):
                     dset_name = _replace_prefix(dset_name, name1, name2)
                     fname = fname.encode('utf-8')
                     new_vmap = VDSmap(vspace, fname, dset_name, src_space)
-                    layout.sources.append(new_vmap)
+                    # h5py 3.3 changed the VirtualLayout code. See
+                    # https://github.com/h5py/h5py/pull/1905.
+                    if hasattr(layout, 'sources'):
+                        layout.sources.append(new_vmap)
+                    else:
+                        layout.dcpl.set_virtual(vspace, fname,
+                                                dset_name.encode('utf-8'), src_space)
                 return layout
+
             old_layout = _new_vds_layout(oldd, old.name, new.name)
             new_layout = _new_vds_layout(newd, new.name, old.name)
             old_fillvalue = old[name].fillvalue
