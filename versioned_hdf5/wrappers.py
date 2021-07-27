@@ -662,7 +662,7 @@ class InMemoryDataset(Dataset):
 
     @with_phil
     def __setitem__(self, args, val):
-        """ Write to the HDF5 dataset from a Numpy array.
+        """ Write to the HDF5 dataset from a NumPy array.
 
         NumPy's broadcasting rules are honored, for "simple" indexing
         (slices and integers).  For advanced indexing, the shapes must
