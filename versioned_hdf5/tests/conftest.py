@@ -40,7 +40,8 @@ def h5file(tmp_path, request):
         raise
     except RuntimeError as e:
         if e.args[0] in ["Can't increment id ref count (can't locate ID)",
-                         "Unspecified error in H5Iget_type (return value <0)"]:
+                         "Unspecified error in H5Iget_type (return value <0)",
+                         "Can't retrieve file id (invalid data ID)"]:
             return
         raise
 
