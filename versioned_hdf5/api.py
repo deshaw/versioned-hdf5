@@ -178,6 +178,14 @@ class VersionedHDF5File:
         as the current version. The current version is used as the default
         `prev_version` for any future `stage_version` call.
 
+        `timestamp` may be a datetime.datetime or np.datetime64 timestamp for
+        the version. Note that datetime.datetime timestamps must be in the UTC
+        timezone (np.datetime64 timestamps are not timezone aware and are
+        assumed to be UTC). If `timestamp` is `None` (the default) the current
+        time when the context manager exits is used. When passing in a manual
+        timestamp, be aware that no consistency checks are made to ensure that
+        version timestamps are linear or not duplicated.
+
         """
         if self.closed:
             raise ValueError("File is closed")
