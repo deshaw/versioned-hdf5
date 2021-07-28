@@ -617,8 +617,8 @@ def test_timestamp_manual(vfile):
     data1 = np.ones((2*DEFAULT_CHUNK_SIZE,))
     data2 = np.ones((3*DEFAULT_CHUNK_SIZE))
 
-    ts1 = datetime.datetime(2020, 6, 29, 20, 12, 56, 2560, tzinfo=datetime.timezone.utc)
-    ts2 = datetime.datetime(2020, 6, 29, 22, 12, 56, 2560)
+    ts1 = datetime.datetime(2020, 6, 29, 20, 12, 56, tzinfo=datetime.timezone.utc)
+    ts2 = datetime.datetime(2020, 6, 29, 22, 12, 56)
     with vfile.stage_version('version1', timestamp=ts1) as group:
         group['test_data_1'] = data1
 
@@ -631,6 +631,50 @@ def test_timestamp_manual(vfile):
     with raises(TypeError):
         with vfile.stage_version('version3', timestamp='2020-6-29') as group:
             group['test_data_3'] = data1
+
+
+def test_timestamp_pytz(vfile):
+    # pytz is not a dependency of versioned-hdf5, but it is supported if it is
+    # used.
+    import pytz
+
+    data1 = np.ones((2*DEFAULT_CHUNK_SIZE,))
+    data2 = np.ones((3*DEFAULT_CHUNK_SIZE))
+
+    ts1 = datetime.datetime(2020, 6, 29, 20, 12, 56, tzinfo=pytz.utc)
+    ts2 = datetime.datetime(2020, 6, 29, 22, 12, 56)
+    with vfile.stage_version('version1', timestamp=ts1) as group:
+        group['test_data_1'] = data1
+
+    assert vfile['version1'].attrs['timestamp'] == ts1.strftime(TIMESTAMP_FMT)
+
+    with raises(ValueError):
+        with vfile.stage_version('version2', timestamp=ts2) as group:
+            group['test_data_2'] = data2
+
+    with raises(TypeError):
+        with vfile.stage_version('version3', timestamp='2020-6-29') as group:
+            group['test_data_3'] = data1
+
+
+def test_timestamp_manual_datetime64(vfile):
+    data = np.ones((2*DEFAULT_CHUNK_SIZE,))
+
+    # Also tests that it works correctly for 0 fractional part (issue #190).
+    ts = datetime.datetime(2020, 6, 29, 20, 12, 56, tzinfo=datetime.timezone.utc)
+    npts = np.datetime64(ts.replace(tzinfo=None))
+
+    with vfile.stage_version('version1', timestamp=npts) as group:
+        group['test_data'] = data
+
+    v1 = vfile['version1']
+
+    assert v1.attrs['timestamp'] == ts.strftime(TIMESTAMP_FMT)
+
+    assert vfile[npts] == v1
+    assert vfile[ts] == v1
+    assert vfile.get_version_by_timestamp(npts, exact=True) == v1
+    assert vfile.get_version_by_timestamp(ts, exact=True) == v1
 
 
 def test_getitem_by_timestamp(vfile):
@@ -701,7 +745,6 @@ def test_getitem_by_timestamp(vfile):
     raises(KeyError, lambda: vfile[dt0] == v1)
     raises(KeyError, lambda: vfile.get_version_by_timestamp(dt0) == v1)
     raises(KeyError, lambda: vfile.get_version_by_timestamp(dt0, exact=True))
-
 
 def test_nonroot(vfile):
     g = vfile.f.create_group('subgroup')
