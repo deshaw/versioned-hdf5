@@ -125,6 +125,7 @@ def write_dataset(f, name, data, chunks=None, dtype=None, compression=None,
 
             ds.resize((old_shape[0] + len(slices_to_write)*chunk_size,) + chunks[1:])
             for raw_slice, s in slices_to_write.items():
+                # idx = raw_slice.expand(ds.shape[:1] + s.newshape(data.shape)[1:])
                 data_s = data[s.raw]
                 idx = Tuple(raw_slice, *[slice(0, i) for i in data_s.shape[1:]])
                 ds[idx.raw] = data[s.raw]
@@ -199,8 +200,12 @@ def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fil
             if len(c.args[0]) != len(s):
                 raise ValueError(f"Inconsistent slices dictionary ({c.args[0]}, {s})")
 
+        # h5py 3.3 changed the VirtualLayout code. See
+        # https://github.com/h5py/h5py/pull/1905.
         layout = VirtualLayout(shape, dtype=raw_data.dtype)
-        # vs = VirtualSource('.', name=raw_data.name, shape=raw_data.shape, dtype=raw_data.dtype)
+        layout_has_sources = hasattr(layout, 'sources')
+        if not layout_has_sources:
+            vs = VirtualSource('.', name=raw_data.name, shape=raw_data.shape, dtype=raw_data.dtype)
 
         for c, s in slices.items():
             if c.isempty():
@@ -210,18 +215,18 @@ def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fil
             idx = Tuple(s, *S)
             # assert c.newshape(shape) == vs[idx.raw].shape, (c, shape, s)
 
-            # This is equivalent to
-            #
-            # layout[c.raw] = vs[idx.raw]
-            #
-            # But it is faster because vs[idx.raw] does a deepcopy(vs), which
-            # is slow.
-            vs_sel = select(raw_data_shape, idx.raw, None)
-            layout_sel = select(shape, c.raw, None)
-            layout.sources.append(VDSmap(layout_sel.id,
-                                   '.',
-                                   raw_data.name,
-                                   vs_sel.id))
+            if not layout_has_sources:
+                # TODO: Use a faster workaround here too
+                layout[c.raw] = vs[idx.raw]
+            else:
+                # This is equivalent, but it is faster because vs[idx.raw] does a deepcopy(vs), which
+                # is slow.
+                vs_sel = select(raw_data_shape, idx.raw, None)
+                layout_sel = select(shape, c.raw, None)
+                layout.sources.append(VDSmap(layout_sel.id,
+                                       '.',
+                                       raw_data.name,
+                                       vs_sel.id))
 
     dtype = raw_data.dtype
     if dtype.metadata and ('vlen' in dtype.metadata or 'h5py_encoding' in dtype.metadata):
