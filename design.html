@@ -5,12 +5,13 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
     <title>Design &#8212; Versioned HDF5  documentation</title>
-    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
-    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css" />
     <link rel="stylesheet" type="text/css" href="_static/graphviz.css" />
-    <script id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
     <script src="_static/jquery.js"></script>
     <script src="_static/underscore.js"></script>
     <script src="_static/doctools.js"></script>
@@ -34,7 +35,7 @@
 
           <div class="body" role="main">
             
-  <div class="section" id="design">
+  <section class="tex2jax_ignore mathjax_ignore" id="design">
 <h1>Design<a class="headerlink" href="#design" title="Permalink to this headline">¶</a></h1>
 <p>Versioned-hdf5 is built as a wrapper on top of h5py. The basic idea behind the
 design is that versioned-hdf5 is a
@@ -144,7 +145,7 @@ Since virtual datasets act exactly like real datasets and operate at the HDF5
 level, each version is a real group in the HDF5 file that is exactly that
 version. However, these groups should be treated as read-only, and you should
 never access them outside of the versioned-hdf5 API (see below).</p>
-<div class="section" id="hdf5-file-layout">
+<section id="hdf5-file-layout">
 <h2>HDF5 File Layout<a class="headerlink" href="#hdf5-file-layout" title="Permalink to this headline">¶</a></h2>
 <p>Inside of the HDF5 file, there is a special <code class="docutils literal notranslate"><span class="pre">_versioned_data</span></code> group that holds
 all the internal data for versioned-hdf5. This group contains a <code class="docutils literal notranslate"><span class="pre">versions</span></code>
@@ -177,12 +178,12 @@ The HDF5 layout would look like this</p>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">__first_version__</span></code> is an empty group that exists only for internal
 bookkeeping purposes (see below).</p>
-</div>
-<div class="section" id="submodule-organization">
+</section>
+<section id="submodule-organization">
 <h2>Submodule Organization<a class="headerlink" href="#submodule-organization" title="Permalink to this headline">¶</a></h2>
 <p>The versioned-hdf5 code is split into four layers, the backend, the versions,
 the h5py wrappers, and the top-level API.</p>
-<div class="section" id="backend">
+<section id="backend">
 <h3>Backend<a class="headerlink" href="#backend" title="Permalink to this headline">¶</a></h3>
 <p>The backend layer is the bottommost layer. It is the only layer that does
 actual dataset writes to HDF5. It deals with the splitting of chunks from the
@@ -207,8 +208,8 @@ in the version group pointing to corresponding chunks in the raw dataset.
 dataset the first time it is created in a version.</p>
 <p><code class="docutils literal notranslate"><span class="pre">versioned_hdf5.hashtable</span></code> contains a <code class="docutils literal notranslate"><span class="pre">Hashtable</span></code> object that wraps the
 hashtable dataset in HDF5 as a dict-like object.</p>
-</div>
-<div class="section" id="versions">
+</section>
+<section id="versions">
 <h3>Versions<a class="headerlink" href="#versions" title="Permalink to this headline">¶</a></h3>
 <p>Each version is stored as a subgroup of the <code class="docutils literal notranslate"><span class="pre">_versioned_data/versions/</span></code> group.
 The group contains attributes that reference the previous version, as well as
@@ -228,8 +229,8 @@ a version, and access and manipulate versions. The main function here is
 <code class="docutils literal notranslate"><span class="pre">versioned_hdf5.versions.commit_version()</span></code>, which is called with all the
 datasets that should be committed to the new version when the
 <code class="docutils literal notranslate"><span class="pre">VersionedHDF5File.stage_version()</span></code> context manager exits.</p>
-</div>
-<div class="section" id="h5py-wrappers">
+</section>
+<section id="h5py-wrappers">
 <h3>h5py Wrappers<a class="headerlink" href="#h5py-wrappers" title="Permalink to this headline">¶</a></h3>
 <p>One minor issue with the copy-on-write idea is that HDF5 does have a native
 way to make virtual datasets read-only. If you modify a virtual dataset, it
@@ -279,8 +280,8 @@ cleaner.</p>
 so that the user can use them just as they would the real h5py objects. Any
 discrepancy between h5py and versioned-hdf5 semantics should be considered a
 bug in versioned-hdf5.</p>
-</div>
-<div class="section" id="top-level-api">
+</section>
+<section id="top-level-api">
 <h3>Top-level API<a class="headerlink" href="#top-level-api" title="Permalink to this headline">¶</a></h3>
 <p>The top-level API consists of one object, <a class="reference internal" href="reference.html#versioned_hdf5.api.VersionedHDF5File" title="versioned_hdf5.api.VersionedHDF5File"><code class="xref any py py-class docutils literal notranslate"><span class="pre">VersionedHDF5File</span></code></a>. This object
 allows accessing versions via getitem, like
@@ -313,9 +314,9 @@ treated as read-only. The versioned-hdf5 objects have some safeguards to
 prevent accidentally writing to existing versioned data, but the underlying
 h5py has no such safeguards, since there are no notions of read-only datasets
 in HDF5 itself, so these safeguards should not be relied on.</p>
-</div>
-</div>
-</div>
+</section>
+</section>
+</section>
 
 
           </div>
@@ -348,7 +349,7 @@ in HDF5 itself, so these safeguards should not be relied on.</p>
 
 
 <h3>Navigation</h3>
-<p class="caption"><span class="caption-text">Contents:</span></p>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
@@ -375,7 +376,7 @@ in HDF5 itself, so these safeguards should not be relied on.</p>
   <h3 id="searchlabel">Quick search</h3>
     <div class="searchformwrapper">
     <form class="search" action="search.html" method="get">
-      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
       <input type="submit" value="Go" />
     </form>
     </div>
@@ -398,7 +399,7 @@ in HDF5 itself, so these safeguards should not be relied on.</p>
       &copy;2020, Quansight.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.5.4</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 4.1.2</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |
