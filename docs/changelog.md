@@ -10,6 +10,9 @@ Versioned HDF5 Change Log
 
 - Fix Versioned HDF5 to work with h5py 3.3.
 
+- Fix an issue that would occur when using np.datetime64 objects for
+  timestamps when the fractional part of the second was exactly 0.
+
 ## 1.3.1 (2021-05-20)
 
 ## Minor Changes
