@@ -640,6 +640,9 @@ class InMemoryDataset(Dataset):
 
         arr = np.ndarray(idx.newshape(self.shape), new_dtype, order='C')
 
+        if self.id.can_read_direct:
+            return super().__getitem__(args)
+
         for c in self.chunks.as_subchunks(idx, self.shape):
             if c not in self.id.data_dict:
                 fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
@@ -659,7 +662,7 @@ class InMemoryDataset(Dataset):
 
     @with_phil
     def __setitem__(self, args, val):
-        """ Write to the HDF5 dataset from a Numpy array.
+        """ Write to the HDF5 dataset from a NumPy array.
 
         NumPy's broadcasting rules are honored, for "simple" indexing
         (slices and integers).  For advanced indexing, the shapes must
@@ -1110,6 +1113,7 @@ class InMemoryDatasetID(h5d.DatasetID):
         with phil:
             sid = self.get_space()
             self._shape = sid.get_simple_extent_dims()
+        self._reshaped = False
 
         attr = h5a.open(self, b'raw_data')
         htype = h5t.py_create(attr.dtype)
@@ -1181,6 +1185,23 @@ class InMemoryDatasetID(h5d.DatasetID):
     def data_dict(self, value):
         self._data_dict = value
 
+    @property
+    def can_read_direct(self):
+        """
+        Whether reading directly from the underlying dataset is OK
+
+        If this is True, then h5py.Dataset.__getitem__ can be used, which may
+        be faster than InMemoryDataset.__getitem__. This will happen in
+        particular when reading a read-only dataset.
+
+        """
+        if (self._data_dict is not None
+            and any(isinstance(i, np.ndarray) for i in self._data_dict.values())):
+            return False
+        if self._reshaped:
+            return False
+        return True
+
     def set_extent(self, shape):
         raise NotImplementedError("Resizing an InMemoryDataset other than via resize()")
 
@@ -1191,12 +1212,10 @@ class InMemoryDatasetID(h5d.DatasetID):
     @shape.setter
     def shape(self, size):
         self._shape = size
+        self._reshaped = True
 
     def _read_chunk(self, chunk_idx):
         return self.raw_data[chunk_idx]
 
     def write(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
         raise NotImplementedError("Writing to an InMemoryDataset other than via __setitem__")
-
-    def read(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
-        raise NotImplementedError("Reading from an InMemoryDataset other than via __getitem__")
