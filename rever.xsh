@@ -34,10 +34,16 @@ $ACTIVITIES = [
             'annotated_tag', # Creates a tag for the new version number
             'push_tag',  # Pushes the tag up to the $TAG_REMOTE
             # 'ghrelease',  # Creates a Github release entry for the new tag
-            'pypi'  # Sends the package to pypi
+            'pypi',  # Sends the package to pypi
+            'ghpages',
 ]
 
 $PUSH_TAG_REMOTE = 'git@github.com:deshaw/versioned-hdf5.git'  # Repo to push tags to
 
 $GITHUB_ORG = 'deshaw'  # Github org for Github releases and conda-forge
 $GITHUB_REPO = 'versioned-hdf5'  # Github repo for Github releases and conda-forge
+
+$GHPAGES_REPO = 'git@github.com:deshaw/versioned-hdf5.git'
+$GHPAGES_COPY = $GHPAGES_COPY = (
+    ('docs/_build/html', '$GHPAGES_REPO_DIR'),
+)
