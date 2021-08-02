@@ -1782,3 +1782,20 @@ def test_datasetwrapper(vfile):
         assert isinstance(sv['bar'].dataset, InMemoryArrayDataset)
         assert sv['bar'].attrs['key'] == 1
         assert sv['bar'].chunks == (2,)
+
+def test_mask_reading(tmp_path):
+    # Reading a virtual dataset with a mask does not work in HDF5, so make
+    # sure it still works for versioned datasets.
+    file_name = os.path.join(tmp_path, 'file.hdf5')
+
+    with h5py.File(file_name, 'w') as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version('r0') as sv:
+            sv.create_dataset('bar', data=[1, 2, 3], chunks=(2,))
+
+    with h5py.File(file_name, 'r') as f:
+        vf = VersionedHDF5File(f)
+        sv = vf['r0']
+        mask = np.array([True, True, False], dtype='bool')
+        b = sv['bar'][mask]
+        assert_equal(b, [1, 2])
