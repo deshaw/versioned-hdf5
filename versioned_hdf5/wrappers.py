@@ -636,12 +636,18 @@ class InMemoryDataset(Dataset):
 
         # === END CODE FROM h5py.Dataset.__getitem__ ===
 
+        if self.id.can_read_direct:
+            try:
+                return super().__getitem__(args)
+            except OSError as e:
+                if 'not currently supported' in str(e):
+                    # args is an index type that HDF5 doesn't support for
+                    # virtual datasets (such as a boolean mask)
+                    pass
+
         idx = ndindex(args).reduce(self.shape)
 
         arr = np.ndarray(idx.newshape(self.shape), new_dtype, order='C')
-
-        if self.id.can_read_direct:
-            return super().__getitem__(args)
 
         for c in self.chunks.as_subchunks(idx, self.shape):
             if c not in self.id.data_dict:
