@@ -1,6 +1,12 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.3.3 (2021-07-02)
+
+## Minor Changes
+
+- Fix a regression that prevented indexing a dataset with a mask from working.
+
 ## 1.3.2 (2021-07-28)
 
 ## Minor Changes

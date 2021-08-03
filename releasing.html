@@ -1,0 +1,176 @@
+<!-- See https://github.com/bitprophet/alabaster/issues/166 -->
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+    <title>Releasing &#8212; Versioned HDF5  documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css" />
+    <link rel="stylesheet" type="text/css" href="_static/graphviz.css" />
+    <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/doctools.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Versioned HDF5 Change Log" href="changelog.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section class="tex2jax_ignore mathjax_ignore" id="releasing">
+<h1>Releasing<a class="headerlink" href="#releasing" title="Permalink to this headline">¶</a></h1>
+<section id="steps-before-a-release">
+<h2>Steps before a release<a class="headerlink" href="#steps-before-a-release" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li><p>Before making a release, you need to make a changelog with the changes. The
+changelog is in <code class="docutils literal notranslate"><span class="pre">docs/changelog.md</span></code> (see <a class="reference internal" href="changelog.html"><span class="doc">Versioned HDF5 Change Log</span></a>).</p></li>
+<li><p>It’s a good idea to push up your changes as a GitHub PR before doing the
+final release cut so that the CI runs all the tests. You can merge the PR
+once the release is made.</p></li>
+<li><p>Make sure to update version pinning in setup.py if necessary, e.g., if the
+minimum supported version of h5py or ndindex has changed.</p></li>
+</ul>
+</section>
+<section id="doing-the-release">
+<h2>Doing the release<a class="headerlink" href="#doing-the-release" title="Permalink to this headline">¶</a></h2>
+<p>Versioned HDF5 uses <a class="reference external" href="https://regro.github.io/rever-docs/">rever</a> for releases.
+To do a release, install rever then run</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ rever &lt;VERSION&gt;
+</pre></div>
+</div>
+<p>where <code class="docutils literal notranslate"><span class="pre">&lt;VERSION&gt;</span></code> is the version number for the release, like <code class="docutils literal notranslate"><span class="pre">rever</span> <span class="pre">1.0</span></code>.</p>
+<p>This will automatically run all the steps in the <code class="docutils literal notranslate"><span class="pre">rever.xsh</span></code> file.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>If you see an error like <code class="docutils literal notranslate"><span class="pre">json.decoder.JSONDecodeError:</span> <span class="pre">Expecting</span> <span class="pre">value:</span> <span class="pre">line</span> <span class="pre">1</span> <span class="pre">column</span> <span class="pre">1</span> <span class="pre">(char</span> <span class="pre">0)</span></code> this is due to a <a class="reference external" href="https://github.com/regro/rever/issues/229">bug in
+rever</a>. Simply run the <code class="docutils literal notranslate"><span class="pre">rever</span></code>
+command again and it will pisk up where it left off.</p>
+</div>
+<p>You will need push access to
+<a class="reference external" href="https://github.com/deshaw/versioned-hdf5/pull/202">GitHub</a> to push the tag
+and push access to <a class="reference external" href="https://pypi.org/project/versioned-hdf5/">PyPI</a> to push up
+the release tarball. If you have never done a release before, the script will
+ask you to authenticate.</p>
+</section>
+<section id="updating-conda-forge">
+<h2>Updating conda-forge<a class="headerlink" href="#updating-conda-forge" title="Permalink to this headline">¶</a></h2>
+<p>The bot will make a pull request to the <a class="reference external" href="https://github.com/conda-forge/versioned-hdf5-feedstock/pulls">conda-forge
+feedstock</a>
+automatically. You will need to be listed as a maintainer in the recipe to be
+able to merge it. If you aren’t, make a PR adding yourself.</p>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">Versioned HDF5</a></h1>
+
+
+
+
+
+
+
+
+
+
+    
+
+<p>
+<a class="badge" href="https://travis-ci.org/deshaw/versioned-hdf5">
+    <img
+        alt="https://secure.travis-ci.org/deshaw/versioned-hdf5.svg?branch=master"
+        src="https://secure.travis-ci.org/deshaw/versioned-hdf5.svg?branch=master"
+    />
+</a>
+</p>
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="performance.html">Performance</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reference.html">API Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="design.html">Design</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Versioned HDF5 Change Log</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Releasing</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#steps-before-a-release">Steps before a release</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#doing-the-release">Doing the release</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#updating-conda-forge">Updating conda-forge</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="changelog.html" title="previous chapter">Versioned HDF5 Change Log</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    
+    <div class="footer">
+      &copy;2020, Quansight.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 4.1.2</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="_sources/releasing.md.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+    <span id="forkongithub"><a href="https://github.com/deshaw/versioned-hdf5">Fork me on GitHub</a></span>
+  </body>
+</html>
