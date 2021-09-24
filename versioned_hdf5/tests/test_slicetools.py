@@ -24,7 +24,7 @@ def test_spaceid_to_slice(h5file):
                     sel = Selection((shape,), spaceid)
                     try:
                         a[sel]
-                    except ValueError:
+                    except (ValueError, OSError):
                         # HDF5 doesn't allow stride/count combinations
                         # that are impossible (the count must be the exact
                         # number of elements in the selected block).
