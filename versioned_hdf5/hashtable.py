@@ -22,8 +22,8 @@ class Hashtable(MutableMapping):
     where setdefault will insert the hash into the table if it
     doesn't exist, and return the existing entry otherwise.
 
-    hashtable.largest_index is the largest index in the array that has slices
-    mapped to it.
+    hashtable.largest_index is the next index in the array that slices
+    should be mapped to.
 
     Note that for performance reasons, the hashtable does not write to the
     dataset until you call write() or it exit as a context manager.
@@ -61,8 +61,14 @@ class Hashtable(MutableMapping):
         self._largest_index = value
 
     def write(self):
+        largest_index = self.largest_index
+        if largest_index >= self.hash_table_dataset.shape[0]:
+            self.hash_table_dataset.resize((largest_index,))
+
+        # largest_index is here for backwards compatibility for when the hash
+        # table shape used to always be chunk_size aligned.
         self.hash_table_dataset.attrs['largest_index'] = self.largest_index
-        self.hash_table_dataset[:] = self.hash_table
+        self.hash_table_dataset[:largest_index] = self.hash_table[:largest_index]
 
     def __enter__(self):
         return self
@@ -80,7 +86,7 @@ class Hashtable(MutableMapping):
         # bytes, not number of elements)
         dtype = np.dtype([('hash', 'B', (self.hash_size,)), ('shape', 'i8', (2,))])
         hash_table = f['_version_data'][name].create_dataset('hash_table',
-                                                 shape=(self.chunk_size,), dtype=dtype,
+                                                 shape=(1,), dtype=dtype,
                                                  chunks=(self.chunk_size,),
                                                  maxshape=(None,))
         hash_table.attrs['largest_index'] = 0
@@ -127,7 +133,6 @@ class Hashtable(MutableMapping):
             self.largest_index += 1
             if self.largest_index >= self.hash_table.shape[0]:
                 newshape = (self.hash_table.shape[0] + self.chunk_size,)
-                self.hash_table_dataset.resize(newshape)
                 new_hash_table = np.zeros(newshape, dtype=self.hash_table.dtype)
                 new_hash_table[:self.hash_table.shape[0]] = self.hash_table
                 self.hash_table = new_hash_table
