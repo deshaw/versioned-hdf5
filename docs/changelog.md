@@ -1,15 +1,22 @@
 Versioned HDF5 Change Log
 =========================
 
-## 1.3.3 (2021-07-02)
+## 1.3.4 (2021-09-27)
 
 ## Minor Changes
+
+- Make the hashtable dataset much smaller for datasets with no data or version
+  history.
+
+## 1.3.3 (2021-07-02)
+
+### Minor Changes
 
 - Fix a regression that prevented indexing a dataset with a mask from working.
 
 ## 1.3.2 (2021-07-28)
 
-## Minor Changes
+### Minor Changes
 
 - Improve the performance of reading a reading a dataset that hasn't been
   written to (e.g., reading from an already committed version).
@@ -21,14 +28,14 @@ Versioned HDF5 Change Log
 
 ## 1.3.1 (2021-05-20)
 
-## Minor Changes
+### Minor Changes
 
 - Avoid some unnecessary precomputation in the hashtable object. This improves
   the performance for files that have many versions in them.
 
 ## 1.3 (2021-05-07)
 
-## Major Changes
+### Major Changes
 
 - Support h5py 3. h5py 2.10 is also still officially supported.
 
@@ -41,7 +48,7 @@ Versioned HDF5 Change Log
 - Add helper function {any}`recreate_dataset` for more advanced version
   replaying functionality.
 
-## Minor Changes
+### Minor Changes
 
 - Disallow accessing vfile[version] before version has been committed. Doing
   so previously could lead to inconsistencies.
@@ -57,7 +64,7 @@ Versioned HDF5 Change Log
 
 ## 1.2.6 (2021-04-20)
 
-## Minor Changes
+### Minor Changes
 
 - Fix a bug where chunks could be deleted from a dataset.
 
@@ -65,13 +72,13 @@ Versioned HDF5 Change Log
 
 ## 1.2.5 (2021-04-15)
 
-## Minor Changes
+### Minor Changes
 
 - Fix a bug where attrs could be deleted from a dataset.
 
 ## 1.2.4 (2021-04-08)
 
-## Major Changes
+### Major Changes
 
 - Many improvements to performance throughout the library, particularly for
   datasets with many chunks, and for looking up versions by timestamp. This
