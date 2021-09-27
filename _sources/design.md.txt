@@ -233,7 +233,7 @@ objects are
 
 `InMemoryGroup`: This is the object returned by the
 `VersionedHDF5File.stage_version()` context manager. It acts like an
-`h5py.Group` object, but all data is stored in memory. This is done efficiency
+`h5py.Group` object, but all data is stored in memory. This is done efficiently
 so that only data that is modified is actually read in from the file. This
 object is also used for any subgroups of the version group. The primary
 purpose of this object is to keep track of what has been modified while a

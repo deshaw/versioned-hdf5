@@ -245,7 +245,7 @@ corruption, as common data is shared between versions.</p>
 objects are</p>
 <p><code class="docutils literal notranslate"><span class="pre">InMemoryGroup</span></code>: This is the object returned by the
 <code class="docutils literal notranslate"><span class="pre">VersionedHDF5File.stage_version()</span></code> context manager. It acts like an
-<code class="docutils literal notranslate"><span class="pre">h5py.Group</span></code> object, but all data is stored in memory. This is done efficiency
+<code class="docutils literal notranslate"><span class="pre">h5py.Group</span></code> object, but all data is stored in memory. This is done efficiently
 so that only data that is modified is actually read in from the file. This
 object is also used for any subgroups of the version group. The primary
 purpose of this object is to keep track of what has been modified while a
@@ -400,7 +400,7 @@ in HDF5 itself, so these safeguards should not be relied on.</p>
       &copy;2020, Quansight.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 4.1.2</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 4.2.0</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |
