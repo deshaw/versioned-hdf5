@@ -18,18 +18,17 @@ def pytest_collection_modifyitems(items):
 @fixture
 def h5file(tmp_path, request):
     file_name = os.path.join(tmp_path, 'file.hdf5')
-    name = None
     version_name = None
     m = request.node.get_closest_marker('setup_args')
     if m is not None:
         if 'file_name' in m.kwargs.keys():
             file_name = m.kwargs['file_name']
         if 'name' in m.kwargs.keys():
-            name = m.kwargs['name']
+            raise ValueError("The name argument is no longer used")
         if 'version_name' in m.kwargs.keys():
             version_name = m.kwargs['version_name']
 
-    f = setup(file_name=file_name, name=name, version_name=version_name)
+    f = setup(file_name=file_name, version_name=version_name)
     yield f
     try:
         f.close()

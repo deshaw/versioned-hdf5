@@ -1488,7 +1488,7 @@ def test_empty(vfile):
 
 
 def test_read_only():
-    with setup('test.hdf5', 'w') as f:
+    with setup('test.hdf5') as f:
         file = VersionedHDF5File(f)
         timestamp = datetime.datetime.now(datetime.timezone.utc)
         with file.stage_version('version1', timestamp=timestamp) as g:
@@ -1611,7 +1611,7 @@ def test_auto_create_group(vfile):
     assert_equal(vfile['version1']['a']['b']['c'][:], [0, 1, 2])
 
 def test_scalar():
-    with setup('test.hdf5', 'w') as f:
+    with setup('test.hdf5') as f:
         vfile = VersionedHDF5File(f)
         with vfile.stage_version('version1') as g:
             dtype = h5py.special_dtype(vlen=bytes)
