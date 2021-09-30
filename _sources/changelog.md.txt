@@ -1,6 +1,12 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.3.5 (2021-09-30)
+
+## Minor Changes
+
+- Fix a bug with the hashtable introduced in 1.3.4.
+
 ## 1.3.4 (2021-09-27)
 
 ## Minor Changes
