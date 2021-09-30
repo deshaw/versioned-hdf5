@@ -1,10 +1,12 @@
 from pytest import raises
 
 import numpy as np
+import h5py
 
 from ..backend import create_base_dataset
 from ..hashtable import Hashtable
-
+from .helpers import setup
+from .. import VersionedHDF5File
 
 def test_hashtable(h5file):
     create_base_dataset(h5file, 'test_data', data=np.empty((0,)))
@@ -33,3 +35,16 @@ def test_hashtable_multidimension(h5file):
     create_base_dataset(h5file, 'test_data', data=np.empty((0,)))
     h = Hashtable(h5file, 'test_data')
     assert h.hash(np.ones((1, 2, 3,))) != h.hash(np.ones((3, 2, 1)))
+
+def test_issue_208():
+    with setup('test.h5') as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version('0') as sv:
+            sv.create_dataset('bar', data=np.arange(10))
+
+    with h5py.File('test.h5', 'r+') as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version('1') as sv:
+            sv['bar'].resize((12,))
+            sv['bar'][8:12] = sv['bar'][6:10]
+            sv['bar'][6:8] = [0, 0]

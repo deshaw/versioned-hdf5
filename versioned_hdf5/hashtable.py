@@ -128,14 +128,14 @@ class Hashtable(MutableMapping):
                 raise ValueError("The key %s is already in the hashtable under another index.")
             self.hash_table[self._indices[key]] = kv
         else:
-            self.hash_table[self.largest_index] = kv
-            self._indices[key] = self.largest_index
-            self.largest_index += 1
             if self.largest_index >= self.hash_table.shape[0]:
                 newshape = (self.hash_table.shape[0] + self.chunk_size,)
                 new_hash_table = np.zeros(newshape, dtype=self.hash_table.dtype)
                 new_hash_table[:self.hash_table.shape[0]] = self.hash_table
                 self.hash_table = new_hash_table
+            self.hash_table[self.largest_index] = kv
+            self._indices[key] = self.largest_index
+            self.largest_index += 1
 
     def __delitem__(self, key):
         raise NotImplementedError
