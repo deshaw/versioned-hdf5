@@ -86,9 +86,10 @@ class Hashtable(MutableMapping):
         # bytes, not number of elements)
         dtype = np.dtype([('hash', 'B', (self.hash_size,)), ('shape', 'i8', (2,))])
         hash_table = f['_version_data'][name].create_dataset('hash_table',
-                                                 shape=(1,), dtype=dtype,
-                                                 chunks=(self.chunk_size,),
-                                                 maxshape=(None,))
+                                                             shape=(1,), dtype=dtype,
+                                                             chunks=(self.chunk_size,),
+                                                             maxshape=(None,),
+                                                             compression='lzf')
         hash_table.attrs['largest_index'] = 0
         self._indices = {}
 
