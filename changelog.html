@@ -38,37 +38,46 @@
   <section class="tex2jax_ignore mathjax_ignore" id="versioned-hdf5-change-log">
 <h1>Versioned HDF5 Change Log<a class="headerlink" href="#versioned-hdf5-change-log" title="Permalink to this headline">¶</a></h1>
 <section id="id1">
-<h2>1.3.5 (2021-09-30)<a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h2>
+<h2>1.3.6 (2021-10-19)<a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h2>
 </section>
 <section id="minor-changes">
 <h2>Minor Changes<a class="headerlink" href="#minor-changes" title="Permalink to this headline">¶</a></h2>
 <ul class="simple">
-<li><p>Fix a bug with the hashtable introduced in 1.3.4.</p></li>
+<li><p>Create hashtable datasets with lzf compression enabled.</p></li>
 </ul>
 </section>
 <section id="id2">
-<h2>1.3.4 (2021-09-27)<a class="headerlink" href="#id2" title="Permalink to this headline">¶</a></h2>
-</section>
+<h2>1.3.5 (2021-09-30)<a class="headerlink" href="#id2" title="Permalink to this headline">¶</a></h2>
 <section id="id3">
-<h2>Minor Changes<a class="headerlink" href="#id3" title="Permalink to this headline">¶</a></h2>
+<h3>Minor Changes<a class="headerlink" href="#id3" title="Permalink to this headline">¶</a></h3>
+<ul class="simple">
+<li><p>Fix a bug with the hashtable introduced in 1.3.4.</p></li>
+</ul>
+</section>
+</section>
+<section id="id4">
+<h2>1.3.4 (2021-09-27)<a class="headerlink" href="#id4" title="Permalink to this headline">¶</a></h2>
+<section id="id5">
+<h3>Minor Changes<a class="headerlink" href="#id5" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Make the hashtable dataset much smaller for datasets with no data or version
 history.</p></li>
 </ul>
 </section>
-<section id="id4">
-<h2>1.3.3 (2021-07-02)<a class="headerlink" href="#id4" title="Permalink to this headline">¶</a></h2>
-<section id="id5">
-<h3>Minor Changes<a class="headerlink" href="#id5" title="Permalink to this headline">¶</a></h3>
+</section>
+<section id="id6">
+<h2>1.3.3 (2021-07-02)<a class="headerlink" href="#id6" title="Permalink to this headline">¶</a></h2>
+<section id="id7">
+<h3>Minor Changes<a class="headerlink" href="#id7" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Fix a regression that prevented indexing a dataset with a mask from working.</p></li>
 </ul>
 </section>
 </section>
-<section id="id6">
-<h2>1.3.2 (2021-07-28)<a class="headerlink" href="#id6" title="Permalink to this headline">¶</a></h2>
-<section id="id7">
-<h3>Minor Changes<a class="headerlink" href="#id7" title="Permalink to this headline">¶</a></h3>
+<section id="id8">
+<h2>1.3.2 (2021-07-28)<a class="headerlink" href="#id8" title="Permalink to this headline">¶</a></h2>
+<section id="id9">
+<h3>Minor Changes<a class="headerlink" href="#id9" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Improve the performance of reading a reading a dataset that hasn’t been
 written to (e.g., reading from an already committed version).</p></li>
@@ -78,18 +87,18 @@ timestamps when the fractional part of the second was exactly 0.</p></li>
 </ul>
 </section>
 </section>
-<section id="id8">
-<h2>1.3.1 (2021-05-20)<a class="headerlink" href="#id8" title="Permalink to this headline">¶</a></h2>
-<section id="id9">
-<h3>Minor Changes<a class="headerlink" href="#id9" title="Permalink to this headline">¶</a></h3>
+<section id="id10">
+<h2>1.3.1 (2021-05-20)<a class="headerlink" href="#id10" title="Permalink to this headline">¶</a></h2>
+<section id="id11">
+<h3>Minor Changes<a class="headerlink" href="#id11" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Avoid some unnecessary precomputation in the hashtable object. This improves
 the performance for files that have many versions in them.</p></li>
 </ul>
 </section>
 </section>
-<section id="id10">
-<h2>1.3 (2021-05-07)<a class="headerlink" href="#id10" title="Permalink to this headline">¶</a></h2>
+<section id="id12">
+<h2>1.3 (2021-05-07)<a class="headerlink" href="#id12" title="Permalink to this headline">¶</a></h2>
 <section id="major-changes">
 <h3>Major Changes<a class="headerlink" href="#major-changes" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
@@ -102,8 +111,8 @@ across versions, such as chunk size or dtype.</p></li>
 replaying functionality.</p></li>
 </ul>
 </section>
-<section id="id11">
-<h3>Minor Changes<a class="headerlink" href="#id11" title="Permalink to this headline">¶</a></h3>
+<section id="id13">
+<h3>Minor Changes<a class="headerlink" href="#id13" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Disallow accessing vfile[version] before version has been committed. Doing
 so previously could lead to inconsistencies.</p></li>
@@ -115,29 +124,29 @@ closed.</p></li>
 </ul>
 </section>
 </section>
-<section id="id12">
-<h2>1.2.6 (2021-04-20)<a class="headerlink" href="#id12" title="Permalink to this headline">¶</a></h2>
-<section id="id13">
-<h3>Minor Changes<a class="headerlink" href="#id13" title="Permalink to this headline">¶</a></h3>
+<section id="id14">
+<h2>1.2.6 (2021-04-20)<a class="headerlink" href="#id14" title="Permalink to this headline">¶</a></h2>
+<section id="id15">
+<h3>Minor Changes<a class="headerlink" href="#id15" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Fix a bug where chunks could be deleted from a dataset.</p></li>
 <li><p>Workaround an upstream h5py bug in the tests.</p></li>
 </ul>
 </section>
 </section>
-<section id="id14">
-<h2>1.2.5 (2021-04-15)<a class="headerlink" href="#id14" title="Permalink to this headline">¶</a></h2>
-<section id="id15">
-<h3>Minor Changes<a class="headerlink" href="#id15" title="Permalink to this headline">¶</a></h3>
+<section id="id16">
+<h2>1.2.5 (2021-04-15)<a class="headerlink" href="#id16" title="Permalink to this headline">¶</a></h2>
+<section id="id17">
+<h3>Minor Changes<a class="headerlink" href="#id17" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Fix a bug where attrs could be deleted from a dataset.</p></li>
 </ul>
 </section>
 </section>
-<section id="id16">
-<h2>1.2.4 (2021-04-08)<a class="headerlink" href="#id16" title="Permalink to this headline">¶</a></h2>
-<section id="id17">
-<h3>Major Changes<a class="headerlink" href="#id17" title="Permalink to this headline">¶</a></h3>
+<section id="id18">
+<h2>1.2.4 (2021-04-08)<a class="headerlink" href="#id18" title="Permalink to this headline">¶</a></h2>
+<section id="id19">
+<h3>Major Changes<a class="headerlink" href="#id19" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Many improvements to performance throughout the library, particularly for
 datasets with many chunks, and for looking up versions by timestamp. This
@@ -147,19 +156,19 @@ converting sparse staged datasets to fully in-memory.</p></li>
 </ul>
 </section>
 </section>
-<section id="id18">
-<h2>1.2.3 (2021-02-25)<a class="headerlink" href="#id18" title="Permalink to this headline">¶</a></h2>
-<section id="id19">
-<h3>Minor Changes<a class="headerlink" href="#id19" title="Permalink to this headline">¶</a></h3>
+<section id="id20">
+<h2>1.2.3 (2021-02-25)<a class="headerlink" href="#id20" title="Permalink to this headline">¶</a></h2>
+<section id="id21">
+<h3>Minor Changes<a class="headerlink" href="#id21" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Fix the length of str dtype not being maintained from the fillvalue.</p></li>
 </ul>
 </section>
 </section>
-<section id="id20">
-<h2>1.2.2 (2021-02-04)<a class="headerlink" href="#id20" title="Permalink to this headline">¶</a></h2>
-<section id="id21">
-<h3>Minor Changes<a class="headerlink" href="#id21" title="Permalink to this headline">¶</a></h3>
+<section id="id22">
+<h2>1.2.2 (2021-02-04)<a class="headerlink" href="#id22" title="Permalink to this headline">¶</a></h2>
+<section id="id23">
+<h3>Minor Changes<a class="headerlink" href="#id23" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Many improvements to performance throughout the library.</p></li>
 <li><p>Added a benchmarking suite using <a class="reference external" href="https://asv.readthedocs.io/en/stable/">airspeed
@@ -169,10 +178,10 @@ can be viewed at <a class="reference external" href="https://deshaw.github.io/ve
 </ul>
 </section>
 </section>
-<section id="id22">
-<h2>1.2.1 (2020-12-30)<a class="headerlink" href="#id22" title="Permalink to this headline">¶</a></h2>
-<section id="id23">
-<h3>Minor Changes<a class="headerlink" href="#id23" title="Permalink to this headline">¶</a></h3>
+<section id="id24">
+<h2>1.2.1 (2020-12-30)<a class="headerlink" href="#id24" title="Permalink to this headline">¶</a></h2>
+<section id="id25">
+<h3>Minor Changes<a class="headerlink" href="#id25" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Python 3.6 support has been dropped. The lowest version of Python now
 supported is 3.7.</p></li>
@@ -183,10 +192,10 @@ required.</p></li>
 </ul>
 </section>
 </section>
-<section id="id24">
-<h2>1.2 (2020-11-17)<a class="headerlink" href="#id24" title="Permalink to this headline">¶</a></h2>
-<section id="id25">
-<h3>Major Changes<a class="headerlink" href="#id25" title="Permalink to this headline">¶</a></h3>
+<section id="id26">
+<h2>1.2 (2020-11-17)<a class="headerlink" href="#id26" title="Permalink to this headline">¶</a></h2>
+<section id="id27">
+<h3>Major Changes<a class="headerlink" href="#id27" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Add support for sparse datasets (<code class="docutils literal notranslate"><span class="pre">data=None</span></code>).</p></li>
 <li><p>Store the chunks on an attribute of the dataset.</p></li>
@@ -197,10 +206,10 @@ in a future version.</p></li>
 </ul>
 </section>
 </section>
-<section id="id26">
-<h2>1.1 (2020-09-15)<a class="headerlink" href="#id26" title="Permalink to this headline">¶</a></h2>
-<section id="id27">
-<h3>Major Changes<a class="headerlink" href="#id27" title="Permalink to this headline">¶</a></h3>
+<section id="id28">
+<h2>1.1 (2020-09-15)<a class="headerlink" href="#id28" title="Permalink to this headline">¶</a></h2>
+<section id="id29">
+<h3>Major Changes<a class="headerlink" href="#id29" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Added support for shape-0 datasets.</p></li>
 <li><p>Fix a memory leak where in-memory datasets would not be garbage collected.</p></li>
@@ -211,8 +220,8 @@ dataset metadata cannot change between versions, even if they are deleted in
 between.</p></li>
 </ul>
 </section>
-<section id="id28">
-<h3>Minor Changes<a class="headerlink" href="#id28" title="Permalink to this headline">¶</a></h3>
+<section id="id30">
+<h3>Minor Changes<a class="headerlink" href="#id30" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>Most tests now use a temporary directory instead of writing a file in the
 current directory.</p></li>
@@ -223,10 +232,10 @@ shape () array.</p></li>
 </ul>
 </section>
 </section>
-<section id="id29">
-<h2>1.0 (2020-08-03)<a class="headerlink" href="#id29" title="Permalink to this headline">¶</a></h2>
-<section id="id30">
-<h3>Major Changes<a class="headerlink" href="#id30" title="Permalink to this headline">¶</a></h3>
+<section id="id31">
+<h2>1.0 (2020-08-03)<a class="headerlink" href="#id31" title="Permalink to this headline">¶</a></h2>
+<section id="id32">
+<h3>Major Changes<a class="headerlink" href="#id32" title="Permalink to this headline">¶</a></h3>
 <ul class="simple">
 <li><p>First release of Versioned-HDF5.</p></li>
 </ul>
@@ -273,23 +282,23 @@ shape () array.</p></li>
 <li class="toctree-l1"><a class="reference internal" href="reference.html">API Documentation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="design.html">Design</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Versioned HDF5 Change Log</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#id1">1.3.5 (2021-09-30)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id1">1.3.6 (2021-10-19)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#minor-changes">Minor Changes</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id2">1.3.4 (2021-09-27)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id3">Minor Changes</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id4">1.3.3 (2021-07-02)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id6">1.3.2 (2021-07-28)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id8">1.3.1 (2021-05-20)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id10">1.3 (2021-05-07)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id12">1.2.6 (2021-04-20)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id14">1.2.5 (2021-04-15)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id16">1.2.4 (2021-04-08)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id18">1.2.3 (2021-02-25)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id20">1.2.2 (2021-02-04)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id22">1.2.1 (2020-12-30)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id24">1.2 (2020-11-17)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id26">1.1 (2020-09-15)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id29">1.0 (2020-08-03)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id2">1.3.5 (2021-09-30)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id4">1.3.4 (2021-09-27)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id6">1.3.3 (2021-07-02)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id8">1.3.2 (2021-07-28)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id10">1.3.1 (2021-05-20)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id12">1.3 (2021-05-07)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id14">1.2.6 (2021-04-20)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id16">1.2.5 (2021-04-15)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id18">1.2.4 (2021-04-08)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id20">1.2.3 (2021-02-25)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id22">1.2.2 (2021-02-04)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id24">1.2.1 (2020-12-30)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id26">1.2 (2020-11-17)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id28">1.1 (2020-09-15)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id31">1.0 (2020-08-03)</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="releasing.html">Releasing</a></li>
