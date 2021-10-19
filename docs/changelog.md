@@ -1,15 +1,21 @@
 Versioned HDF5 Change Log
 =========================
 
-## 1.3.5 (2021-09-30)
+## 1.3.6 (2021-10-19)
 
 ## Minor Changes
+
+- Create hashtable datasets with lzf compression enabled.
+
+## 1.3.5 (2021-09-30)
+
+### Minor Changes
 
 - Fix a bug with the hashtable introduced in 1.3.4.
 
 ## 1.3.4 (2021-09-27)
 
-## Minor Changes
+### Minor Changes
 
 - Make the hashtable dataset much smaller for datasets with no data or version
   history.
