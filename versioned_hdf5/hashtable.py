@@ -1,5 +1,5 @@
 import numpy as np
-from ndindex import Slice, Tuple
+from ndindex import Slice, Tuple, ChunkSize
 
 import hashlib
 from collections.abc import MutableMapping
@@ -55,6 +55,21 @@ class Hashtable(MutableMapping):
         self.hash_table = f['_version_data'][name][hash_table_name][:]
         self.hash_table_dataset = f['_version_data'][name][hash_table_name]
 
+    @classmethod
+    def from_raw_data(cls, f, name, chunk_size=None, hash_table_name='hash_table'):
+        if hash_table_name in f['_version_data'][name]:
+            raise ValueError(f"a hash table {hash_table_name!r} for {name!r} already exists")
+
+        hashtable = cls(f, name, chunk_size=chunk_size, hash_table_name=hash_table_name)
+
+        raw_data = f['_version_data'][name]['raw_data']
+        chunks = ChunkSize(raw_data.chunks)
+        for c in chunks.indices(raw_data.shape):
+            data_hash = hashtable.hash(raw_data[c.raw])
+            hashtable.setdefault(data_hash, c.args[0])
+
+        hashtable.write()
+        return hashtable
 
     hash_function = hashlib.sha256
     hash_size = hash_function().digest_size
