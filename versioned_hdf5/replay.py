@@ -267,39 +267,45 @@ def delete_versions(f, versions_to_delete):
     directly, as this will not delete the underlying data that is unique to
     the version.
     """
+    version_data = f['_version_data']
     if isinstance(versions_to_delete, str):
         versions_to_delete = [versions_to_delete]
 
     if isinstance(f, VersionedHDF5File):
         f = f.f
 
-    versions = f['_version_data/versions']
+    versions = version_data['versions']
 
     for version in versions_to_delete:
         if version not in versions:
             raise ValueError(f"Version {version!r} does not exist")
 
     versions_to_keep = set(versions) - set(versions_to_delete)
-    def _get(name):
+
+    def delete_dataset(name):
+        if name == 'versions':
+            return
         # Recreate the raw data.
         raw_data_map = _new_raw_data(f, name, versions_to_delete)
 
         if not raw_data_map:
-            # It might have already been deleted from a previous version pass.
-            if name in f['_version_data']:
-                del f['_version_data'][name]
+            del version_data[name]
             return
 
         # Recreate the hash table. We could do this manually from the
         # raw_data_map, but it's easier to just recreate it from scratch.
-        del f['_version_data'][name]['hash_table']
+        del version_data[name]['hash_table']
         Hashtable.from_raw_data(f, name, hash_table_name='hash_table')
 
         # Recreate every virtual dataset in every kept version.
         _recreate_virtual_dataset(f, name, versions_to_keep, raw_data_map)
 
+    for name in version_data:
+        if name == 'versions':
+            continue
+        delete_dataset(name)
+
     for version in versions_to_delete:
-        versions[version].visit(_get)
         del versions[version]
 
 # Backwards compatibility
