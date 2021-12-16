@@ -1,6 +1,6 @@
 import numpy as np
 
-from versioned_hdf5.replay import modify_metadata, delete_version
+from versioned_hdf5.replay import modify_metadata, delete_version, delete_versions
 
 def setup_vfile(file):
     with file.stage_version('version1') as g:
@@ -236,6 +236,19 @@ def test_delete_version(vfile):
     f = vfile.f
 
     delete_version(f, 'version2')
+    check_data(vfile, version2=False)
+    assert list(vfile) == ['version1']
+    assert list(f['_version_data']) == ['test_data', 'test_data2', 'versions']
+    assert not np.isin(2., f['_version_data']['test_data']['raw_data'][:])
+
+def test_delete_versions(vfile):
+    setup_vfile(vfile)
+    with vfile.stage_version('version3') as g:
+        g['test_data'][2000] = 3.
+        g.create_dataset('test_data4', data=[1, 2, 3, 4], chunks=(1000,))
+    f = vfile.f
+
+    delete_versions(f, ['version2', 'version3'])
     check_data(vfile, version2=False)
     assert list(vfile) == ['version1']
     assert list(f['_version_data']) == ['test_data', 'test_data2', 'versions']
