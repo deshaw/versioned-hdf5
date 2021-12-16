@@ -39,20 +39,22 @@ class Hashtable(MutableMapping):
         obj = super().__new__(cls)
         return obj
 
-    def __init__(self, f, name, chunk_size=None):
+    def __init__(self, f, name, chunk_size=None, hash_table_name='hash_table'):
         from .backend import DEFAULT_CHUNK_SIZE
 
         self.f = f
         self.name = name
         self.chunk_size = chunk_size or DEFAULT_CHUNK_SIZE
-        if 'hash_table' in f['_version_data'][name]:
+        self.hash_table_name = hash_table_name
+
+        if hash_table_name in f['_version_data'][name]:
             self._load_hashtable()
         else:
             self._create_hashtable()
         self._largest_index = None
+        self.hash_table = f['_version_data'][name][hash_table_name][:]
+        self.hash_table_dataset = f['_version_data'][name][hash_table_name]
 
-        self.hash_table = f['_version_data'][name]['hash_table'][:]
-        self.hash_table_dataset = f['_version_data'][name]['hash_table']
 
     hash_function = hashlib.sha256
     hash_size = hash_function().digest_size
@@ -95,7 +97,7 @@ class Hashtable(MutableMapping):
         # TODO: Use get_chunks() here (the real chunk size should be based on
         # bytes, not number of elements)
         dtype = np.dtype([('hash', 'B', (self.hash_size,)), ('shape', 'i8', (2,))])
-        hash_table = f['_version_data'][name].create_dataset('hash_table',
+        hash_table = f['_version_data'][name].create_dataset(self.hash_table_name,
                                                              shape=(1,), dtype=dtype,
                                                              chunks=(self.chunk_size,),
                                                              maxshape=(None,),
@@ -104,7 +106,7 @@ class Hashtable(MutableMapping):
         self._indices = {}
 
     def _load_hashtable(self):
-        hash_table = self.f['_version_data'][self.name]['hash_table']
+        hash_table = self.f['_version_data'][self.name][self.hash_table_name]
         largest_index = hash_table.attrs['largest_index']
         hash_table_arr = hash_table[:largest_index]
         hashes = bytes(hash_table_arr['hash'])
