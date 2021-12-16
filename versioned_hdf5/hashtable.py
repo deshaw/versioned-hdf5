@@ -5,7 +5,6 @@ import hashlib
 from collections.abc import MutableMapping
 from functools import lru_cache
 
-@lru_cache()
 class Hashtable(MutableMapping):
     """
     A proxy class representing the hash table for an array
@@ -29,6 +28,17 @@ class Hashtable(MutableMapping):
     dataset until you call write() or it exit as a context manager.
 
     """
+    # Cache instances of the class for performance purposes. This works off
+    # the assumption that nothing else modifies the version data.
+
+    # This is done here because putting @lru_cache() on the class breaks the
+    # classmethods. Warning: This does not normalize kwargs, so it is possible
+    # to have multiple hashtable instances for the same hashtable.
+    @lru_cache()
+    def __new__(cls, *args, **kwargs):
+        obj = super().__new__(cls)
+        return obj
+
     def __init__(self, f, name, chunk_size=None):
         from .backend import DEFAULT_CHUNK_SIZE
 
