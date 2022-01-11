@@ -39,7 +39,7 @@ class Hashtable(MutableMapping):
         obj = super().__new__(cls)
         return obj
 
-    def __init__(self, f, name, chunk_size=None, hash_table_name='hash_table'):
+    def __init__(self, f, name, *, chunk_size=None, hash_table_name='hash_table'):
         from .backend import DEFAULT_CHUNK_SIZE
 
         self.f = f
