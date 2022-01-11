@@ -97,6 +97,14 @@ class Hashtable(MutableMapping):
         self.hash_table_dataset.attrs['largest_index'] = self.largest_index
         self.hash_table_dataset[:largest_index] = self.hash_table[:largest_index]
 
+    def inverse(self):
+        r"""
+        Return a dictionary mapping Slice: array_of_hash.
+
+        The Slices are all `reduce()`\d.
+        """
+        return {Slice(*s).reduce(): h for h, s in self.hash_table}
+
     def __enter__(self):
         return self
 
