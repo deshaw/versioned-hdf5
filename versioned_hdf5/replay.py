@@ -247,17 +247,25 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
             group.move(tmp_name, name)
 
 def _recreate_hashtable(f, name, raw_data_chunks_map):
-    raw_data = f['_version_data'][name]['raw_data']
-    chunk_size = ChunkSize(raw_data.attrs['chunk_size'])
-    hash_table = f['_version_data'][name]['hash_table']
-    hash_table.parent.copy('hash_table', '_tmp_hash_table')
-    tmp_hash_table = f['_version_data'][name]['_tmp_hash_table']
+    # We could just reconstruct the hashtable with from_raw_data, but that is
+    # slow, so instead we recreate it manually from the old hashable and the
+    # raw_data_chunks_map.
+    old_hashtable = Hashtable(f, name)
+    new_hash_table = Hashtable(f, name, hash_table_name='__tmp_hash_table__')
+    old_inverse = old_hashtable.inverse()
 
-    for i in range(tmp_hash_table.shape[0]):
-        old_idx = next(chunk_size.as_subchunks(slice(*hash_table[i][1]), raw_data.shape))
-        if old_idx not in raw_data_chunks_map:
-            raise ValueError(f"Error rebuilding hashtable: could not find the chunk for {old_idx} in the raw data for {name!r}")
-        tmp_hash_table[i][1] = raw_data_chunks_map[old_idx].args[0].args[:2]
+    for old_chunk, new_chunk in raw_data_chunks_map.items():
+        if isinstance(old_chunk, Tuple):
+            old_chunk = old_chunk.args[0]
+        if isinstance(new_chunk, Tuple):
+            new_chunk = new_chunk.args[0]
+
+        new_hash_table[old_inverse[old_chunk.reduce()]] = new_chunk
+
+    new_hash_table.write()
+
+    del f['_version_data'][name]['hash_table']
+    f['_version_data'][name].move('__tmp_hash_table__', 'hash_table')
 
 def delete_versions(f, versions_to_delete):
     """
@@ -286,19 +294,17 @@ def delete_versions(f, versions_to_delete):
         if name == 'versions':
             return
         # Recreate the raw data.
-        raw_data_map = _new_raw_data(f, name, versions_to_delete)
+        raw_data_chunks_map = _new_raw_data(f, name, versions_to_delete)
 
-        if not raw_data_map:
+        if not raw_data_chunks_map:
             del version_data[name]
             return
 
-        # Recreate the hash table. We could do this manually from the
-        # raw_data_map, but it's easier to just recreate it from scratch.
-        del version_data[name]['hash_table']
-        Hashtable.from_raw_data(f, name, hash_table_name='hash_table')
+        # Recreate the hash table.
+        _recreate_hashtable(f, name, raw_data_chunks_map)
 
         # Recreate every virtual dataset in every kept version.
-        _recreate_virtual_dataset(f, name, versions_to_keep, raw_data_map)
+        _recreate_virtual_dataset(f, name, versions_to_keep, raw_data_chunks_map)
 
     for name in version_data:
         if name == 'versions':
