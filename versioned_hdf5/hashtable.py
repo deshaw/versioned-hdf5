@@ -142,8 +142,10 @@ class Hashtable(MutableMapping):
         return Slice(*shapes[i])
 
     def __setitem__(self, key, value):
+        if isinstance(key, np.ndarray):
+            key = key.tobytes()
         if not isinstance(key, bytes):
-            raise TypeError("key must be bytes")
+            raise TypeError(f"key must be bytes, got {type(key)}")
         if len(key) != self.hash_size:
             raise ValueError("key must be %d bytes" % self.hash_size)
         if isinstance(value, Tuple):
