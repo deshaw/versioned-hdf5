@@ -271,7 +271,11 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
                 layout[vslice.raw] = vs[new_src_slice.raw]
 
         tmp_name = '_tmp_' + name
-        group.create_virtual_dataset(tmp_name, layout, fillvalue=dataset.fillvalue)
+        tmp_dataset = group.create_virtual_dataset(tmp_name, layout, fillvalue=dataset.fillvalue)
+
+        for key, val in dataset.attrs.items():
+            tmp_dataset.attrs[key] = val
+
         if not tmp:
             del group[name]
             group.move(tmp_name, name)
