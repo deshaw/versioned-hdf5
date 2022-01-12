@@ -288,12 +288,12 @@ def delete_versions(f, versions_to_delete):
     directly, as this will not delete the underlying data that is unique to
     the version.
     """
+    if isinstance(f, VersionedHDF5File):
+        f = f.f
+
     version_data = f['_version_data']
     if isinstance(versions_to_delete, str):
         versions_to_delete = [versions_to_delete]
-
-    if isinstance(f, VersionedHDF5File):
-        f = f.f
 
     versions = version_data['versions']
 
