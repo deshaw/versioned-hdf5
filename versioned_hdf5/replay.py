@@ -170,11 +170,13 @@ def _new_raw_data(f, name, versions_to_delete, tmp=False):
     n = np.full(new_raw_data.shape, new_raw_data.fillvalue, dtype=new_raw_data.dtype)
     raw_data_chunks_map = {}
     for new_chunk, chunk in zip(chunks.indices(new_shape), chunks_to_keep):
-        if len(new_chunk.args[0]) != len(chunk.args[0]):
-            new_chunk = Tuple(
-                Slice(new_chunk.args[0].start,
-                      new_chunk.args[0].start+len(chunk.args[0])),
-                *new_chunk.args[1:])
+        # Shrunk new_chunk to the size of chunk, in case chunk isn't a full
+        # chunk in one of the dimensions.
+        # TODO: Implement intersection() in ndindex to do this.
+        new_chunk = Tuple(
+            *[Slice(new_chunk.args[i].start,
+                      new_chunk.args[i].start+len(chunk.args[i]))
+              for i in range(len(new_chunk.args))])
         raw_data_chunks_map[chunk] = new_chunk
         n[new_chunk.raw] = r[chunk.raw]
 
