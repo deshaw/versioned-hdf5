@@ -137,6 +137,8 @@ class Hashtable(MutableMapping):
         self._indices = {k: i for i, k in enumerate(hashes)}
 
     def __getitem__(self, key):
+        if isinstance(key, np.ndarray):
+            key = key.tobytes()
         i = self._indices[key]
         shapes = self.hash_table['shape']
         return Slice(*shapes[i])
