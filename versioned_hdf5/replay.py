@@ -155,9 +155,7 @@ def _new_raw_data(f, name, versions_to_delete, tmp=False):
 
     raw_data = f['_version_data'][name]['raw_data']
     chunks = ChunkSize(raw_data.chunks)
-    new_shape = (max(chunks_to_keep,
-                     key=lambda c: c.args[0].stop).args[0].stop,) \
-                     + chunks[1:]
+    new_shape = (len(chunks_to_keep)*chunks[0], *chunks[1:])
 
     new_raw_data = f['_version_data'][name].create_dataset(
         '_tmp_raw_data', shape=new_shape, maxshape=(None,)+chunks[1:],
