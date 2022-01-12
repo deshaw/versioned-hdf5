@@ -117,7 +117,7 @@ def tmp_group(f):
         tmp = f['_version_data/__tmp__']
     return tmp
 
-def _new_raw_data(f, name, versions_to_delete, tmp=False):
+def _recreate_raw_data(f, name, versions_to_delete, tmp=False):
     """
     Return a new raw data set for a dataset without the chunks from
     versions_to_delete.
@@ -295,7 +295,7 @@ def delete_versions(f, versions_to_delete):
         if name == 'versions':
             return
         # Recreate the raw data.
-        raw_data_chunks_map = _new_raw_data(f, name, versions_to_delete)
+        raw_data_chunks_map = _recreate_raw_data(f, name, versions_to_delete)
 
         if not raw_data_chunks_map:
             del version_data[name]
