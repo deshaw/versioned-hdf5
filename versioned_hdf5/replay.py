@@ -247,6 +247,14 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
             group.move(tmp_name, name)
 
 def _recreate_hashtable(f, name, raw_data_chunks_map, tmp=False):
+    """
+    Recreate the hashtable for the dataset f, with only the new chunks in the
+    raw_data_chunks_map.
+
+    If tmp=True, a new hashtable called '_tmp_hash_table' is created.
+    Otherwise the hashtable is replaced.
+    """
+
     # We could just reconstruct the hashtable with from_raw_data, but that is
     # slow, so instead we recreate it manually from the old hashable and the
     # raw_data_chunks_map.
