@@ -170,9 +170,9 @@ def _recreate_raw_data(f, name, versions_to_delete, tmp=False):
     n = np.full(new_raw_data.shape, new_raw_data.fillvalue, dtype=new_raw_data.dtype)
     raw_data_chunks_map = {}
     for new_chunk, chunk in zip(chunks.indices(new_shape), chunks_to_keep):
-        # Shrunk new_chunk to the size of chunk, in case chunk isn't a full
+        # Shrink new_chunk to the size of chunk, in case chunk isn't a full
         # chunk in one of the dimensions.
-        # TODO: Implement intersection() in ndindex to do this.
+        # TODO: Implement something in ndindex to do this.
         new_chunk = Tuple(
             *[Slice(new_chunk.args[i].start,
                       new_chunk.args[i].start+len(chunk.args[i]))
