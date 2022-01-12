@@ -187,6 +187,36 @@ def _recreate_raw_data(f, name, versions_to_delete, tmp=False):
 
     return raw_data_chunks_map
 
+def _recreate_hashtable(f, name, raw_data_chunks_map, tmp=False):
+    """
+    Recreate the hashtable for the dataset f, with only the new chunks in the
+    raw_data_chunks_map.
+
+    If tmp=True, a new hashtable called '_tmp_hash_table' is created.
+    Otherwise the hashtable is replaced.
+    """
+
+    # We could just reconstruct the hashtable with from_raw_data, but that is
+    # slow, so instead we recreate it manually from the old hashable and the
+    # raw_data_chunks_map.
+    old_hashtable = Hashtable(f, name)
+    new_hash_table = Hashtable(f, name, hash_table_name='_tmp_hash_table')
+    old_inverse = old_hashtable.inverse()
+
+    for old_chunk, new_chunk in raw_data_chunks_map.items():
+        if isinstance(old_chunk, Tuple):
+            old_chunk = old_chunk.args[0]
+        if isinstance(new_chunk, Tuple):
+            new_chunk = new_chunk.args[0]
+
+        new_hash_table[old_inverse[old_chunk.reduce()]] = new_chunk
+
+    new_hash_table.write()
+
+    if not tmp:
+        del f['_version_data'][name]['hash_table']
+        f['_version_data'][name].move('_tmp_hash_table', 'hash_table')
+
 def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False):
     """
     Recreate every virtual dataset `name` in the version versions according to
@@ -245,36 +275,6 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
         if not tmp:
             del group[name]
             group.move(tmp_name, name)
-
-def _recreate_hashtable(f, name, raw_data_chunks_map, tmp=False):
-    """
-    Recreate the hashtable for the dataset f, with only the new chunks in the
-    raw_data_chunks_map.
-
-    If tmp=True, a new hashtable called '_tmp_hash_table' is created.
-    Otherwise the hashtable is replaced.
-    """
-
-    # We could just reconstruct the hashtable with from_raw_data, but that is
-    # slow, so instead we recreate it manually from the old hashable and the
-    # raw_data_chunks_map.
-    old_hashtable = Hashtable(f, name)
-    new_hash_table = Hashtable(f, name, hash_table_name='_tmp_hash_table')
-    old_inverse = old_hashtable.inverse()
-
-    for old_chunk, new_chunk in raw_data_chunks_map.items():
-        if isinstance(old_chunk, Tuple):
-            old_chunk = old_chunk.args[0]
-        if isinstance(new_chunk, Tuple):
-            new_chunk = new_chunk.args[0]
-
-        new_hash_table[old_inverse[old_chunk.reduce()]] = new_chunk
-
-    new_hash_table.write()
-
-    if not tmp:
-        del f['_version_data'][name]['hash_table']
-        f['_version_data'][name].move('_tmp_hash_table', 'hash_table')
 
 def delete_versions(f, versions_to_delete):
     """
