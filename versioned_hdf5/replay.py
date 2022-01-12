@@ -246,7 +246,7 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
             del group[name]
             group.move(tmp_name, name)
 
-def _recreate_hashtable(f, name, raw_data_chunks_map):
+def _recreate_hashtable(f, name, raw_data_chunks_map, tmp=False):
     # We could just reconstruct the hashtable with from_raw_data, but that is
     # slow, so instead we recreate it manually from the old hashable and the
     # raw_data_chunks_map.
@@ -264,8 +264,9 @@ def _recreate_hashtable(f, name, raw_data_chunks_map):
 
     new_hash_table.write()
 
-    del f['_version_data'][name]['hash_table']
-    f['_version_data'][name].move('__tmp_hash_table__', 'hash_table')
+    if not tmp:
+        del f['_version_data'][name]['hash_table']
+        f['_version_data'][name].move('__tmp_hash_table__', 'hash_table')
 
 def delete_versions(f, versions_to_delete):
     """
