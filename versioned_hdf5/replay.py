@@ -259,7 +259,7 @@ def _recreate_hashtable(f, name, raw_data_chunks_map, tmp=False):
     # slow, so instead we recreate it manually from the old hashable and the
     # raw_data_chunks_map.
     old_hashtable = Hashtable(f, name)
-    new_hash_table = Hashtable(f, name, hash_table_name='__tmp_hash_table__')
+    new_hash_table = Hashtable(f, name, hash_table_name='_tmp_hash_table')
     old_inverse = old_hashtable.inverse()
 
     for old_chunk, new_chunk in raw_data_chunks_map.items():
@@ -274,7 +274,7 @@ def _recreate_hashtable(f, name, raw_data_chunks_map, tmp=False):
 
     if not tmp:
         del f['_version_data'][name]['hash_table']
-        f['_version_data'][name].move('__tmp_hash_table__', 'hash_table')
+        f['_version_data'][name].move('_tmp_hash_table', 'hash_table')
 
 def delete_versions(f, versions_to_delete):
     """
