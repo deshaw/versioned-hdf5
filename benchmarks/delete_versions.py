@@ -1,6 +1,5 @@
 import h5py
 from versioned_hdf5 import VersionedHDF5File
-from versioned_hdf5.replay import delete_versions
 import numpy
 
 import tempfile
@@ -8,6 +7,36 @@ import shutil
 import os
 
 filename = 'delete_versions_bench.h5'
+
+
+try:
+    from versioned_hdf5 import delete_versions
+except ImportError:
+    from versioned_hdf5.replay import recreate_dataset, tmp_group, swap
+    def delete_versions(f, versions_to_delete, names=('values',)):
+        """
+        Modified replay.delete_version to delete multiple versions.
+        """
+        if isinstance(f, VersionedHDF5File):
+            f = f.f
+
+        def callback(dataset, version_name):
+            if version_name in versions_to_delete:
+                return
+            return dataset
+
+        newf = tmp_group(f)
+
+        for name in names:
+            recreate_dataset(f, name, newf, callback=callback)
+
+        swap(f, newf)
+
+        for version in versions_to_delete:
+            del f['_version_data/versions'][version]
+
+        del newf[newf.name]
+
 
 class TimeDeleting:
     params = [10, 30, 50]
