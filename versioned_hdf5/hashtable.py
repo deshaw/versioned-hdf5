@@ -1,11 +1,10 @@
 import numpy as np
-from ndindex import Slice, Tuple
+from ndindex import Slice, Tuple, ChunkSize
 
 import hashlib
 from collections.abc import MutableMapping
 from functools import lru_cache
 
-@lru_cache()
 class Hashtable(MutableMapping):
     """
     A proxy class representing the hash table for an array
@@ -29,20 +28,48 @@ class Hashtable(MutableMapping):
     dataset until you call write() or it exit as a context manager.
 
     """
-    def __init__(self, f, name, chunk_size=None):
+    # Cache instances of the class for performance purposes. This works off
+    # the assumption that nothing else modifies the version data.
+
+    # This is done here because putting @lru_cache() on the class breaks the
+    # classmethods. Warning: This does not normalize kwargs, so it is possible
+    # to have multiple hashtable instances for the same hashtable.
+    @lru_cache()
+    def __new__(cls, *args, **kwargs):
+        obj = super().__new__(cls)
+        return obj
+
+    def __init__(self, f, name, *, chunk_size=None, hash_table_name='hash_table'):
         from .backend import DEFAULT_CHUNK_SIZE
 
         self.f = f
         self.name = name
         self.chunk_size = chunk_size or DEFAULT_CHUNK_SIZE
-        if 'hash_table' in f['_version_data'][name]:
+        self.hash_table_name = hash_table_name
+
+        if hash_table_name in f['_version_data'][name]:
             self._load_hashtable()
         else:
             self._create_hashtable()
         self._largest_index = None
+        self.hash_table = f['_version_data'][name][hash_table_name][:]
+        self.hash_table_dataset = f['_version_data'][name][hash_table_name]
 
-        self.hash_table = f['_version_data'][name]['hash_table'][:]
-        self.hash_table_dataset = f['_version_data'][name]['hash_table']
+    @classmethod
+    def from_raw_data(cls, f, name, chunk_size=None, hash_table_name='hash_table'):
+        if hash_table_name in f['_version_data'][name]:
+            raise ValueError(f"a hash table {hash_table_name!r} for {name!r} already exists")
+
+        hashtable = cls(f, name, chunk_size=chunk_size, hash_table_name=hash_table_name)
+
+        raw_data = f['_version_data'][name]['raw_data']
+        chunks = ChunkSize(raw_data.chunks)
+        for c in chunks.indices(raw_data.shape):
+            data_hash = hashtable.hash(raw_data[c.raw])
+            hashtable.setdefault(data_hash, c.args[0])
+
+        hashtable.write()
+        return hashtable
 
     hash_function = hashlib.sha256
     hash_size = hash_function().digest_size
@@ -70,6 +97,14 @@ class Hashtable(MutableMapping):
         self.hash_table_dataset.attrs['largest_index'] = self.largest_index
         self.hash_table_dataset[:largest_index] = self.hash_table[:largest_index]
 
+    def inverse(self):
+        r"""
+        Return a dictionary mapping Slice: array_of_hash.
+
+        The Slices are all `reduce()`\d.
+        """
+        return {Slice(*s).reduce(): h for h, s in self.hash_table}
+
     def __enter__(self):
         return self
 
@@ -85,7 +120,7 @@ class Hashtable(MutableMapping):
         # TODO: Use get_chunks() here (the real chunk size should be based on
         # bytes, not number of elements)
         dtype = np.dtype([('hash', 'B', (self.hash_size,)), ('shape', 'i8', (2,))])
-        hash_table = f['_version_data'][name].create_dataset('hash_table',
+        hash_table = f['_version_data'][name].create_dataset(self.hash_table_name,
                                                              shape=(1,), dtype=dtype,
                                                              chunks=(self.chunk_size,),
                                                              maxshape=(None,),
@@ -94,7 +129,7 @@ class Hashtable(MutableMapping):
         self._indices = {}
 
     def _load_hashtable(self):
-        hash_table = self.f['_version_data'][self.name]['hash_table']
+        hash_table = self.f['_version_data'][self.name][self.hash_table_name]
         largest_index = hash_table.attrs['largest_index']
         hash_table_arr = hash_table[:largest_index]
         hashes = bytes(hash_table_arr['hash'])
@@ -102,13 +137,17 @@ class Hashtable(MutableMapping):
         self._indices = {k: i for i, k in enumerate(hashes)}
 
     def __getitem__(self, key):
+        if isinstance(key, np.ndarray):
+            key = key.tobytes()
         i = self._indices[key]
         shapes = self.hash_table['shape']
         return Slice(*shapes[i])
 
     def __setitem__(self, key, value):
+        if isinstance(key, np.ndarray):
+            key = key.tobytes()
         if not isinstance(key, bytes):
-            raise TypeError("key must be bytes")
+            raise TypeError(f"key must be bytes, got {type(key)}")
         if len(key) != self.hash_size:
             raise ValueError("key must be %d bytes" % self.hash_size)
         if isinstance(value, Tuple):

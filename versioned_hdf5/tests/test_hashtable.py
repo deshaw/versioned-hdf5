@@ -29,6 +29,19 @@ def test_hashtable(h5file):
         with raises(ValueError):
             h[b'\x01'*32] = slice(0, 4, 2)
 
+def test_from_raw_data():
+    with setup('test.h5') as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version('0') as sv:
+            sv.create_dataset('test_data', data=np.arange(100), chunks=(10,))
+
+        h = Hashtable(f, 'test_data')
+        h_dataset = h.hash_table_dataset
+        h2 = Hashtable.from_raw_data(f, 'test_data',
+                                     hash_table_name='test_hash_table')
+        h2_dataset = h2.hash_table_dataset
+        assert h2_dataset.name == '/_version_data/test_data/test_hash_table'
+        np.testing.assert_equal(h_dataset[:], h2_dataset[:])
 
 def test_hashtable_multidimension(h5file):
     # Ensure that the same data with different shape hashes differently

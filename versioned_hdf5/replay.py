@@ -1,13 +1,15 @@
-from h5py import VirtualLayout, Dataset
+from h5py import VirtualLayout, VirtualSource, Dataset
 from h5py._hl.vds import VDSmap
+from h5py._hl.selections import select
 from h5py.h5i import get_name
 
-from ndindex import Slice
+from ndindex import Slice, ChunkSize, Tuple
 
 import numpy as np
 
 from copy import deepcopy
 import posixpath as pp
+from collections import defaultdict
 
 from .versions import all_versions
 from .wrappers import (InMemoryGroup, DatasetWrapper, InMemoryDataset,
@@ -16,6 +18,8 @@ from .api import VersionedHDF5File
 from .backend import (create_base_dataset, write_dataset,
                       write_dataset_chunks, create_virtual_dataset,
                       initialize)
+from .slicetools import spaceid_to_slice
+from .hashtable import Hashtable
 
 def recreate_dataset(f, name, newf, callback=None):
     """
@@ -113,9 +117,172 @@ def tmp_group(f):
         tmp = f['_version_data/__tmp__']
     return tmp
 
-def delete_version(f, version):
+def _recreate_raw_data(f, name, versions_to_delete, tmp=False):
     """
-    Completely delete the version named `version` from the versioned file `f`.
+    Return a new raw data set for a dataset without the chunks from
+    versions_to_delete.
+
+    If no chunks would be left, i.e., the dataset does not appear in any
+    version not in versions_to_delete, None is returned.
+
+    If tmp is True, the new raw dataset is called '_tmp_raw_data' and is
+    placed alongside the existing raw dataset. Otherwise the existing raw
+    dataset is replaced.
+
+    """
+    chunks_map = defaultdict(dict)
+
+    for version_name in all_versions(f):
+        if (version_name in versions_to_delete
+            or name not in f['_version_data/versions'][version_name]):
+            continue
+
+        dataset = f['_version_data/versions'][version_name][name]
+
+        virtual_sources = dataset.virtual_sources()
+        slice_map = {spaceid_to_slice(i.vspace):
+                     spaceid_to_slice(i.src_space) for i in
+                     virtual_sources}
+        chunks_map[version_name].update(slice_map)
+
+    chunks_to_keep = set().union(*[map.values() for map in
+                                 chunks_map.values()])
+
+    chunks_to_keep = sorted(chunks_to_keep, key=lambda i: i.args[0].args[0])
+
+    if not chunks_to_keep:
+        return {}
+
+    raw_data = f['_version_data'][name]['raw_data']
+    chunks = ChunkSize(raw_data.chunks)
+    new_shape = (len(chunks_to_keep)*chunks[0], *chunks[1:])
+
+    new_raw_data = f['_version_data'][name].create_dataset(
+        '_tmp_raw_data', shape=new_shape, maxshape=(None,)+chunks[1:],
+        chunks=raw_data.chunks, dtype=raw_data.dtype,
+        compression=raw_data.compression,
+        compression_opts=raw_data.compression_opts,
+        fillvalue=raw_data.fillvalue)
+    for key, val in raw_data.attrs.items():
+        new_raw_data.attrs[key] = val
+
+    r = raw_data[:]
+    n = np.full(new_raw_data.shape, new_raw_data.fillvalue, dtype=new_raw_data.dtype)
+    raw_data_chunks_map = {}
+    for new_chunk, chunk in zip(chunks.indices(new_shape), chunks_to_keep):
+        # Shrink new_chunk to the size of chunk, in case chunk isn't a full
+        # chunk in one of the dimensions.
+        # TODO: Implement something in ndindex to do this.
+        new_chunk = Tuple(
+            *[Slice(new_chunk.args[i].start,
+                      new_chunk.args[i].start+len(chunk.args[i]))
+              for i in range(len(new_chunk.args))])
+        raw_data_chunks_map[chunk] = new_chunk
+        n[new_chunk.raw] = r[chunk.raw]
+
+    new_raw_data[:] = n
+    if not tmp:
+        del f['_version_data'][name]['raw_data']
+        f['_version_data'][name].move('_tmp_raw_data', 'raw_data')
+
+    return raw_data_chunks_map
+
+def _recreate_hashtable(f, name, raw_data_chunks_map, tmp=False):
+    """
+    Recreate the hashtable for the dataset f, with only the new chunks in the
+    raw_data_chunks_map.
+
+    If tmp=True, a new hashtable called '_tmp_hash_table' is created.
+    Otherwise the hashtable is replaced.
+    """
+
+    # We could just reconstruct the hashtable with from_raw_data, but that is
+    # slow, so instead we recreate it manually from the old hashable and the
+    # raw_data_chunks_map.
+    old_hashtable = Hashtable(f, name)
+    new_hash_table = Hashtable(f, name, hash_table_name='_tmp_hash_table')
+    old_inverse = old_hashtable.inverse()
+
+    for old_chunk, new_chunk in raw_data_chunks_map.items():
+        if isinstance(old_chunk, Tuple):
+            old_chunk = old_chunk.args[0]
+        if isinstance(new_chunk, Tuple):
+            new_chunk = new_chunk.args[0]
+
+        new_hash_table[old_inverse[old_chunk.reduce()]] = new_chunk
+
+    new_hash_table.write()
+
+    if not tmp:
+        del f['_version_data'][name]['hash_table']
+        f['_version_data'][name].move('_tmp_hash_table', 'hash_table')
+
+def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False):
+    """
+    Recreate every virtual dataset `name` in the version versions according to
+    the new raw_data chunks.
+
+    Returns a dict mapping the chunks from the old raw dataset to the chunks
+    in the new raw dataset. Chunks not in the mapping were deleted. If the
+    dict is empty, then no remaining version contains the given dataset.
+
+    If tmp is True, the new virtual datasets are named `'_tmp_' + name` and
+    are placed alongside the existing ones. Otherwise the existing virtual
+    datasets are replaced.
+
+    """
+    raw_data = f['_version_data'][name]['raw_data']
+
+    for version_name in versions:
+        if name not in f['_version_data/versions'][version_name]:
+            continue
+
+        group = f['_version_data/versions'][version_name]
+        dataset = group[name]
+
+
+        layout = VirtualLayout(dataset.shape, dtype=dataset.dtype)
+        layout_has_sources = hasattr(layout, 'sources')
+
+        if not layout_has_sources:
+            vs = VirtualSource('.', name=raw_data.name, shape=raw_data.shape, dtype=raw_data.dtype)
+
+        virtual_sources = dataset.virtual_sources()
+        for vmap in virtual_sources:
+            vspace, fname, dset_name, src_space = vmap
+            fname = fname.encode('utf-8')
+            assert fname == b'.', fname
+
+            vslice = spaceid_to_slice(vspace)
+            src_slice = spaceid_to_slice(src_space)
+            if src_slice not in raw_data_chunks_map:
+                raise ValueError(f"Could not find the chunk for {vslice} ({src_slice} in the old raw dataset) for {name!r} in {version_name!r}")
+            new_src_slice = raw_data_chunks_map[src_slice]
+
+            # h5py 3.3 changed the VirtualLayout code. See
+            # https://github.com/h5py/h5py/pull/1905 and the code in
+            # create_virtual_dataset().
+            if layout_has_sources:
+                vs_sel = select(raw_data.shape, new_src_slice.raw, None)
+                layout_sel = select(dataset.shape, vslice.raw, None)
+                new_vmap = VDSmap(layout_sel.id, fname, dset_name, vs_sel.id)
+                layout.sources.append(new_vmap)
+            else:
+                layout[vslice.raw] = vs[new_src_slice.raw]
+
+        tmp_name = '_tmp_' + name
+        tmp_dataset = group.create_virtual_dataset(tmp_name, layout, fillvalue=dataset.fillvalue)
+
+        for key, val in dataset.attrs.items():
+            tmp_dataset.attrs[key] = val
+
+        if not tmp:
+            del group[name]
+            group.move(tmp_name, name)
+
+def delete_versions(f, versions_to_delete):
+    """
+    Completely delete the versions from `versions_to_delete` from the versioned file `f`.
 
     This function should be used instead of deleting the version group
     directly, as this will not delete the underlying data that is unique to
@@ -124,36 +291,44 @@ def delete_version(f, version):
     if isinstance(f, VersionedHDF5File):
         f = f.f
 
-    versions = f['_version_data/versions']
+    version_data = f['_version_data']
+    if isinstance(versions_to_delete, str):
+        versions_to_delete = [versions_to_delete]
 
-    def callback(dataset, version_name):
-        if version_name == version:
+    versions = version_data['versions']
+
+    for version in versions_to_delete:
+        if version not in versions:
+            raise ValueError(f"Version {version!r} does not exist")
+
+    versions_to_keep = set(versions) - set(versions_to_delete)
+
+    def delete_dataset(name):
+        if name == 'versions':
             return
-        return dataset
+        # Recreate the raw data.
+        raw_data_chunks_map = _recreate_raw_data(f, name, versions_to_delete)
 
-    newf = tmp_group(f)
+        if not raw_data_chunks_map:
+            del version_data[name]
+            return
 
-    def _get(name):
-        recreate_dataset(f, name, newf, callback=callback)
+        # Recreate the hash table.
+        _recreate_hashtable(f, name, raw_data_chunks_map)
 
-    versions[version].visit(_get)
+        # Recreate every virtual dataset in every kept version.
+        _recreate_virtual_dataset(f, name, versions_to_keep, raw_data_chunks_map)
 
-    swap(f, newf)
-    # swap() will swap out the datasets that are left intact. Any dataset in
-    # the version that is not in newf should be deleted entirely, as that
-    # means that it only existed in this version.
-    to_delete = []
-    def _visit(name, object):
-        if isinstance(object, Dataset):
-            if name not in newf['_version_data']:
-                to_delete.append(name)
-    versions[version].visititems(_visit)
+    for name in version_data:
+        if name == 'versions':
+            continue
+        delete_dataset(name)
 
-    for name in to_delete:
-        del f['_version_data'][name]
-    del f['_version_data/versions'][version]
+    for version in versions_to_delete:
+        del versions[version]
 
-    del newf[newf.name]
+# Backwards compatibility
+delete_version = delete_versions
 
 def modify_metadata(f, dataset_name, *, chunks=None, compression=None,
                     compression_opts=None, dtype=None, fillvalue=None):
