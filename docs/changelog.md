@@ -1,9 +1,17 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.3.7 (2022-01-27)
+
+### Major Changes
+- `delete_version` has been renamed to `delete_versions`, and now takes a list
+  of versions to delete. The old `delete_version` is kept intact for backwards
+  compatibility.
+- `delete_versions` (née `delete_version`) is now much faster.
+
 ## 1.3.6 (2021-10-19)
 
-## Minor Changes
+### Minor Changes
 
 - Create hashtable datasets with lzf compression enabled.
 
