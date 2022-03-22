@@ -15,7 +15,7 @@ from ..backend import DEFAULT_CHUNK_SIZE
 from ..api import VersionedHDF5File
 from ..versions import TIMESTAMP_FMT
 from ..wrappers import (InMemoryArrayDataset, InMemoryDataset,
-                        InMemorySparseDataset, DatasetWrapper)
+                        InMemorySparseDataset, DatasetWrapper, InMemoryGroup)
 
 
 def test_stage_version(vfile):
@@ -1617,10 +1617,16 @@ def test_scalar():
             dtype = h5py.special_dtype(vlen=bytes)
             g.create_dataset('bar', data=np.array(['aaa'], dtype='O'), dtype=dtype)
 
-    with h5py.File('test.hdf5', 'r') as f:
+    with h5py.File('test.hdf5', 'r+') as f:
         vfile = VersionedHDF5File(f)
         assert isinstance(vfile['version1']['bar'], DatasetWrapper)
         assert isinstance(vfile['version1']['bar'].dataset, InMemoryDataset)
+        # Should return a scalar, not a shape () array
+        assert isinstance(vfile['version1']['bar'][0], bytes)
+
+    with h5py.File('test.hdf5', 'r') as f:
+        vfile = VersionedHDF5File(f)
+        assert isinstance(vfile['version1']['bar'], h5py.Dataset)
         # Should return a scalar, not a shape () array
         assert isinstance(vfile['version1']['bar'][0], bytes)
 
@@ -1787,15 +1793,64 @@ def test_mask_reading(tmp_path):
     # Reading a virtual dataset with a mask does not work in HDF5, so make
     # sure it still works for versioned datasets.
     file_name = os.path.join(tmp_path, 'file.hdf5')
+    mask = np.array([True, True, False], dtype='bool')
 
     with h5py.File(file_name, 'w') as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version('r0') as sv:
             sv.create_dataset('bar', data=[1, 2, 3], chunks=(2,))
+            b = sv['bar'][mask]
+            assert_equal(b, [1, 2])
+
+        b = vf['r0']['bar'][mask]
+        assert_equal(b, [1, 2])
+
+    with h5py.File(file_name, 'r+') as f:
+        vf = VersionedHDF5File(f)
+        sv = vf['r0']
+        b = sv['bar'][mask]
+        assert_equal(b, [1, 2])
+
+# This fails in h5py 2.10 because read-only files return the virtual
+# dataset directly, but h5py 2.10 does not support mask indices on virtual
+# datasets.
+@mark.xfail(h5py.__version__[0] == '2', reason='h5py 2 does not support masks on virtual datasets')
+def test_mask_reading_read_only(tmp_path):
+    # Reading a virtual dataset with a mask does not work in HDF5, so make
+    # sure it still works for versioned datasets.
+    file_name = os.path.join(tmp_path, 'file.hdf5')
+    mask = np.array([True, True, False], dtype='bool')
+
+    with h5py.File(file_name, 'w') as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version('r0') as sv:
+            sv.create_dataset('bar', data=[1, 2, 3], chunks=(2,))
+            b = sv['bar'][mask]
+            assert_equal(b, [1, 2])
+
+        b = vf['r0']['bar'][mask]
+        assert_equal(b, [1, 2])
 
     with h5py.File(file_name, 'r') as f:
         vf = VersionedHDF5File(f)
         sv = vf['r0']
-        mask = np.array([True, True, False], dtype='bool')
         b = sv['bar'][mask]
         assert_equal(b, [1, 2])
+
+def test_read_only_no_wrappers():
+    # Read-only files should not use the wrapper classes
+    with setup('test.hdf5') as f:
+        vfile = VersionedHDF5File(f)
+        with vfile.stage_version('version1') as g:
+            g.create_dataset('bar', data=np.array([0, 1, 2]))
+
+    with h5py.File('test.hdf5', 'r+') as f:
+        vfile = VersionedHDF5File(f)
+        assert isinstance(vfile['version1'], InMemoryGroup)
+        assert isinstance(vfile['version1']['bar'], DatasetWrapper)
+        assert isinstance(vfile['version1']['bar'].dataset, InMemoryDataset)
+
+    with h5py.File('test.hdf5', 'r') as f:
+        vfile = VersionedHDF5File(f)
+        assert isinstance(vfile['version1'], h5py.Group)
+        assert isinstance(vfile['version1']['bar'], h5py.Dataset)
