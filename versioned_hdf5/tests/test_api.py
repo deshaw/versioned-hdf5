@@ -1811,10 +1811,12 @@ def test_mask_reading(tmp_path):
         b = sv['bar'][mask]
         assert_equal(b, [1, 2])
 
-# This fails in h5py 2.10 because read-only files return the virtual
-# dataset directly, but h5py 2.10 does not support mask indices on virtual
+# This fails prior to h5py 3.3 because read-only files return the virtual
+# dataset directly, but h5py <3.3 does not support mask indices on virtual
 # datasets.
-@mark.xfail(h5py.__version__[0] == '2', reason='h5py 2 does not support masks on virtual datasets')
+@mark.xfail(h5py.__version__[0] == '2'
+            or h5py.__version__[0] == '3' and int(h5py.__version__[2]) < 3,
+            reason='h5py 2 does not support masks on virtual datasets')
 def test_mask_reading_read_only(tmp_path):
     # Reading a virtual dataset with a mask does not work in HDF5, so make
     # sure it still works for versioned datasets.
