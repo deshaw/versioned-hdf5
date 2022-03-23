@@ -2,7 +2,7 @@ import h5py
 from ..backend import initialize
 
 
-def setup(file_name='file.hdf5', *, version_name=None):
+def setup_vfile(file_name='file.hdf5', *, version_name=None):
     f = h5py.File(file_name, 'w')
     initialize(f)
     if version_name:

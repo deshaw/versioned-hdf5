@@ -10,7 +10,7 @@ import datetime
 import numpy as np
 from numpy.testing import assert_equal
 
-from .helpers import setup
+from .helpers import setup_vfile
 from ..backend import DEFAULT_CHUNK_SIZE
 from ..api import VersionedHDF5File
 from ..versions import TIMESTAMP_FMT
@@ -1315,7 +1315,7 @@ def test_scalar_dataset():
     ]:
 
         dt = np.asarray(data1).dtype
-        with setup() as f:
+        with setup_vfile() as f:
             file = VersionedHDF5File(f)
             with file.stage_version('v1') as group:
                 group['scalar_ds'] = data1
@@ -1443,7 +1443,7 @@ def test_string_dtypes():
         else:
             data = np.full(10, b'hello world', dtype=dt)
 
-        with setup() as f:
+        with setup_vfile() as f:
             file = VersionedHDF5File(f)
             with file.stage_version('0') as sv:
                 sv.create_dataset("name", shape=(10,), dtype=dt, data=data)
@@ -1488,7 +1488,7 @@ def test_empty(vfile):
 
 
 def test_read_only():
-    with setup('test.hdf5') as f:
+    with setup_vfile('test.hdf5') as f:
         file = VersionedHDF5File(f)
         timestamp = datetime.datetime.now(datetime.timezone.utc)
         with file.stage_version('version1', timestamp=timestamp) as g:
@@ -1611,7 +1611,7 @@ def test_auto_create_group(vfile):
     assert_equal(vfile['version1']['a']['b']['c'][:], [0, 1, 2])
 
 def test_scalar():
-    with setup('test.hdf5') as f:
+    with setup_vfile('test.hdf5') as f:
         vfile = VersionedHDF5File(f)
         with vfile.stage_version('version1') as g:
             dtype = h5py.special_dtype(vlen=bytes)
@@ -1839,7 +1839,7 @@ def test_mask_reading_read_only(tmp_path):
 
 def test_read_only_no_wrappers():
     # Read-only files should not use the wrapper classes
-    with setup('test.hdf5') as f:
+    with setup_vfile('test.hdf5') as f:
         vfile = VersionedHDF5File(f)
         with vfile.stage_version('version1') as g:
             g.create_dataset('bar', data=np.array([0, 1, 2]))
