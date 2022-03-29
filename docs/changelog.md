@@ -8,6 +8,10 @@ Versioned HDF5 Change Log
 - Versioning wrappers are now skipped when loading a file in read-only mode.
   This leads to better performance in these cases.
 
+### Minor Changes
+
+- Fix the test suite with newer versions of pytest.
+
 ## 1.3.7 (2022-01-27)
 
 ### Major Changes
