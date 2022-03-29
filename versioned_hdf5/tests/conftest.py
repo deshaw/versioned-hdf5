@@ -1,6 +1,6 @@
 import os
 from pytest import fixture
-from .helpers import setup
+from .helpers import setup_vfile
 from ..api import VersionedHDF5File
 
 # Run tests marked with @pytest.mark.slow last. See
@@ -28,7 +28,7 @@ def h5file(tmp_path, request):
         if 'version_name' in m.kwargs.keys():
             version_name = m.kwargs['version_name']
 
-    f = setup(file_name=file_name, version_name=version_name)
+    f = setup_vfile(file_name=file_name, version_name=version_name)
     yield f
     try:
         f.close()

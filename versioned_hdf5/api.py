@@ -103,15 +103,17 @@ class VersionedHDF5File:
         g = self._versions[version]
         if not g.attrs['committed']:
             raise ValueError("Version groups cannot accessed from the VersionedHDF5File object before they are committed.")
-        # TODO: Don't give an in-memory group if the file is read-only
+        if self.f.file.mode == 'r':
+            return g
         return InMemoryGroup(g._id, _committed=True)
 
     def get_version_by_timestamp(self, timestamp, exact=False):
         version = get_version_by_timestamp(self.f, timestamp, exact=exact)
-        # TODO: Don't give an in-memory group if the file is read-only
         g = self._versions[version]
         if not g.attrs['committed']:
             raise ValueError("Version groups cannot accessed from the VersionedHDF5File object before they are committed.")
+        if self.f.file.mode == 'r':
+            return g
         return InMemoryGroup(g._id, _committed=True)
 
     def __getitem__(self, item):
