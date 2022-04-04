@@ -1,4 +1,4 @@
-from h5py import VirtualLayout, VirtualSource, Dataset
+from h5py import VirtualLayout, VirtualSource, Dataset, Group
 from h5py._hl.vds import VDSmap
 from h5py._hl.selections import select
 from h5py.h5i import get_name
@@ -219,8 +219,8 @@ def _recreate_hashtable(f, name, raw_data_chunks_map, tmp=False):
 
 def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False):
     """
-    Recreate every virtual dataset `name` in the version versions according to
-    the new raw_data chunks.
+    Recreate every virtual dataset `name` in the versions `versions` according
+    to the new raw_data chunks in `raw_data_chunks_map`.
 
     Returns a dict mapping the chunks from the old raw dataset to the chunks
     in the new raw dataset. Chunks not in the mapping were deleted. If the
@@ -270,15 +270,17 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
             else:
                 layout[vslice.raw] = vs[new_src_slice.raw]
 
-        tmp_name = '_tmp_' + name
-        tmp_dataset = group.create_virtual_dataset(tmp_name, layout, fillvalue=dataset.fillvalue)
+        head, tail = pp.split(name)
+        tmp_name = '_tmp_' + tail
+        tmp_path = pp.join(head, tmp_name)
+        tmp_dataset = group.create_virtual_dataset(tmp_path, layout, fillvalue=dataset.fillvalue)
 
         for key, val in dataset.attrs.items():
             tmp_dataset.attrs[key] = val
 
         if not tmp:
             del group[name]
-            group.move(tmp_name, name)
+            group.move(tmp_path, name)
 
 def delete_versions(f, versions_to_delete):
     """
@@ -306,6 +308,7 @@ def delete_versions(f, versions_to_delete):
     def delete_dataset(name):
         if name == 'versions':
             return
+
         # Recreate the raw data.
         raw_data_chunks_map = _recreate_raw_data(f, name, versions_to_delete)
 
@@ -319,9 +322,20 @@ def delete_versions(f, versions_to_delete):
         # Recreate every virtual dataset in every kept version.
         _recreate_virtual_dataset(f, name, versions_to_keep, raw_data_chunks_map)
 
-    for name in version_data:
-        if name == 'versions':
-            continue
+    # We use this instead of version_data.visit(delete_dataset) because
+    # visit() has trouble with the groups being deleted from under it.
+    def _walk(g, prefix=''):
+        for name in g:
+            obj = g[name]
+            if isinstance(obj, Group):
+                if 'raw_data' in obj:
+                    to_delete.append(prefix + name)
+                else:
+                    _walk(obj, name + '/')
+
+    to_delete = []
+    _walk(version_data)
+    for name in to_delete:
         delete_dataset(name)
 
     for version in versions_to_delete:

@@ -58,7 +58,7 @@ def check_data(file, test_data_fillvalue=1., version2=True, test_data4_fillvalue
         assert file['version2']['group']['test_data4'].shape == (4,)
         np.testing.assert_equal(file['version2']['group']['test_data4'][:4],
                                 [5, 2, 3, 4])
-    assert np.all(file['version2']['group']['test_data4'][4:] == test_data4_fillvalue)
+        assert np.all(file['version2']['group']['test_data4'][4:] == test_data4_fillvalue)
 
 def test_modify_metadata_compression(vfile):
     setup_vfile(vfile)
@@ -524,8 +524,10 @@ def test_delete_version(vfile):
     delete_version(f, 'version2')
     check_data(vfile, version2=False)
     assert list(vfile) == ['version1']
-    assert list(f['_version_data']) == ['test_data', 'test_data2', 'versions']
+    assert set(f['_version_data']) == {'group', 'test_data', 'test_data2', 'versions'}
+    assert set(f['_version_data']['group']) == {'test_data4'}
     assert not np.isin(2., f['_version_data']['test_data']['raw_data'][:])
+    assert not np.isin(5, f['_version_data']['group']['test_data4']['raw_data'][:])
 
 def test_delete_versions(vfile):
     setup_vfile(vfile)
@@ -537,8 +539,40 @@ def test_delete_versions(vfile):
     delete_versions(f, ['version2', 'version3'])
     check_data(vfile, version2=False)
     assert list(vfile) == ['version1']
-    assert list(f['_version_data']) == ['test_data', 'test_data2', 'versions']
+    assert set(f['_version_data']) == {'group', 'test_data', 'test_data2', 'versions'}
+    assert set(f['_version_data']['group']) == {'test_data4'}
     assert not np.isin(2., f['_version_data']['test_data']['raw_data'][:])
+    assert not np.isin(5, f['_version_data']['group']['test_data4']['raw_data'][:])
+
+def test_delete_versions_nested_groups(vfile):
+    data = []
+
+    with vfile.stage_version('r0') as sv:
+        data_group = sv.create_group('group')
+        data.append(np.arange(500))
+        data_group.create_dataset('test_data', maxshape=(None,), chunks=(1000), data=data[0])
+
+    for i in range(1, 11):
+        with vfile.stage_version(f'r{i}') as sv:
+            data.append(np.random.randint(0, 1000, size=500))
+            sv['group']['test_data'][:] = data[-1]
+
+
+    assert set(vfile) == {'r0', 'r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8', 'r9', 'r10'}
+    for i in range(11):
+        assert list(vfile[f'r{i}']) == ['group'], i
+        assert list(vfile[f'r{i}']['group']) == ['test_data']
+        np.testing.assert_equal(vfile[f'r{i}']['group']['test_data'][:], data[i])
+
+    delete_versions(vfile, ['r3', 'r6'])
+
+    assert set(vfile) == {'r0', 'r1', 'r2', 'r4', 'r5', 'r7', 'r8', 'r9', 'r10'}
+    for i in range(11):
+        if i in [3, 6]:
+            continue
+        assert list(vfile[f'r{i}']) == ['group'], i
+        assert list(vfile[f'r{i}']['group']) == ['test_data']
+        np.testing.assert_equal(vfile[f'r{i}']['group']['test_data'][:], data[i])
 
 def setup2(vfile):
     with vfile.stage_version('version1') as g:
