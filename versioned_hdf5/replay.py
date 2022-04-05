@@ -139,10 +139,13 @@ def _recreate_raw_data(f, name, versions_to_delete, tmp=False):
 
         dataset = f['_version_data/versions'][version_name][name]
 
-        virtual_sources = dataset.virtual_sources()
-        slice_map = {spaceid_to_slice(i.vspace):
-                     spaceid_to_slice(i.src_space) for i in
-                     virtual_sources}
+        if dataset.is_virtual:
+            virtual_sources = dataset.virtual_sources()
+            slice_map = {spaceid_to_slice(i.vspace):
+                         spaceid_to_slice(i.src_space) for i in
+                         virtual_sources}
+        else:
+            slice_map = {}
         chunks_map[version_name].update(slice_map)
 
     chunks_to_keep = set().union(*[map.values() for map in
@@ -247,28 +250,30 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
         if not layout_has_sources:
             vs = VirtualSource('.', name=raw_data.name, shape=raw_data.shape, dtype=raw_data.dtype)
 
-        virtual_sources = dataset.virtual_sources()
-        for vmap in virtual_sources:
-            vspace, fname, dset_name, src_space = vmap
-            fname = fname.encode('utf-8')
-            assert fname == b'.', fname
+        # If a dataset has no data except for the fillvalue, it will not be virtual
+        if dataset.is_virtual:
+            virtual_sources = dataset.virtual_sources()
+            for vmap in virtual_sources:
+                vspace, fname, dset_name, src_space = vmap
+                fname = fname.encode('utf-8')
+                assert fname == b'.', fname
 
-            vslice = spaceid_to_slice(vspace)
-            src_slice = spaceid_to_slice(src_space)
-            if src_slice not in raw_data_chunks_map:
-                raise ValueError(f"Could not find the chunk for {vslice} ({src_slice} in the old raw dataset) for {name!r} in {version_name!r}")
-            new_src_slice = raw_data_chunks_map[src_slice]
+                vslice = spaceid_to_slice(vspace)
+                src_slice = spaceid_to_slice(src_space)
+                if src_slice not in raw_data_chunks_map:
+                    raise ValueError(f"Could not find the chunk for {vslice} ({src_slice} in the old raw dataset) for {name!r} in {version_name!r}")
+                new_src_slice = raw_data_chunks_map[src_slice]
 
-            # h5py 3.3 changed the VirtualLayout code. See
-            # https://github.com/h5py/h5py/pull/1905 and the code in
-            # create_virtual_dataset().
-            if layout_has_sources:
-                vs_sel = select(raw_data.shape, new_src_slice.raw, None)
-                layout_sel = select(dataset.shape, vslice.raw, None)
-                new_vmap = VDSmap(layout_sel.id, fname, dset_name, vs_sel.id)
-                layout.sources.append(new_vmap)
-            else:
-                layout[vslice.raw] = vs[new_src_slice.raw]
+                # h5py 3.3 changed the VirtualLayout code. See
+                # https://github.com/h5py/h5py/pull/1905 and the code in
+                # create_virtual_dataset().
+                if layout_has_sources:
+                    vs_sel = select(raw_data.shape, new_src_slice.raw, None)
+                    layout_sel = select(dataset.shape, vslice.raw, None)
+                    new_vmap = VDSmap(layout_sel.id, fname, dset_name, vs_sel.id)
+                    layout.sources.append(new_vmap)
+                else:
+                    layout[vslice.raw] = vs[new_src_slice.raw]
 
         head, tail = pp.split(name)
         tmp_name = '_tmp_' + tail

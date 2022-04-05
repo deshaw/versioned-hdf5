@@ -544,6 +544,38 @@ def test_delete_versions(vfile):
     assert not np.isin(2., f['_version_data']['test_data']['raw_data'][:])
     assert not np.isin(5, f['_version_data']['group']['test_data4']['raw_data'][:])
 
+
+def test_delete_versions_no_data(vfile):
+    with vfile.stage_version('version1') as g:
+        g.create_dataset('data', maxshape=(None, None), chunks=(20, 20), shape=(5, 5), dtype=np.dtype('int8'), fillvalue=0)
+
+    with vfile.stage_version('version2') as g:
+        g['data'][0] = 1
+
+    f = vfile.f
+
+    delete_versions(f, ['version2'])
+    assert list(vfile) == ['version1']
+    assert list(vfile['version1']) == ['data']
+    assert vfile['version1']['data'].shape == (5, 5)
+    assert np.all(vfile['version1']['data'][:] == 0)
+
+def test_delete_versions_no_data2(vfile):
+    with vfile.stage_version('version1') as g:
+        g.create_dataset('data', maxshape=(None, None), chunks=(20, 20), shape=(5, 5), dtype=np.dtype('int8'), fillvalue=0)
+
+    with vfile.stage_version('version2') as g:
+        g['data'][0] = 1
+
+    f = vfile.f
+
+    delete_versions(f, ['version1'])
+    assert list(vfile) == ['version2']
+    assert list(vfile['version2']) == ['data']
+    assert vfile['version2']['data'].shape == (5, 5)
+    assert np.all(vfile['version2']['data'][1:] == 0)
+    assert np.all(vfile['version2']['data'][0] == 1)
+
 def test_delete_versions_nested_groups(vfile):
     data = []
 
