@@ -580,21 +580,22 @@ def test_delete_versions_nested_groups(vfile):
     data = []
 
     with vfile.stage_version('r0') as sv:
-        data_group = sv.create_group('group')
+        data_group = sv.create_group('group1/group2')
         data.append(np.arange(500))
         data_group.create_dataset('test_data', maxshape=(None,), chunks=(1000), data=data[0])
 
     for i in range(1, 11):
         with vfile.stage_version(f'r{i}') as sv:
             data.append(np.random.randint(0, 1000, size=500))
-            sv['group']['test_data'][:] = data[-1]
+            sv['group1']['group2']['test_data'][:] = data[-1]
 
 
     assert set(vfile) == {'r0', 'r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8', 'r9', 'r10'}
     for i in range(11):
-        assert list(vfile[f'r{i}']) == ['group'], i
-        assert list(vfile[f'r{i}']['group']) == ['test_data']
-        np.testing.assert_equal(vfile[f'r{i}']['group']['test_data'][:], data[i])
+        assert list(vfile[f'r{i}']) == ['group1'], i
+        assert list(vfile[f'r{i}']['group1']) == ['group2']
+        assert list(vfile[f'r{i}']['group1']['group2']) == ['test_data']
+        np.testing.assert_equal(vfile[f'r{i}']['group1']['group2']['test_data'][:], data[i])
 
     delete_versions(vfile, ['r3', 'r6'])
 
@@ -602,9 +603,10 @@ def test_delete_versions_nested_groups(vfile):
     for i in range(11):
         if i in [3, 6]:
             continue
-        assert list(vfile[f'r{i}']) == ['group'], i
-        assert list(vfile[f'r{i}']['group']) == ['test_data']
-        np.testing.assert_equal(vfile[f'r{i}']['group']['test_data'][:], data[i])
+        assert list(vfile[f'r{i}']) == ['group1'], i
+        assert list(vfile[f'r{i}']['group1']) == ['group2']
+        assert list(vfile[f'r{i}']['group1']['group2']) == ['test_data']
+        np.testing.assert_equal(vfile[f'r{i}']['group1']['group2']['test_data'][:], data[i])
 
 def setup2(vfile):
     with vfile.stage_version('version1') as g:

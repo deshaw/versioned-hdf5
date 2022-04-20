@@ -336,7 +336,7 @@ def delete_versions(f, versions_to_delete):
                 if 'raw_data' in obj:
                     to_delete.append(prefix + name)
                 else:
-                    _walk(obj, name + '/')
+                    _walk(obj, prefix + name + '/')
 
     to_delete = []
     _walk(version_data)
