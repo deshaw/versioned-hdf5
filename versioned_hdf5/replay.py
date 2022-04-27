@@ -1,4 +1,4 @@
-from h5py import VirtualLayout, VirtualSource, Dataset, Group
+from h5py import VirtualLayout, VirtualSource, Dataset, Group, __version__ as h5py_version
 from h5py._hl.vds import VDSmap
 from h5py._hl.selections import select
 from h5py.h5i import get_name
@@ -160,6 +160,21 @@ def _recreate_raw_data(f, name, versions_to_delete, tmp=False):
     chunks = ChunkSize(raw_data.chunks)
     new_shape = (len(chunks_to_keep)*chunks[0], *chunks[1:])
 
+    # See InMemoryDataset.fillvalue. In h5py3 variable length strings use None
+    # for the h5py fillvalue, but require a string fillvalue for NumPy.
+    def _get_np_fillvalue(data):
+        if data.fillvalue is not None:
+            return data.fillvalue
+        if data.dtype.metadata:
+             if 'vlen' in raw_data.dtype.metadata:
+                 if (h5py_version.startswith('3') and
+                     data.dtype.metadata['vlen'] == str):
+                     return bytes()
+                 return data.dtype.metadata['vlen']()
+             elif 'h5py_encoding' in raw_data.dtype.metadata:
+                 return data.dtype.type()
+        return np.zeros((), dtype=data.dtype)[()]
+
     new_raw_data = f['_version_data'][name].create_dataset(
         '_tmp_raw_data', shape=new_shape, maxshape=(None,)+chunks[1:],
         chunks=raw_data.chunks, dtype=raw_data.dtype,
@@ -170,7 +185,7 @@ def _recreate_raw_data(f, name, versions_to_delete, tmp=False):
         new_raw_data.attrs[key] = val
 
     r = raw_data[:]
-    n = np.full(new_raw_data.shape, new_raw_data.fillvalue, dtype=new_raw_data.dtype)
+    n = np.full(new_raw_data.shape, _get_np_fillvalue(raw_data), dtype=new_raw_data.dtype)
     raw_data_chunks_map = {}
     for new_chunk, chunk in zip(chunks.indices(new_shape), chunks_to_keep):
         # Shrink new_chunk to the size of chunk, in case chunk isn't a full

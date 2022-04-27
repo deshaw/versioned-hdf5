@@ -1,3 +1,4 @@
+import h5py
 import numpy as np
 
 from versioned_hdf5.replay import (modify_metadata, delete_version,
@@ -699,3 +700,15 @@ def test_delete_versions2(vfile):
     np.testing.assert_equal(vfile['version2']['test_data'][:], data)
 
     assert set(vfile.f['_version_data/test_data/raw_data'][:].flat) == set(data.flat)
+
+def test_delete_versions_variable_length_strings(vfile):
+    with vfile.stage_version('r0') as sv:
+        data = np.array(['foo'], dtype='O')
+        sv.create_dataset('bar', data=data, dtype=h5py.string_dtype(encoding='ascii'))
+
+    for i in range(1, 11):
+        with vfile.stage_version('r{}'.format(i)) as sv:
+            sv['bar'].resize((i+1,))
+            sv['bar'][i] = 'foo'
+
+    delete_versions(vfile, ['r2', 'r4', 'r6'])
