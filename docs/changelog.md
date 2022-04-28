@@ -1,6 +1,13 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.3.9 (2022-04-28)
+
+### Minor Changes
+
+- Fix `delete_versions()` with nested groups.
+- Fix `delete_versions()` with variable length strings.
+
 ## 1.3.8 (2022-03-29)
 
 ### Major Changes
