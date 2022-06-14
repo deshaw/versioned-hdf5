@@ -319,9 +319,16 @@ def delete_versions(f, versions_to_delete):
 
     versions = version_data['versions']
 
+    if '__first_version__' in versions_to_delete:
+        raise ValueError("Cannot delete first version")
+
     for version in versions_to_delete:
         if version not in versions:
             raise ValueError(f"Version {version!r} does not exist")
+
+    current_version = versions.attrs['current_version']
+    while current_version in versions_to_delete:
+        current_version = versions[current_version].attrs['prev_version']
 
     versions_to_keep = set(versions) - set(versions_to_delete)
 
@@ -360,6 +367,8 @@ def delete_versions(f, versions_to_delete):
 
     for version in versions_to_delete:
         del versions[version]
+
+    versions.attrs['current_version'] = current_version
 
 # Backwards compatibility
 delete_version = delete_versions
