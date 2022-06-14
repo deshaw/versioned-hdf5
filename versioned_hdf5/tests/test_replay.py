@@ -712,3 +712,29 @@ def test_delete_versions_variable_length_strings(vfile):
             sv['bar'][i] = 'foo'
 
     delete_versions(vfile, ['r2', 'r4', 'r6'])
+
+def test_delete_versions_fillvalue_only_dataset(vfile):
+    with vfile.stage_version('r0') as sv:
+        sv.create_dataset('fillvalue_only', shape=(6,),
+                          dtype=np.dtype('int64'), data=None,
+                          maxshape=(None,), chunks=(10000,), fillvalue=0)
+        sv.create_dataset('has_data', shape=(6,), dtype=np.dtype('int64'),
+                          data=np.arange(6), maxshape=(None,),
+                          chunks=(10000,), fillvalue=0)
+
+    with vfile.stage_version('r1') as sv:
+        sv['has_data'] = np.arange(5, -1, -1)
+
+    delete_versions(vfile, ['r0'])
+
+    with vfile.stage_version('r2') as sv:
+        sv['fillvalue_only'][0] = 1
+
+    assert set(vfile) == {'r1', 'r2'}
+    assert set(vfile['r1']) == {'fillvalue_only', 'has_data'}
+    assert set(vfile['r2']) == {'fillvalue_only', 'has_data'}
+    np.testing.assert_equal(vfile['r1']['fillvalue_only'][:], 0)
+    np.testing.assert_equal(vfile['r2']['fillvalue_only'][:],
+                            np.array([1, 0, 0, 0, 0, 0]))
+    np.testing.assert_equal(vfile['r1']['has_data'][:], np.arange(5, -1, -1))
+    np.testing.assert_equal(vfile['r2']['has_data'][:], np.arange(5, -1, -1))
