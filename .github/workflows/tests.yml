@@ -6,7 +6,7 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.7', '3.8', '3.9']
-        h5py-version: ['2.10', '3.2', '3']
+        h5py-version: ['2.10', '3.6', '3']
       fail-fast: false
     steps:
       - uses: actions/checkout@v2
