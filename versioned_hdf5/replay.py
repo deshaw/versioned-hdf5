@@ -153,9 +153,6 @@ def _recreate_raw_data(f, name, versions_to_delete, tmp=False):
 
     chunks_to_keep = sorted(chunks_to_keep, key=lambda i: i.args[0].args[0])
 
-    if not chunks_to_keep:
-        return {}
-
     raw_data = f['_version_data'][name]['raw_data']
     chunks = ChunkSize(raw_data.chunks)
     new_shape = (len(chunks_to_keep)*chunks[0], *chunks[1:])
@@ -339,7 +336,15 @@ def delete_versions(f, versions_to_delete):
         # Recreate the raw data.
         raw_data_chunks_map = _recreate_raw_data(f, name, versions_to_delete)
 
-        if not raw_data_chunks_map:
+        delete_dataset = True
+        for version_name in all_versions(f):
+            if version_name in versions_to_delete:
+                continue
+            if name in f['_version_data/versions'][version_name]:
+                delete_dataset = False
+                break
+
+        if delete_dataset:
             del version_data[name]
             return
 
