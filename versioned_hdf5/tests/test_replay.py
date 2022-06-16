@@ -712,3 +712,17 @@ def test_delete_versions_variable_length_strings(vfile):
             sv['bar'][i] = 'foo'
 
     delete_versions(vfile, ['r2', 'r4', 'r6'])
+
+def test_delete_versions_current_version(vfile):
+    with vfile.stage_version('r0') as sv:
+        sv.create_dataset('bar', data=np.arange(10))
+
+    for i in range(1, 11):
+        with vfile.stage_version('r{}'.format(i)) as sv:
+            sv['bar'] = np.arange(10 + i)
+
+    delete_versions(vfile, ['r2', 'r4', 'r6', 'r8', 'r9', 'r10'])
+
+    cv = vfile.current_version
+    assert cv == 'r7'
+    np.testing.assert_equal(vfile[cv]['bar'][:], np.arange(17))
