@@ -1,6 +1,13 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.3.10 (2022-06-16)
+
+### Minor Changes
+
+- Fix deleting the current version.
+- Properly handle fillvalue-only datasets in `delete_versions()`.
+
 ## 1.3.9 (2022-04-28)
 
 ### Minor Changes
