@@ -738,3 +738,17 @@ def test_delete_versions_fillvalue_only_dataset(vfile):
                             np.array([1, 0, 0, 0, 0, 0]))
     np.testing.assert_equal(vfile['r1']['has_data'][:], np.arange(5, -1, -1))
     np.testing.assert_equal(vfile['r2']['has_data'][:], np.arange(5, -1, -1))
+
+def test_delete_versions_current_version(vfile):
+    with vfile.stage_version('r0') as sv:
+        sv.create_dataset('bar', data=np.arange(10))
+
+    for i in range(1, 11):
+        with vfile.stage_version('r{}'.format(i)) as sv:
+            sv['bar'] = np.arange(10 + i)
+
+    delete_versions(vfile, ['r2', 'r4', 'r6', 'r8', 'r9', 'r10'])
+
+    cv = vfile.current_version
+    assert cv == 'r7'
+    np.testing.assert_equal(vfile[cv]['bar'][:], np.arange(17))
