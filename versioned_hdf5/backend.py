@@ -1,5 +1,5 @@
 import numpy as np
-from h5py import VirtualLayout, VirtualSource, h5s, _selector
+from h5py import VirtualLayout, VirtualSource, h5s
 from ndindex import Slice, ndindex, Tuple, ChunkSize
 
 from .hashtable import Hashtable
@@ -205,6 +205,7 @@ def create_virtual_dataset(f, version_name, name, shape, slices, attrs=None, fil
         layout = VirtualLayout(shape, dtype=raw_data.dtype)
         layout_has_sources = hasattr(layout, 'sources')
         if not layout_has_sources:
+            from h5py import _selector
             layout._src_filenames.add(b'.')
             space = h5s.create_simple(shape)
             selector = _selector.Selector(space)
