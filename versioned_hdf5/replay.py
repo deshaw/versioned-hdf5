@@ -1,4 +1,4 @@
-from h5py import VirtualLayout, VirtualSource, Dataset, Group, __version__ as h5py_version
+from h5py import VirtualLayout, h5s, Dataset, Group, __version__ as h5py_version
 from h5py._hl.vds import VDSmap
 from h5py._hl.selections import select
 from h5py.h5i import get_name
@@ -256,11 +256,15 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
         dataset = group[name]
 
 
+        # See the comments in create_virtual_dataset
         layout = VirtualLayout(dataset.shape, dtype=dataset.dtype)
         layout_has_sources = hasattr(layout, 'sources')
 
         if not layout_has_sources:
-            vs = VirtualSource('.', name=raw_data.name, shape=raw_data.shape, dtype=raw_data.dtype)
+            from h5py import _selector
+            layout._src_filenames.add(b'.')
+            space = h5s.create_simple(dataset.shape)
+            selector = _selector.Selector(space)
 
         # If a dataset has no data except for the fillvalue, it will not be virtual
         if dataset.is_virtual:
@@ -276,16 +280,19 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
                     raise ValueError(f"Could not find the chunk for {vslice} ({src_slice} in the old raw dataset) for {name!r} in {version_name!r}")
                 new_src_slice = raw_data_chunks_map[src_slice]
 
-                # h5py 3.3 changed the VirtualLayout code. See
-                # https://github.com/h5py/h5py/pull/1905 and the code in
-                # create_virtual_dataset().
-                if layout_has_sources:
+                if not layout_has_sources:
+                    key = new_src_slice.raw
+                    vs_sel = select(raw_data.shape, key, dataset=None)
+
+                    sel = selector.make_selection(vslice.raw)
+                    layout.dcpl.set_virtual(
+                        sel.id, b'.', raw_data.name.encode('utf-8'), vs_sel.id
+                    )
+                else:
                     vs_sel = select(raw_data.shape, new_src_slice.raw, None)
                     layout_sel = select(dataset.shape, vslice.raw, None)
                     new_vmap = VDSmap(layout_sel.id, fname, dset_name, vs_sel.id)
                     layout.sources.append(new_vmap)
-                else:
-                    layout[vslice.raw] = vs[new_src_slice.raw]
 
         head, tail = pp.split(name)
         tmp_name = '_tmp_' + tail
