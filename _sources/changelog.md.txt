@@ -1,6 +1,12 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.3.11 (2022-08-02)
+
+### Minor Changes
+
+- Improve the performance of creating versions in h5py 3.
+
 ## 1.3.10 (2022-06-16)
 
 ### Minor Changes

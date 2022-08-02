@@ -5,8 +5,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>I/O Performance for Versioned-HDF5 Files &#8212; Versioned HDF5  documentation</title>
     <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
     <link rel="stylesheet" type="text/css" href="_static/alabaster.css" />
@@ -37,7 +36,7 @@
 
           <div class="body" role="main">
             
-  <section id="i-o-performance-for-versioned-hdf5-files">
+  <div class="section" id="i-o-performance-for-versioned-hdf5-files">
 <span id="performance-io"></span><h1>I/O Performance for Versioned-HDF5 Files<a class="headerlink" href="#i-o-performance-for-versioned-hdf5-files" title="Permalink to this heading">¶</a></h1>
 <p>For these tests, we have generated <code class="docutils literal notranslate"><span class="pre">.h5</span></code> data files using the
 <code class="docutils literal notranslate"><span class="pre">generate_data.py</span></code> script from the <a class="reference external" href="https://github.com/deshaw/versioned-hdf5">VersionedHDF5
@@ -53,7 +52,7 @@ standard options (<a class="reference internal" href="performance.html#performan
 </ol>
 <p>The <code class="docutils literal notranslate"><span class="pre">.h5</span></code> files used in these tests should be generated separately,
 using the <code class="docutils literal notranslate"><span class="pre">performance_tests.py</span></code> script from <code class="docutils literal notranslate"><span class="pre">analysis</span></code> folder.</p>
-<section id="setup">
+<div class="section" id="setup">
 <h2>Setup<a class="headerlink" href="#setup" title="Permalink to this heading">¶</a></h2>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">h5py</span>
 <span class="kn">import</span> <span class="nn">json</span>
@@ -64,13 +63,13 @@ using the <code class="docutils literal notranslate"><span class="pre">performan
 <span class="kn">from</span> <span class="nn">versioned_hdf5</span> <span class="kn">import</span> <span class="n">VersionedHDF5File</span>
 </pre></div>
 </div>
-</section>
-<section id="test-1-large-fraction-changes-sparse">
+</div>
+<div class="section" id="test-1-large-fraction-changes-sparse">
 <h2>Test 1: Large fraction changes (sparse)<a class="headerlink" href="#test-1-large-fraction-changes-sparse" title="Permalink to this heading">¶</a></h2>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">testname</span> <span class="o">=</span> <span class="s2">&quot;test_large_fraction_changes_sparse&quot;</span>
 </pre></div>
 </div>
-<section id="reading-in-sequential-mode">
+<div class="section" id="reading-in-sequential-mode">
 <h3>Reading in sequential mode<a class="headerlink" href="#reading-in-sequential-mode" title="Permalink to this heading">¶</a></h3>
 <p>For this test, we’ll read data from all versions in a file,
 sequentially.</p>
@@ -116,8 +115,8 @@ changed in the lines below if desired.</p>
 <img alt="_images/Performance_tests-IO_15_0.png" src="_images/Performance_tests-IO_15_0.png" />
 <p>As expected, read times increase for files with a larger number of
 versions, but the growth is close to linear.</p>
-</section>
-<section id="reading-specific-version">
+</div>
+<div class="section" id="reading-specific-version">
 <h3>Reading specific version<a class="headerlink" href="#reading-specific-version" title="Permalink to this heading">¶</a></h3>
 <p>For this test, we’ll compute the times required to read a specific
 version from the versioned-hdf5 file.</p>
@@ -174,8 +173,8 @@ system load while running the test.</p>
 <img alt="_images/Performance_tests-IO_21_0.png" src="_images/Performance_tests-IO_21_0.png" />
 <p>From this test, we can see that reading an arbitrary version from the
 file is very slightly affected by the number of versions in the file.</p>
-</section>
-<section id="reading-first-version-vs-reading-latest-version">
+</div>
+<div class="section" id="reading-first-version-vs-reading-latest-version">
 <h3>Reading first version vs. reading latest version<a class="headerlink" href="#reading-first-version-vs-reading-latest-version" title="Permalink to this heading">¶</a></h3>
 <p>Next, we’ll compare the times necessary to read the first version and
 the latest version on each file.</p>
@@ -278,9 +277,9 @@ HDF5). Note that these should be similar data.</p>
 <li><p>on average, reading the latest version on a VersionedHDF5File is ~5x slower than reading an unversioned file;</p></li>
 <li><p>the time required to read the latest version from a Versioned HDF5 file increases modestly with the number of versions stored in the file.</p></li>
 </ul>
-</section>
-</section>
-<section id="test-2-mostly-appends-sparse">
+</div>
+</div>
+<div class="section" id="test-2-mostly-appends-sparse">
 <h2>Test 2: Mostly appends (Sparse)<a class="headerlink" href="#test-2-mostly-appends-sparse" title="Permalink to this heading">¶</a></h2>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">testname</span> <span class="o">=</span> <span class="s2">&quot;test_mostly_appends_sparse&quot;</span>
 </pre></div>
@@ -290,7 +289,7 @@ HDF5). Note that these should be similar data.</p>
 <span class="n">exponent</span> <span class="o">=</span> <span class="mi">14</span>
 </pre></div>
 </div>
-<section id="id1">
+<div class="section" id="id1">
 <h3>Reading in sequential mode<a class="headerlink" href="#id1" title="Permalink to this heading">¶</a></h3>
 <p>If we read data from each version of the file, sequentially, we obtain
 the following:</p>
@@ -316,8 +315,8 @@ the datasets from the VersionedHDF5File grows quadratically with the
 number of transactions stored in the file. This is consistent with the
 increase in the size of the dataset, which also grows quickly with each
 new version commited to file.</p>
-</section>
-<section id="id2">
+</div>
+<div class="section" id="id2">
 <h3>Reading specific version<a class="headerlink" href="#id2" title="Permalink to this heading">¶</a></h3>
 <p>Now, let’s see the times required to read a specific version from each
 file.</p>
@@ -344,8 +343,8 @@ file.</p>
 read versions from the file as the number of transactions increases.
 Again, this can be explained in part by the size of the datasets being
 read from file, as they grow in size with each new transaction.</p>
-</section>
-<section id="id3">
+</div>
+<div class="section" id="id3">
 <h3>Reading first version vs. reading latest version<a class="headerlink" href="#id3" title="Permalink to this heading">¶</a></h3>
 <p>Looking at the times required to read the first version and the latest
 version of the files, we get the following results.</p>
@@ -405,14 +404,14 @@ can be read in constant time, irrespective of the number of transactions
 commited, the versioned file suffers a slight drop in read performance
 (for 500 transactions, this amounts to an average difference of ~10x in
 seconds.)</p>
-</section>
-</section>
-<section id="test-3-small-fraction-changes-sparse">
+</div>
+</div>
+<div class="section" id="test-3-small-fraction-changes-sparse">
 <h2>Test 3: Small Fraction Changes (Sparse)<a class="headerlink" href="#test-3-small-fraction-changes-sparse" title="Permalink to this heading">¶</a></h2>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">testname</span> <span class="o">=</span> <span class="s2">&quot;test_small_fraction_changes_sparse&quot;</span>
 </pre></div>
 </div>
-<section id="id4">
+<div class="section" id="id4">
 <h3>Reading in sequential mode<a class="headerlink" href="#id4" title="Permalink to this heading">¶</a></h3>
 <p>Once again, we only consider</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">compression</span> <span class="o">=</span> <span class="s2">&quot;None&quot;</span>
@@ -439,8 +438,8 @@ seconds.)</p>
 <img alt="_images/Performance_tests-IO_58_0.png" src="_images/Performance_tests-IO_58_0.png" />
 <p>In this test, the sequential read times grow linearly with respect to
 the number of transactions commited to file.</p>
-</section>
-<section id="id5">
+</div>
+<div class="section" id="id5">
 <h3>Reading specific version<a class="headerlink" href="#id5" title="Permalink to this heading">¶</a></h3>
 <p>The times required to read a specific version from each file are
 similarly slightly affected by the number of existing versions in the
@@ -468,8 +467,8 @@ file, as can be seen below.</p>
 required to read a given version from each file as the number of
 transactions grows, similar to what we observe in
 <code class="docutils literal notranslate"><span class="pre">test_large_fraction_changes_sparse</span></code>.</p>
-</section>
-<section id="id6">
+</div>
+<div class="section" id="id6">
 <h3>Reading first version vs. reading latest version<a class="headerlink" href="#id6" title="Permalink to this heading">¶</a></h3>
 <p>Reading the first version from each file results in the following:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="mi">1000</span><span class="p">,</span> <span class="mi">5000</span><span class="p">]</span>
@@ -526,9 +525,9 @@ unversioned file (black line in the plot) results in the following:</p>
 <li><p>the time required to read the latest version from a Versioned HDF5 file increases modestly with the number of versions stored in the file;</p></li>
 <li><p>these results are similar to the ones obtained in <code class="docutils literal notranslate"><span class="pre">test_large_fraction_changes_sparse</span></code>.</p></li>
 </ul>
-</section>
-</section>
-<section id="test-4-large-fraction-changes-sparse-constant-size">
+</div>
+</div>
+<div class="section" id="test-4-large-fraction-changes-sparse-constant-size">
 <h2>Test 4: Large Fraction Changes (Sparse) - Constant Size<a class="headerlink" href="#test-4-large-fraction-changes-sparse-constant-size" title="Permalink to this heading">¶</a></h2>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">testname</span> <span class="o">=</span> <span class="s2">&quot;test_large_fraction_constant_sparse&quot;</span>
 </pre></div>
@@ -538,7 +537,7 @@ unversioned file (black line in the plot) results in the following:</p>
 <span class="n">exponent</span> <span class="o">=</span> <span class="mi">14</span>
 </pre></div>
 </div>
-<section id="id7">
+<div class="section" id="id7">
 <h3>Reading in sequential mode<a class="headerlink" href="#id7" title="Permalink to this heading">¶</a></h3>
 <p>Reading all versions from each file sequentially gives the following.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">rtimes</span> <span class="o">=</span> <span class="p">[]</span>
@@ -561,8 +560,8 @@ unversioned file (black line in the plot) results in the following:</p>
 <img alt="_images/Performance_tests-IO_76_0.png" src="_images/Performance_tests-IO_76_0.png" />
 <p>Again, the time required to read all versions in each file grows
 linearly with the number of transactions stored in each file.</p>
-</section>
-<section id="id8">
+</div>
+<div class="section" id="id8">
 <h3>Reading specific version<a class="headerlink" href="#id8" title="Permalink to this heading">¶</a></h3>
 <p>The times required to read a specific version from each file are
 similarly unnaffected by the number of existing versions in the file.</p>
@@ -588,8 +587,8 @@ similarly unnaffected by the number of existing versions in the file.</p>
 <p>From this test, we can see that reading an arbitrary version from the
 file is only very slightly affected by the number of versions in the
 file.</p>
-</section>
-<section id="id9">
+</div>
+<div class="section" id="id9">
 <h3>Reading first version vs. reading latest version<a class="headerlink" href="#id9" title="Permalink to this heading">¶</a></h3>
 <p>Finally, let’s read the first version of each file.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">num_transactions</span> <span class="o">=</span> <span class="p">[</span><span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="mi">1000</span><span class="p">,</span> <span class="mi">5000</span><span class="p">]</span>
@@ -645,9 +644,9 @@ in the following:</p>
 <li><p>reading the latest version is not as performant as reading an unversioned file;</p></li>
 <li><p>the time required to read the latest version from a Versioned HDF5 file increases very modestly with the number of versions stored in the file.</p></li>
 </ul>
-</section>
-</section>
-<section id="test-5-mostly-appends-dense">
+</div>
+</div>
+<div class="section" id="test-5-mostly-appends-dense">
 <h2>Test 5: Mostly appends (Dense)<a class="headerlink" href="#test-5-mostly-appends-dense" title="Permalink to this heading">¶</a></h2>
 <p><strong>Note that this test includes a two-dimensional dataset.</strong></p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">testname</span> <span class="o">=</span> <span class="s2">&quot;test_mostly_appends_dense&quot;</span>
@@ -662,7 +661,7 @@ tests.</p>
 <span class="n">exponent</span> <span class="o">=</span> <span class="mi">8</span>
 </pre></div>
 </div>
-<section id="id10">
+<div class="section" id="id10">
 <h3>Reading in sequential mode<a class="headerlink" href="#id10" title="Permalink to this heading">¶</a></h3>
 <p>When we read all versions in sequential mode for this test, the results
 are as follows.</p>
@@ -687,8 +686,8 @@ are as follows.</p>
 <code class="docutils literal notranslate"><span class="pre">test_mostly_appends_sparse</span></code>, as we have used a different chunk size
 and the dataset contains two-dimensional data. In this case, the
 increase in the time needed to read the dataset is close to linear.</p>
-</section>
-<section id="id11">
+</div>
+<div class="section" id="id11">
 <h3>Reading specific version<a class="headerlink" href="#id11" title="Permalink to this heading">¶</a></h3>
 <p>Now, let’s see the times required to read a specific version from each
 file.</p>
@@ -712,8 +711,8 @@ file.</p>
 <img alt="_images/Performance_tests-IO_99_0.png" src="_images/Performance_tests-IO_99_0.png" />
 <p>For this case, there is no marked increase in the time required to read
 a specific version from the file with respect to the number of versions.</p>
-</section>
-<section id="id12">
+</div>
+<div class="section" id="id12">
 <h3>Reading first version vs. reading latest version<a class="headerlink" href="#id12" title="Permalink to this heading">¶</a></h3>
 <p>Reading the first version of each of these files results in the
 following.</p>
@@ -770,9 +769,9 @@ we have the following results:</p>
 <li><p>There is no marked increase in the time required to read the latest version with respect to the number of versions in each file;</p></li>
 <li><p>Reading a versioned file is, on average, 5x slower than reading a file containing only the last version of the data.</p></li>
 </ul>
-</section>
-</section>
-<section id="summary">
+</div>
+</div>
+<div class="section" id="summary">
 <h2>Summary<a class="headerlink" href="#summary" title="Permalink to this heading">¶</a></h2>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">test_mostly_appends_sparse</span></code> shows the worst performance, with a
@@ -793,8 +792,8 @@ stored at each version.</p></li>
 <li><p>Reading the first version is, in all tests, seemingly unaffected by
 the number of transactions involved in the file.</p></li>
 </ul>
-</section>
-</section>
+</div>
+</div>
 
 
           </div>
@@ -880,7 +879,7 @@ the number of transactions involved in the file.</p></li>
       &copy;2020, Quansight.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.0.1</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.1.1</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |
