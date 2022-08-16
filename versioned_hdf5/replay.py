@@ -297,7 +297,17 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
         head, tail = pp.split(name)
         tmp_name = '_tmp_' + tail
         tmp_path = pp.join(head, tmp_name)
-        tmp_dataset = group.create_virtual_dataset(tmp_path, layout, fillvalue=dataset.fillvalue)
+        dtype = raw_data.dtype
+        fillvalue = dataset.fillvalue
+        if dtype.metadata and ('vlen' in dtype.metadata or 'h5py_encoding' in dtype.metadata):
+            # Variable length string dtype
+            # (https://h5py.readthedocs.io/en/2.10.0/strings.html). Setting the
+            # fillvalue in this case doesn't work
+            # (https://github.com/h5py/h5py/issues/941).
+            if fillvalue not in [0, '', b'', None]:
+                raise ValueError("Non-default fillvalue not supported for variable length strings")
+            fillvalue = None
+        tmp_dataset = group.create_virtual_dataset(tmp_path, layout, fillvalue=fillvalue)
 
         for key, val in dataset.attrs.items():
             tmp_dataset.attrs[key] = val
