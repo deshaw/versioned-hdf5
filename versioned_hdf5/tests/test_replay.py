@@ -752,3 +752,17 @@ def test_delete_versions_current_version(vfile):
     cv = vfile.current_version
     assert cv == 'r7'
     np.testing.assert_equal(vfile[cv]['bar'][:], np.arange(17))
+
+def test_variable_length_strings(vfile):
+    # Warning: this test will segfault with h5py 3.7.0
+    # (https://github.com/h5py/h5py/pull/2111 fixes it)
+    with vfile.stage_version('r0') as sv:
+        g = sv.create_group('data')
+        dt = h5py.string_dtype(encoding='ascii')
+        g.create_dataset('foo', data=['foo', 'bar'], dtype=dt)
+
+    for i in range(1, 7):
+        with vfile.stage_version(f'r{i}') as sv:
+            sv['data/foo'] = np.array([f'foo{i}', f'bar{i}'], dtype='O')
+
+    delete_versions(vfile, ['r1'])
