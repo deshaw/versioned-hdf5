@@ -1,6 +1,14 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.3.12 (2022-08-17)
+
+### Minor Changes
+
+- Fix variable length strings in _recreate_virtual_dataset. Note that for h5py
+  3.7.0 they cause a segfault without the upstream fix
+  [h5py/h5py#2111](https://github.com/h5py/h5py/pull/2111).
+
 ## 1.3.11 (2022-08-02)
 
 ### Minor Changes
