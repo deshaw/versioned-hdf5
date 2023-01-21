@@ -609,6 +609,29 @@ def test_delete_versions_nested_groups(vfile):
         assert list(vfile[f'r{i}']['group1']['group2']) == ['test_data']
         np.testing.assert_equal(vfile[f'r{i}']['group1']['group2']['test_data'][:], data[i])
 
+def test_delete_versions_prev_version(vfile):
+    with vfile.stage_version('r0') as g:
+        g['foo'] = np.array([1, 2, 3])
+    for i in range(1, 11):
+        with vfile.stage_version(f'r{i}') as g:
+            g['foo'][:] = np.array([1, i, 3])
+
+    delete_versions(vfile, ['r1', 'r5', 'r8'])
+    prev_versions = {
+        '__first_version__': None,
+        'r0': '__first_version__',
+        'r2': 'r0',
+        'r3': 'r2',
+        'r4': 'r3',
+        'r6': 'r4',
+        'r7': 'r6',
+        'r9': 'r7',
+        'r10': 'r9',
+    }
+
+    for v in vfile:
+        assert vfile[v].attrs['prev_version'] == prev_versions[v]
+
 def setup2(vfile):
     with vfile.stage_version('version1') as g:
         g.create_dataset('test_data',
