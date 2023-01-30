@@ -1,6 +1,12 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.3.13 (2023-01-30)
+
+### Minor Changes
+
+- Fix the setting of `prev_version` in `delete_versions()`.
+
 ## 1.3.12 (2022-08-17)
 
 ### Minor Changes
