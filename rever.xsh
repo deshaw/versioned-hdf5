@@ -7,7 +7,7 @@ $PROJECT = 'versioned-hdf5'
 def run_tests():
     # Don't use the built-in pytest action because that uses Docker, which is
     # overkill and requires installing Docker
-    with run_in_conda_env(['python=3.8', 'pytest', 'numpy', 'h5py<3',
+    with run_in_conda_env(['python=3.8', 'pytest', 'numpy', 'h5py',
                            'ndindex', 'pyflakes', 'pytest-cov',
                            'scipy', 'pytest-doctestplus', 'pytest-flakes',
                            'doctr', 'sphinx']):
@@ -18,7 +18,7 @@ def run_tests():
 @activity
 def build_docs():
     with run_in_conda_env(['python=3.8', 'sphinx', 'myst-parser', 'numpy',
-                           'h5py<3', 'ndindex']):
+                           'h5py', 'ndindex']):
         cd docs
         make html
         cd ..
