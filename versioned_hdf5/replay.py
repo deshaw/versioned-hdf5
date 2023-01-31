@@ -387,8 +387,15 @@ def delete_versions(f, versions_to_delete):
     for name in to_delete:
         delete_dataset(name)
 
-    for version in versions_to_delete:
-        del versions[version]
+    for version_name in versions_to_delete:
+        prev_version  = versions[version_name].attrs['prev_version']
+        for _version in versions:
+            if _version == '__first_version__':
+                continue
+            v = versions[_version]
+            if v.attrs['prev_version'] == version_name:
+                v.attrs['prev_version'] = prev_version
+        del versions[version_name]
 
     versions.attrs['current_version'] = current_version
 
