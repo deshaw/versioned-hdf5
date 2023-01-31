@@ -5,7 +5,8 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
     <title>Releasing &#8212; Versioned HDF5  documentation</title>
     <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
     <link rel="stylesheet" type="text/css" href="_static/alabaster.css" />
@@ -15,6 +16,7 @@
     <script src="_static/underscore.js"></script>
     <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
     <script src="_static/doctools.js"></script>
+    <script src="_static/sphinx_highlight.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="prev" title="Versioned HDF5 Change Log" href="changelog.html" />
@@ -34,9 +36,9 @@
 
           <div class="body" role="main">
             
-  <div class="section" id="releasing">
+  <section id="releasing">
 <h1>Releasing<a class="headerlink" href="#releasing" title="Permalink to this heading">¶</a></h1>
-<div class="section" id="steps-before-a-release">
+<section id="steps-before-a-release">
 <h2>Steps before a release<a class="headerlink" href="#steps-before-a-release" title="Permalink to this heading">¶</a></h2>
 <ul class="simple">
 <li><p>Before making a release, you need to make a changelog with the changes. The
@@ -47,8 +49,8 @@ once the release is made.</p></li>
 <li><p>Make sure to update version pinning in setup.py if necessary, e.g., if the
 minimum supported version of h5py or ndindex has changed.</p></li>
 </ul>
-</div>
-<div class="section" id="doing-the-release">
+</section>
+<section id="doing-the-release">
 <h2>Doing the release<a class="headerlink" href="#doing-the-release" title="Permalink to this heading">¶</a></h2>
 <p>Versioned HDF5 uses <a class="reference external" href="https://regro.github.io/rever-docs/">rever</a> for releases.
 To do a release, install rever then run</p>
@@ -68,15 +70,15 @@ command again and it will pisk up where it left off.</p>
 and push access to <a class="reference external" href="https://pypi.org/project/versioned-hdf5/">PyPI</a> to push up
 the release tarball. If you have never done a release before, the script will
 ask you to authenticate.</p>
-</div>
-<div class="section" id="updating-conda-forge">
+</section>
+<section id="updating-conda-forge">
 <h2>Updating conda-forge<a class="headerlink" href="#updating-conda-forge" title="Permalink to this heading">¶</a></h2>
 <p>The bot will make a pull request to the <a class="reference external" href="https://github.com/conda-forge/versioned-hdf5-feedstock/pulls">conda-forge
 feedstock</a>
 automatically. You will need to be listed as a maintainer in the recipe to be
 able to merge it. If you aren’t, make a PR adding yourself.</p>
-</div>
-</div>
+</section>
+</section>
 
 
           </div>
@@ -160,8 +162,8 @@ able to merge it. If you aren’t, make a PR adding yourself.</p>
       &copy;2020, Quansight.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.1.1</a>
-      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.3.0</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.13</a>
       
       |
       <a href="_sources/releasing.md.txt"
