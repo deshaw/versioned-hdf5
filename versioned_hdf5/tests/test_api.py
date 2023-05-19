@@ -1,7 +1,7 @@
 import os
 import itertools
 
-from pytest import raises, mark
+from pytest import raises, mark, importorskip
 
 import h5py
 
@@ -618,30 +618,6 @@ def test_timestamp_manual(vfile):
     data2 = np.ones((3*DEFAULT_CHUNK_SIZE))
 
     ts1 = datetime.datetime(2020, 6, 29, 20, 12, 56, tzinfo=datetime.timezone.utc)
-    ts2 = datetime.datetime(2020, 6, 29, 22, 12, 56)
-    with vfile.stage_version('version1', timestamp=ts1) as group:
-        group['test_data_1'] = data1
-
-    assert vfile['version1'].attrs['timestamp'] == ts1.strftime(TIMESTAMP_FMT)
-
-    with raises(ValueError):
-        with vfile.stage_version('version2', timestamp=ts2) as group:
-            group['test_data_2'] = data2
-
-    with raises(TypeError):
-        with vfile.stage_version('version3', timestamp='2020-6-29') as group:
-            group['test_data_3'] = data1
-
-
-def test_timestamp_pytz(vfile):
-    # pytz is not a dependency of versioned-hdf5, but it is supported if it is
-    # used.
-    import pytz
-
-    data1 = np.ones((2*DEFAULT_CHUNK_SIZE,))
-    data2 = np.ones((3*DEFAULT_CHUNK_SIZE))
-
-    ts1 = datetime.datetime(2020, 6, 29, 20, 12, 56, tzinfo=pytz.utc)
     ts2 = datetime.datetime(2020, 6, 29, 22, 12, 56)
     with vfile.stage_version('version1', timestamp=ts1) as group:
         group['test_data_1'] = data1

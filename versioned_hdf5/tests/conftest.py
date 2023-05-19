@@ -5,12 +5,8 @@ from ..api import VersionedHDF5File
 
 # Run tests marked with @pytest.mark.slow last. See
 # https://stackoverflow.com/questions/61533694/run-slow-pytest-commands-at-the-end-of-the-test-suite
-from _pytest.mark import Mark
-
-empty_mark = Mark('', [], {})
-
 def by_slow_marker(item):
-    return item.get_closest_marker('slow', default=empty_mark)
+    return bool(item.get_closest_marker('slow'))
 
 def pytest_collection_modifyitems(items):
     items.sort(key=by_slow_marker)
