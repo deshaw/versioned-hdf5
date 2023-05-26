@@ -595,9 +595,6 @@ class InMemoryDataset(Dataset):
         # This boilerplate code is based on h5py.Dataset.__getitem__
         args = args if isinstance(args, tuple) else (args,)
 
-        if new_dtype is None:
-            new_dtype = getattr(self._local, 'astype', None)
-
         # Sort field names from the rest of the args.
         names = tuple(x for x in args if isinstance(x, str))
 

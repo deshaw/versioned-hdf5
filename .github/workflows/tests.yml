@@ -5,18 +5,33 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.7', '3.8', '3.9', '3.10', '3.11']
-        h5py-version: ['3.6', '3']
+        python-version: ['3.9', '3.10', '3.11']
+        h5py-version: ['3.8', 'dev']
       fail-fast: false
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install
+
+      - name: Install versioned-hdf5
         run: |
           set -xe
           pip install .[test]
+
+      - name: Install target h5py version
+        if: matrix.h5py-version != 'dev'
+        run: |
+          set -xe
+          pip install h5py==${{ matrix.h5py-version }}
+          pip list
+
+      - name: Install development h5py version
+        if: matrix.h5py-version == 'dev'
+        run: |
+          set -xe
+          pip install git+https://github.com/h5py/h5py
+          pip list
 
       - name: Run Tests
         run: |

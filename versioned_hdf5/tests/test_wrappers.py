@@ -6,7 +6,6 @@ from numpy.testing import assert_equal
 from ..wrappers import InMemoryArrayDataset, InMemorySparseDataset, InMemoryGroup
 import pytest
 
-
 def test_InMemoryArrayDataset(h5file):
     group = h5file.create_group('group')
     parent = InMemoryGroup(group.id)
@@ -78,10 +77,12 @@ def test_InMemorySparseDataset_getitem(h5file):
     assert_equal(d[:], np.ones((1000,)))
     assert_equal(d[10:20], np.ones((10,)))
 
-shapes = range(5, 25, 5) # 5, 10, 15, 20
-chunks = (10, 10, 10)
-@pytest.mark.parametrize('oldshape,newshape',
-                         itertools.combinations_with_replacement(itertools.product(shapes, repeat=3), 2))
+@pytest.mark.parametrize(
+    'oldshape,newshape',
+    itertools.combinations_with_replacement(
+        itertools.product(range(5, 25, 5), repeat=3), 2
+    )
+)
 @pytest.mark.slow
 def test_InMemoryArrayDataset_resize_multidimension(oldshape, newshape, h5file):
     # Test semantics against raw HDF5
@@ -93,7 +94,12 @@ def test_InMemoryArrayDataset_resize_multidimension(oldshape, newshape, h5file):
     dataset = InMemoryArrayDataset('data', a, parent=parent, fillvalue=-1)
     dataset.resize(newshape)
 
-    h5file.create_dataset('data', data=a, fillvalue=-1,
-                     chunks=chunks, maxshape=(None, None, None))
+    h5file.create_dataset(
+        'data',
+        data=a,
+        fillvalue=-1,
+        chunks=(10, 10, 10),
+        maxshape=(None, None, None)
+    )
     h5file['data'].resize(newshape)
     assert_equal(dataset[()], h5file['data'][()], str(newshape))
