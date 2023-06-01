@@ -1,9 +1,20 @@
-from h5py import VirtualLayout, h5s, Dataset, Group, __version__ as h5py_version
+from __future__ import annotations
+from typing import List, Iterable, Union, Dict, Any
+from h5py import (
+    VirtualLayout,
+    h5s,
+    HLObject,
+    Dataset,
+    Group,
+    File,
+    __version__ as h5py_version
+)
 from h5py._hl.vds import VDSmap
 from h5py._hl.selections import select
 from h5py.h5i import get_name
 
 from ndindex import Slice, ChunkSize, Tuple
+from ndindex.ndindex import NDIndex
 
 import numpy as np
 
@@ -117,7 +128,44 @@ def tmp_group(f):
         tmp = f['_version_data/__tmp__']
     return tmp
 
-def _recreate_raw_data(f, name, versions_to_delete, tmp=False):
+# See InMemoryDataset.fillvalue. In h5py3 variable length strings use None
+# for the h5py fillvalue, but require a string fillvalue for NumPy.
+def _get_np_fillvalue(data: Dataset) -> Any:
+    """Get the fillvalue for an empty dataset.
+
+    See InMemoryDataset.fillvalue. In h5py3 variable length strings use None
+    for the h5py fillvalue, but require a string fillvalue for NumPy.
+
+    Parameters
+    ----------
+    data : Dataset
+        Data for which the fillvalue is to be retrieved
+
+    Returns
+    -------
+    Any
+        Value used to fill the empty dataset; can be any numpy scalar type supported by
+        h5py
+    """
+    if data.fillvalue is not None:
+        return data.fillvalue
+    if data.dtype.metadata:
+         if 'vlen' in data.dtype.metadata:
+             if (h5py_version.startswith('3') and
+                 data.dtype.metadata['vlen'] == str):
+                 return bytes()
+             return data.dtype.metadata['vlen']()
+         elif 'h5py_encoding' in data.dtype.metadata:
+             return data.dtype.type()
+    return np.zeros((), dtype=data.dtype)[()]
+
+
+def _recreate_raw_data(
+    f: VersionedHDF5File,
+    name: str,
+    versions_to_delete: Iterable[str],
+    tmp: bool = False
+) -> Dict[NDIndex, NDIndex]:
     """
     Return a new raw data set for a dataset without the chunks from
     versions_to_delete.
@@ -156,21 +204,6 @@ def _recreate_raw_data(f, name, versions_to_delete, tmp=False):
     raw_data = f['_version_data'][name]['raw_data']
     chunks = ChunkSize(raw_data.chunks)
     new_shape = (len(chunks_to_keep)*chunks[0], *chunks[1:])
-
-    # See InMemoryDataset.fillvalue. In h5py3 variable length strings use None
-    # for the h5py fillvalue, but require a string fillvalue for NumPy.
-    def _get_np_fillvalue(data):
-        if data.fillvalue is not None:
-            return data.fillvalue
-        if data.dtype.metadata:
-             if 'vlen' in raw_data.dtype.metadata:
-                 if (h5py_version.startswith('3') and
-                     data.dtype.metadata['vlen'] == str):
-                     return bytes()
-                 return data.dtype.metadata['vlen']()
-             elif 'h5py_encoding' in raw_data.dtype.metadata:
-                 return data.dtype.type()
-        return np.zeros((), dtype=data.dtype)[()]
 
     new_raw_data = f['_version_data'][name].create_dataset(
         '_tmp_raw_data', shape=new_shape, maxshape=(None,)+chunks[1:],
@@ -316,9 +349,143 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
             del group[name]
             group.move(tmp_path, name)
 
-def delete_versions(f, versions_to_delete):
+
+def _is_empty(f: VersionedHDF5File, name: str, version: str) -> bool:
+    """Return True if the dataset at the given version is empty, False otherwise.
+
+    Assumes the dataset exists in the given verison.
+
+    Parameters
+    ----------
+    f : VersionedHDF5File
+        File where the dataset resides
+    name : str
+        Name of the dataset
+    version : str
+        Version of the dataset to check
+
+    Returns
+    -------
+    bool
+        True if the dataset is empty, False otherwise
     """
-    Completely delete the versions from `versions_to_delete` from the versioned file `f`.
+    return not f['_version_data/versions'][version][name].is_virtual
+
+
+def _exists_in_version(f: VersionedHDF5File, name: str, version: str) -> bool:
+    """Check if a dataset exists in a given version.
+
+    Parameters
+    ----------
+    f : VersionedHDF5File
+        File where the dataset may reside
+    name : str
+        Name of the dataset
+    version : str
+        Version of the dataset to check
+
+    Returns
+    -------
+    bool
+        True if the dataset exists in the version, False otherwise
+    """
+    return name in f['_version_data/versions'][version]
+
+
+def _all_extant_are_empty(
+    f: VersionedHDF5File, name: str, versions: Iterable[str]
+) -> bool:
+    """Check if the given versions of a dataset are empty.
+
+    Doesn't assume the dataset exists in any version.
+
+    Parameters
+    ----------
+    f : VersionedHDF5File
+        File where the dataset may reside
+    name : str
+        Name of the dataset
+    version : str
+        Version of the dataset to check
+
+    Returns
+    -------
+    bool
+        True if any version of the dataset that can be found is empty,
+        False if a version exists which is not.
+    """
+    for version in versions:
+        if _exists_in_version(f, name, version):
+            if not _is_empty(f, name, version):
+                return False
+    return True
+
+
+def _delete_dataset(f: VersionedHDF5File, name: str, versions_to_delete: Iterable[str]):
+    """Delete the given dataset from the versions."""
+    version_data = f['_version_data']
+    versions = version_data['versions']
+
+    if name == 'versions':
+        return
+
+    versions_to_keep = set(versions) - set(versions_to_delete)
+
+    # If the dataset is empty in the versions to delete, we don't
+    # need to recreate the raw data, hash table, or virtual datasets.
+    if _all_extant_are_empty(f, name, versions_to_delete):
+        return
+
+    raw_data_chunks_map = _recreate_raw_data(f, name, versions_to_delete)
+
+    # If the dataset is not in any versions that are being kept, that
+    # data must be deleted.
+    if not any([name in versions[version] for version in versions_to_keep]):
+        del version_data[name]
+        return
+
+    # Recreate the hash table.
+    _recreate_hashtable(f, name, raw_data_chunks_map)
+
+    # Recreate every virtual dataset in every kept version.
+    _recreate_virtual_dataset(f, name, versions_to_keep, raw_data_chunks_map)
+
+
+def _walk(g: HLObject, prefix: str = '') -> List[str]:
+    """Traverse the object tree, returning all `raw_data` datasets.
+
+    We use this instead of version_data.visit(delete_dataset) because
+    visit() has trouble with the groups being deleted from under it.
+
+    Parameters
+    ----------
+    g : HLObject
+        Object containing datasets as descendants
+    prefix : str
+        Prefix to apply to object names; can be used to filter particular descendants
+
+    Returns
+    -------
+    List[str]
+        List of the names of `raw_data` datasets in g
+    """
+    datasets = []
+    for name in g:
+        obj = g[name]
+        if isinstance(obj, Group):
+            if 'raw_data' in obj:
+                datasets.append(prefix + name)
+            else:
+                datasets.extend(_walk(obj, prefix + name + '/'))
+
+    return datasets
+
+
+def delete_versions(
+    f: Union[VersionedHDF5File, File],
+    versions_to_delete: Iterable[str]
+):
+    """Completely delete the given versions from a file
 
     This function should be used instead of deleting the version group
     directly, as this will not delete the underlying data that is unique to
@@ -344,48 +511,8 @@ def delete_versions(f, versions_to_delete):
     while current_version in versions_to_delete:
         current_version = versions[current_version].attrs['prev_version']
 
-    versions_to_keep = set(versions) - set(versions_to_delete)
-
-    def delete_dataset(name):
-        if name == 'versions':
-            return
-
-        # Recreate the raw data.
-        raw_data_chunks_map = _recreate_raw_data(f, name, versions_to_delete)
-
-        delete_dataset = True
-        for version_name in all_versions(f):
-            if version_name in versions_to_delete:
-                continue
-            if name in f['_version_data/versions'][version_name]:
-                delete_dataset = False
-                break
-
-        if delete_dataset:
-            del version_data[name]
-            return
-
-        # Recreate the hash table.
-        _recreate_hashtable(f, name, raw_data_chunks_map)
-
-        # Recreate every virtual dataset in every kept version.
-        _recreate_virtual_dataset(f, name, versions_to_keep, raw_data_chunks_map)
-
-    # We use this instead of version_data.visit(delete_dataset) because
-    # visit() has trouble with the groups being deleted from under it.
-    def _walk(g, prefix=''):
-        for name in g:
-            obj = g[name]
-            if isinstance(obj, Group):
-                if 'raw_data' in obj:
-                    to_delete.append(prefix + name)
-                else:
-                    _walk(obj, prefix + name + '/')
-
-    to_delete = []
-    _walk(version_data)
-    for name in to_delete:
-        delete_dataset(name)
+    for name in _walk(version_data):
+        _delete_dataset(f, name, versions_to_delete)
 
     for version_name in versions_to_delete:
         prev_version  = versions[version_name].attrs['prev_version']
