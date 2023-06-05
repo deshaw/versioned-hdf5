@@ -789,3 +789,37 @@ def test_variable_length_strings(vfile):
             sv['data/foo'] = np.array([f'foo{i}', f'bar{i}'], dtype='O')
 
     delete_versions(vfile, ['r1'])
+
+def test_delete_empty_dataset(vfile):
+    """Test that deleting an empty dataset executes successfully."""
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset(
+            "key0",
+            data=np.array([]),
+            maxshape=(None,),
+            chunks=(10000,),
+            compression="lzf",
+        )
+
+    # Raw data should be filled with fillvalue, but actual current
+    # version dataset should have size 0.
+    assert vfile.f['_version_data/key0/raw_data'][:].size == 10000
+    assert vfile[vfile.current_version]['key0'][:].size == 0
+
+    # Create a new version, checking again the size
+    with vfile.stage_version("r1") as sv:
+        sv["key0"].resize((0,))
+    assert vfile.f['_version_data/key0/raw_data'][:].size == 10000
+    assert vfile[vfile.current_version]['key0'][:].size == 0
+
+    # Deleting a prior version should not change the data in the current version
+    delete_versions(vfile, ["r0"])
+    assert vfile.f['_version_data/key0/raw_data'][:].size == 10000
+    assert vfile[vfile.current_version]['key0'][:].size == 0
+
+    # Create a new version, then check if the data is the correct size
+    with vfile.stage_version("r2") as sv:
+        sv["key0"].resize((0,))
+
+    assert vfile.f['_version_data/key0/raw_data'][:].size == 10000
+    assert vfile[vfile.current_version]['key0'][:].size == 0
