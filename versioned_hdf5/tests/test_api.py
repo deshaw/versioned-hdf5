@@ -1,7 +1,8 @@
+import logging
 import os
 import itertools
 
-from pytest import raises, mark, importorskip
+from pytest import raises, mark
 
 import h5py
 
@@ -1832,3 +1833,49 @@ def test_read_only_no_wrappers():
         vfile = VersionedHDF5File(f)
         assert isinstance(vfile['version1'], h5py.Group)
         assert isinstance(vfile['version1']['bar'], h5py.Dataset)
+
+
+def test_stage_version_log_stats(tmp_path, caplog):
+    """Test that stage_version logs stats after writing data."""
+    caplog.set_level(logging.DEBUG)
+    file_name = os.path.join(tmp_path, 'file.hdf5')
+
+    with h5py.File(file_name, 'w') as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version('r0') as sv:
+            bar_shape_r0 = (2, 15220, 2)
+            bar_chunks_r0 = (300, 100, 2)
+            baz_shape_r0 = (1, 10, 2)
+            baz_chunks_r0 = (600, 2, 4)
+
+            sv.create_dataset(
+                'bar',
+                bar_shape_r0,
+                chunks=bar_chunks_r0,
+                data=np.full((2, 15220, 2), 0)
+            )
+            sv.create_dataset(
+                'baz',
+                baz_shape_r0,
+                chunks=baz_chunks_r0,
+                data=np.full((1, 10, 2), 0)
+            )
+
+        assert caplog.records
+        assert str(bar_shape_r0) in caplog.records[-1].getMessage()
+        assert str(bar_chunks_r0) in caplog.records[-1].getMessage()
+        assert str(baz_shape_r0) in caplog.records[-1].getMessage()
+        assert str(baz_chunks_r0) in caplog.records[-1].getMessage()
+
+        with vf.stage_version('r1') as sv:
+            bar_shape_r1 = (3, 15222, 2)
+            baz_shape_r1 = (1, (4) * 10, 2)
+
+            bar = sv['bar']
+            bar.resize(bar_shape_r1)
+            baz = sv['baz']
+            baz.resize(baz_shape_r1)
+            baz[:, -10:, :] = np.full((1, 10, 2), 3)
+
+        assert str(bar_shape_r1) in caplog.records[-1].getMessage()
+        assert str(baz_shape_r1) in caplog.records[-1].getMessage()
