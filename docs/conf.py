@@ -60,7 +60,7 @@ html_theme_options = {
     'github_banner': False, # https://github.com/bitprophet/alabaster/issues/166
     'github_button': False,
     # 'logo_name': True,
-    'travis_button': True,
+    'travis_button': False,
     'show_related': True,
 
     # Remove gray background from inline code

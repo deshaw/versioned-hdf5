@@ -1,8 +1,5 @@
 # versioned-hdf5
 
-[![Build
-Status](https://travis-ci.org/deshaw/versioned-hdf5.svg?branch=master)](https://travis-ci.org/deshaw/versioned-hdf5)
-
 Versioned HDF5 provides a versioned abstraction on top of `h5py`.
 
 See the documentation at https://deshaw.github.io/versioned-hdf5/.
