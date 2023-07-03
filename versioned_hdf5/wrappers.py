@@ -820,6 +820,9 @@ class DatasetLike:
     def ndim(self):
         return len(self.shape)
 
+    def __bool__(self):
+        return bool(self.size)
+
     def __len__(self):
         return self.len()
 
@@ -840,7 +843,7 @@ class DatasetLike:
             )
 
     def __iter__(self):
-        """ Iterate over the first axis.  TypeError if scalar.
+        """Iterate over the first axis. TypeError if scalar.
 
         BEWARE: Modifications to the yielded data are *NOT* written to file.
         """
