@@ -1,0 +1,35 @@
+name: Build docs
+on:
+  pull_request:
+  workflow_call:
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Setup Graphviz
+        run: |
+          sudo apt install graphviz -y
+
+      - name: Install versioned-hdf5
+        run: |
+          pip install .[doc]
+
+      - name: Build docs
+        working-directory: docs
+        run: |
+          # Need to set timezone to avoid a sphinx/babel issue
+          # when using act to run locally:
+          # https://github.com/nektos/act/issues/1853
+          TZ=UTC make html
+
+      - name: Upload docs
+        uses: actions/upload-artifact@v3
+        with:
+          name: docs
+          path: docs/_build/html/*

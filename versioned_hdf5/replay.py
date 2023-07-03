@@ -480,7 +480,6 @@ def _walk(g: HLObject, prefix: str = '') -> List[str]:
 
     return datasets
 
-
 def delete_versions(
     f: Union[VersionedHDF5File, File],
     versions_to_delete: Iterable[str]
