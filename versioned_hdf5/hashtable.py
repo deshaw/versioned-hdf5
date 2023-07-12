@@ -75,7 +75,18 @@ class Hashtable(MutableMapping):
     hash_size = hash_function().digest_size
 
     def hash(self, data):
-        return self.hash_function(data.data.tobytes() + bytes(str(data.shape), 'ascii')).digest()
+        # Object dtype arrays store the ids of the elements, which may or may not be
+        # reused, making it unsuitable for hashing. Instead, we need to make a combined
+        # hash with the value of each element.
+        if data.dtype == 'object':
+            hash_value = self.hash_function()
+            for value in data.flat:
+                hash_value.update(bytes(str(value), 'utf-8'))
+            return hash_value.digest()
+        else:
+            return self.hash_function(
+                data.data.tobytes() + bytes(str(data.shape), 'ascii')
+            ).digest()
 
     @property
     def largest_index(self):

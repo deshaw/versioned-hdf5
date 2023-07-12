@@ -61,3 +61,28 @@ def test_issue_208():
             sv['bar'].resize((12,))
             sv['bar'][8:12] = sv['bar'][6:10]
             sv['bar'][6:8] = [0, 0]
+
+def test_object_dtype_hashes_values(tmp_path):
+    """Test that object dtype arrays hash values, not element ids.
+
+    See https://github.com/deshaw/versioned-hdf5/issues/256 for more
+    information.
+    """
+    filename = tmp_path / "test.h5"
+    N = 100
+    with h5py.File(filename, mode="w") as f:
+        file = VersionedHDF5File(f)
+        s = ""
+        for i in range(N):
+            s += "a"
+            arr = np.array([s], dtype=object)
+
+            with file.stage_version(f"r{i}") as group:
+                group.create_dataset(
+                    "values", shape=(1,), dtype=h5py.string_dtype(length=None), data=arr
+            )
+
+    with h5py.File(filename, mode="r") as f:
+        file = VersionedHDF5File(f)
+        for i in range(N):
+            assert file[f"r{i}"]["values"][()] == b"a"*(i+1)
