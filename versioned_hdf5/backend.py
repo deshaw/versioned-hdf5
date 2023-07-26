@@ -5,6 +5,7 @@ from ndindex import Slice, ndindex, Tuple, ChunkSize
 from .hashtable import Hashtable
 
 DEFAULT_CHUNK_SIZE = 2**12
+DATA_VERSION = 'v2'
 
 def normalize_dtype(dtype):
     return np.array([], dtype=dtype).dtype
@@ -25,6 +26,7 @@ def initialize(f):
     versions.attrs['current_version'] = '__first_version__'
     ts = datetime.datetime.now(datetime.timezone.utc)
     versions['__first_version__'].attrs['timestamp'] = ts.strftime(TIMESTAMP_FMT)
+    versions.attrs['data_version'] = DATA_VERSION
 
 
 def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,

@@ -1,8 +1,10 @@
+import pathlib
 import logging
 import os
 import itertools
+import warnings
 
-from pytest import raises, mark
+from pytest import raises, mark, warns
 
 import h5py
 
@@ -1879,3 +1881,31 @@ def test_stage_version_log_stats(tmp_path, caplog):
 
         assert str(bar_shape_r1) in caplog.records[-1].getMessage()
         assert str(baz_shape_r1) in caplog.records[-1].getMessage()
+
+
+def test_data_version_identifier_valid(tmp_path):
+    """Test that a file with a valid data version identifier opens without warnings."""
+    filename = pathlib.Path(tmp_path) / 'file.h5'
+    with h5py.File(filename, 'w') as f:
+        VersionedHDF5File(f)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+
+        with h5py.File(filename, 'r') as f:
+            VersionedHDF5File(f)
+
+
+def test_data_version_identifier_missing(tmp_path):
+    """Test that a file with no data version identifier raises a warning when opened."""
+    filename = pathlib.Path(tmp_path) / 'file.h5'
+    with h5py.File(filename, 'w') as f:
+        VersionedHDF5File(f)
+
+        # Directly remove the data version identifier; this is
+        # equivalent to v1.
+        del f['_version_data/versions'].attrs['data_version']
+
+    with warns(UserWarning):
+        with h5py.File(filename, 'r') as f:
+            VersionedHDF5File(f)

@@ -5,13 +5,14 @@ Everything outside of this file is considered internal API and is subject to
 change.
 """
 import logging
+import warnings
 import numpy as np
 from typing import Set, Optional
 
 from contextlib import contextmanager
 import datetime
 
-from .backend import initialize
+from .backend import initialize, DATA_VERSION
 from .versions import (create_version_group, commit_version,
                        get_version_by_timestamp, get_nth_previous_version,
                        set_current_version, all_versions, delete_version, )
@@ -67,6 +68,17 @@ class VersionedHDF5File:
         self.f = f
         if '_version_data' not in f:
             initialize(f)
+        else:
+            # This is not a new file; check data version identifier for compatibility
+            if self.data_version_identifier != DATA_VERSION:
+                warnings.warn(
+                    f'{f.filename} was created by a different version of '
+                    f'versioned-hdf5. Object dtypes may not be accessed correctly. '
+                    f'File has data version identifier {self.data_version_identifier}, '
+                    f'versioned-hdf5 expects {DATA_VERSION}',
+                    stacklevel=2
+                )
+
         self._version_data = f['_version_data']
         self._versions = self._version_data['versions']
         self._closed = False
@@ -90,6 +102,23 @@ class VersionedHDF5File:
         indexing (the current version is `self[0]`).
         """
         return self._versions.attrs['current_version']
+
+    @property
+    def data_version_identifier(self) -> str:
+        """Return the data version identifier.
+
+        Different versions of versioned-hdf5 handle data slightly differently.
+        This string affects whether the version of versioned-hdf5 is compatible with the
+        given file.
+
+        If no data version attribute is found, it is assumed to be v1.
+
+        Returns
+        -------
+        str
+            The data version identifier string
+        """
+        return self.f['_version_data/versions'].attrs.get('data_version', 'v1')
 
     @current_version.setter
     def current_version(self, version_name):
