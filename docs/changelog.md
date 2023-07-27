@@ -1,6 +1,25 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.3.14 (2023-07-27)
+
+## Major Changes
+
+- Fix issues with the latest version of h5py.
+
+## Minor Changes
+
+- Fix an issue where empty datasets deleted with `delete_versions()` could
+  result in corrupted versions.
+
+- Add info log showing stats about data upon exiting stage_version context.
+
+- Drop support for Python 3.7.
+
+- Remove all Travis CI configuration.
+
+- Various minor cleanups to the test suite.
+
 ## 1.3.13 (2023-01-30)
 
 ### Minor Changes
