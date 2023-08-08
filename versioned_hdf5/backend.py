@@ -123,7 +123,15 @@ def write_dataset(f, name, data, chunks=None, dtype=None, compression=None,
                 data_hash = hashtable.hash(data_s)
                 raw_slice2 = hashtable.setdefault(data_hash, raw_slice)
                 if raw_slice2 == raw_slice:
+                    # This data doesn't yet exist in the hashtable. Insert the data
                     slices_to_write[raw_slice] = s
+                else:
+                    # Reuse existing slice; check data to guard against hash collisions
+                    assert np.all(ds[raw_slice] == data_s), (
+                        f"Hash collision encountered between data {data_s} "
+                        f"and existing data {ds[raw_slice]} for file {f}"
+                    )
+
                 slices[s] = raw_slice2
 
             ds.resize((old_shape[0] + len(slices_to_write)*chunk_size,) + chunks[1:])
