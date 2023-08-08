@@ -1896,8 +1896,9 @@ def test_data_version_identifier_valid(tmp_path):
             VersionedHDF5File(f)
 
 
-def test_data_version_identifier_missing(tmp_path):
-    """Test that a file with no data version identifier raises a warning when opened."""
+def test_data_version_identifier_missing(tmp_path, caplog):
+    """Test that a file with no data version identifier logs a message when opened."""
+    caplog.set_level(logging.INFO)
     filename = pathlib.Path(tmp_path) / 'file.h5'
     with h5py.File(filename, 'w') as f:
         VersionedHDF5File(f)
@@ -1906,6 +1907,7 @@ def test_data_version_identifier_missing(tmp_path):
         # equivalent to v1.
         del f['_version_data/versions'].attrs['data_version']
 
-    with warns(UserWarning):
-        with h5py.File(filename, 'r') as f:
-            VersionedHDF5File(f)
+    with h5py.File(filename, 'r') as f:
+        VersionedHDF5File(f)
+
+    assert len(caplog.records) == 1

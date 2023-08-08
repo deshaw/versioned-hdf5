@@ -5,7 +5,6 @@ Everything outside of this file is considered internal API and is subject to
 change.
 """
 import logging
-import warnings
 import numpy as np
 from typing import Set, Optional
 
@@ -71,7 +70,7 @@ class VersionedHDF5File:
         else:
             # This is not a new file; check data version identifier for compatibility
             if self.data_version_identifier != DATA_VERSION:
-                warnings.warn(
+                logger.info(
                     f'{f.filename} was created by a different version of '
                     f'versioned-hdf5. Object dtypes may not be accessed correctly. '
                     f'File has data version identifier {self.data_version_identifier}, '

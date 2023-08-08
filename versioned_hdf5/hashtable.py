@@ -82,6 +82,7 @@ class Hashtable(MutableMapping):
             hash_value = self.hash_function()
             for value in data.flat:
                 hash_value.update(bytes(str(value), 'utf-8'))
+            hash_value.update(bytes(str(data.shape), 'utf-8'))
             return hash_value.digest()
         else:
             return self.hash_function(
