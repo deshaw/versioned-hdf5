@@ -514,14 +514,18 @@ def delete_versions(
     for name in _walk(version_data):
         _delete_dataset(f, name, versions_to_delete)
 
+    # find new prev_version which was not deleted
+    versions_to_delete_set = set(versions_to_delete)
+    for version_name in versions:
+        if version_name == '__first_version__' or version_name in versions_to_delete_set:
+            continue
+        prev_version = versions[version_name].attrs['prev_version']
+        while prev_version in versions_to_delete_set:
+            prev_version = versions[prev_version].attrs['prev_version']
+        versions[version_name].attrs['prev_version'] = prev_version
+
+    # delete the version groups to delete
     for version_name in versions_to_delete:
-        prev_version  = versions[version_name].attrs['prev_version']
-        for _version in versions:
-            if _version == '__first_version__':
-                continue
-            v = versions[_version]
-            if v.attrs['prev_version'] == version_name:
-                v.attrs['prev_version'] = prev_version
         del versions[version_name]
 
     versions.attrs['current_version'] = current_version
