@@ -121,36 +121,10 @@ def write_dataset(f, name, data, chunks=None, dtype=None, compression=None,
                 data_s = data[s.raw]
                 raw_slice = Slice(idx*chunk_size, idx*chunk_size + data_s.shape[0])
                 data_hash = hashtable.hash(data_s)
-
-                if data_hash in hashtable:
-                    # Hash table contains an entry for the data slice. Either the data has been
-                    # written already (in a previous call to write_dataset) or it will be written
-                    # down below. Need to compare the data element-by-element to preclude hash
-                    # collisions.
-                    hashed_slice = hashtable[data_hash]
-                    slices[s] = hashed_slice
-
-                    if hashed_slice in slices_to_write:
-                        # Validate that this chunk of data's elements match those of
-                        # the chunk which has already been written to the hash table, but
-                        # not yet written to the file.
-                        queued_data = data[slices_to_write[hashed_slice].raw]
-                        assert np.all(queued_data == data_s), (
-                            f"Hash collision: Data chunks {queued_data} and {data_s} "
-                            f"to be written to file {f} have the same hash but "
-                            "different data elements."
-                        )
-                    else:
-                        # Validate that this chunk's which has already written to the
-                        # file has the same elements as the chunk we are trying to write
-                        assert np.all(ds[hashed_slice.raw] == data_s), (
-                            f"Hash collision encountered between data {data_s} "
-                            f"and existing data {ds[raw_slice.raw]} for file {f}"
-                        )
-                else:
-                    hashtable[data_hash] = raw_slice
-                    slices[s] = raw_slice
+                raw_slice2 = hashtable.setdefault(data_hash, raw_slice)
+                if raw_slice2 == raw_slice:
                     slices_to_write[raw_slice] = s
+                slices[s] = raw_slice2
 
             ds.resize((old_shape[0] + len(slices_to_write)*chunk_size,) + chunks[1:])
             for raw_slice, s in slices_to_write.items():
