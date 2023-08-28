@@ -1928,7 +1928,7 @@ def test_rebuild_hashtable(tmp_path, caplog):
     """
     caplog.set_level(logging.INFO)
 
-    bad_file = pathlib.Path(__file__).parent / 'object_dtype_bad_hashtable_data.h5'
+    bad_file = pathlib.Path(__file__).parents[2] / 'test_data' / 'object_dtype_bad_hashtable_data.h5'
     filename = pathlib.Path(tmp_path) / 'file.h5'
     shutil.copy(str(bad_file), str(filename))
 
@@ -2006,7 +2006,7 @@ def test_rebuild_hashtable_multiple_datasets(tmp_path, caplog):
     """
     caplog.set_level(logging.INFO)
 
-    bad_file = pathlib.Path(__file__).parent / 'object_dtype_bad_hashtable_data2.h5'
+    bad_file = pathlib.Path(__file__).parents[2] / 'test_data' / 'object_dtype_bad_hashtable_data2.h5'
     filename = pathlib.Path(tmp_path) / 'file.h5'
     shutil.copy(str(bad_file), str(filename))
 

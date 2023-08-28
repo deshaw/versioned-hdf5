@@ -5,7 +5,7 @@ from ndindex import Slice, ndindex, Tuple, ChunkSize
 from .hashtable import Hashtable
 
 DEFAULT_CHUNK_SIZE = 2**12
-DATA_VERSION = 'v2'
+DATA_VERSION = 2
 
 def normalize_dtype(dtype):
     return np.array([], dtype=dtype).dtype

@@ -69,7 +69,7 @@ class VersionedHDF5File:
             initialize(f)
         else:
             # This is not a new file; check data version identifier for compatibility
-            if self.data_version_identifier != DATA_VERSION:
+            if self.data_version_identifier < DATA_VERSION:
 
                 logger.info(
                     f'{f.filename} was created by a different version of '
@@ -86,6 +86,12 @@ class VersionedHDF5File:
                     )
                     self._rebuild_hashtables()
                     self.f['_version_data']['versions'].attrs['data_version'] = DATA_VERSION
+
+            elif self.data_version_identifier > DATA_VERSION:
+                raise ValueError(
+                    f"{f.filename} was written by a later version of versioned-hdf5"
+                    f"than what is currently installed. Please update versioned-hdf5."
+                )
 
         self._version_data = f['_version_data']
         self._versions = self._version_data['versions']
@@ -119,14 +125,25 @@ class VersionedHDF5File:
         This string affects whether the version of versioned-hdf5 is compatible with the
         given file.
 
-        If no data version attribute is found, it is assumed to be v1.
+        If no data version attribute is found, it is assumed to be `1`.
 
         Returns
         -------
         str
             The data version identifier string
         """
-        return self.f['_version_data/versions'].attrs.get('data_version', 'v1')
+        return self.f['_version_data/versions'].attrs.get('data_version', 1)
+
+    @data_version_identifier.setter
+    def data_version_identifier(self, version: int):
+        """Set the data version identifier for the current file.
+
+        Parameters
+        ----------
+        version : int
+            Version value to write to the file.
+        """
+        self.f['_version_data/versions'].attrs['data_version'] = version
 
     @current_version.setter
     def current_version(self, version_name):
