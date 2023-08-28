@@ -1978,3 +1978,69 @@ def test_rebuild_hashtable(tmp_path, caplog):
     # The slice into the raw data for the hash entry should only be 4 elements, not
     # the default chunk size
     assert np.all(new_hashes[0][1] == np.array([0, 4]))
+
+def test_rebuild_hashtable_multiple_datasets(tmp_path, caplog):
+    """Verify rebuilding the hashtable works.
+
+    1. An info log message is issued to the user about DATA_VERSION mismatch
+    2. Check that the hash table has been modified for the data
+    3. Check that the hashes produced are stable
+    """
+    caplog.set_level(logging.INFO)
+
+    bad_file = pathlib.Path(__file__).parent / 'object_dtype_bad_hashtable_data2.h5'
+    filename = pathlib.Path(tmp_path) / 'file.h5'
+    shutil.copy(str(bad_file), str(filename))
+
+    with h5py.File(filename, mode='r+') as f:
+        original_hashes = f['_version_data/data_with_bad_hashtable/hash_table'][:]
+        VersionedHDF5File(f)
+        new_hashes = f['_version_data/data_with_bad_hashtable/hash_table'][:]
+
+    # Info log message to the user is issued
+    assert len(caplog.records) == 2
+    assert original_hashes != new_hashes
+
+    # Ensure new hash is stable
+    expected = np.array(
+        [
+            133,
+            153,
+            43,
+            40,
+            208,
+            12,
+            213,
+            56,
+            57,
+            124,
+            197,
+            85,
+            124,
+            221,
+            7,
+            218,
+            208,
+            17,
+            3,
+            165,
+            192,
+            213,
+            221,
+            89,
+            42,
+            103,
+            72,
+            15,
+            227,
+            147,
+            103,
+            74
+        ],
+        dtype=np.uint8
+    )
+    assert np.all(new_hashes[0][0] == expected)
+
+    # The slice into the raw data for the hash entry should only be 4 elements, not
+    # the default chunk size
+    assert np.all(new_hashes[0][1] == np.array([0, 4]))
