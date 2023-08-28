@@ -74,9 +74,11 @@ class VersionedHDF5File:
                     f'{f.filename} was created by a different version of '
                     f'versioned-hdf5. Object dtypes may not be accessed correctly. '
                     f'File has data version identifier {self.data_version_identifier}, '
-                    f'versioned-hdf5 expects {DATA_VERSION}',
+                    f'versioned-hdf5 expects {DATA_VERSION}. Rebuilding hash tables.',
                     stacklevel=2
                 )
+                self._rebuild_hashtables()
+                self.f['_version_data']['versions'].attrs['data_version'] = DATA_VERSION
 
         self._version_data = f['_version_data']
         self._versions = self._version_data['versions']
@@ -334,3 +336,10 @@ class VersionedHDF5File:
                 f"Number of chunks reused: {chunks_reused}"
             )
         logger.debug("\n".join(msg))
+
+    def _rebuild_hashtables(self):
+        """Delete and rebuild the existing hashtables for the raw datasets."""
+        for name in self.f['_version_data'].keys():
+            if name != 'versions':
+                del self.f['_version_data'][name]['hash_table']
+                Hashtable.from_raw_data(self.f, name)

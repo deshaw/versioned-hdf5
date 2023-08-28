@@ -28,6 +28,9 @@ class Hashtable(MutableMapping):
     dataset until you call write() or it exit as a context manager.
 
     """
+    hash_function = hashlib.sha256
+    hash_size = hash_function().digest_size
+
     # Cache instances of the class for performance purposes. This works off
     # the assumption that nothing else modifies the version data.
 
@@ -70,9 +73,6 @@ class Hashtable(MutableMapping):
 
         hashtable.write()
         return hashtable
-
-    hash_function = hashlib.sha256
-    hash_size = hash_function().digest_size
 
     def hash(self, data):
         # Object dtype arrays store the ids of the elements, which may or may not be
