@@ -70,15 +70,22 @@ class VersionedHDF5File:
         else:
             # This is not a new file; check data version identifier for compatibility
             if self.data_version_identifier != DATA_VERSION:
+
                 logger.info(
                     f'{f.filename} was created by a different version of '
                     f'versioned-hdf5. Object dtypes may not be accessed correctly. '
                     f'File has data version identifier {self.data_version_identifier}, '
-                    f'versioned-hdf5 expects {DATA_VERSION}. Rebuilding hash tables.',
+                    f'versioned-hdf5 expects {DATA_VERSION}.',
                     stacklevel=2
                 )
-                self._rebuild_hashtables()
-                self.f['_version_data']['versions'].attrs['data_version'] = DATA_VERSION
+
+                if f.mode == 'r+':
+                    logger.info(
+                        f'Rebuilding hash tables for {f.filename}.',
+                        stacklevel=2
+                    )
+                    self._rebuild_hashtables()
+                    self.f['_version_data']['versions'].attrs['data_version'] = DATA_VERSION
 
         self._version_data = f['_version_data']
         self._versions = self._version_data['versions']
@@ -342,4 +349,4 @@ class VersionedHDF5File:
         for name in self.f['_version_data'].keys():
             if name != 'versions':
                 del self.f['_version_data'][name]['hash_table']
-                Hashtable.from_raw_data(self.f, name)
+                Hashtable.from_versions_traverse(self.f, name)

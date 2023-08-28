@@ -5,6 +5,7 @@ import hashlib
 from collections.abc import MutableMapping
 from functools import lru_cache
 
+
 class Hashtable(MutableMapping):
     """
     A proxy class representing the hash table for an array
@@ -57,6 +58,38 @@ class Hashtable(MutableMapping):
         self._largest_index = None
         self.hash_table = f['_version_data'][name][hash_table_name][:]
         self.hash_table_dataset = f['_version_data'][name][hash_table_name]
+
+    @classmethod
+    def from_versions_traverse(
+        cls,
+        f,
+        name,
+        chunks=None,
+    ):
+        # Need to be careful about order of traversal of versions; will
+        # this iterator yield versions in the order they were written?
+        # Does it even matter?
+        for version, version_group in f['_version_data']['versions'].items():
+            for name, ds in version_group.items():
+
+                with Hashtable(f, name) as hashtable:
+                    if ds.chunks is None:
+                        chunks = tuple(ds.attrs['chunks'])
+                    else:
+                        chunks = ds.chunks
+                    chunk_size = chunks[0]
+
+                    for s in ChunkSize(chunks).indices(ds.shape):
+                        idx = hashtable.largest_index
+                        data_slice = ds[s.raw]
+                        raw_slice = Slice(
+                            idx*chunk_size,
+                            idx*chunk_size + data_slice.shape[0]
+                        )
+                        slice_hash = hashtable.hash(data_slice)
+                        if slice_hash not in hashtable:
+                            hashtable[slice_hash] = raw_slice
+
 
     @classmethod
     def from_raw_data(cls, f, name, chunk_size=None, hash_table_name='hash_table'):
