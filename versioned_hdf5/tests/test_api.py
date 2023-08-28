@@ -14,7 +14,7 @@ import numpy as np
 from numpy.testing import assert_equal
 
 from .helpers import setup_vfile
-from ..backend import DEFAULT_CHUNK_SIZE
+from ..backend import DEFAULT_CHUNK_SIZE, DATA_VERSION
 from ..api import VersionedHDF5File
 from ..versions import TIMESTAMP_FMT
 from ..wrappers import (InMemoryArrayDataset, InMemoryDataset,
@@ -1889,9 +1889,11 @@ def test_data_version_identifier_valid(tmp_path, caplog):
     filename = pathlib.Path(tmp_path) / 'file.h5'
     with h5py.File(filename, 'w') as f:
         VersionedHDF5File(f)
+        assert f['_version_data']['versions'].attrs['data_version'] == DATA_VERSION
 
     with h5py.File(filename, 'r') as f:
         VersionedHDF5File(f)
+        assert f['_version_data']['versions'].attrs['data_version'] == DATA_VERSION
 
     assert len(caplog.records) == 0
 
@@ -1902,6 +1904,7 @@ def test_data_version_identifier_missing(tmp_path, caplog):
     filename = pathlib.Path(tmp_path) / 'file.h5'
     with h5py.File(filename, 'w') as f:
         VersionedHDF5File(f)
+        assert f['_version_data']['versions'].attrs['data_version'] == DATA_VERSION
 
         # Directly remove the data version identifier; this is
         # equivalent to v1.
@@ -1914,11 +1917,14 @@ def test_data_version_identifier_missing(tmp_path, caplog):
 
 
 def test_rebuild_hashtable(tmp_path, caplog):
-    """Verify rebuilding the hashtable works.
+    """Verify rebuilding the hashtable for a single object dtype and single version.
 
     1. An info log message is issued to the user about DATA_VERSION mismatch
     2. Check that the hash table has been modified for the data
     3. Check that the hashes produced are stable
+
+    The test data contains a single version of a single dataset. The dataset is an
+    object dtype array of strings.
     """
     caplog.set_level(logging.INFO)
 
@@ -1927,13 +1933,17 @@ def test_rebuild_hashtable(tmp_path, caplog):
     shutil.copy(str(bad_file), str(filename))
 
     with h5py.File(filename, mode='r+') as f:
+        assert f['_version_data']['versions'].attrs.get('data_version') is None
         original_hashes = f['_version_data/data_with_bad_hashtable/hash_table'][:]
+
         VersionedHDF5File(f)
+
+        assert f['_version_data']['versions'].attrs['data_version'] == DATA_VERSION
         new_hashes = f['_version_data/data_with_bad_hashtable/hash_table'][:]
 
     # Info log message to the user is issued
     assert len(caplog.records) == 2
-    assert original_hashes != new_hashes
+    assert not np.all(original_hashes[0][0] == new_hashes[0][0])
 
     # Ensure new hash is stable
     expected = np.array(
@@ -1980,11 +1990,19 @@ def test_rebuild_hashtable(tmp_path, caplog):
     assert np.all(new_hashes[0][1] == np.array([0, 4]))
 
 def test_rebuild_hashtable_multiple_datasets(tmp_path, caplog):
-    """Verify rebuilding the hashtable works.
+    """Verify rebuilding the hashtable for multiple datasets across multiple versions.
 
     1. An info log message is issued to the user about DATA_VERSION mismatch
     2. Check that the hash table has been modified for the data
     3. Check that the hashes produced are stable
+
+    The test data contains 3 datasets:
+        1. An object dtype array of strings
+        2. An object dtype array of some other strings
+        3. An array of ints
+
+    The first two have bad hash tables, but the third doesn't. Here we rebuild all of
+    the hash tables and check whether they're what we expect.
     """
     caplog.set_level(logging.INFO)
 
@@ -1993,54 +2011,52 @@ def test_rebuild_hashtable_multiple_datasets(tmp_path, caplog):
     shutil.copy(str(bad_file), str(filename))
 
     with h5py.File(filename, mode='r+') as f:
-        original_hashes = f['_version_data/data_with_bad_hashtable/hash_table'][:]
+        assert f['_version_data']['versions'].attrs.get('data_version') is None
+        original_hashes_arr1 = f['_version_data/data_with_bad_hashtable/hash_table'][:]
+        original_hashes_arr2 = f['_version_data/data_with_bad_hashtable2/hash_table'][:]
+        original_hashes_arr3 = f['_version_data/linspace/hash_table'][:]
+
         VersionedHDF5File(f)
-        new_hashes = f['_version_data/data_with_bad_hashtable/hash_table'][:]
+
+        assert f['_version_data']['versions'].attrs['data_version'] == DATA_VERSION
+        new_hashes_arr1 = f['_version_data/data_with_bad_hashtable/hash_table'][:]
+        new_hashes_arr2 = f['_version_data/data_with_bad_hashtable2/hash_table'][:]
+        new_hashes_arr3 = f['_version_data/linspace/hash_table'][:]
+
+    original_hashes = [
+        original_hashes_arr1,
+        original_hashes_arr2,
+        original_hashes_arr3,
+    ]
+    new_hashes = [
+        new_hashes_arr1,
+        new_hashes_arr2,
+        new_hashes_arr3,
+    ]
 
     # Info log message to the user is issued
     assert len(caplog.records) == 2
-    assert original_hashes != new_hashes
 
-    # Ensure new hash is stable
-    expected = np.array(
-        [
-            133,
-            153,
-            43,
-            40,
-            208,
-            12,
-            213,
-            56,
-            57,
-            124,
-            197,
-            85,
-            124,
-            221,
-            7,
-            218,
-            208,
-            17,
-            3,
-            165,
-            192,
-            213,
-            221,
-            89,
-            42,
-            103,
-            72,
-            15,
-            227,
-            147,
-            103,
-            74
-        ],
-        dtype=np.uint8
-    )
-    assert np.all(new_hashes[0][0] == expected)
+    for original_hash_arr, new_hash_arr in zip(original_hashes, new_hashes):
+        # When data is written originally, if all chunks are unique the number of
+        # entries in the hash table should be the number of writes that were made. The
+        # new hash table should follow the same rule.
+        assert len(original_hash_arr) == len(new_hash_arr)
 
-    # The slice into the raw data for the hash entry should only be 4 elements, not
-    # the default chunk size
-    assert np.all(new_hashes[0][1] == np.array([0, 4]))
+        # The slices into the raw data should span the number of elements in the
+        # chunk. In this case, each of these arrays fits in a single chunk. Here, we
+        # check the slices into the raw data to make sure they are identical for the
+        # rebuilt hash table.
+        for arr_hash, new_hash in zip(original_hash_arr, new_hash_arr):
+            assert np.all(arr_hash[1] == new_hash[1])
+
+    for arr_hash, new_hash in zip(original_hashes_arr1, new_hashes_arr1):
+        assert not np.all(arr_hash[0] == new_hash[0])
+
+    for arr_hash, new_hash in zip(original_hashes_arr2, new_hashes_arr2):
+        assert not np.all(arr_hash[0] == new_hash[0])
+
+    # This is an integer array, it should have been correctly hashed originally.
+    # Check that the new hashes match.
+    for arr_hash, new_hash in zip(original_hashes_arr3, new_hashes_arr3):
+        assert np.all(arr_hash[0] == new_hash[0])

@@ -4,6 +4,7 @@ from ndindex import Slice, Tuple, ChunkSize
 import hashlib
 from collections.abc import MutableMapping
 from functools import lru_cache
+from h5py import File
 
 
 class Hashtable(MutableMapping):
@@ -62,13 +63,18 @@ class Hashtable(MutableMapping):
     @classmethod
     def from_versions_traverse(
         cls,
-        f,
-        name,
-        chunks=None,
+        f: File,
+        name: str,
     ):
-        # Need to be careful about order of traversal of versions; will
-        # this iterator yield versions in the order they were written?
-        # Does it even matter?
+        """Traverse all versions of a dataset, writing to a brand new hash table.
+
+        Parameters
+        ----------
+        f : File
+            File for which a hash table is to be generated
+        name : str
+            Name of the dataset for which a hash table is to be generated
+        """
         for version, version_group in f['_version_data']['versions'].items():
             for name, ds in version_group.items():
 
