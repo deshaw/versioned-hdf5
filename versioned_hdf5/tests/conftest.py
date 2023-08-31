@@ -46,3 +46,96 @@ def vfile(tmp_path, h5file):
     file = VersionedHDF5File(h5file)
     yield file
     file.close()
+
+
+def generate_bad_data():
+    """Generate versioned-hdf5 files with bad object dtype hash tables in them.
+
+    See https://github.com/deshaw/versioned-hdf5/issues/256 for more information.
+
+    Raises:
+        ImportError: Raised if the user tries to generate bad data with newer versions
+        of the library; you need an old version to replicate the hash table issue.
+    """
+    import numpy as np
+    import h5py
+    from versioned_hdf5 import VersionedHDF5File, __version__
+
+    try:
+        from versioned_hdf5.backend import DATA_VERSION  # noqa: F401
+    except ImportError:
+        DATA_VERSION = None
+
+    if DATA_VERSION is not None:
+        raise ImportError(
+            f"versioned_hdf5=={__version__} installed; "
+            "this file only generates bad data on versioned_hdf5 <= 1.3.14."
+        )
+
+
+    filename = "object_dtype_bad_hashtable_data.h5"
+    with h5py.File(filename, mode="w") as f:
+        vf = VersionedHDF5File(f)
+        arr = np.array(
+            [
+                "abcd",
+                "def",
+                "ghi",
+                "jkl",
+            ],
+            dtype=object
+        )
+
+        with vf.stage_version("r0") as group:
+            group.create_dataset(
+                "data_with_bad_hashtable",
+                dtype=h5py.string_dtype(length=None),
+                data=arr
+            )
+
+
+    filename = "object_dtype_bad_hashtable_data2.h5"
+    with h5py.File(filename, mode="w") as f:
+        vf = VersionedHDF5File(f)
+
+        arr = np.array(
+            [
+                "abcd",
+                "def",
+                "ghi",
+                "jkl",
+            ],
+            dtype=object
+        )
+        arr2 = np.array(
+            [
+                "abcd",
+                "pqrs",
+                "df",
+                "tuvw",
+                "xyz",
+            ],
+            dtype=object
+        )
+        arr3 = np.linspace(1, 100, 1000)
+
+        with vf.stage_version("r0") as group:
+            group.create_dataset(
+                "data_with_bad_hashtable",
+                dtype=h5py.string_dtype(length=None),
+                data=arr
+            )
+            group.create_dataset(
+                "data_with_bad_hashtable2",
+                dtype=h5py.string_dtype(length=None),
+                data=arr2
+            )
+            group.create_dataset("linspace", data=arr3)
+
+        with vf.stage_version("r1") as group:
+            group['data_with_bad_hashtable'][1] = "foo"
+            group['linspace'][3] = 8
+
+        with vf.stage_version("r2") as group:
+            group['data_with_bad_hashtable'][2] = "bar"
+            group['data_with_bad_hashtable2'][2] = "what"

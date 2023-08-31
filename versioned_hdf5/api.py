@@ -11,7 +11,7 @@ from typing import Set, Optional
 from contextlib import contextmanager
 import datetime
 
-from .backend import initialize
+from .backend import initialize, DATA_VERSION
 from .versions import (create_version_group, commit_version,
                        get_version_by_timestamp, get_nth_previous_version,
                        set_current_version, all_versions, delete_version, )
@@ -67,6 +67,32 @@ class VersionedHDF5File:
         self.f = f
         if '_version_data' not in f:
             initialize(f)
+        else:
+            # This is not a new file; check data version identifier for compatibility
+            if self.data_version_identifier < DATA_VERSION:
+
+                logger.info(
+                    f'{f.filename} was created by a different version of '
+                    f'versioned-hdf5. Object dtypes may not be accessed correctly. '
+                    f'File has data version identifier {self.data_version_identifier}, '
+                    f'versioned-hdf5 expects {DATA_VERSION}.',
+                    stacklevel=2
+                )
+
+                if f.mode == 'r+':
+                    logger.info(
+                        f'Rebuilding hash tables for {f.filename}.',
+                        stacklevel=2
+                    )
+                    self._rebuild_hashtables()
+                    self.f['_version_data']['versions'].attrs['data_version'] = DATA_VERSION
+
+            elif self.data_version_identifier > DATA_VERSION:
+                raise ValueError(
+                    f"{f.filename} was written by a later version of versioned-hdf5"
+                    f"than what is currently installed. Please update versioned-hdf5."
+                )
+
         self._version_data = f['_version_data']
         self._versions = self._version_data['versions']
         self._closed = False
@@ -90,6 +116,34 @@ class VersionedHDF5File:
         indexing (the current version is `self[0]`).
         """
         return self._versions.attrs['current_version']
+
+    @property
+    def data_version_identifier(self) -> str:
+        """Return the data version identifier.
+
+        Different versions of versioned-hdf5 handle data slightly differently.
+        This string affects whether the version of versioned-hdf5 is compatible with the
+        given file.
+
+        If no data version attribute is found, it is assumed to be `1`.
+
+        Returns
+        -------
+        str
+            The data version identifier string
+        """
+        return self.f['_version_data/versions'].attrs.get('data_version', 1)
+
+    @data_version_identifier.setter
+    def data_version_identifier(self, version: int):
+        """Set the data version identifier for the current file.
+
+        Parameters
+        ----------
+        version : int
+            Version value to write to the file.
+        """
+        self.f['_version_data/versions'].attrs['data_version'] = version
 
     @current_version.setter
     def current_version(self, version_name):
@@ -306,3 +360,10 @@ class VersionedHDF5File:
                 f"Number of chunks reused: {chunks_reused}"
             )
         logger.debug("\n".join(msg))
+
+    def _rebuild_hashtables(self):
+        """Delete and rebuild the existing hashtables for the raw datasets."""
+        for name in self.f['_version_data'].keys():
+            if name != 'versions':
+                del self.f['_version_data'][name]['hash_table']
+                Hashtable.from_versions_traverse(self.f, name)
