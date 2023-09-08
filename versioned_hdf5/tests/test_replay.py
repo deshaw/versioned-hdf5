@@ -1,3 +1,6 @@
+import linecache
+import sys
+
 import h5py
 import numpy as np
 
@@ -823,3 +826,51 @@ def test_delete_empty_dataset(vfile):
 
     assert vfile.f['_version_data/key0/raw_data'][:].size == 10000
     assert vfile[vfile.current_version]['key0'][:].size == 0
+
+
+def test_delete_versions_speed(vfile):
+    with vfile.stage_version('r0') as sv:
+        sv.create_dataset('values', data=np.zeros(100), fillvalue=0,
+                          chunks=(300,), maxshape=(None,), compression='lzf')
+
+    for i in range(1, 1001):
+        with vfile.stage_version(f'r{i}') as sv:
+            sv['values'][:] = np.arange(i, i + 100)
+
+    # keep only every 10th version
+    versions_to_delete = []
+    versions = sorted([(v, vfile._versions[v].attrs['timestamp']) for v in vfile._versions],
+                      key=lambda t: t[1])
+    for i, v in enumerate(versions):
+        if i % 10 != 0:
+            versions_to_delete.append(v[0])
+
+    # The line counts for determining the previous version
+    line_counts = 0
+
+    def trace_prev_version_line_calls(frame, event, arg):
+        nonlocal line_counts
+        if event == 'line':
+            if frame.f_code.co_name == 'delete_versions':
+                line_no = frame.f_lineno
+                if line_no == 523:
+                    # count executions of this line, check that it's actually the correct line
+                    expected_line = "prev_version = versions[prev_version].attrs['prev_version']"
+                    filename = frame.f_code.co_filename
+                    line = linecache.getline(filename, line_no).strip()
+                    assert line == expected_line
+                line_counts += 1
+        return trace_prev_version_line_calls
+
+    # Set the trace function to count number of times a line is executed
+    old_tracer = sys.gettrace()
+    sys.settrace(trace_prev_version_line_calls)
+
+    try:
+        # delete_versions
+        delete_versions(vfile, versions_to_delete)
+    finally:
+        # restore old tracer function (or None)
+        sys.settrace(old_tracer)
+
+    assert line_counts == 8628
