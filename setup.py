@@ -30,6 +30,10 @@ setuptools.setup(
     extras_require={
         "test": [
             "pytest",
+        ],
+        "doc": [
+            "sphinx",
+            "myst-parser",
         ]
     }
 )

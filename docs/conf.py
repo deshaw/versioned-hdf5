@@ -34,6 +34,7 @@ extensions = [
     'myst_parser',
     'sphinx.ext.autodoc',
     'sphinx.ext.graphviz',
+    'sphinx.ext.intersphinx',
 ]
 
 graphviz_output_format = 'svg'
@@ -46,6 +47,14 @@ templates_path = ['_templates']
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
+autodoc_type_aliases = {
+    "File": "h5py.File"
+}
+
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/3', None),
+    'h5py': ('https://docs.h5py.org/en/stable', None)
+}
 
 # -- Options for HTML output -------------------------------------------------
 

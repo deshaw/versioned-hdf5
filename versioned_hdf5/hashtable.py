@@ -4,6 +4,8 @@ from ndindex import Slice, Tuple, ChunkSize
 import hashlib
 from collections.abc import MutableMapping
 from functools import lru_cache
+from h5py import File
+
 
 class Hashtable(MutableMapping):
     """
@@ -28,6 +30,9 @@ class Hashtable(MutableMapping):
     dataset until you call write() or it exit as a context manager.
 
     """
+    hash_function = hashlib.sha256
+    hash_size = hash_function().digest_size
+
     # Cache instances of the class for performance purposes. This works off
     # the assumption that nothing else modifies the version data.
 
@@ -56,6 +61,43 @@ class Hashtable(MutableMapping):
         self.hash_table_dataset = f['_version_data'][name][hash_table_name]
 
     @classmethod
+    def from_versions_traverse(
+        cls,
+        f: File,
+        name: str,
+    ):
+        """Traverse all versions of a dataset, writing to a brand new hash table.
+
+        Parameters
+        ----------
+        f : File
+            File for which a hash table is to be generated
+        name : str
+            Name of the dataset for which a hash table is to be generated
+        """
+        for version, version_group in f['_version_data']['versions'].items():
+            for name, ds in version_group.items():
+
+                with Hashtable(f, name) as hashtable:
+                    if ds.chunks is None:
+                        chunks = tuple(ds.attrs['chunks'])
+                    else:
+                        chunks = ds.chunks
+                    chunk_size = chunks[0]
+
+                    for s in ChunkSize(chunks).indices(ds.shape):
+                        idx = hashtable.largest_index
+                        data_slice = ds[s.raw]
+                        raw_slice = Slice(
+                            idx*chunk_size,
+                            idx*chunk_size + data_slice.shape[0]
+                        )
+                        slice_hash = hashtable.hash(data_slice)
+                        if slice_hash not in hashtable:
+                            hashtable[slice_hash] = raw_slice
+
+
+    @classmethod
     def from_raw_data(cls, f, name, chunk_size=None, hash_table_name='hash_table'):
         if hash_table_name in f['_version_data'][name]:
             raise ValueError(f"a hash table {hash_table_name!r} for {name!r} already exists")
@@ -71,11 +113,20 @@ class Hashtable(MutableMapping):
         hashtable.write()
         return hashtable
 
-    hash_function = hashlib.sha256
-    hash_size = hash_function().digest_size
-
     def hash(self, data):
-        return self.hash_function(data.data.tobytes() + bytes(str(data.shape), 'ascii')).digest()
+        # Object dtype arrays store the ids of the elements, which may or may not be
+        # reused, making it unsuitable for hashing. Instead, we need to make a combined
+        # hash with the value of each element.
+        if data.dtype == 'object':
+            hash_value = self.hash_function()
+            for value in data.flat:
+                hash_value.update(bytes(str(value), 'utf-8'))
+            hash_value.update(bytes(str(data.shape), 'utf-8'))
+            return hash_value.digest()
+        else:
+            return self.hash_function(
+                data.data.tobytes() + bytes(str(data.shape), 'ascii')
+            ).digest()
 
     @property
     def largest_index(self):
