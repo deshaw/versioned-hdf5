@@ -14,29 +14,13 @@
 
 ## Doing the release
 
-Versioned HDF5 uses [rever](https://regro.github.io/rever-docs/) for releases.
-To do a release, install rever then run
+To do a release, simply create a new release from the GitHub web ui. Click
+`Draft a new release`, then create a new tag containing the version number.
 
-```
-$ rever <VERSION>
-```
-
-where `<VERSION>` is the version number for the release, like `rever 1.0`.
-
-This will automatically run all the steps in the `rever.xsh` file.
-
-```{note}
-If you see an error like `json.decoder.JSONDecodeError: Expecting
-value: line 1 column 1 (char 0)` this is due to a [bug in
-rever](https://github.com/regro/rever/issues/229). Simply run the `rever`
-command again and it will pisk up where it left off.
-```
-
-You will need push access to
-[GitHub](https://github.com/deshaw/versioned-hdf5/pull/202) to push the tag
-and push access to [PyPI](https://pypi.org/project/versioned-hdf5/) to push up
-the release tarball. If you have never done a release before, the script will
-ask you to authenticate.
+Once the release has been made, the `pypi_publish.yml` workflow will run,
+building wheels and publishing them to PYPI. The workflow uses trusted
+publishing, meaning that github itself uploads the release to PYPI without
+needing authentication from the maintainer.
 
 ## Updating conda-forge
 
