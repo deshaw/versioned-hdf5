@@ -1,13 +1,25 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.4.0 (2023-09-11)
+
+### Major Changes
+
+- Fix an issue where hashes of object dtypes were not being correctly computed
+  ([#257](https://github.com/deshaw/versioned-hdf5/pull/257)). This change
+  modifies how the hashes are computed for object dtypes.
+
+### Minor Changes
+
+- Remove old rever-based version release system in favor of GitHub workflows.
+
 ## 1.3.14 (2023-07-27)
 
-## Major Changes
+### Major Changes
 
 - Fix issues with the latest version of h5py.
 
-## Minor Changes
+### Minor Changes
 
 - Fix an issue where empty datasets deleted with `delete_versions()` could
   result in corrupted versions.
