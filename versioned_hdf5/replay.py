@@ -205,12 +205,15 @@ def _recreate_raw_data(
     chunks = ChunkSize(raw_data.chunks)
     new_shape = (len(chunks_to_keep)*chunks[0], *chunks[1:])
 
+    fillvalue = raw_data.fillvalue
+    if raw_data.dtype.metadata and 'vlen' in raw_data.dtype.metadata:
+        fillvalue = None
     new_raw_data = f['_version_data'][name].create_dataset(
         '_tmp_raw_data', shape=new_shape, maxshape=(None,)+chunks[1:],
         chunks=raw_data.chunks, dtype=raw_data.dtype,
         compression=raw_data.compression,
         compression_opts=raw_data.compression_opts,
-        fillvalue=raw_data.fillvalue)
+        fillvalue=fillvalue)
     for key, val in raw_data.attrs.items():
         new_raw_data.attrs[key] = val
 

@@ -12,6 +12,15 @@ def pytest_collection_modifyitems(items):
     items.sort(key=by_slow_marker)
 
 @fixture
+def filepath(tmp_path, request):
+    file_name = os.path.join(tmp_path, 'file.hdf5')
+    m = request.node.get_closest_marker('setup_args')
+    if m is not None:
+        if 'file_name' in m.kwargs.keys():
+            file_name = m.kwargs['file_name']
+    yield file_name
+
+@fixture
 def h5file(tmp_path, request):
     file_name = os.path.join(tmp_path, 'file.hdf5')
     version_name = None

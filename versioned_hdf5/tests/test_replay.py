@@ -1,6 +1,8 @@
 import h5py
 import numpy as np
+import subprocess
 
+from versioned_hdf5        import VersionedHDF5File
 from versioned_hdf5.replay import (modify_metadata, delete_version,
                                    delete_versions, _recreate_raw_data,
                                    _recreate_hashtable,
@@ -823,3 +825,32 @@ def test_delete_empty_dataset(vfile):
 
     assert vfile.f['_version_data/key0/raw_data'][:].size == 10000
     assert vfile[vfile.current_version]['key0'][:].size == 0
+
+def test_delete_string_dataset(filepath):
+    with h5py.File(filepath, 'w') as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version('r0') as sv:
+            dt = h5py.string_dtype(encoding='ascii')
+            sv.create_dataset('foo', data=['abc'], chunks=(100,), dtype=dt)
+
+    with h5py.File(filepath, 'r+') as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version('r1') as sv:
+            sv['foo'][0] = 'def'
+
+    with h5py.File(filepath, 'r+') as f:
+        delete_versions(f, 'r0')
+
+    # Delete older version to make sure the recreation of dataset with empty
+    # chunks kicks-in.
+    p = subprocess.Popen(['h5repack', filepath, filepath + '.tmp'], stdout=subprocess.PIPE)
+    p.wait()
+
+    with h5py.File(filepath + '.tmp', 'r+') as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version('r3') as sv:
+            # Staging a new version after delete_versions + h5repack works.
+            pass
+    # Delete the tmp file to avoid leaving around stale file
+    p = subprocess.Popen(['rm', '-f', filepath + '.tmp'], stdout=subprocess.PIPE)
+    p.wait()
