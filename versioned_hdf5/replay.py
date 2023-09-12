@@ -204,13 +204,14 @@ def _recreate_raw_data(
     raw_data = f['_version_data'][name]['raw_data']
     chunks = ChunkSize(raw_data.chunks)
     new_shape = (len(chunks_to_keep)*chunks[0], *chunks[1:])
+    dtype = raw_data.dtype
 
     fillvalue = raw_data.fillvalue
-    if raw_data.dtype.metadata and 'vlen' in raw_data.dtype.metadata:
+    if dtype.metadata and ('vlen' in dtype.metadata or 'h5py_encoding' in dtype.metadata):
         fillvalue = None
     new_raw_data = f['_version_data'][name].create_dataset(
         '_tmp_raw_data', shape=new_shape, maxshape=(None,)+chunks[1:],
-        chunks=raw_data.chunks, dtype=raw_data.dtype,
+        chunks=raw_data.chunks, dtype=dtype,
         compression=raw_data.compression,
         compression_opts=raw_data.compression_opts,
         fillvalue=fillvalue)
