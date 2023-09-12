@@ -833,7 +833,7 @@ def test_delete_versions_speed(vfile):
         sv.create_dataset('values', data=np.zeros(100), fillvalue=0,
                           chunks=(300,), maxshape=(None,), compression='lzf')
 
-    for i in range(1, 1001):
+    for i in range(1, 1000):
         with vfile.stage_version(f'r{i}') as sv:
             sv['values'][:] = np.arange(i, i + 100)
 
@@ -873,4 +873,11 @@ def test_delete_versions_speed(vfile):
         # restore old tracer function (or None)
         sys.settrace(old_tracer)
 
-    assert line_counts == 8628
+    # We have 1000 versions and keep only every tenth. This means that for each version
+    # we should go back its modulo by 10 steps. That's
+    # 100 * 0 + 100 * 1 + 100 * 2 + ... + 100 * 9 == 4500
+    # executions of this line. But sine the line contains multiple substeps
+    # it's "executed" multiple times. Long story short, empirically
+    # we end up with 8619 executions on Python 3.10, but the number
+    # varies between Python versions
+    assert 8600 <= line_counts <= 8650
