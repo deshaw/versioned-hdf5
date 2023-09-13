@@ -1,6 +1,13 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.4.1 (2023-09-13)
+
+### Minor Changes
+
+- Fix an issue where calling `delete_versions` on a dataset with a variable
+  length string dtype before using `h5repack` on it would corrupt the file
+
 ## 1.4.0 (2023-09-11)
 
 ### Major Changes
