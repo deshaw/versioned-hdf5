@@ -1,19 +1,21 @@
 import linecache
+import pathlib
+import shutil
+import subprocess
 import sys
 
 import h5py
 import numpy as np
-import pathlib
-import subprocess
-import shutil
 import pytest
 
-from versioned_hdf5        import VersionedHDF5File
-from versioned_hdf5.replay import (modify_metadata, delete_version,
-                                   delete_versions, _recreate_raw_data,
-                                   _recreate_hashtable,
-                                   _recreate_virtual_dataset)
-from versioned_hdf5.hashtable import Hashtable
+from   versioned_hdf5           import VersionedHDF5File
+from   versioned_hdf5.hashtable import Hashtable
+from   versioned_hdf5.replay    import (_recreate_hashtable,
+                                        _recreate_raw_data,
+                                        _recreate_virtual_dataset,
+                                        delete_version, delete_versions,
+                                        modify_metadata)
+
 
 def setup_vfile(file):
     with file.stage_version('version1') as g:
@@ -902,7 +904,7 @@ def test_delete_versions_speed(vfile):
         if event == 'line':
             if frame.f_code.co_name == 'delete_versions':
                 line_no = frame.f_lineno
-                if line_no == 523:
+                if line_no == 533:
                     # count executions of this line, check that it's actually the correct line
                     expected_line = "prev_version = versions[prev_version].attrs['prev_version']"
                     filename = frame.f_code.co_filename
