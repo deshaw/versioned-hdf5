@@ -2,6 +2,8 @@ import h5py
 import numpy as np
 import pathlib
 import subprocess
+import shutil
+import pytest
 
 from versioned_hdf5        import VersionedHDF5File
 from versioned_hdf5.replay import (modify_metadata, delete_version,
@@ -827,38 +829,46 @@ def test_delete_empty_dataset(vfile):
     assert vfile.f['_version_data/key0/raw_data'][:].size == 10000
     assert vfile[vfile.current_version]['key0'][:].size == 0
 
+@pytest.mark.skipif(shutil.which('h5repack') is None, reason="Requires h5repack to run")
 def test_delete_string_dataset(filepath):
-    """
-    Test that delete_versions + h5repack works correctly for variable length string dtypes.
+    """Test that delete_versions + h5repack works correctly for variable length string
+    dtypes.
 
-    delete_versions earlier didn't reconstruct the raw data with fillvalue=None which resulted
-    in the raw data post h5repack to have an invalid fillvalue.
-    See #238 for more information.
+    When calling delete_versions, the dataset must be reconstructed from the remaining
+    versions using a NoneType fillvalue. However, because we can't store a NoneType for
+    the fillvalue of the dataset in the h5 file, it is instead stored as b''. Previously
+    a bug in delete_versions would recreate the datset using the file's fillvalue of
+    b'' rather than None, corrupting the data. See https://github.com/h5py/h5py/issues/941
+    for more information about the bug in h5py responsible for this, and
+    https://github.com/deshaw/versioned-hdf5/issues/238 for the versioned-hdf5
+    discussion.
     """
+    # Create two versions of variable-length string data, then delete the first,
+    # forcing a reconstruction of the data
     with h5py.File(filepath, 'w') as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version('r0') as sv:
-            dt = h5py.string_dtype(encoding='ascii')
-            sv.create_dataset('foo', data=['abc'], chunks=(100,), dtype=dt)
+            sv.create_dataset(
+                'foo',
+                data=['abc'],
+                chunks=(100,),
+                dtype=h5py.string_dtype(encoding='ascii'),
+            )
 
-    with h5py.File(filepath, 'r+') as f:
-        vf = VersionedHDF5File(f)
         with vf.stage_version('r1') as sv:
             sv['foo'][0] = 'def'
 
-    with h5py.File(filepath, 'r+') as f:
         delete_versions(f, 'r0')
 
-    # Delete older version to make sure the recreation of dataset with empty
-    # chunks kicks-in.
+    # Repack the data; the RuntimeError only appears if you do this
     tmp_path = pathlib.Path(filepath + '.tmp')
-    p = subprocess.Popen(['h5repack', filepath, tmp_path], stdout=subprocess.PIPE)
-    p.wait()
+    subprocess.run(['h5repack', filepath, tmp_path], stdout=subprocess.PIPE)
 
+    # Check that staging a new version after delete_versions + h5repack works
     with h5py.File(tmp_path, 'r+') as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version('r3') as sv:
-            # Staging a new version after delete_versions + h5repack works.
             pass
+
     # Delete the tmp file to avoid leaving around stale file
     tmp_path.unlink(missing_ok=True)
