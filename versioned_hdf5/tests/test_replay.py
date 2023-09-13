@@ -1,16 +1,21 @@
+import linecache
+import pathlib
+import shutil
+import subprocess
+import sys
+
 import h5py
 import numpy as np
-import pathlib
-import subprocess
-import shutil
 import pytest
 
-from versioned_hdf5        import VersionedHDF5File
-from versioned_hdf5.replay import (modify_metadata, delete_version,
-                                   delete_versions, _recreate_raw_data,
-                                   _recreate_hashtable,
-                                   _recreate_virtual_dataset)
-from versioned_hdf5.hashtable import Hashtable
+from   versioned_hdf5           import VersionedHDF5File
+from   versioned_hdf5.hashtable import Hashtable
+from   versioned_hdf5.replay    import (_recreate_hashtable,
+                                        _recreate_raw_data,
+                                        _recreate_virtual_dataset,
+                                        delete_version, delete_versions,
+                                        modify_metadata)
+
 
 def setup_vfile(file):
     with file.stage_version('version1') as g:
@@ -872,3 +877,58 @@ def test_delete_string_dataset(filepath):
 
     # Delete the tmp file to avoid leaving around stale file
     tmp_path.unlink(missing_ok=True)
+
+
+def test_delete_versions_speed(vfile):
+    with vfile.stage_version('r0') as sv:
+        sv.create_dataset('values', data=np.zeros(100), fillvalue=0,
+                          chunks=(300,), maxshape=(None,), compression='lzf')
+
+    for i in range(1, 1000):
+        with vfile.stage_version(f'r{i}') as sv:
+            sv['values'][:] = np.arange(i, i + 100)
+
+    # keep only every 10th version
+    versions_to_delete = []
+    versions = sorted([(v, vfile._versions[v].attrs['timestamp']) for v in vfile._versions],
+                      key=lambda t: t[1])
+    for i, v in enumerate(versions):
+        if i % 10 != 0:
+            versions_to_delete.append(v[0])
+
+    # The line counts for determining the previous version
+    line_counts = 0
+
+    def trace_prev_version_line_calls(frame, event, arg):
+        nonlocal line_counts
+        if event == 'line':
+            if frame.f_code.co_name == 'delete_versions':
+                line_no = frame.f_lineno
+                if line_no == 533:
+                    # count executions of this line, check that it's actually the correct line
+                    expected_line = "prev_version = versions[prev_version].attrs['prev_version']"
+                    filename = frame.f_code.co_filename
+                    line = linecache.getline(filename, line_no).strip()
+                    assert line == expected_line
+                line_counts += 1
+        return trace_prev_version_line_calls
+
+    # Set the trace function to count number of times a line is executed
+    old_tracer = sys.gettrace()
+    sys.settrace(trace_prev_version_line_calls)
+
+    try:
+        # delete_versions
+        delete_versions(vfile, versions_to_delete)
+    finally:
+        # restore old tracer function (or None)
+        sys.settrace(old_tracer)
+
+    # We have 1000 versions and keep only every tenth. This means that for each version
+    # we should go back its modulo by 10 steps. That's
+    # 100 * 0 + 100 * 1 + 100 * 2 + ... + 100 * 9 == 4500
+    # executions of this line. But sine the line contains multiple substeps
+    # it's "executed" multiple times. Long story short, empirically
+    # we end up with 8619 executions on Python 3.10, but the number
+    # varies between Python versions
+    assert 8600 <= line_counts <= 8650
