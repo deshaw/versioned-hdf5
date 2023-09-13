@@ -1,6 +1,12 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.4.2 (2023-09-13)
+
+### Minor Changes
+
+- Fix to prevent a quadratic runtime in `delete_versions`
+
 ## 1.4.1 (2023-09-13)
 
 ### Minor Changes
