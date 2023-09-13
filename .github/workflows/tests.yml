@@ -14,6 +14,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install hdf5-tools
+        run: |
+          set -xe
+          sudo apt install -y hdf5-tools
+
       - name: Install versioned-hdf5
         run: |
           set -xe
