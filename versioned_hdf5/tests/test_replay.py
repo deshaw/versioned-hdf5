@@ -1,5 +1,6 @@
 import h5py
 import numpy as np
+import pathlib
 import subprocess
 
 from versioned_hdf5        import VersionedHDF5File
@@ -827,6 +828,13 @@ def test_delete_empty_dataset(vfile):
     assert vfile[vfile.current_version]['key0'][:].size == 0
 
 def test_delete_string_dataset(filepath):
+    """
+    Test that delete_versions + h5repack works correctly for variable length string dtypes.
+
+    delete_versions earlier didn't reconstruct the raw data with fillvalue=None which resulted
+    in the raw data post h5repack to have an invalid fillvalue.
+    See #238 for more information.
+    """
     with h5py.File(filepath, 'w') as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version('r0') as sv:
@@ -843,14 +851,14 @@ def test_delete_string_dataset(filepath):
 
     # Delete older version to make sure the recreation of dataset with empty
     # chunks kicks-in.
-    p = subprocess.Popen(['h5repack', filepath, filepath + '.tmp'], stdout=subprocess.PIPE)
+    tmp_path = pathlib.Path(filepath + '.tmp')
+    p = subprocess.Popen(['h5repack', filepath, tmp_path], stdout=subprocess.PIPE)
     p.wait()
 
-    with h5py.File(filepath + '.tmp', 'r+') as f:
+    with h5py.File(tmp_path, 'r+') as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version('r3') as sv:
             # Staging a new version after delete_versions + h5repack works.
             pass
     # Delete the tmp file to avoid leaving around stale file
-    p = subprocess.Popen(['rm', '-f', filepath + '.tmp'], stdout=subprocess.PIPE)
-    p.wait()
+    tmp_path.unlink(missing_ok=True)

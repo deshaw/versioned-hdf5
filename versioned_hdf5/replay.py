@@ -208,6 +208,11 @@ def _recreate_raw_data(
 
     fillvalue = raw_data.fillvalue
     if dtype.metadata and ('vlen' in dtype.metadata or 'h5py_encoding' in dtype.metadata):
+        # h5py string dtype
+        # (https://h5py.readthedocs.io/en/2.10.0/strings.html). Setting the fillvalue in this case doesn't work
+        # (https://github.com/h5py/h5py/issues/941).
+        if fillvalue not in [0, '', b'', None]:
+            raise ValueError("Non-default fillvalue not supported for variable length strings")
         fillvalue = None
     new_raw_data = f['_version_data'][name].create_dataset(
         '_tmp_raw_data', shape=new_shape, maxshape=(None,)+chunks[1:],
