@@ -1,4 +1,5 @@
 from __future__ import annotations
+import gc
 from typing import List, Iterable, Union, Dict, Any, Optional
 from h5py import (
     VirtualLayout,
@@ -19,7 +20,7 @@ from ndindex.ndindex import NDIndex
 import numpy as np
 
 from copy import deepcopy
-import posixpath as pp
+import posixpath
 from collections import defaultdict
 
 from .versions import all_versions
@@ -164,17 +165,8 @@ def _recreate_raw_data(
     f: VersionedHDF5File,
     name: str,
     versions_to_delete: Iterable[str],
-    tmp: bool = False
 ) -> Optional[Dict[NDIndex, NDIndex]]:
     """Create a new raw dataset without the chunks from versions_to_delete.
-
-    This function can be memory-hungry, because it loads all the data from all versions
-    of the dataset before writing to a temporary location in the file (_tmp_raw_data).
-    If creating _tmp_raw_data fails, _tmp_raw_data will be deleted from the file. If a
-    dataset called _tmp_raw_data exists in the file to begin with, it will be deleted
-    before reconstruction is attempted.
-
-    See https://github.com/deshaw/versioned-hdf5/issues/273 for more information.
 
     Parameters
     ----------
@@ -184,15 +176,11 @@ def _recreate_raw_data(
         Name of the dataset
     versions_to_delete : Iterable[str]
         Versions to omit from the reconstructed raw_data
-    tmp : bool
-        If True, the new raw dataset (called '_tmp_raw_data') is placed alongside the
-        existing raw dataset. Otherwise the existing raw dataset is replaced, and
-        _tmp_raw_data is removed.
 
     Returns
     -------
     Optional[Dict[NDIndex, NDIndex]]
-        A mapping between user-space data chunks and the raw_data chunks
+        A mapping between old raw dataset chunks and the new raw dataset chunks
 
         If no chunks would be left, i.e., the dataset does not appear in any
         version not in versions_to_delete, None is returned.
@@ -207,72 +195,69 @@ def _recreate_raw_data(
         dataset = f['_version_data/versions'][version_name][name]
 
         if dataset.is_virtual:
-            virtual_sources = dataset.virtual_sources()
-            slice_map = {spaceid_to_slice(i.vspace):
-                         spaceid_to_slice(i.src_space) for i in
-                         virtual_sources}
+            for i in dataset.virtual_sources():
+                chunks_map[version_name].update(
+                    {spaceid_to_slice(i.vspace): spaceid_to_slice(i.src_space)}
+                )
         else:
-            slice_map = {}
-        chunks_map[version_name].update(slice_map)
+            chunks_map[version_name] = {}
 
     chunks_to_keep = set().union(*[map.values() for map in
                                  chunks_map.values()])
 
-    chunks_to_keep = sorted(chunks_to_keep, key=lambda i: i.args[0].args[0])
+
 
     raw_data = f['_version_data'][name]['raw_data']
     chunks = ChunkSize(raw_data.chunks)
     new_shape = (len(chunks_to_keep)*chunks[0], *chunks[1:])
-    dtype = raw_data.dtype
 
-    fillvalue = raw_data.fillvalue
-    if dtype.metadata and ('vlen' in dtype.metadata or 'h5py_encoding' in dtype.metadata):
-        # h5py string dtype
-        # (https://h5py.readthedocs.io/en/2.10.0/strings.html). Setting the
-        # fillvalue in this case doesn't work
-        # (https://github.com/h5py/h5py/issues/941).
-        if fillvalue not in [0, '', b'', None]:
-            raise ValueError("Non-default fillvalue not supported for variable length strings")
-        fillvalue = None
-
+    fillvalue = _get_np_fillvalue(raw_data)
     # Guard against existing _tmp_raw_data
     _delete_tmp_raw_data(f, name)
 
-    new_raw_data = f['_version_data'][name].create_dataset(
-        '_tmp_raw_data', shape=new_shape, maxshape=(None,)+chunks[1:],
-        chunks=raw_data.chunks, dtype=dtype,
-        compression=raw_data.compression,
-        compression_opts=raw_data.compression_opts,
-        fillvalue=fillvalue)
-    for key, val in raw_data.attrs.items():
-        new_raw_data.attrs[key] = val
+    chunks_to_keep = sorted(chunks_to_keep, key=lambda i: i.args[0].args[0])
 
-    try:
-        r = raw_data[:]
-        n = np.full(new_raw_data.shape, _get_np_fillvalue(raw_data), dtype=new_raw_data.dtype)
-        raw_data_chunks_map = {}
-        for new_chunk, chunk in zip(chunks.indices(new_shape), chunks_to_keep):
-            # Shrink new_chunk to the size of chunk, in case chunk isn't a full
-            # chunk in one of the dimensions.
-            # TODO: Implement something in ndindex to do this.
-            new_chunk = Tuple(
-                *[Slice(new_chunk.args[i].start,
-                          new_chunk.args[i].start+len(chunk.args[i]))
-                  for i in range(len(new_chunk.args))])
-            raw_data_chunks_map[chunk] = new_chunk
-            n[new_chunk.raw] = r[chunk.raw]
+    raw_data_chunks_map = {}
+    for new_chunk, chunk in zip(chunks.indices(new_shape), chunks_to_keep):
 
-        new_raw_data[:] = n
-        if not tmp:
-            del f['_version_data'][name]['raw_data']
-            f['_version_data'][name].move('_tmp_raw_data', 'raw_data')
+        # Truncate the new slice if it isn't a full chunk
+        to_set_fillvalue = []
+        new_truncated = []
+        for i in range(len(new_chunk.args)):
+            end = new_chunk.args[i].start+len(chunk.args[i])
+            new_truncated.append(Slice(new_chunk.args[i].start, end))
 
-        return raw_data_chunks_map
-    except Exception as e:
-        # If there's an issue writing data to the file (e.g. OOM), remove the temporary
-        # raw data
-        _delete_tmp_raw_data(f, name)
-        raise IOError("Exception raised while recreating the raw dataset.") from e
+            # If one dimension is truncated, create slices into
+            # all other dimensions to be set to the fillvalue
+            if len(new_chunk.args[i]) != len(chunk.args[i]):
+                to_fill = []
+                for j in range(len(new_chunk.args)):
+                    if j == i:
+                        to_fill.append(
+                            Slice(end, new_chunk.args[i].stop)
+                        )
+                    else:
+                        to_fill.append(
+                            Slice(
+                                new_chunk.args[j].start,
+                                new_chunk.args[j].start+len(chunk.args[j])
+                            )
+                        )
+                to_set_fillvalue.append(
+                    Tuple(*to_fill)
+                )
+
+        new_truncated = Tuple(*new_truncated)
+        raw_data[new_truncated.raw] = raw_data[chunk.raw]
+
+        # Set the fillvalue of any slices which were truncated.
+        for tup in to_set_fillvalue:
+            raw_data[tup.raw] = fillvalue
+        raw_data_chunks_map[chunk] = new_truncated
+
+    raw_data.resize(new_shape)
+
+    return raw_data_chunks_map
 
 
 def _delete_tmp_raw_data(f: File, name: str):
@@ -381,9 +366,9 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
                     new_vmap = VDSmap(layout_sel.id, fname, dset_name, vs_sel.id)
                     layout.sources.append(new_vmap)
 
-        head, tail = pp.split(name)
+        head, tail = posixpath.split(name)
         tmp_name = '_tmp_' + tail
-        tmp_path = pp.join(head, tmp_name)
+        tmp_path = posixpath.join(head, tmp_name)
         dtype = raw_data.dtype
         fillvalue = dataset.fillvalue
         if dtype.metadata and ('vlen' in dtype.metadata or 'h5py_encoding' in dtype.metadata):
@@ -583,6 +568,11 @@ def delete_versions(
 
     versions.attrs['current_version'] = current_version
 
+    # Collect garbage here to handle intermittent slicing
+    # issue; see https://github.com/deshaw/versioned-hdf5/pull/277
+    # for a discussion about this.
+    gc.collect()
+
 # Backwards compatibility
 delete_version = delete_versions
 
@@ -739,6 +729,6 @@ def swap(old, new):
                     delete.append(bind)
             for d in delete:
                 del _groups[d]
-            old.move(name, pp.join(new.name, name + '__tmp'))
-            new.move(name, pp.join(old.name, name))
+            old.move(name, posixpath.join(new.name, name + '__tmp'))
+            new.move(name, posixpath.join(old.name, name))
             new.move(name + '__tmp', name)

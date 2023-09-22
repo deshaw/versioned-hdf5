@@ -7,7 +7,6 @@ import sys
 import h5py
 import numpy as np
 import pytest
-from unittest import mock
 
 from   versioned_hdf5           import VersionedHDF5File
 from   versioned_hdf5.hashtable import Hashtable
@@ -15,8 +14,7 @@ from   versioned_hdf5.replay    import (_recreate_hashtable,
                                         _recreate_raw_data,
                                         _recreate_virtual_dataset,
                                         delete_version, delete_versions,
-                                        modify_metadata,
-                                        _delete_tmp_raw_data)
+                                        modify_metadata)
 
 
 def setup_vfile(file):
@@ -646,34 +644,36 @@ def test_delete_versions_prev_version(vfile):
 
 def setup2(vfile):
     with vfile.stage_version('version1') as g:
-        g.create_dataset('test_data',
-                         data=np.arange(20000).reshape((1000, 20)),
-                         chunks=(101,11))
+        g.create_dataset(
+            'test_data',
+            data=np.arange(20000).reshape((1000, 20)),
+            chunks=(101,11)
+        )
 
     with vfile.stage_version('version2') as g:
         g['test_data'][::200] = -g['test_data'][::200]
 
+
 def test_recreate_raw_data(vfile):
     setup2(vfile)
+    raw_data = vfile.f['_version_data/test_data/raw_data'][:]
+    assert raw_data.shape == (3030, 11)
 
-    chunks_map = _recreate_raw_data(vfile.f, 'test_data', ['version1'], tmp=True)
+    chunks_map = _recreate_raw_data(vfile.f, 'test_data', ['version1'])
+    new_raw_data = vfile.f['_version_data/test_data/raw_data'][:]
 
     assert len(chunks_map) == 20
 
-    raw_data = vfile.f['_version_data/test_data/raw_data']
-    tmp_raw_data = vfile.f['_version_data/test_data/_tmp_raw_data']
-
-    assert raw_data.shape == (3030, 11)
-    assert tmp_raw_data.shape == (2020, 11)
     for old, new in chunks_map.items():
         a = raw_data[old.raw]
-        b = tmp_raw_data[new.raw]
+        b = new_raw_data[new.raw]
         assert a.shape == b.shape
         np.testing.assert_equal(a, b)
 
+
 def test_recreate_hashtable(vfile):
     setup2(vfile)
-    chunks_map = _recreate_raw_data(vfile.f, 'test_data', ['version1'], tmp=False)
+    chunks_map = _recreate_raw_data(vfile.f, 'test_data', ['version1'])
 
     # Recreate a separate, independent version, with the dataset as it would
     # be with version1 deleted.
@@ -707,7 +707,7 @@ def test_recreate_virtual_dataset(vfile):
     setup2(vfile)
     orig_virtual_dataset = vfile.f['_version_data/versions/version2/test_data'][:]
 
-    chunks_map = _recreate_raw_data(vfile.f, 'test_data', ['version1'], tmp=False)
+    chunks_map = _recreate_raw_data(vfile.f, 'test_data', ['version1'])
 
     _recreate_hashtable(vfile.f, 'test_data', chunks_map, tmp=False)
 
@@ -717,7 +717,9 @@ def test_recreate_virtual_dataset(vfile):
 
     np.testing.assert_equal(orig_virtual_dataset, new_virtual_dataset)
 
-def test_delete_versions2(vfile):
+
+@pytest.mark.parametrize('execution_number', range(30))
+def test_delete_versions2(vfile, execution_number):
     setup2(vfile)
     data = np.arange(20000).reshape((1000, 20))
     data[::200] = -data[::200]
@@ -730,8 +732,8 @@ def test_delete_versions2(vfile):
 
     assert list(vfile['version2']) == ['test_data']
 
-
     assert vfile['version2']['test_data'].shape == data.shape
+
     np.testing.assert_equal(vfile['version2']['test_data'][:], data)
 
     assert set(vfile.f['_version_data/test_data/raw_data'][:].flat) == set(data.flat)
@@ -906,7 +908,7 @@ def test_delete_versions_speed(vfile):
         if event == 'line':
             if frame.f_code.co_name == 'delete_versions':
                 line_no = frame.f_lineno
-                if line_no == 533:
+                if line_no == 562:
                     # count executions of this line, check that it's actually the correct line
                     expected_line = "prev_version = versions[prev_version].attrs['prev_version']"
                     filename = frame.f_code.co_filename
@@ -934,54 +936,3 @@ def test_delete_versions_speed(vfile):
     # we end up with 8619 executions on Python 3.10, but the number
     # varies between Python versions
     assert 8600 <= line_counts <= 8650
-
-
-def test_delete_versions_failure(vfile):
-    """Check that delete_versions gracefully handles an OOM error.
-
-    Also check that _tmp_raw_data doesn't exist anywhere in the dataset after the error
-    occurs.
-    """
-    setup_vfile(vfile)
-
-    def raise_error():
-        raise MemoryError
-
-    with mock.patch('numpy.full', side_effect=raise_error) as mock_create_dataset:
-        with pytest.raises(IOError):
-            delete_versions(vfile, 'version1')
-
-        mock_create_dataset.assert_called()
-
-    for name in ['test_data', 'test_data2', 'test_data3']:
-        assert '_tmp_raw_data' not in vfile.f['_version_data'][name]
-
-
-def test_delete_versions_remove_extra_tmp_raw_data(vfile):
-    """Check that delete_versions deletes _tmp_raw_data if it exists initially."""
-    with vfile.stage_version('version1') as g:
-        g['test_data'] = np.ones(10)
-
-    with vfile.stage_version('version2') as g:
-        g['test_data'][5:] = 2
-
-    vfile.f['_version_data']['test_data'].create_dataset(
-        '_tmp_raw_data',
-        dtype='int'
-    )
-
-    def raise_error():
-        raise MemoryError
-
-    with mock.patch('numpy.full', side_effect=raise_error) as mock_create_dataset:
-        with mock.patch(
-            'versioned_hdf5.replay._delete_tmp_raw_data', wraps=_delete_tmp_raw_data
-        ) as mock_delete_tmp_raw_data:
-            with pytest.raises(IOError):
-                delete_versions(vfile, 'version1')
-
-            assert mock_delete_tmp_raw_data.call_count == 2
-
-        mock_create_dataset.assert_called()
-
-    assert '_tmp_raw_data' not in vfile.f['_version_data']['test_data']

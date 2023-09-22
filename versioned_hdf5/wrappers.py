@@ -6,7 +6,7 @@ h5py license.
 """
 
 from h5py import (Empty, Dataset, Datatype, Group, h5a, h5d, h5i, h5p, h5s,
-                  h5t, h5r, __version__ as h5py_version)
+                  h5t, h5r, h5g, __version__ as h5py_version)
 from h5py._hl.base import guess_dtype, with_phil, phil
 from h5py._hl.dataset import _LEGACY_GZIP_COMPRESSION_VALS
 from h5py._hl import filters
@@ -18,7 +18,7 @@ from ndindex import ndindex, Tuple, Slice, ChunkSize
 import numpy as np
 
 from collections import defaultdict
-import posixpath as pp
+import posixpath
 import warnings
 from weakref import WeakValueDictionary
 
@@ -27,7 +27,7 @@ from .slicetools import spaceid_to_slice
 
 _groups = WeakValueDictionary({})
 class InMemoryGroup(Group):
-    def __new__(cls, bind, _committed=False):
+    def __new__(cls, bind: h5g.GroupID, _committed: bool = False):
         # Make sure each group only corresponds to one InMemoryGroup instance.
         # Otherwise a new instance would lose track of any datasets or
         # subgroups created in the old one.
@@ -38,7 +38,16 @@ class InMemoryGroup(Group):
         _groups[bind] = obj
         return obj
 
-    def __init__(self, bind, _committed=False):
+    def __init__(self, bind: h5g.GroupID, _committed: bool = False):
+        """Create a new InMemoryGroup object by binding to a low-level GroupID.
+
+        Parameters
+        ----------
+        bind : h5g.GroupID
+            Low-level GroupID to bind to
+        _committed : bool
+            True if the group has already been committed, False otherwise.
+        """
         if self._initialized:
             return
         self._data = {}
@@ -76,7 +85,7 @@ class InMemoryGroup(Group):
             raise ValueError("InMemoryGroup %s has already been committed" % namestr)
 
     def __getitem__(self, name):
-        dirname, basename = pp.split(name)
+        dirname, basename = posixpath.split(name)
         if dirname:
             return self.__getitem__(dirname)[basename]
 
@@ -85,6 +94,9 @@ class InMemoryGroup(Group):
         if name in self._subgroups:
             return self._subgroups[name]
 
+        # If the name doesn't exist in self._data (the "in-memory"
+        # part of InMemoryGroup), retrieve it from the actual underlying
+        # h5py.Group, (i.e. the file itself).
         res = super().__getitem__(name)
         if isinstance(res, Group):
             self._subgroups[name] = self.__class__(res.id)
@@ -100,7 +112,7 @@ class InMemoryGroup(Group):
         self._add_to_data(name, obj)
 
     def _add_to_data(self, name, obj):
-        dirname, basename = pp.split(name)
+        dirname, basename = posixpath.split(name)
         if dirname:
             if dirname not in self:
                 self.create_group(dirname)
@@ -124,7 +136,7 @@ class InMemoryGroup(Group):
 
     def __delitem__(self, name):
         self._check_committed()
-        dirname, basename = pp.split(name)
+        dirname, basename = posixpath.split(name)
         if dirname:
             if not basename:
                 del self[dirname]
@@ -161,7 +173,7 @@ class InMemoryGroup(Group):
         g = group
         n = name
         while n:
-            dirname, basename = pp.split(n)
+            dirname, basename = posixpath.split(n)
             if not dirname:
                 parent = self
             else:
@@ -174,7 +186,7 @@ class InMemoryGroup(Group):
 
     def create_dataset(self, name, shape=None, dtype=None, data=None, fillvalue=None, **kwds):
         self._check_committed()
-        dirname, data_name = pp.split(name)
+        dirname, data_name = posixpath.split(name)
         if dirname and dirname not in self:
             self.create_group(dirname)
         if 'maxshape' in kwds and any(i != None for i in kwds['maxshape']):
@@ -225,7 +237,7 @@ class InMemoryGroup(Group):
             if not item.rstrip('/'):
                 return self == self.versioned_root
         item = item.rstrip('/')
-        dirname, data_name = pp.split(item)
+        dirname, data_name = posixpath.split(item)
         if dirname not in ['', '/']:
             return dirname in self and data_name in self[dirname]
         for i in self:
@@ -264,16 +276,16 @@ class InMemoryGroup(Group):
         p = self
         while p._parent:
             p._chunks[full_name] = value
-            _, basename = pp.split(p.name)
+            _, basename = posixpath.split(p.name)
             full_name = basename + '/' + full_name
             p = p._parent
         self.versioned_root._chunks[full_name] = value
 
-        dirname, basename = pp.split(item)
+        dirname, basename = posixpath.split(item)
         while dirname:
             self[dirname]._chunks[basename] = value
-            dirname, b = pp.split(dirname)
-            basename = pp.join(b, basename)
+            dirname, b = posixpath.split(dirname)
+            basename = posixpath.join(b, basename)
 
     @property
     def compression(self):
@@ -284,16 +296,16 @@ class InMemoryGroup(Group):
         p = self
         while p._parent:
             p._compression[full_name] = value
-            _, basename = pp.split(p.name)
+            _, basename = posixpath.split(p.name)
             full_name = basename + '/' + full_name
             p = p._parent
         self.versioned_root._compression[full_name] = value
 
-        dirname, basename = pp.split(item)
+        dirname, basename = posixpath.split(item)
         while dirname:
             self[dirname]._compression[basename] = value
-            dirname, b = pp.split(dirname)
-            basename = pp.join(b, basename)
+            dirname, b = posixpath.split(dirname)
+            basename = posixpath.join(b, basename)
 
     @property
     def compression_opts(self):
@@ -304,25 +316,25 @@ class InMemoryGroup(Group):
         p = self
         while p._parent:
             p._compression_opts[full_name] = value
-            _, basename = pp.split(p.name)
+            _, basename = posixpath.split(p.name)
             full_name = basename + '/' + full_name
             p = p._parent
         self.versioned_root._compression_opts[full_name] = value
 
-        dirname, basename = pp.split(item)
+        dirname, basename = posixpath.split(item)
         while dirname:
             self[dirname]._compression_opts[basename] = value
-            dirname, b = pp.split(dirname)
-            basename = pp.join(b, basename)
+            dirname, b = posixpath.split(dirname)
+            basename = posixpath.join(b, basename)
 
     def visititems(self, func):
         self._visit('', func)
 
     def _visit(self, prefix, func):
         for name in self:
-            func(pp.join(prefix, name), self[name])
+            func(posixpath.join(prefix, name), self[name])
             if isinstance(self[name], InMemoryGroup):
-                self[name]._visit(pp.join(prefix, name), func)
+                self[name]._visit(posixpath.join(prefix, name), func)
 
     #TODO: override other relevant methods here
 
@@ -450,6 +462,13 @@ class InMemoryDataset(Dataset):
         super().__init__(InMemoryDatasetID(bind.id), **kwargs)
         self._parent = parent
         self._attrs = dict(super().attrs)
+
+    def __repr__(self):
+        name = posixpath.basename(posixpath.normpath(self.name))
+        namestr = '"%s"' % (name if name != '' else '/')
+        return '<%s %s: shape %s, type "%s">' % (
+                self.__class__.__name__, namestr, self.shape, self.dtype.str
+            )
 
     @property
     def data_dict(self):
@@ -640,19 +659,22 @@ class InMemoryDataset(Dataset):
 
         arr = np.ndarray(idx.newshape(self.shape), new_dtype, order='C')
 
-        for c in self.chunks.as_subchunks(idx, self.shape):
-            if c not in self.id.data_dict:
-                fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
-                self.id.data_dict[c] = fill
-            elif isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
-                raw_idx = Tuple(self.id.data_dict[c], *[slice(0, len(i)) for i
-                                                        in c.args[1:]]).raw
-                self.id.data_dict[c] = self.id._read_chunk(raw_idx)
+        for chunk in self.chunks.as_subchunks(idx, self.shape):
+            if chunk not in self.id.data_dict:
+                self.id.data_dict[chunk] = np.broadcast_to(
+                    self.fillvalue,
+                    chunk.newshape(self.shape))
+            elif isinstance(self.id.data_dict[chunk], (slice, Slice, tuple, Tuple)):
+                raw_idx = Tuple(
+                    self.id.data_dict[chunk],
+                    *[slice(0, len(i)) for i in chunk.args[1:]]
+                ).raw
+                self.id.data_dict[chunk] = self.id._read_chunk(raw_idx)
 
-            if self.id.data_dict[c].size != 0:
-                arr_idx = c.as_subindex(idx)
-                index = idx.as_subindex(c)
-                arr[arr_idx.raw] = self.id.data_dict[c][index.raw]
+            if self.id.data_dict[chunk].size != 0:
+                arr_idx = chunk.as_subindex(idx)
+                index = idx.as_subindex(chunk)
+                arr[arr_idx.raw] = self.id.data_dict[chunk][index.raw]
 
         # Return arr as a scalar if it is shape () (matching h5py)
         return arr[()]
@@ -836,7 +858,7 @@ class DatasetLike:
         return shape[0]
 
     def __repr__(self):
-        name = pp.basename(pp.normpath(self.name))
+        name = posixpath.basename(posixpath.normpath(self.name))
         namestr = '"%s"' % (name if name != '' else '/')
         return '<%s %s: shape %s, type "%s">' % (
                 self.__class__.__name__, namestr, self.shape, self.dtype.str
