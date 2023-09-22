@@ -7,6 +7,7 @@ import sys
 import h5py
 import numpy as np
 import pytest
+from unittest import mock
 
 from   versioned_hdf5           import VersionedHDF5File
 from   versioned_hdf5.hashtable import Hashtable
@@ -14,7 +15,8 @@ from   versioned_hdf5.replay    import (_recreate_hashtable,
                                         _recreate_raw_data,
                                         _recreate_virtual_dataset,
                                         delete_version, delete_versions,
-                                        modify_metadata)
+                                        modify_metadata,
+                                        _delete_tmp_raw_data)
 
 
 def setup_vfile(file):
@@ -932,3 +934,54 @@ def test_delete_versions_speed(vfile):
     # we end up with 8619 executions on Python 3.10, but the number
     # varies between Python versions
     assert 8600 <= line_counts <= 8650
+
+
+def test_delete_versions_failure(vfile):
+    """Check that delete_versions gracefully handles an OOM error.
+
+    Also check that _tmp_raw_data doesn't exist anywhere in the dataset after the error
+    occurs.
+    """
+    setup_vfile(vfile)
+
+    def raise_error():
+        raise MemoryError
+
+    with mock.patch('numpy.full', side_effect=raise_error) as mock_create_dataset:
+        with pytest.raises(IOError):
+            delete_versions(vfile, 'version1')
+
+        mock_create_dataset.assert_called()
+
+    for name in ['test_data', 'test_data2', 'test_data3']:
+        assert '_tmp_raw_data' not in vfile.f['_version_data'][name]
+
+
+def test_delete_versions_remove_extra_tmp_raw_data(vfile):
+    """Check that delete_versions deletes _tmp_raw_data if it exists initially."""
+    with vfile.stage_version('version1') as g:
+        g['test_data'] = np.ones(10)
+
+    with vfile.stage_version('version2') as g:
+        g['test_data'][5:] = 2
+
+    vfile.f['_version_data']['test_data'].create_dataset(
+        '_tmp_raw_data',
+        dtype='int'
+    )
+
+    def raise_error():
+        raise MemoryError
+
+    with mock.patch('numpy.full', side_effect=raise_error) as mock_create_dataset:
+        with mock.patch(
+            'versioned_hdf5.replay._delete_tmp_raw_data', wraps=_delete_tmp_raw_data
+        ) as mock_delete_tmp_raw_data:
+            with pytest.raises(IOError):
+                delete_versions(vfile, 'version1')
+
+            assert mock_delete_tmp_raw_data.call_count == 2
+
+        mock_create_dataset.assert_called()
+
+    assert '_tmp_raw_data' not in vfile.f['_version_data']['test_data']

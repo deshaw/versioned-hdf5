@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import List, Iterable, Union, Dict, Any
+from typing import List, Iterable, Union, Dict, Any, Optional
 from h5py import (
     VirtualLayout,
     h5s,
@@ -165,18 +165,37 @@ def _recreate_raw_data(
     name: str,
     versions_to_delete: Iterable[str],
     tmp: bool = False
-) -> Dict[NDIndex, NDIndex]:
-    """
-    Return a new raw data set for a dataset without the chunks from
-    versions_to_delete.
+) -> Optional[Dict[NDIndex, NDIndex]]:
+    """Create a new raw dataset without the chunks from versions_to_delete.
 
-    If no chunks would be left, i.e., the dataset does not appear in any
-    version not in versions_to_delete, None is returned.
+    This function can be memory-hungry, because it loads all the data from all versions
+    of the dataset before writing to a temporary location in the file (_tmp_raw_data).
+    If creating _tmp_raw_data fails, _tmp_raw_data will be deleted from the file. If a
+    dataset called _tmp_raw_data exists in the file to begin with, it will be deleted
+    before reconstruction is attempted.
 
-    If tmp is True, the new raw dataset is called '_tmp_raw_data' and is
-    placed alongside the existing raw dataset. Otherwise the existing raw
-    dataset is replaced.
+    See https://github.com/deshaw/versioned-hdf5/issues/273 for more information.
 
+    Parameters
+    ----------
+    f : VersionedHDF5File
+        File for which the raw data is to be reconstructed
+    name : str
+        Name of the dataset
+    versions_to_delete : Iterable[str]
+        Versions to omit from the reconstructed raw_data
+    tmp : bool
+        If True, the new raw dataset (called '_tmp_raw_data') is placed alongside the
+        existing raw dataset. Otherwise the existing raw dataset is replaced, and
+        _tmp_raw_data is removed.
+
+    Returns
+    -------
+    Optional[Dict[NDIndex, NDIndex]]
+        A mapping between user-space data chunks and the raw_data chunks
+
+        If no chunks would be left, i.e., the dataset does not appear in any
+        version not in versions_to_delete, None is returned.
     """
     chunks_map = defaultdict(dict)
 
@@ -215,6 +234,10 @@ def _recreate_raw_data(
         if fillvalue not in [0, '', b'', None]:
             raise ValueError("Non-default fillvalue not supported for variable length strings")
         fillvalue = None
+
+    # Guard against existing _tmp_raw_data
+    _delete_tmp_raw_data(f, name)
+
     new_raw_data = f['_version_data'][name].create_dataset(
         '_tmp_raw_data', shape=new_shape, maxshape=(None,)+chunks[1:],
         chunks=raw_data.chunks, dtype=dtype,
@@ -224,26 +247,47 @@ def _recreate_raw_data(
     for key, val in raw_data.attrs.items():
         new_raw_data.attrs[key] = val
 
-    r = raw_data[:]
-    n = np.full(new_raw_data.shape, _get_np_fillvalue(raw_data), dtype=new_raw_data.dtype)
-    raw_data_chunks_map = {}
-    for new_chunk, chunk in zip(chunks.indices(new_shape), chunks_to_keep):
-        # Shrink new_chunk to the size of chunk, in case chunk isn't a full
-        # chunk in one of the dimensions.
-        # TODO: Implement something in ndindex to do this.
-        new_chunk = Tuple(
-            *[Slice(new_chunk.args[i].start,
-                      new_chunk.args[i].start+len(chunk.args[i]))
-              for i in range(len(new_chunk.args))])
-        raw_data_chunks_map[chunk] = new_chunk
-        n[new_chunk.raw] = r[chunk.raw]
+    try:
+        r = raw_data[:]
+        n = np.full(new_raw_data.shape, _get_np_fillvalue(raw_data), dtype=new_raw_data.dtype)
+        raw_data_chunks_map = {}
+        for new_chunk, chunk in zip(chunks.indices(new_shape), chunks_to_keep):
+            # Shrink new_chunk to the size of chunk, in case chunk isn't a full
+            # chunk in one of the dimensions.
+            # TODO: Implement something in ndindex to do this.
+            new_chunk = Tuple(
+                *[Slice(new_chunk.args[i].start,
+                          new_chunk.args[i].start+len(chunk.args[i]))
+                  for i in range(len(new_chunk.args))])
+            raw_data_chunks_map[chunk] = new_chunk
+            n[new_chunk.raw] = r[chunk.raw]
 
-    new_raw_data[:] = n
-    if not tmp:
-        del f['_version_data'][name]['raw_data']
-        f['_version_data'][name].move('_tmp_raw_data', 'raw_data')
+        new_raw_data[:] = n
+        if not tmp:
+            del f['_version_data'][name]['raw_data']
+            f['_version_data'][name].move('_tmp_raw_data', 'raw_data')
 
-    return raw_data_chunks_map
+        return raw_data_chunks_map
+    except Exception as e:
+        # If there's an issue writing data to the file (e.g. OOM), remove the temporary
+        # raw data
+        _delete_tmp_raw_data(f, name)
+        raise IOError("Exception raised while recreating the raw dataset.") from e
+
+
+def _delete_tmp_raw_data(f: File, name: str):
+    """Delete _tmp_raw_data if it exists in the file.
+
+    Parameters
+    ----------
+    f : File
+        File in which _tmp_raw_data is to be removed
+    name : str
+        Name of the dataset where _tmp_raw_data is to be removed
+    """
+    if '_tmp_raw_data' in f['_version_data'][name]:
+        del f['_version_data'][name]['_tmp_raw_data']
+
 
 def _recreate_hashtable(f, name, raw_data_chunks_map, tmp=False):
     """
@@ -492,7 +536,7 @@ def _walk(g: HLObject, prefix: str = '') -> List[str]:
 
 def delete_versions(
     f: Union[VersionedHDF5File, File],
-    versions_to_delete: Iterable[str]
+    versions_to_delete: Union[str, Iterable[str]]
 ):
     """Completely delete the given versions from a file
 
