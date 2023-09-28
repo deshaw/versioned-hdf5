@@ -7,6 +7,7 @@ import shutil
 from pytest import raises, mark
 
 import h5py
+from h5py._hl.filters import guess_chunk
 
 import datetime
 
@@ -22,11 +23,13 @@ from ..wrappers import (InMemoryArrayDataset, InMemoryDataset,
 
 
 def test_stage_version(vfile):
-
+    """Test that versions can be staged and are the expected shape."""
     test_data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
                                 2*np.ones((DEFAULT_CHUNK_SIZE,)),
                                 3*np.ones((DEFAULT_CHUNK_SIZE,))))
 
+    # Chunk size is intelligently selected based on first dataset written
+    chunk_size = guess_chunk(test_data.shape, None, test_data.dtype.itemsize)[0]
     with vfile.stage_version('version1', '') as group:
         group['test_data'] = test_data
 
@@ -36,10 +39,12 @@ def test_stage_version(vfile):
 
     ds = vfile.f['/_version_data/test_data/raw_data']
 
-    assert ds.shape == (3*DEFAULT_CHUNK_SIZE,)
-    assert_equal(ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
-    assert_equal(ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
-    assert_equal(ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
+    # The dataset has 3 different arrays of size chunk_size, so should have
+    # shape 3*chunk_size
+    assert ds.shape == (3*chunk_size,)
+    assert_equal(ds[0:1*chunk_size], 1.0)
+    assert_equal(ds[1*chunk_size:2*chunk_size], 2.0)
+    assert_equal(ds[2*chunk_size:3*chunk_size], 3.0)
 
     with vfile.stage_version('version2', 'version1') as group:
         group['test_data'][0] = 0.0
@@ -49,12 +54,12 @@ def test_stage_version(vfile):
     test_data[0] = 0.0
     assert_equal(version2['test_data'], test_data)
 
-    assert ds.shape == (4*DEFAULT_CHUNK_SIZE,)
-    assert_equal(ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
-    assert_equal(ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
-    assert_equal(ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
-    assert_equal(ds[3*DEFAULT_CHUNK_SIZE], 0.0)
-    assert_equal(ds[3*DEFAULT_CHUNK_SIZE+1:4*DEFAULT_CHUNK_SIZE], 1.0)
+    assert ds.shape == (4*chunk_size,)
+    assert_equal(ds[0:1*chunk_size], 1.0)
+    assert_equal(ds[1*chunk_size:2*chunk_size], 2.0)
+    assert_equal(ds[2*chunk_size:3*chunk_size], 3.0)
+    assert_equal(ds[3*chunk_size], 0.0)
+    assert_equal(ds[3*chunk_size+1:4*chunk_size], 1.0)
 
 
 def test_stage_version_chunk_size(vfile):
@@ -733,6 +738,7 @@ def test_nonroot(vfile):
                                 2*np.ones((DEFAULT_CHUNK_SIZE,)),
                                 3*np.ones((DEFAULT_CHUNK_SIZE,))))
 
+    chunk_size = guess_chunk(test_data.shape, None, test_data.dtype.itemsize)[0]
     with file.stage_version('version1', '') as group:
         group['test_data'] = test_data
 
@@ -742,10 +748,10 @@ def test_nonroot(vfile):
 
     ds = vfile.f['/subgroup/_version_data/test_data/raw_data']
 
-    assert ds.shape == (3*DEFAULT_CHUNK_SIZE,)
-    assert_equal(ds[0:1*DEFAULT_CHUNK_SIZE], 1.0)
-    assert_equal(ds[1*DEFAULT_CHUNK_SIZE:2*DEFAULT_CHUNK_SIZE], 2.0)
-    assert_equal(ds[2*DEFAULT_CHUNK_SIZE:3*DEFAULT_CHUNK_SIZE], 3.0)
+    assert ds.shape == (3*chunk_size,)
+    assert_equal(ds[0:1*chunk_size], 1.0)
+    assert_equal(ds[1*chunk_size:2*chunk_size], 2.0)
+    assert_equal(ds[2*chunk_size:3*chunk_size], 3.0)
 
 
 def test_attrs(vfile):

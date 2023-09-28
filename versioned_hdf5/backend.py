@@ -1,4 +1,5 @@
 import numpy as np
+from h5py._hl.filters import guess_chunk
 from h5py import VirtualLayout, VirtualSource, h5s
 from ndindex import Slice, ndindex, Tuple, ChunkSize
 
@@ -48,8 +49,12 @@ def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
     if isinstance(chunks, int) and not isinstance(chunks, bool):
         chunks = (chunks,)
     if chunks in [True, None]:
-        if ndims <= 1:
+        if ndims == 0:
+            # Chunks are not allowed for scalar datasets; keeping original
+            # behavior here
             chunks = (DEFAULT_CHUNK_SIZE,)
+        elif ndims == 1:
+            chunks = guess_chunk(shape, None, data.dtype.itemsize)
         else:
             raise NotImplementedError("chunks must be specified for multi-dimensional datasets")
     group = f['_version_data'].create_group(name)
