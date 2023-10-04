@@ -81,7 +81,6 @@ def generate_bad_data():
             "this file only generates bad data on versioned_hdf5 <= 1.3.14."
         )
 
-
     filename = "object_dtype_bad_hashtable_data.h5"
     with h5py.File(filename, mode="w") as f:
         vf = VersionedHDF5File(f)
@@ -148,3 +147,11 @@ def generate_bad_data():
         with vf.stage_version("r2") as group:
             group['data_with_bad_hashtable'][2] = "bar"
             group['data_with_bad_hashtable2'][2] = "what"
+
+    filename = "nested_data_old_data_version.h5"
+    with h5py.File(filename, mode="w") as f:
+        vf = VersionedHDF5File(f)
+
+        with vf.stage_version('r0') as sv:
+            sv.create_group('data')
+            sv['data/values'] = np.array([1, 2, 3])
