@@ -155,3 +155,25 @@ def generate_bad_data():
         with vf.stage_version('r0') as sv:
             sv.create_group('data')
             sv['data/values'] = np.array([1, 2, 3])
+
+    filename = "multiple_nested_data_old_data_version.h5"
+    with h5py.File(filename, mode="w") as f:
+        vf = VersionedHDF5File(f)
+
+        arr = np.array(
+            [
+                "abcd",
+                "def",
+                "ghi",
+                "jkl",
+            ],
+            dtype=object
+        )
+
+        with vf.stage_version('r0') as sv:
+            g = sv.create_group('foo/bar/baz')
+            g.create_dataset(
+                "foo/bar/baz/values",
+                dtype=h5py.string_dtype(length=None),
+                data=arr
+            )

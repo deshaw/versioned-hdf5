@@ -2090,3 +2090,32 @@ def test_rebuild_hashtable_nested_dataset(tmp_path, caplog):
     # Info log message to the user is issued warning about DATA_VERSION mismatch;
     # another log message issued when rebuilding hash table
     assert len(caplog.records) == 2
+
+
+def test_rebuild_hashtable_multiple_nested_dataset(tmp_path, caplog):
+    """Test rebuilding the hash tables of a nested dataset."""
+    caplog.set_level(logging.INFO)
+
+    bad_file = (
+        pathlib.Path(__file__).parents[2] /
+        'test_data' /
+        'multiple_nested_data_old_data_version.h5'
+    )
+    filename = pathlib.Path(tmp_path) / 'file.h5'
+    shutil.copy(str(bad_file), str(filename))
+
+    with h5py.File(filename, mode='r+') as f:
+        old_hashtable = f['_version_data/foo/bar/baz/foo/bar/baz/values/hash_table']
+        VersionedHDF5File(f)
+
+        # Check that the hash table exists in the nested dataset
+        assert 'hash_table' in f['_version_data/foo/bar/baz/foo/bar/baz/values']
+
+        new_hashtable = f['_version_data/foo/bar/baz/foo/bar/baz/values/hash_table']
+
+        # Check that the bytes in the hash table are different
+        assert not np.array_equal(new_hashtable[0][0], old_hashtable[0][0])
+
+    # Info log message to the user is issued warning about DATA_VERSION mismatch;
+    # another log message issued when rebuilding hash table
+    assert len(caplog.records) == 2
