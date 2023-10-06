@@ -94,10 +94,17 @@ class VersionedHDF5File:
                     f"than what is currently installed. Please update versioned-hdf5."
                 )
 
-        self._version_data = f['_version_data']
-        self._versions = self._version_data['versions']
         self._closed = False
         self._version_cache = {}
+
+    @property
+    def _versions(self):
+        """Shorthand reference to the versions group of the file."""
+        return self.f['_version_data']['versions']
+
+    @property
+    def _version_data(self):
+        return self.f['_version_data']
 
     @property
     def closed(self):
@@ -192,8 +199,9 @@ class VersionedHDF5File:
         elif isinstance(item, (int, np.integer)):
             if item > 0:
                 raise IndexError("Integer version slice must be negative")
-            self._version_cache[item] = self.get_version_by_name(get_nth_previous_version(self.f,
-                self.current_version, -item))
+            self._version_cache[item] = self.get_version_by_name(
+                get_nth_previous_version(self.f, self.current_version, -item)
+            )
             return self._version_cache[item]
         elif isinstance(item, (datetime.datetime, np.datetime64)):
             self._version_cache[item] = self.get_version_by_timestamp(item)
@@ -256,7 +264,6 @@ class VersionedHDF5File:
         group = create_version_group(self.f, version_name,
                                      prev_version=prev_version)
 
-
         try:
             yield group
             group.close()
@@ -280,8 +287,6 @@ class VersionedHDF5File:
         """
         if not self._closed:
             del self.f
-            del self._version_data
-            del self._versions
             self._closed = True
 
     def __repr__(self):
