@@ -1,6 +1,17 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.4.3 (2023-10-05)
+
+### Minor Changes
+
+- Fix to avoid writing to temporary dataset during `delete_versions`, reducing
+  the chance for out-of-memory errors.
+- Fix to `_rebuild_hashtables` to allow for rebuilding hashtables of datasets
+  nested arbitrarily deeply inside groups.
+- A sensible default chunk size is now guessed by default if none is specified
+  when creating 1D datasets.
+
 ## 1.4.2 (2023-09-13)
 
 ### Minor Changes
