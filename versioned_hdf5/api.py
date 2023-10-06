@@ -6,7 +6,8 @@ change.
 """
 import logging
 import numpy as np
-from typing import Set, Optional
+from typing import Set, Optional, List
+import h5py
 
 from contextlib import contextmanager
 import datetime
@@ -363,7 +364,37 @@ class VersionedHDF5File:
 
     def _rebuild_hashtables(self):
         """Delete and rebuild the existing hashtables for the raw datasets."""
-        for name in self.f['_version_data'].keys():
+
+        # Find all data groups excluding '/_version_data/versions'
+        data_groups = []
+        for name, group in self.f['_version_data'].items():
             if name != 'versions':
-                del self.f['_version_data'][name]['hash_table']
-                Hashtable.from_versions_traverse(self.f, name)
+                data_groups.extend(self._find_data_groups(group))
+
+        # Rebuild the hash table for each data group found
+        for group in data_groups:
+            del self.f[group.name]['hash_table']
+            Hashtable.from_versions_traverse(self.f, group.name)
+
+    def _find_data_groups(self, node:  h5py.Group) -> List[h5py.Group]:
+        """Find all groups containing datasets that are descendents of the given node.
+
+        Parameters
+        ----------
+        node : h5py.Group
+            Node under which groups containing datasets live.
+
+        Returns
+        -------
+        List[h5py.Group]
+            List of groups which hold versioned-hdf5 datasets. Each group should
+            contain a h5py.Dataset named 'raw_data'.
+        """
+        items = []
+        if isinstance(node, h5py.Group):
+            if 'raw_data' in node:
+                items.append(node)
+            else:
+                for item in node:
+                    items.extend(self._find_data_groups(self.f[f'{node.name}/{item}']))
+        return items
