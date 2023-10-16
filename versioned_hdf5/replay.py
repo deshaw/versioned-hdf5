@@ -1,6 +1,6 @@
 from __future__ import annotations
 import gc
-from typing import List, Iterable, Union, Dict, Any, Optional
+from typing import List, Iterable, Union, Dict, Any, Optional, Set
 from h5py import (
     VirtualLayout,
     h5s,
@@ -559,7 +559,7 @@ def delete_versions(
             continue
         prev_version = versions[version_name].attrs['prev_version']
         while prev_version in versions_to_delete_set:
-            prev_version = versions[prev_version].attrs['prev_version']
+            prev_version = _get_parent(versions, prev_version)
         versions[version_name].attrs['prev_version'] = prev_version
 
     # delete the version groups to delete
@@ -572,6 +572,11 @@ def delete_versions(
     # issue; see https://github.com/deshaw/versioned-hdf5/pull/277
     # for a discussion about this.
     gc.collect()
+
+
+def _get_parent(versions, version_name):
+    return versions[version_name].attrs['prev_version']
+
 
 # Backwards compatibility
 delete_version = delete_versions
