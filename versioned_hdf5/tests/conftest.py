@@ -179,3 +179,18 @@ def generate_bad_data():
                 dtype=h5py.string_dtype(length=None),
                 data=arr
             )
+
+    filename = "object_dtype_bad_hashtable_chunk_reuse.h5"
+    with h5py.File(filename, mode="w") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version(str(0)) as sv:
+            sv.create_dataset('values',
+                              data=np.arange(0).astype(str).astype('O'),
+                              dtype=h5py.string_dtype(length=None),
+                              chunks=(10,))
+
+    for i in range(1, 11):
+        with h5py.File(filename, 'r+') as f:
+            vf = VersionedHDF5File(f)
+            with vf.stage_version(str(i)) as sv:
+                sv['values'] = np.arange(i).astype(str).astype('O')

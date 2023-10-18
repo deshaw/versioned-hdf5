@@ -109,14 +109,21 @@ class Hashtable(MutableMapping):
         hashtable.write()
         return hashtable
 
-    def hash(self, data):
+    def hash(self, data: np.ndarray):
+        """
+        Compute hash for `data` array.
+        """
         # Object dtype arrays store the ids of the elements, which may or may not be
         # reused, making it unsuitable for hashing. Instead, we need to make a combined
         # hash with the value of each element.
         if data.dtype == 'object':
             hash_value = self.hash_function()
             for value in data.flat:
-                hash_value.update(bytes(str(value), 'utf-8'))
+                if isinstance(value, str):
+                    # default to utf-8 encoding since it's a superset of ascii (the only other
+                    # valid encoding supported in h5py)
+                    value = value.encode('utf-8')
+                hash_value.update(value)
             hash_value.update(bytes(str(data.shape), 'utf-8'))
             return hash_value.digest()
         else:
