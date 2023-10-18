@@ -1909,8 +1909,13 @@ def test_data_version_identifier_missing(tmp_path, caplog):
     caplog.set_level(logging.INFO)
     filename = pathlib.Path(tmp_path) / 'file.h5'
     with h5py.File(filename, 'w') as f:
-        VersionedHDF5File(f)
+        vf = VersionedHDF5File(f)
         assert f['_version_data']['versions'].attrs['data_version'] == DATA_VERSION
+
+        # create a dtype='O' array
+        with vf.stage_version('v0') as sv:
+            sv.create_dataset('values', data=np.array(['hello', 'world']),
+                              dtype=h5py.string_dtype(encoding='ascii'))
 
         # Directly remove the data version identifier; this is
         # equivalent to v1.
@@ -1944,10 +1949,26 @@ def test_rebuild_hashtable(tmp_path, caplog):
 
         VersionedHDF5File(f)
 
+        assert 'data_version' not in f['_version_data']['versions'].attrs
+        assert_equal(original_hashes, f['_version_data/data_with_bad_hashtable/hash_table'][:])
+
+    # Info log message to the user is issued
+    assert len(caplog.records) == 1
+    caplog.clear()
+
+    # now actually rebuild the hashes
+    with h5py.File(filename, mode='r+') as f:
+        assert f['_version_data']['versions'].attrs.get('data_version') is None
+        original_hashes = f['_version_data/data_with_bad_hashtable/hash_table'][:]
+
+        vf = VersionedHDF5File(f)
+        vf.rebuild_object_dtype_hashtables()
+
         assert f['_version_data']['versions'].attrs['data_version'] == DATA_VERSION
         new_hashes = f['_version_data/data_with_bad_hashtable/hash_table'][:]
 
-    # Info log message to the user is issued
+    # Info log message to the user is issued warning about DATA_VERSION mismatch;
+    # another log message issued when rebuilding hash table
     assert len(caplog.records) == 2
     assert not np.all(original_hashes[0][0] == new_hashes[0][0])
 
@@ -2024,6 +2045,24 @@ def test_rebuild_hashtable_multiple_datasets(tmp_path, caplog):
 
         VersionedHDF5File(f)
 
+        assert 'data_version' not in f['_version_data']['versions'].attrs
+        assert_equal(original_hashes_arr1, f['_version_data/data_with_bad_hashtable/hash_table'][:])
+        assert_equal(original_hashes_arr2, f['_version_data/data_with_bad_hashtable2/hash_table'][:])
+        assert_equal(original_hashes_arr3, f['_version_data/linspace/hash_table'][:])
+
+    # Info log message to the user is issued
+    assert len(caplog.records) == 1
+    caplog.clear()
+
+    with h5py.File(filename, mode='r+') as f:
+        assert f['_version_data']['versions'].attrs.get('data_version') is None
+        original_hashes_arr1 = f['_version_data/data_with_bad_hashtable/hash_table'][:]
+        original_hashes_arr2 = f['_version_data/data_with_bad_hashtable2/hash_table'][:]
+        original_hashes_arr3 = f['_version_data/linspace/hash_table'][:]
+
+        vf = VersionedHDF5File(f)
+        vf.rebuild_object_dtype_hashtables()
+
         assert f['_version_data']['versions'].attrs['data_version'] == DATA_VERSION
         new_hashes_arr1 = f['_version_data/data_with_bad_hashtable/hash_table'][:]
         new_hashes_arr2 = f['_version_data/data_with_bad_hashtable2/hash_table'][:]
@@ -2087,6 +2126,14 @@ def test_rebuild_hashtable_nested_dataset(tmp_path, caplog):
         # Check that the hash table exists in the nested dataset
         assert 'hash_table' in f['_version_data/data/values']
 
+    # Info log message to the user is issued
+    assert len(caplog.records) == 1
+    caplog.clear()
+
+    with h5py.File(filename, mode='r+') as f:
+        vf = VersionedHDF5File(f)
+        vf.rebuild_object_dtype_hashtables()
+
     # Info log message to the user is issued warning about DATA_VERSION mismatch;
     # another log message issued when rebuilding hash table
     assert len(caplog.records) == 2
@@ -2105,13 +2152,21 @@ def test_rebuild_hashtable_multiple_nested_dataset(tmp_path, caplog):
     shutil.copy(str(bad_file), str(filename))
 
     with h5py.File(filename, mode='r+') as f:
-        old_hashtable = f['_version_data/foo/bar/baz/foo/bar/baz/values/hash_table']
+        old_hashtable = f['_version_data/foo/bar/baz/foo/bar/baz/values/hash_table'][:]
         VersionedHDF5File(f)
 
         # Check that the hash table exists in the nested dataset
         assert 'hash_table' in f['_version_data/foo/bar/baz/foo/bar/baz/values']
 
-        new_hashtable = f['_version_data/foo/bar/baz/foo/bar/baz/values/hash_table']
+    # Info log message to the user is issued
+    assert len(caplog.records) == 1
+    caplog.clear()
+
+    with h5py.File(filename, mode='r+') as f:
+        vf = VersionedHDF5File(f)
+        vf.rebuild_object_dtype_hashtables()
+
+        new_hashtable = f['_version_data/foo/bar/baz/foo/bar/baz/values/hash_table'][:]
 
         # Check that the bytes in the hash table are different
         assert not np.array_equal(new_hashtable[0][0], old_hashtable[0][0])

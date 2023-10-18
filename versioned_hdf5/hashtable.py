@@ -1,10 +1,12 @@
-import numpy as np
-from ndindex import Slice, Tuple, ChunkSize
-
 import hashlib
 from collections.abc import MutableMapping
 from functools import lru_cache
+
+import numpy as np
 from h5py import File
+from ndindex import Slice, Tuple, ChunkSize
+
+from .slicetools import spaceid_to_slice
 
 
 class Hashtable(MutableMapping):
@@ -81,23 +83,15 @@ class Hashtable(MutableMapping):
             if name in version_group:
                 dataset = version_group[name]
                 with Hashtable(f, name) as hashtable:
-                    if dataset.chunks is None:
-                        chunks = tuple(dataset.attrs['chunks'])
-                    else:
-                        chunks = dataset.chunks
-                    chunk_size = chunks[0]
-
-                    for s in ChunkSize(chunks).indices(dataset.shape):
-                        idx = hashtable.largest_index
-                        data_slice = dataset[s.raw]
-                        raw_slice = Slice(
-                            idx*chunk_size,
-                            idx*chunk_size + data_slice.shape[0]
-                        )
-                        slice_hash = hashtable.hash(data_slice)
-                        if slice_hash not in hashtable:
-                            hashtable[slice_hash] = raw_slice
-
+                    if dataset.is_virtual:
+                        for vs in dataset.virtual_sources():
+                            sl = spaceid_to_slice(vs.src_space)
+                            dl = spaceid_to_slice(vs.vspace)
+                            assert len(dl.raw) == len(sl.raw)
+                            data_slice = dataset[dl.raw]
+                            slice_hash = hashtable.hash(data_slice)
+                            if slice_hash not in hashtable:
+                                hashtable[slice_hash] = sl.raw[0]
 
     @classmethod
     def from_raw_data(cls, f, name, chunk_size=None, hash_table_name='hash_table'):

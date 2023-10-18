@@ -12,7 +12,7 @@ import h5py
 from contextlib import contextmanager
 import datetime
 
-from .backend import initialize, DATA_VERSION
+from .backend import initialize, DATA_VERSION, CORRUPT_DATA_VERSION
 from .versions import (create_version_group, commit_version,
                        get_version_by_timestamp, get_nth_previous_version,
                        set_current_version, all_versions, delete_version, )
@@ -71,22 +71,26 @@ class VersionedHDF5File:
         else:
             # This is not a new file; check data version identifier for compatibility
             if self.data_version_identifier < DATA_VERSION:
-
-                logger.info(
-                    f'{f.filename} was created by a different version of '
-                    f'versioned-hdf5. Object dtypes may not be accessed correctly. '
-                    f'File has data version identifier {self.data_version_identifier}, '
-                    f'versioned-hdf5 expects {DATA_VERSION}.',
-                    stacklevel=2
-                )
-
-                if f.mode == 'r+':
-                    logger.info(
-                        f'Rebuilding hash tables for {f.filename}.',
-                        stacklevel=2
-                    )
-                    self._rebuild_hashtables()
-                    self.f['_version_data']['versions'].attrs['data_version'] = DATA_VERSION
+                if self.data_version_identifier == CORRUPT_DATA_VERSION:
+                    raise ValueError(
+                        f'Versioned Hdf5 file {f.filename} has data_version {CORRUPT_DATA_VERSION}, '
+                        'which has corrupted hash_tables. '
+                        'See https://github.com/deshaw/versioned-hdf5/issues/256 for details. '
+                        'You should recreate the file from scratch. '
+                        'In an emergency you could also rebuild the hash tables by calling '
+                        f'VersionedHDF5File({f.filename!r}).rebuild_hashtables() and use '
+                        f'delete_versions to delete all versions after the upgrade to '
+                        f'data_version {CORRUPT_DATA_VERSION} if you can identify them.')
+                if any(self._find_object_dtype_data_groups()):
+                    logger.warning('Detected dtype="O" arrays which are not reused when creating new versions. '
+                                   'See https://github.com/deshaw/versioned-hdf5/issues/256 for details. '
+                                   'Rebuilding hash tables for %s is recommended by calling '
+                                   'VersionedHDF5File(%r).rebuild_object_dtype_hashtables().',
+                                   f.filename, f.filename)
+                else:
+                    if f.mode == 'r+':
+                        logger.info('Ugprading data_version to %d, no action required.', DATA_VERSION)
+                        self.f['_version_data']['versions'].attrs['data_version'] = DATA_VERSION
 
             elif self.data_version_identifier > DATA_VERSION:
                 raise ValueError(
@@ -367,16 +371,23 @@ class VersionedHDF5File:
             )
         logger.debug("\n".join(msg))
 
-    def _rebuild_hashtables(self):
-        """Delete and rebuild the existing hashtables for the raw datasets."""
+    def rebuild_hashtables(self):
+        """Delete and rebuild *all* existing hashtables for the raw datasets."""
 
+        data_groups = self._find_all_data_groups()
+
+        self._rebuild_hashtables(data_groups)
+
+    def _find_all_data_groups(self):
         # Find all data groups excluding '/_version_data/versions'
         data_groups = []
         for name, group in self.f['_version_data'].items():
             if name != 'versions':
                 data_groups.extend(self._find_data_groups(group))
+        return data_groups
 
-        # Rebuild the hash table for each data group found
+    def _rebuild_hashtables(self, data_groups):
+        """Rebuild the hashtables in data_groups."""
         for group in data_groups:
             del self.f[group.name]['hash_table']
             Hashtable.from_versions_traverse(self.f, group.name)
@@ -403,3 +414,17 @@ class VersionedHDF5File:
                 for item in node:
                     items.extend(self._find_data_groups(self.f[f'{node.name}/{item}']))
         return items
+
+    def _find_object_dtype_data_groups(self):
+        """Find all data groups with dtype='O'."""
+
+        # Find all data groups excluding '/_version_data/versions' of dtype='O'
+        for data_group in self._find_all_data_groups():
+            if data_group['raw_data'].dtype.kind == 'O':
+                yield data_group
+
+    def rebuild_object_dtype_hashtables(self):
+        """Find all dtype='O' data groups and rebuild their hashtables."""
+        logger.info('Rebuilding hash tables for dtype="O" datasets in %s.', self.f.filename)
+        self._rebuild_hashtables(self._find_object_dtype_data_groups())
+        self.f['_version_data']['versions'].attrs['data_version'] = DATA_VERSION
