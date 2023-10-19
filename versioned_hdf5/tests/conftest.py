@@ -197,6 +197,22 @@ def generate_bad_data():
             with vf.stage_version(str(i)) as sv:
                 sv['values'] = np.arange(i).astype(str).astype('O')
 
+    filename = "object_dtype_bad_hashtable_chunk_reuse_unicode.h5"
+    numbers = ['れい', 'いち', 'に', 'さん', 'し', 'ご', 'ろく', 'しち', 'はち', 'きゅう', 'じゅう']
+    with h5py.File(filename, mode="w") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version(str(0)) as sv:
+            sv.create_dataset('values',
+                              data=np.array(numbers[:1], dtype='O'),
+                              dtype=h5py.string_dtype(length=None),
+                              chunks=(10,))
+
+    for i in range(1, 11):
+        with h5py.File(filename, 'r+') as f:
+            vf = VersionedHDF5File(f)
+            with vf.stage_version(str(i)) as sv:
+                sv['values'] = np.array(numbers[:i + 1], dtype='O')
+
     filename = "object_dtype_bad_hashtable_chunk_reuse_multi_dim.h5"
     with h5py.File(filename, mode="w") as f:
         vf = VersionedHDF5File(f)

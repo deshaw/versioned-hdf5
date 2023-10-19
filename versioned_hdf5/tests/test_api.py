@@ -2235,6 +2235,67 @@ def test_rebuild_hashtable_chunk_reuse(tmp_path, caplog):
                                   [bytes(str(j), 'utf-8') for j in range(i)])
 
 
+def test_rebuild_hashtable_chunk_reuse_unicode(tmp_path, caplog):
+    """Test that the correct chunks are used after rebuilding the tables for non-ascii data."""
+    caplog.set_level(logging.INFO)
+
+    bad_file = (
+        pathlib.Path(__file__).parents[2] /
+        'test_data' /
+        'object_dtype_bad_hashtable_chunk_reuse_unicode.h5'
+    )
+    filename = pathlib.Path(tmp_path) / 'file.h5'
+    shutil.copy(str(bad_file), str(filename))
+
+    with h5py.File(filename, mode='r+') as f:
+        old_hashtable = f['_version_data/values/hash_table'][:]
+        VersionedHDF5File(f)
+
+        # Check that the hash table exists in the nested dataset
+        assert 'hash_table' in f['_version_data/values']
+
+    # Info log message to the user is issued
+    assert len(caplog.records) == 1
+    caplog.clear()
+
+    with h5py.File(filename, mode='r+') as f:
+        vf = VersionedHDF5File(f)
+        vf.rebuild_object_dtype_hashtables()
+
+        new_hashtable = f['_version_data/values/hash_table'][:]
+
+        # Check that the bytes in the hash table are different
+        assert not np.array_equal(new_hashtable[0][0], old_hashtable[0][0])
+
+    # Info log message to the user is issued warning about DATA_VERSION mismatch;
+    # another log message issued when rebuilding hash table
+    assert len(caplog.records) == 2
+
+    numbers = ['れい', 'いち', 'に', 'さん', 'し', 'ご', 'ろく', 'しち', 'はち', 'きゅう', 'じゅう']
+
+    with h5py.File(filename, mode='r') as f:
+        vf = VersionedHDF5File(f)
+        cv = vf[vf.current_version]
+        assert np.array_equal(cv['values'][:],
+                              [bytes(numbers[j], 'utf-8') for j in range(11)])
+
+    # add versions, check that correct chunks are reused
+    for i in range(0, 11):
+        with h5py.File(filename, mode='r+') as f:
+            vf = VersionedHDF5File(f)
+            with vf.stage_version(f'reuse.{i}') as sv:
+                sv['values'] = np.array(numbers[:i + 1], dtype='O')
+
+        with h5py.File(filename, mode='r') as f:
+            # no new chunks should have been added
+            assert f['_version_data/values/raw_data'].shape == (f['_version_data/values/raw_data'].chunks[0] * 11,)
+            # data should be correct
+            vf = VersionedHDF5File(f)
+            cv = vf[vf.current_version]
+            assert np.array_equal(cv['values'][:],
+                                  [bytes(numbers[j], 'utf-8') for j in range(i + 1)])
+
+
 def test_rebuild_hashtable_chunk_reuse_multi_dim(tmp_path, caplog):
     """Test that the correct chunks are used after rebuilding the tables for a multi-dimensional array."""
     caplog.set_level(logging.INFO)
