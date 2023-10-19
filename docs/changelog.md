@@ -1,6 +1,16 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.4.4 (2023-10-19)
+
+### Major Changes
+
+- Fixed an issue with rebuilding hashtables; new `DATA_VERSION` released
+
+### Minor Changes
+
+- Rewrote a test for improved maintainability
+
 ## 1.4.3 (2023-10-05)
 
 ### Minor Changes
