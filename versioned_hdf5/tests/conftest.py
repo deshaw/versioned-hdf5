@@ -1,4 +1,6 @@
 import os
+import uuid
+
 from pytest import fixture
 from .helpers import setup_vfile
 from ..api import VersionedHDF5File
@@ -194,3 +196,20 @@ def generate_bad_data():
             vf = VersionedHDF5File(f)
             with vf.stage_version(str(i)) as sv:
                 sv['values'] = np.arange(i).astype(str).astype('O')
+
+    filename = "object_dtype_bad_hashtable_chunk_reuse_multi_dim.h5"
+    with h5py.File(filename, mode="w") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version(str(uuid.uuid4())) as sv:
+            sv.create_dataset('values',
+                              data=np.array([[chr(ord('a') + ((j + k) % 10)) * 3 for j in range(4)]
+                                             for k in range(4)], dtype='O'),
+                              dtype=h5py.string_dtype(length=None),
+                              chunks=(2, 2))
+
+    for i in range(1, 11):
+        with h5py.File(filename, 'r+') as f:
+            vf = VersionedHDF5File(f)
+            with vf.stage_version(str(uuid.uuid4())) as sv:
+                sv['values'] = np.array([[chr(ord('a') + ((i + j + k) % 10)) * 3 for j in range(4)]
+                                         for k in range(4)], dtype='O')
