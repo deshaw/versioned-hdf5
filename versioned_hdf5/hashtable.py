@@ -1,10 +1,12 @@
-import numpy as np
-from ndindex import Slice, Tuple, ChunkSize
-
 import hashlib
 from collections.abc import MutableMapping
 from functools import lru_cache
+
+import numpy as np
 from h5py import File
+from ndindex import Slice, Tuple, ChunkSize
+
+from .slicetools import spaceid_to_slice
 
 
 class Hashtable(MutableMapping):
@@ -81,23 +83,15 @@ class Hashtable(MutableMapping):
             if name in version_group:
                 dataset = version_group[name]
                 with Hashtable(f, name) as hashtable:
-                    if dataset.chunks is None:
-                        chunks = tuple(dataset.attrs['chunks'])
-                    else:
-                        chunks = dataset.chunks
-                    chunk_size = chunks[0]
-
-                    for s in ChunkSize(chunks).indices(dataset.shape):
-                        idx = hashtable.largest_index
-                        data_slice = dataset[s.raw]
-                        raw_slice = Slice(
-                            idx*chunk_size,
-                            idx*chunk_size + data_slice.shape[0]
-                        )
-                        slice_hash = hashtable.hash(data_slice)
-                        if slice_hash not in hashtable:
-                            hashtable[slice_hash] = raw_slice
-
+                    if dataset.is_virtual:
+                        for vs in dataset.virtual_sources():
+                            sl = spaceid_to_slice(vs.src_space)
+                            dl = spaceid_to_slice(vs.vspace)
+                            assert len(dl.raw) == len(sl.raw)
+                            data_slice = dataset[dl.raw]
+                            slice_hash = hashtable.hash(data_slice)
+                            if slice_hash not in hashtable:
+                                hashtable[slice_hash] = sl.raw[0]
 
     @classmethod
     def from_raw_data(cls, f, name, chunk_size=None, hash_table_name='hash_table'):
@@ -115,14 +109,21 @@ class Hashtable(MutableMapping):
         hashtable.write()
         return hashtable
 
-    def hash(self, data):
+    def hash(self, data: np.ndarray):
+        """
+        Compute hash for `data` array.
+        """
         # Object dtype arrays store the ids of the elements, which may or may not be
         # reused, making it unsuitable for hashing. Instead, we need to make a combined
         # hash with the value of each element.
         if data.dtype == 'object':
             hash_value = self.hash_function()
             for value in data.flat:
-                hash_value.update(bytes(str(value), 'utf-8'))
+                if isinstance(value, str):
+                    # default to utf-8 encoding since it's a superset of ascii (the only other
+                    # valid encoding supported in h5py)
+                    value = value.encode('utf-8')
+                hash_value.update(value)
             hash_value.update(bytes(str(data.shape), 'utf-8'))
             return hash_value.digest()
         else:
