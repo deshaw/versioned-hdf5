@@ -1,6 +1,6 @@
 from uuid import uuid4
 from collections import defaultdict
-import posixpath as pp
+import posixpath
 
 from h5py import Dataset, Group
 import datetime
@@ -109,7 +109,7 @@ def commit_version(version_group, datasets, *,
                 # version. Just copy it to the new version directly.
                 assert data.name.startswith(prev_version.name + '/')
                 data_name = data.name[len(prev_version.name + '/'):]
-                data_copy_name = pp.join(version_group.name, data_name)
+                data_copy_name = posixpath.join(version_group.name, data_name)
                 version_group.copy(data, data_copy_name)
                 data_copy = f[data_copy_name]
                 data_copy.attrs.clear()
