@@ -6,7 +6,8 @@ change.
 """
 import logging
 import numpy as np
-from typing import Set, Optional, List
+from typing import Set, Optional, List, Tuple, Dict
+import ndindex
 import h5py
 
 from contextlib import contextmanager
@@ -16,8 +17,14 @@ from .backend import initialize, DATA_VERSION, CORRUPT_DATA_VERSIONS
 from .versions import (create_version_group, commit_version,
                        get_version_by_timestamp, get_nth_previous_version,
                        set_current_version, all_versions, delete_version, )
-from .wrappers import InMemoryGroup
+from .wrappers import (
+    InMemoryGroup,
+    InMemoryDataset,
+    InMemoryArrayDataset,
+    DatasetWrapper
+)
 from .hashtable import Hashtable
+from .slicetools import spaceid_to_slice
 
 
 logger = logging.getLogger(__name__)
@@ -429,3 +436,142 @@ class VersionedHDF5File:
         logger.info('Rebuilding hash tables for dtype="O" datasets in %s.', self.f.filename)
         self._rebuild_hashtables(self._find_object_dtype_data_groups())
         self.f['_version_data']['versions'].attrs['data_version'] = DATA_VERSION
+
+    def get_diff(
+        self, name: str, version1: str, version2: str
+    ) -> Dict[Tuple[slice], Tuple[np.ndarray]]:
+        """Compute the difference between two versions of a dataset.
+
+        Parameters
+        ----------
+        name : str
+            Name of the dataset
+        version1 : str
+            First version to compare
+        version2 : str
+            Second version to compare
+
+        Returns
+        -------
+        Dict[Tuple[slice], Tuple[np.ndarray]]
+            A dictionary where the keys are slices that changed from version1 to
+            version2, the the values are tuples containing
+
+                (data_in_version1, data_in_version2)
+        """
+        if self.closed:
+            raise ValueError("File is not open.")
+
+        data1 = self[version1][name]
+        data2 = self[version2][name]
+
+        if isinstance(data1, DatasetWrapper):
+            data1 = data1.dataset
+        if isinstance(data2, DatasetWrapper):
+            data2 = data2.dataset
+
+        if (
+            isinstance(data1, (InMemoryDataset, InMemoryArrayDataset))
+            or isinstance(data2, (InMemoryDataset, InMemoryArrayDataset))
+        ):
+            raise ValueError(
+                "Versions have not yet been committed to the file. "
+                "Please close and reopen the file before calling get_diff()."
+            )
+
+        return self._diff_data(
+            version1,
+            version2,
+            name,
+            self._get_chunks(name, version1),
+            self._get_chunks(name, version2),
+        )
+
+    def _get_chunks(
+        self,
+        name: str,
+        version: str,
+    ) -> Dict[ndindex.Tuple, ndindex.Tuple]:
+        """Get the Dict which maps virtual dataset sources to raw data slices.
+
+        Parameters
+        ----------
+        name : str
+            Name of the dataset
+        version : str
+            Version of the dataset for which the data map is to be retrieved
+
+        Returns
+        -------
+        Dict[ndindex.Tuple, ndindex.Tuple]
+            Mapping between the dataset's virtual slices and the slices of the
+            underlying raw data
+        """
+        slices = {}
+        for vs in self[version][name].virtual_sources():
+            src = spaceid_to_slice(vs.src_space)
+            vir = spaceid_to_slice(vs.vspace)
+            slices[vir] = src
+
+        return slices
+
+    def _diff_data(
+        self,
+        v1: str,
+        v2: str,
+        name: str,
+        sd1: Dict[ndindex.Tuple, ndindex.Tuple],
+        sd2: Dict[ndindex.Tuple, ndindex.Tuple],
+    ) -> Dict[ndindex.Tuple, Tuple[np.ndarray]]:
+        """Compute the difference between two versions of a dataset.
+
+        Parameters
+        ----------
+        v1 : str
+            Version of a dataset
+        v2 : str
+            Version of a different dataset
+        name : str
+            Name of the dataset
+        sd1 : Dict[ndindex.Tuple, ndindex.Tuple]
+            Dict which maps virtual dataset slices to source (raw) dataset slices
+        sd2 : Dict[ndindex.Tuple, ndindex.Tuple]
+            Dict which maps virtual dataset slices to source (raw) dataset slices
+
+        Returns
+        -------
+        Dict[ndindex.Tuple, Tuple[np.ndarray]]:
+            Dict of {changed_virtual_slice: (data_v1, data_v2)} which maps slices of the
+            virtual datasets which were modified between the versions to a tuple
+            containing the corresponding raw ndarray that was modified. The first
+            element of the tuple is the data at version `v1`, and the second element
+            is the data at version `v2`. If data was added or removed, that element
+            of the tuple will be None. Example return value:
+
+            diff = {
+                # Data was deleted
+                Tuple(Slice(0, 1024, 1)): (array([1, ... 1]), None),
+
+                # Data was added
+                Tuple(Slice(1024, 2048, 1)): (None, array([1, ... 1])),
+
+                # Data was changed
+                Tuple(Slice(2048, 3072, 1)): (array([1, ... 1]), array([2, ..., 2])),
+            }
+
+        """
+        diff = {}
+        for vir2, src2 in sd2.items():
+            if vir2 not in sd1:
+                # New data was written
+                diff[vir2] = (None, self[v2][name][vir2.raw])
+            elif src2 != sd1[vir2]:
+                # Data was modified
+                diff[vir2] = (self[v1][name][vir2.raw], self[v2][name][vir2.raw])
+
+        for vir1, src1 in sd1.items():
+            if vir1 not in sd2:
+                # Data was deleted
+                diff[vir1] = (self[v1][name][vir1.raw], None)
+
+        return diff
