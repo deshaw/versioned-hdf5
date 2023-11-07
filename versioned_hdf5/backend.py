@@ -6,8 +6,8 @@ from ndindex import Slice, ndindex, Tuple, ChunkSize
 from .hashtable import Hashtable
 
 DEFAULT_CHUNK_SIZE = 2**12
-DATA_VERSION = 3
-CORRUPT_DATA_VERSION = 2  # data_version 2 has broken hashtables, always need to rebuild
+DATA_VERSION = 4
+CORRUPT_DATA_VERSIONS = frozenset([2, 3])  # data_version 2 has broken hashtables, always need to rebuild
 
 def normalize_dtype(dtype):
     return np.array([], dtype=dtype).dtype

@@ -1,4 +1,5 @@
 import hashlib
+import struct
 from collections.abc import MutableMapping
 from functools import lru_cache
 
@@ -123,6 +124,8 @@ class Hashtable(MutableMapping):
                     # default to utf-8 encoding since it's a superset of ascii (the only other
                     # valid encoding supported in h5py)
                     value = value.encode('utf-8')
+                # hash the length of value ('n' is ssize_t, which matches the internal type for lengths)
+                hash_value.update(struct.pack('n', len(value)))
                 hash_value.update(value)
             hash_value.update(bytes(str(data.shape), 'utf-8'))
             return hash_value.digest()
