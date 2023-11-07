@@ -7,7 +7,9 @@ from .hashtable import Hashtable
 
 DEFAULT_CHUNK_SIZE = 2**12
 DATA_VERSION = 4
-CORRUPT_DATA_VERSIONS = frozenset([2, 3])  # data_version 2 has broken hashtables, always need to rebuild
+# data_version 2 has broken hashtables, always need to rebuild
+# data_version 3 hash collisions for string arrays which, when concatenated, give the same string
+CORRUPT_DATA_VERSIONS = frozenset([2, 3])
 
 def normalize_dtype(dtype):
     return np.array([], dtype=dtype).dtype
