@@ -12,7 +12,7 @@ import h5py
 from contextlib import contextmanager
 import datetime
 
-from .backend import initialize, DATA_VERSION, CORRUPT_DATA_VERSION
+from .backend import initialize, DATA_VERSION, CORRUPT_DATA_VERSIONS
 from .versions import (create_version_group, commit_version,
                        get_version_by_timestamp, get_nth_previous_version,
                        set_current_version, all_versions, delete_version, )
@@ -71,21 +71,22 @@ class VersionedHDF5File:
         else:
             # This is not a new file; check data version identifier for compatibility
             if self.data_version_identifier < DATA_VERSION:
-                if self.data_version_identifier == CORRUPT_DATA_VERSION:
+                if self.data_version_identifier in CORRUPT_DATA_VERSIONS:
                     raise ValueError(
-                        f'Versioned Hdf5 file {f.filename} has data_version {CORRUPT_DATA_VERSION}, '
+                        f'Versioned Hdf5 file {f.filename} has data_version {self.data_version_identifier}, '
                         'which has corrupted hash_tables. '
-                        'See https://github.com/deshaw/versioned-hdf5/issues/256 for details. '
+                        'See https://github.com/deshaw/versioned-hdf5/issues/256 and '
+                        'https://github.com/deshaw/versioned-hdf5/issues/288 for details. '
                         'You should recreate the file from scratch. '
                         'In an emergency you could also rebuild the hash tables by calling '
-                        f'VersionedHDF5File({f.filename!r}).rebuild_hashtables() and use '
+                        f'with h5py.File({f.filename!r}) as f: VersionedHDF5File(f).rebuild_hashtables() and use '
                         f'delete_versions to delete all versions after the upgrade to '
-                        f'data_version {CORRUPT_DATA_VERSION} if you can identify them.')
+                        f'data_version == {self.data_version_identifier} if you can identify them.')
                 if any(self._find_object_dtype_data_groups()):
                     logger.warning('Detected dtype="O" arrays which are not reused when creating new versions. '
                                    'See https://github.com/deshaw/versioned-hdf5/issues/256 for details. '
                                    'Rebuilding hash tables for %s is recommended by calling '
-                                   'VersionedHDF5File(%r).rebuild_object_dtype_hashtables().',
+                                   'with h5py.File(%r) as f: VersionedHDF5File(f).rebuild_object_dtype_hashtables().',
                                    f.filename, f.filename)
                 else:
                     if f.mode == 'r+':

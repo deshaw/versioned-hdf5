@@ -86,3 +86,29 @@ def test_object_dtype_hashes_values(tmp_path):
         file = VersionedHDF5File(f)
         for i in range(N):
             assert file[f"r{i}"]["values"][()] == b"a"*(i+1)
+
+
+def test_object_dtype_hashes_concatenated_values(tmp_path):
+    """Test that object dtype arrays hash values which concatenate
+    to the same string to different hashes.
+    See https://github.com/deshaw/versioned-hdf5/issues/288.
+    """
+    filename = tmp_path / "test.h5"
+    with h5py.File(filename, mode="w") as f:
+        file = VersionedHDF5File(f)
+        with file.stage_version("r0") as group:
+            group.create_dataset(
+                "values",  dtype=h5py.string_dtype(encoding='ascii'),
+                data=np.array([b"a", b"b", b"cd"], dtype=object),
+                maxshape=(None,), chunks=(100,)
+            )
+        with file.stage_version("r1") as group:
+            group["values"] = np.array([b"ab", b"", b"cd"], dtype=object)
+        with file.stage_version("r2") as group:
+            group["values"] = np.array([b"ab", b"c", b"d"], dtype=object)
+
+    with h5py.File(filename, mode="r") as f:
+        file = VersionedHDF5File(f)
+        np.testing.assert_equal(file["r0"]["values"][:], np.array([b"a", b"b", b"cd"], dtype=object))
+        np.testing.assert_equal(file["r1"]["values"][:], np.array([b"ab", b"", b"cd"], dtype=object))
+        np.testing.assert_equal(file["r2"]["values"][:], np.array([b"ab", b"c", b"d"], dtype=object))
