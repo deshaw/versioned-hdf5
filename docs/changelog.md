@@ -11,6 +11,9 @@ Versioned HDF5 Change Log
 ### Minor Changes
 
 - Fixed an error message directly passing a file name to VersionedHDF5File.
+- Removed all posixpath "pp" aliases, to prevent conflict with prettyprint debug
+  command.
+- Fix deprecated CI parameter.
 
 ## 1.5.0 (2023-10-19)
 
