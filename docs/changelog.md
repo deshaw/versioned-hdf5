@@ -1,6 +1,17 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.6.0 (2023-11-15)
+
+### Major Changes
+
+- String lengths are now included with variable-length string array hashes. This
+  solves an issue with hashing uniqueness with string arrays.
+
+### Minor Changes
+
+- Fixed an error message directly passing a file name to VersionedHDF5File.
+
 ## 1.5.0 (2023-10-19)
 
 ### Major Changes
