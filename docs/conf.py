@@ -53,7 +53,8 @@ autodoc_type_aliases = {
 
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3', None),
-    'h5py': ('https://docs.h5py.org/en/stable', None)
+    'h5py': ('https://docs.h5py.org/en/stable', None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
 }
 
 # -- Options for HTML output -------------------------------------------------

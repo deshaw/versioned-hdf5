@@ -2360,3 +2360,46 @@ def test_rebuild_hashtable_chunk_reuse_multi_dim(tmp_path, caplog):
             assert np.array_equal(cv['values'][:],
                                   np.array([[v.encode('utf-8') for v in a]
                                             for a in values_i], dtype='O'))
+
+def test_get_diff(tmp_path):
+    """Check that the diff betwen two versions returns the expected chunks."""
+    test_data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
+                                2*np.ones((DEFAULT_CHUNK_SIZE,)),
+                                3*np.ones((DEFAULT_CHUNK_SIZE,))))
+
+    filename = tmp_path / 'data.h5'
+
+    with h5py.File(filename, 'w') as f:
+        vfile = VersionedHDF5File(f)
+
+        with vfile.stage_version('v1') as g:
+            g['test_data'] = test_data
+
+        with vfile.stage_version('v2') as g:
+            g['test_data'][0] = 0.0
+
+    with h5py.File(filename, 'r') as f:
+        vfile = VersionedHDF5File(f)
+        diff = vfile.get_diff('test_data', 'v1', 'v2')
+
+    print(diff)
+
+def test_get_diff_same_version(tmp_path):
+    """Check that the diff between a version and itself is nothing."""
+    test_data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
+                                2*np.ones((DEFAULT_CHUNK_SIZE,)),
+                                3*np.ones((DEFAULT_CHUNK_SIZE,))))
+
+    filename = tmp_path / 'data.h5'
+
+    with h5py.File(filename, 'w') as f:
+        vfile = VersionedHDF5File(f)
+
+        with vfile.stage_version('v1') as g:
+            g['test_data'] = test_data
+
+    with h5py.File(filename, 'r') as f:
+        vfile = VersionedHDF5File(f)
+        diff = vfile.get_diff('test_data', 'v1', 'v1')
+
+    assert diff == {}
