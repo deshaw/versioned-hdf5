@@ -72,6 +72,8 @@ def generate_bad_data():
     import h5py
     from versioned_hdf5 import VersionedHDF5File, __version__
 
+    _check_running_version(None)
+
     try:
         from versioned_hdf5.backend import DATA_VERSION  # noqa: F401
     except ImportError:
@@ -229,3 +231,80 @@ def generate_bad_data():
             with vf.stage_version(str(uuid.uuid4())) as sv:
                 sv['values'] = np.array([[chr(ord('a') + ((i + j + k) % 10)) * 3 for j in range(4)]
                                          for k in range(4)], dtype='O')
+
+def generate_bad_data_version_2():
+    """Generate versioned-hdf5 files with bad object dtype hash tables in them.
+
+    See https://github.com/deshaw/versioned-hdf5/issues/256 for more information.
+
+    Raises:
+        ImportError: Raised if the user tries to generate bad data with newer versions
+        of the library; you need an old version to replicate the hash table issue.
+    """
+    import numpy as np
+    import h5py
+    from versioned_hdf5 import VersionedHDF5File
+
+    _check_running_version(2)
+
+    filename = "bad_hashtable_data_version_2.h5"
+    with h5py.File(filename, mode="w") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r0") as group:
+            group.create_dataset(
+                "values",
+                dtype=h5py.string_dtype(encoding='ascii'),
+                data=np.array([b"a", b"b", b"cd"], dtype=object),
+                maxshape=(None,),
+                chunks=(100,)
+            )
+        with vf.stage_version("r1") as group:
+            group["values"] = np.array([b"ab", b"", b"cd"], dtype=object)
+        # with vf.stage_version("r2") as group:
+        #     group["values"] = np.array([b"ab", b"c", b"d"], dtype=object)
+
+def generate_bad_data_version_3():
+    """Generate versioned-hdf5 files with bad object dtype hash tables in them.
+
+    See https://github.com/deshaw/versioned-hdf5/issues/256 for more information.
+
+    Raises:
+        ImportError: Raised if the user tries to generate bad data with newer versions
+        of the library; you need an old version to replicate the hash table issue.
+    """
+    import numpy as np
+    import h5py
+    from versioned_hdf5 import VersionedHDF5File
+
+    _check_running_version(3)
+
+    filename = "bad_hashtable_data_version_3.h5"
+    with h5py.File(filename, mode="w") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r0") as group:
+            group.create_dataset(
+                "values",
+                dtype=h5py.string_dtype(encoding='ascii'),
+                data=np.array([b"a", b"b", b"cd"], dtype=object),
+                maxshape=(None,),
+                chunks=(100,)
+            )
+        with vf.stage_version("r1") as group:
+            group["values"] = np.array([b"ab", b"", b"cd"], dtype=object)
+        # with vf.stage_version("r2") as group:
+        #     group["values"] = np.array([b"ab", b"c", b"d"], dtype=object)
+
+
+def _check_running_version(target):
+    from versioned_hdf5 import __version__
+
+    try:
+        from versioned_hdf5.backend import DATA_VERSION  # noqa: F401
+    except ImportError:
+        DATA_VERSION = None
+
+    if DATA_VERSION != target:
+        raise ImportError(
+            f"versioned_hdf5=={__version__} installed; "
+            f"this file only generates bad data for DATA_VERSION=={target}"
+        )
