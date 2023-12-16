@@ -26,6 +26,7 @@ py.install_sources(
     'versioned_hdf5/hashtable.py',
     'versioned_hdf5/replay.py',
     'versioned_hdf5/slicetools.py',
+    'versioned_hdf5/utils.py',
     'versioned_hdf5/versions.py',
     'versioned_hdf5/wrappers.py',
   ],

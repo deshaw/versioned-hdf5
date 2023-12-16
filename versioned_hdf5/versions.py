@@ -6,7 +6,12 @@ from uuid import uuid4
 import numpy as np
 from h5py import Dataset, Group
 
-from .backend import create_virtual_dataset, write_dataset, write_dataset_chunks
+from .backend import (
+    create_virtual_dataset,
+    write_dataset,
+    write_dataset_chunks,
+    write_dataset_operations,
+)
 from .wrappers import (
     DatasetWrapper,
     InMemoryArrayDataset,
@@ -101,7 +106,8 @@ def commit_version(
     version_name = version_group.name.rsplit("/", 1)[1]
     versions = version_group.parent
     f = versions.parent.parent
-    prev_version = versions[version_group.attrs["prev_version"]]
+    prev_version_name = version_group.attrs["prev_version"]
+    prev_version = versions[prev_version_name]
 
     chunks = chunks or defaultdict(type(None))
     compression = compression or defaultdict(type(None))
@@ -129,8 +135,7 @@ def commit_version(
 
         shape = None
         if isinstance(data, InMemoryDataset):
-            shape = data.shape
-            if data.id._data_dict is None:
+            if not data._operations:
                 # The virtual dataset was not changed from the previous
                 # version. Just copy it to the new version directly.
                 assert data.name.startswith(prev_version.name + "/")
@@ -142,11 +147,14 @@ def commit_version(
                 for k, v in data.attrs.items():
                     data_copy.attrs[k] = v
                 continue
-            data = data.id._data_dict
-        if isinstance(data, dict):
+
+            slices, shape = write_dataset_operations(f, version_name, name, data)
+
+        elif isinstance(data, dict):
             if chunks[name] is not None:
                 raise NotImplementedError("Specifying chunk size with dict data")
             slices = write_dataset_chunks(f, name, data, shape=shape)
+
         elif isinstance(data, InMemorySparseDataset):
             write_dataset(
                 f,
@@ -158,6 +166,7 @@ def commit_version(
                 fillvalue=fillvalue,
             )
             slices = write_dataset_chunks(f, name, data.data_dict, shape=data.shape)
+
         else:
             slices = write_dataset(
                 f,
@@ -179,9 +188,16 @@ def commit_version(
                 )
             else:
                 shape = data.shape
-        create_virtual_dataset(
+
+        virtual_data = create_virtual_dataset(
             f, version_name, name, shape, slices, attrs=attrs, fillvalue=fillvalue
         )
+
+        if isinstance(data, InMemoryDataset):
+            # Update the InMemoryGroup containing this dataset with the new virtual
+            # dataset that was just written
+            version_group._add_to_data(name, virtual_data)
+
     version_group.attrs["committed"] = True
 
     if timestamp is not None:

@@ -5,16 +5,18 @@ Much of this code is modified from code in h5py. See the LICENSE file for the
 h5py license.
 """
 
+import contextlib
 import posixpath
+import re
 import textwrap
 import warnings
 from collections import defaultdict
+from typing import Dict, List
 from weakref import WeakValueDictionary
 
 import numpy as np
-from h5py import Dataset, Datatype, Empty, Group
+from h5py import Dataset, Datatype, Empty, Group, h5a, h5d, h5g, h5i, h5p, h5r, h5s, h5t
 from h5py import __version__ as h5py_version
-from h5py import h5a, h5d, h5g, h5i, h5p, h5r, h5s, h5t
 from h5py._hl import filters
 from h5py._hl.base import guess_dtype, phil, with_phil
 from h5py._hl.dataset import _LEGACY_GZIP_COMPRESSION_VALS
@@ -22,9 +24,20 @@ from h5py._hl.selections import guess_shape
 from h5py._hl.vds import VDSmap
 from ndindex import ChunkSize, Slice, Tuple, ndindex
 
-from .backend import DEFAULT_CHUNK_SIZE
+from .backend import (
+    DEFAULT_CHUNK_SIZE,
+    AppendOperation,
+    ResizeOperation,
+    SetOperation,
+    WriteOperation,
+    arr_from_chunks,
+    get_previous_version_shape,
+    get_previous_version_slices,
+)
 from .slicetools import spaceid_to_slice
 
+# Mapping between h5g.GroupID keys and InMemoryGroup values. This is to ensure
+# that each Group instance has one associated InMemoryGroup instance.
 _groups = WeakValueDictionary({})
 
 
@@ -35,6 +48,7 @@ class InMemoryGroup(Group):
         # subgroups created in the old one.
         if bind in _groups:
             return _groups[bind]
+
         obj = super().__new__(cls)
         obj._initialized = False
         _groups[bind] = obj
@@ -64,6 +78,18 @@ class InMemoryGroup(Group):
 
     def close(self):
         self._committed = True
+
+    def is_committed(self) -> bool:
+        """Check whether the most senior InMemoryGroup is committed.
+
+        Returns
+        -------
+        bool
+            True if this group or a parent InMemoryGroup is committed, False otherwise
+        """
+        if isinstance(self.parent, InMemoryGroup):
+            return self._committed or self.parent.is_committed()
+        return self._committed
 
     # Based on Group.__repr__
     def __repr__(self):
@@ -508,6 +534,10 @@ class InMemoryDataset(Dataset):
         self._parent = parent
         self._attrs = dict(super().attrs)
 
+        # List of dataset manipulations carried out by the user but not yet committed;
+        # see WriteOperation class for details
+        self._operations: List[WriteOperation] = []
+
     def __repr__(self):
         name = posixpath.basename(posixpath.normpath(self.name))
         namestr = '"%s"' % (name if name != "" else "/")
@@ -521,6 +551,33 @@ class InMemoryDataset(Dataset):
     @property
     def data_dict(self):
         return self.id.data_dict
+
+    @property
+    def base_shape(self) -> tuple[int, ...]:
+        return super().shape
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        """Get the shape of the dataset.
+
+        If there are pending dataset manipulations, find the most recent
+        ResizeOperation to get the latest shape. Otherwise, just get the
+        parent dataset shape.
+
+        Returns
+        -------
+        tuple[int]
+            Length of each axis of the dataset
+        """
+        shape = super().shape
+
+        for operation in self._operations:
+            if isinstance(operation, ResizeOperation):
+                shape = operation.shape
+            elif isinstance(operation, AppendOperation):
+                shape = tuple([shape[0] + operation.value.shape[0], *shape[1:]])
+
+        return shape
 
     @property
     def compression(self):
@@ -632,23 +689,9 @@ class InMemoryDataset(Dataset):
         size = tuple(size)
         # === END CODE FROM h5py.Dataset.resize ===
 
-        old_shape = self.shape
-        data_dict = self.id.data_dict
-
-        old_shape_idx = Tuple(*[Slice(0, i) for i in old_shape])
-        new_data_dict = {}
-        for c in self.chunks.as_subchunks(old_shape_idx, size):
-            if c in data_dict:
-                new_data_dict[c] = data_dict[c]
-            else:
-                a = self[c.raw]
-                data = np.full(c.newshape(size), self.fillvalue, dtype=self.dtype)
-                index = old_shape_idx.as_subindex(c)
-                data[index.raw] = a
-                new_data_dict[c] = data
-
-        self.id.data_dict = new_data_dict
-        self.id.shape = size
+        self._operations.append(
+            ResizeOperation(size, self.chunks, self.fillvalue, self.dtype)
+        )
 
     @with_phil
     def __getitem__(self, args, new_dtype=None):
@@ -701,30 +744,103 @@ class InMemoryDataset(Dataset):
 
         idx = ndindex(args).expand(self.shape)
 
-        if self.id.can_read_direct:
+        # If changes have been committed they're already written
+        # to the underlying dataset, so just read from that.
+        #
+        # Alternatively, if there are no operations, just read
+        # from the underlying dataset.
+        if self.parent.is_committed() or not self._operations:
             return super().__getitem__(idx.raw)
 
-        arr = np.ndarray(idx.newshape(self.shape), new_dtype, order="C")
+        slices = self.get_base_chunk_map()
+        shape = self.base_shape
 
-        for chunk in self.chunks.as_subchunks(idx, self.shape):
-            if chunk not in self.id.data_dict:
-                self.id.data_dict[chunk] = np.broadcast_to(
-                    self.fillvalue, chunk.newshape(self.shape)
-                )
-            elif isinstance(self.id.data_dict[chunk], (slice, Slice, tuple, Tuple)):
-                raw_idx = Tuple(
-                    self.id.data_dict[chunk],
-                    *[slice(0, len(i)) for i in chunk.args[1:]],
-                ).raw
-                self.id.data_dict[chunk] = self.id._read_chunk(raw_idx)
+        overlapping_slices = {}
+        for vchunk, rchunk in slices.items():
+            # Only keep the chunks that overlap the index
+            with contextlib.suppress(ValueError):
+                idx.as_subindex(vchunk)
+                overlapping_slices[vchunk] = rchunk
 
-            if self.id.data_dict[chunk].size != 0:
-                arr_idx = chunk.as_subindex(idx)
-                index = idx.as_subindex(chunk)
-                arr[arr_idx.raw] = self.id.data_dict[chunk][index.raw]
+        slices = overlapping_slices
 
-        # Return arr as a scalar if it is shape () (matching h5py)
+        # If there are operations to carry out, iterate through
+        # them in memory
+        for operation in self._operations:
+            slices, shape = operation.apply(
+                self.file, self.get_name(), self.get_version(), slices, shape
+            )
+
+        arr = arr_from_chunks(slices, self.get_raw_dataset(), idx, self.shape)
         return arr[()]
+
+    def get_base_chunk_map(self) -> Dict[Tuple, Tuple]:
+        """Get the mapping from this virtual dataset to the raw dataset.
+
+        Due to a bug in Group.create_virtual_dataset, empty virtual datasets are
+        not actually virtual. See https://github.com/h5py/h5py/issues/1660
+        for the relevant discussion. In this case, an empty slice dict is returned,
+        even if data resides in the underlying h5py dataset.
+
+        Returns
+        -------
+        Dict[Tuple, Tuple]
+            Mapping from this virtual dataset to the raw dataset.
+        """
+        chunks = []
+        if not self.is_virtual:
+            return {}
+
+        for source in self.virtual_sources():
+            chunks.append(
+                (spaceid_to_slice(source.vspace), spaceid_to_slice(source.src_space))
+            )
+        return dict(sorted(chunks, key=lambda s: s[0].args[0].start))
+
+    def get_raw_dataset(self) -> Dataset:
+        """Get the associated underlying raw dataset.
+
+        Returns
+        -------
+        Dataset
+            Raw dataset that underlies this InMemoryDataset; once committed,
+            this dataset will be turned into a virtual dataset that references
+            the underlying raw dataset
+        """
+        return self.file["_version_data"][self.get_name()]["raw_data"]
+
+    def get_name(self) -> str:
+        """Get the name of the dataset.
+
+        Returns
+        -------
+        str
+            All the parts of the dataset name after
+            `_version_data/versions/<version_name>/`
+        """
+        matched = re.search(
+            r"_version_data/versions/\w+/(?P<name>.*)",
+            self.name,
+        )
+        if matched:
+            return matched.group("name").strip("/")
+        raise ValueError(f"Cannot determine name of dataset {self.name}")
+
+    def get_version(self) -> str:
+        """Get the version of the dataset.
+
+        Returns
+        -------
+        str
+            The version name of the dataset
+        """
+        matched = re.search(
+            r"_version_data/versions/(?P<version>\w+)/.*",
+            self.name,
+        )
+        if matched:
+            return matched.group("version")
+        raise ValueError(f"Cannot determine name of dataset {self.name}")
 
     @with_phil
     def __setitem__(self, args, val):
@@ -845,29 +961,29 @@ class InMemoryDataset(Dataset):
             mtype = None
 
         # === END CODE FROM h5py.Dataset.__setitem__ ===
+        self._operations.append(SetOperation(args, val))
 
-        idx = ndindex(args).reduce(self.shape)
+    def append(self, arr: np.ndarray):
+        """Append to the HDF5 dataset from a NumPy array.
 
-        val = np.broadcast_to(val, idx.newshape(self.shape))
+        NumPy's broadcasting rules are honored, for "simple" indexing
+        (slices and integers).  For advanced indexing, the shapes must
+        match.
 
-        for c in self.chunks.as_subchunks(idx, self.shape):
-            if c not in self.id.data_dict:
-                # Broadcasted arrays do not actually consume memory
-                fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
-                self.id.data_dict[c] = fill.astype(self.dtype)
-            elif isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
-                raw_idx = Tuple(
-                    self.id.data_dict[c], *[slice(0, len(i)) for i in c.args[1:]]
-                ).raw
-                self.id.data_dict[c] = self.id._read_chunk(raw_idx)
+        Only appends along the first dimension are supported; all other dimensions
+        of the array to be appended must match the existing dataset.
 
-            if self.id.data_dict[c].size != 0:
-                val_idx = c.as_subindex(idx)
-                if not self.id.data_dict[c].flags.writeable:
-                    # self.id.data_dict[c] is a broadcasted array from above
-                    self.id.data_dict[c] = self.id.data_dict[c].copy()
-                index = idx.as_subindex(c)
-                self.id.data_dict[c][index.raw] = val[val_idx.raw]
+        Parameters
+        ----------
+        arr : np.ndarray
+            Array to append to the dataset. Must have the same shape as
+            the existing dataset, except along the first dimenison
+        """
+        self.parent._check_committed()
+        self._operations.append(AppendOperation(arr))
+
+    def __iadd__(self, arr: np.ndarray):
+        self.append(arr)
 
 
 class DatasetLike:
@@ -1025,6 +1141,9 @@ class InMemoryArrayDataset(DatasetLike):
     def __setitem__(self, item, value):
         self.parent._check_committed()
         self.array.__setitem__(item, value)
+
+    def append(self, arr: np.ndarray):
+        self.array = np.concatenate((self.array, arr))
 
     def __array__(self, dtype=None):
         return self.array
