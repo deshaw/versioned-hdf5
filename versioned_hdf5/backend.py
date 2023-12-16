@@ -1,18 +1,97 @@
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
-from h5py import VirtualLayout, VirtualSource, h5s
+from h5py import Dataset, File, VirtualLayout, VirtualSource, h5s
 from h5py._hl.filters import guess_chunk
 from ndindex import ChunkSize, Slice, Tuple, ndindex
 from numpy.testing import assert_array_equal
 
 from .hashtable import Hashtable
+from .slicetools import spaceid_to_slice
 
 DEFAULT_CHUNK_SIZE = 2**12
 DATA_VERSION = 4
 # data_version 2 has broken hashtables, always need to rebuild
 # data_version 3 hash collisions for string arrays which, when concatenated, give the same string
 CORRUPT_DATA_VERSIONS = frozenset([2, 3])
+
+
+class SplitWhatFitsResult:
+    def __init__(
+        self,
+        arr_to_append: np.ndarray,
+        arr_to_write: np.ndarray,
+        new_raw_last_chunk: Tuple,
+        new_raw_last_chunk_data: np.ndarray,
+    ):
+        self.arr_to_append = arr_to_append
+        self.arr_to_write = arr_to_write
+        self.new_raw_last_chunk = new_raw_last_chunk
+        self.new_raw_last_chunk_data = new_raw_last_chunk_data
+
+    def has_available_space(self) -> bool:
+        return self.arr_to_append.size > 0
+
+    def needs_more_chunks(self) -> bool:
+        return self.arr_to_write.size > 0
+
+    def get_additional_rchunks_needed(self, chunk_size: int):
+        return int(self.arr_to_write.shape[0] / chunk_size + 0.5)
+
+    def get_new_vshape(self, prev_version: Dataset) -> tuple:
+        return (
+            (
+                prev_version.shape[0]
+                + self.arr_to_append.shape[0]
+                + self.arr_to_write.shape[0]
+            ),
+            *prev_version.shape[1:],
+        )
+
+    def get_new_raw_shape(self, raw_data: Dataset) -> tuple:
+        chunk_size = tuple(raw_data.attrs["chunks"])[0]
+        return (
+            raw_data.shape[0]
+            + self.get_additional_rchunks_needed(chunk_size) * chunk_size,
+            *raw_data.shape[1:],
+        )
+
+    def get_new_last_vchunk(self, slices: Dict[Tuple, Tuple]) -> Tuple:
+        last_vchunk = list(slices.items())[-1][0]
+        dim0 = last_vchunk.args[0]
+        return Tuple(
+            Slice(dim0.start, dim0.stop + self.arr_to_append.shape[0]),
+            *last_vchunk.args[1:],
+        )
+
+    def get_new_last_rchunk(
+        self, raw_data: Dataset, slices: Dict[Tuple, Tuple]
+    ) -> Tuple:
+        chunk_size = tuple(raw_data.attrs["chunks"])[0]
+        last_chunk_start = raw_data.shape[0] - chunk_size
+        last_chunk_length = len(self.get_new_last_vchunk(slices).args[0])
+        last_chunk_end = last_chunk_start + last_chunk_length
+
+        return Tuple(
+            Slice(
+                last_chunk_start,
+                last_chunk_end,
+            ),
+            *[Slice(None, None) for _ in raw_data.shape[1:]],
+        )
+
+    def get_only_append_rchunk(self, slices: Dict[Tuple, Tuple]) -> Tuple:
+        last_rchunk = list(slices.items())[-1][1]
+        dim0 = last_rchunk.args[0]
+        return Tuple(
+            Slice(dim0.stop, dim0.stop + self.arr_to_append.shape[0]),
+            *last_rchunk.args[1:],
+        )
+
+    def get_new_vchunk_to_rchunk(self, raw_data, slices):
+        return self.get_new_last_vchunk(slices), self.get_new_last_rchunk(
+            raw_data, slices
+        )
 
 
 def normalize_dtype(dtype):
@@ -171,6 +250,7 @@ def write_dataset(
             raise ValueError(f"fillvalues do not match ({fillvalue} != {ds.fillvalue})")
     if data.dtype != ds.dtype:
         raise ValueError(f"dtypes do not match ({data.dtype} != {ds.dtype})")
+
     # TODO: Handle more than one dimension
     old_shape = ds.shape
     slices = {}
@@ -195,8 +275,10 @@ def write_dataset(
                         chunk_being_written=data_s,
                         slices_to_write=slices_to_write,
                     )
-
                 else:
+                    idx = hashtable.largest_index
+
+                    # Write a new chunk to the raw dataset
                     idx = hashtable.largest_index
                     raw_slice = Slice(
                         idx * chunk_size, idx * chunk_size + data_s.shape[0]
@@ -204,6 +286,10 @@ def write_dataset(
                     slices[data_slice] = raw_slice
                     hashtable[data_hash] = raw_slice
                     slices_to_write[raw_slice] = data_slice
+
+                    # Keep track of the last index written to in the raw dataset;
+                    # future appends are simplified by this
+                    ds.attrs["last_element"] = raw_slice.stop
 
             ds.resize((old_shape[0] + len(slices_to_write) * chunk_size,) + chunks[1:])
             for raw_slice, data_slice in slices_to_write.items():
@@ -377,6 +463,7 @@ def write_dataset_chunks(f, name, data_dict, shape=None):
                     slices[chunk] = raw_slice
                     hashtable[data_hash] = raw_slice
                     data_to_write[raw_slice] = data_s
+                    raw_data.attrs["last_element"] = raw_slice.stop
 
     assert None not in slices.values()
     old_shape = raw_data.shape
@@ -384,6 +471,117 @@ def write_dataset_chunks(f, name, data_dict, shape=None):
     for raw_slice, data_s in data_to_write.items():
         c = (raw_slice.raw,) + tuple(slice(0, i) for i in data_s.shape[1:])
         raw_data[c] = data_s
+    return slices
+
+
+def append_dataset_chunks(
+    f, name: str, to_append: List[np.ndarray], current_version: str
+) -> Dict[Tuple, Tuple]:
+    if name not in f["_version_data"]:
+        raise NotImplementedError(
+            f"{name} doesn't exist; cannot append to nonexistent dataset."
+        )
+
+    breakpoint()
+    virtual_data = f["_version_data"]["versions"][current_version][name]
+    raw_data = f["_version_data"][name]["raw_data"]
+    chunks = tuple(raw_data.attrs["chunks"])
+    chunk_size = chunks[0]
+
+    slices = {}
+
+    with Hashtable(f, name) as hashtable:
+        for arr in to_append:
+            if arr.dtype != raw_data.dtype:
+                raise ValueError(
+                    f"Cannot append array of dtype {arr.dtype} to dataset of dtype "
+                    f"{raw_data.dtype}"
+                )
+
+            # If there's space in the last chunk, write as much as you can there
+            n = n_empty_in_last_chunk(f, name)
+            if n > arr.size:
+                # Remove the last (partial) chunk from the hashtable
+                last_used_slice = Tuple(
+                    Slice(-chunk_size, n),
+                    *(Slice(None, None) for _ in raw_data.shape[1:]),
+                )
+                last_used_data = raw_data[last_used_slice.raw]
+                last_used_data_hash = hashtable.hash(last_used_data)
+                del hashtable[last_used_data_hash]
+
+                # Fetch the last filled chunk of data (this is the last
+                # [possibly incomplete] chunk of the virtual dataset)
+
+                # Compute the hash of the appended last chunk
+                new_last_element = raw_data.attrs["last_element"]
+                last_used_slice = Tuple(
+                    Slice(-chunk_size, new_last_element),
+                    *(Slice(None, None) for _ in raw_data.shape[1:]),
+                )
+                last_data = raw_data[last_used_slice.raw]
+                data_hash = hashtable.hash(last_data)
+
+                # Write the new data into the remaining space of the last chunk
+                raw_slice = Slice(-n, -n + arr.size)
+                raw_data[raw_slice.raw] = arr
+                raw_data.attrs["last_element"] += arr.size
+
+                # Update the list of slices in the virtual dataset
+
+            breakpoint()
+            print(arr)
+
+    # if shape is None:
+    #     shape = tuple(max(c.args[i].stop for c in data_dict) for i in
+    #                   range(len(chunks)))
+
+    # with Hashtable(f, name) as hashtable:
+    #     slices = {i: None for i in data_dict}
+    #     slices = {}
+    #
+    #
+    #     # Mapping from slices in the raw dataset after this write is complete to ndarray
+    #     # chunks of the new data which will be written
+    #     data_to_write = {}
+    #     for chunk, data_s in data_dict.items():
+    #         if isinstance(data_s, (slice, tuple, Tuple, Slice)):
+    #             slices[chunk] = ndindex(data_s)
+    #         else:
+    #             if data_s.dtype != raw_data.dtype:
+    #                 raise ValueError(
+    #                     f"dtypes do not match ({data_s.dtype} != {raw_data.dtype})"
+    #                 )
+    #
+    #             data_hash = hashtable.hash(data_s)
+    #
+    #             if data_hash in hashtable:
+    #                 hashed_slice = hashtable[data_hash]
+    #                 slices[chunk] = hashed_slice
+    #
+    #                 _verify_new_chunk_reuse(
+    #                     raw_data=raw_data,
+    #                     new_data=data_s,
+    #                     data_hash=data_hash,
+    #                     hashed_slice=hashed_slice,
+    #                     chunk_being_written=data_s,
+    #                     data_to_write=data_to_write,
+    #                 )
+    #
+    #             else:
+    #                 idx = hashtable.largest_index
+    #                 raw_slice = Slice(idx*chunk_size, idx*chunk_size + data_s.shape[0])
+    #                 slices[chunk] = raw_slice
+    #                 hashtable[data_hash] = raw_slice
+    #                 data_to_write[raw_slice] = data_s
+    #                 raw_data.attrs['last_element'] = raw_slice.stop
+    #
+    # assert None not in slices.values()
+    # old_shape = raw_data.shape
+    # raw_data.resize((old_shape[0] + len(data_to_write)*chunk_size,) + chunks[1:])
+    # for raw_slice, data_s in data_to_write.items():
+    #     c = (raw_slice.raw,) + tuple(slice(0, i) for i in data_s.shape[1:])
+    #     raw_data[c] = data_s
     return slices
 
 
@@ -477,3 +675,351 @@ def create_virtual_dataset(
     virtual_data.attrs["raw_data"] = raw_data.name
     virtual_data.attrs["chunks"] = raw_data.chunks
     return virtual_data
+
+
+def _get_latest_version_data(f, name) -> tuple[str, Dataset]:
+    """Get the latest version of the dataset."""
+    versions = f["_version_data"]["versions"]
+
+    version = versions.attrs.get("current_version")
+    data = versions[version].get(name)
+    if data is None:
+        version = versions[version].attrs["prev_version"]
+        data = versions[version].get(name)
+
+    return version, data
+
+
+def _get_last_written_slice(f, name) -> Slice:
+    version, data = _get_latest_version_data(f, name)
+    if data.is_virtual:
+        return list(data.virtual_sources())[-1].src_space()
+    else:
+        raise ValueError("Can only get the last chunk of virtual datasets.")
+
+
+class WriteOperation:
+    pass
+
+
+class SetOperation(WriteOperation):
+    def __init__(self, key, value):
+        self.key = key
+        self.value = value
+
+
+class AppendOperation(WriteOperation):
+    def __init__(self, value):
+        self.value = value
+
+
+def write_operations(
+    f: File, version_name: str, name: str, operations: List[WriteOperation]
+) -> tuple[Dict[Tuple, Tuple], tuple[int]]:
+    """Carry out a sequence of write operations on the file.
+
+    Parameters
+    ----------
+    f : File
+        File to write
+    version_name : str
+        Version name of the data to be written
+    name : str
+        Name of the dataset to be written
+    operations : List[WriteOperation]
+        List of write operations to perform
+
+    Returns
+    -------
+    tuple[Dict[Tuple, Tuple], tuple[int]]
+        (Slices map, shape of virtual dataset post-write)
+
+        The slices map is a mapping from {virtual dataset slice: raw dataset slice}.
+        The virtual dataset is created elsewhere using the slices return here.
+    """
+    if not operations:
+        return {}
+
+    if name not in f["_version_data"]:
+        raise NotImplementedError(
+            "Use write_dataset() if the dataset does not yet exist"
+        )
+
+    slices = {}
+
+    for operation in operations:
+        if isinstance(operation, AppendOperation):
+            slices.update(append_to_dataset(f, version_name, name, operation.value))
+        elif isinstance(operation, SetOperation):
+            slices.update(
+                write_to_dataset(f, version_name, name, operation.key, operation.value)
+            )
+
+    slices = sorted(list(slices.items()), key=lambda s: s[0].args[0].start)
+    last_vslice = slices[-1][0]
+
+    return dict(slices), tuple(dim.stop for dim in last_vslice.args)
+
+
+def last_raw_chunk(f: File, name: str) -> Tuple:
+    raw_data = f["_version_data"][name]["raw_data"]
+    chunks = raw_data.attrs["chunks"]
+    return Tuple(
+        Slice(raw_data.shape[0] - chunks[0], raw_data.shape[0]),
+        *(Slice(0, i) for i in raw_data.shape[1:]),
+    )
+
+
+def last_raw_used_chunk(f: File, name: str) -> Tuple:
+    raw_data = f["_version_data"][name]["raw_data"]
+    chunks = raw_data.attrs["chunks"]
+    if "last_element" in raw_data.attrs:
+        return Tuple(
+            Slice(
+                raw_data.shape[0] - chunks[0],
+                raw_data.shape[0] - chunks[0] + raw_data.attrs["last_element"],
+            ),
+            *(Slice(0, i) for i in raw_data.shape[1:]),
+        )
+    else:
+        raise ValueError("Cannot find the last written element in the raw data.")
+
+
+def last_raw_unused_chunk(f: File, name: str) -> Tuple:
+    raw_data = f["_version_data"][name]["raw_data"]
+    if "last_element" in raw_data.attrs:
+        return Tuple(
+            Slice(raw_data.attrs["last_element"], raw_data.shape[0]),
+            *(Slice(0, i) for i in raw_data.shape[1:]),
+        )
+    else:
+        raise ValueError("Cannot find the last written element in the raw data.")
+
+
+def append_to_dataset(
+    f: File,
+    version_name: str,
+    name: str,
+    arr: np.ndarray,
+) -> tuple[Dict[Tuple, Tuple], tuple[int]]:
+    """Append data to the raw dataset, if possible. Then write the rest of the data new
+    a new chunk as usual.
+
+    1. Split the data into a part which can fit in the last chunk, and a part which
+       can't.
+    2. Compute the hash of the last virtual chunk with the new data appended.
+    3. Add either the hashed raw slice (if in the hashtable, and therefore the raw data)
+       or the new slice to the slice dict.
+
+    Parameters
+    ----------
+    f : File
+        File where the data is to be written
+    version_name : str
+        Name of the version we are appending data to
+    name : str
+        Name of the dataset to append data to
+    arr : np.ndarray
+        Data to append to the dataset
+
+    Returns
+    -------
+    Dict[Tuple, Tuple]
+        Mapping between {slices in virtual dataset: slices in raw dataset} which were
+        written by this function.
+    """
+    raw_data = f["_version_data"][name]["raw_data"]
+
+    if raw_data.dtype != arr.dtype:
+        raise ValueError(
+            f"dtypes of raw data ({raw_data.dtype}) does not match data to append "
+            f"({arr.dtype})"
+        )
+
+    # Get the slices from the previous version; they are reused here
+    prev_version_name = f["_version_data"]["versions"][version_name].attrs[
+        "prev_version"
+    ]
+    prev_version = f["_version_data"]["versions"][prev_version_name][name]
+    slices = get_previous_version_slices(f, version_name, name)
+    last_virtual_slice = list(slices)[-1]
+
+    # Split the data to append into a part which fits in the last
+    # chunk of the raw data, and the part that doesn't
+    split = split_what_fits(f, name, arr)
+
+    # # Reshape the raw data to fit the new data. Round up to make sure
+    # # all data fits.
+    # raw_data.resize(*split.get_new_raw_shape(raw_data))
+
+    # If there's empty space in the last chunk of the raw data, append as much
+    # data as will fit
+    if split.has_available_space():
+        with Hashtable(f, name) as hashtable:
+            vchunk, rchunk = split.get_new_vchunk_to_rchunk(raw_data, slices)
+
+            # Get the indices to write the new data into
+            append_slice = split.get_only_append_rchunk(slices)
+
+            # Remove the last chunk of the virtual dataset; we are
+            # replacing it with the chunk containing the appended data
+            del slices[last_virtual_slice]
+
+            data_hash = hashtable.hash(split.new_raw_last_chunk_data)
+            if data_hash in hashtable:
+                slices[vchunk] = hashtable[data_hash]
+            else:
+                # Update the slices mapping
+                slices[vchunk] = rchunk
+
+                # Update the hashtable
+                hashtable[data_hash] = vchunk
+
+                # Write the data
+                raw_data[append_slice.raw] = split.arr_to_append
+
+                # Keep track of the last index written to in the raw dataset;
+                # future appends are simplified by this
+                raw_data.attrs["last_element"] = rchunk.args[0].stop
+
+    if split.needs_more_chunks():
+        pass
+
+    return slices
+
+
+def write_to_dataset(
+    f: File, version_name: str, name: str, vslice: Tuple, data: np.ndarray | Tuple
+) -> Dict[Tuple, Tuple]:
+    """Write data to a dataset.
+
+    Parameters
+    ----------
+    f : File
+        File where data should be written
+    version_name : str
+        Version name for which data is to be written
+    name : str
+        Name of the dataset being modified
+    vslice : Tuple
+        Slice of the virtual dataset where data is to be written
+    data : np.ndarray | Tuple
+        Data to be written. If it is a Tuple, this is a slice of the raw dataset.
+
+    Returns
+    -------
+    Dict[Tuple, Tuple]
+        Mapping between {slices in virtual dataset: slices in raw dataset} which were
+        written by this function.
+    """
+    slices = {}
+
+    return slices
+
+
+def get_previous_version_slices(
+    f: File,
+    version_name: str,
+    name: str,
+) -> Dict[Tuple, Tuple]:
+    """Get the slices from the previous version.
+
+    Ensures the slices are sorted in the order they appear along axis 0 of the virtual
+    dataset.
+
+    Parameters
+    ----------
+    f : File
+        File where the slices are to be retrieved
+    version_name : str
+        Name of the version for which the previous version slices are to be retrieved
+    name : str
+        Name of the dataset
+
+    Returns
+    -------
+    Dict[Tuple, Tuple]
+        Mapping between {slices in virtual dataset: slices in raw dataset} which
+        make up the virtual dataset of the previous version.
+    """
+    versions = f["_version_data"]["versions"]
+    prev_version = versions[version_name].attrs["prev_version"]
+    slices = []
+    for source in versions[prev_version][name].virtual_sources():
+        slices.append(
+            (spaceid_to_slice(source.vspace), spaceid_to_slice(source.src_space))
+        )
+    return dict(sorted(slices, key=lambda s: s[0].args[0].start))
+
+
+def split_what_fits(
+    f: File,
+    name: str,
+    arr: np.ndarray,
+) -> SplitWhatFitsResult:
+    """Split arr apart into two pieces; the first that can fit in the
+    empty space at the end of the raw dataset, and the part that doesn't.
+
+    Parameters
+    ----------
+    f : File
+        File to operate on
+    name : str
+        Name of the dataset to split arr into the last chunk of
+    arr : np.ndarray
+        Numpy array to try to cram into the final chunk
+
+    Returns
+    -------
+    SplitWhatFitsResult
+        Result of what fits into the last chunk of the raw data
+    """
+    raw_data = f["_version_data"][name]["raw_data"]
+
+    # Find the last used chunk of the raw data, and the empty space still left in the
+    # last used chunk
+    raw_last_used_chunk = last_raw_used_chunk(f, name)
+    raw_empty_last_chunk = last_raw_unused_chunk(f, name)
+    space_remaining = len(raw_empty_last_chunk.args[0])
+
+    # Append as many as we can; that's either the amount that fits in the remaining
+    # space, or the size of the array to be appended, whichever is smaller
+    n_to_append = min(space_remaining, arr.shape[0])
+
+    # Break the data into the part that will fit in the last raw chunk,
+    # and the part that will need to be written to new chunks.
+    vslice_to_append = Tuple(
+        Slice(None, n_to_append),
+        *[Slice(None, None) for _ in arr.shape[1:]],
+    )
+    vslice_remaining = Tuple(
+        Slice(n_to_append, None),
+        *[Slice(None, None) for _ in arr.shape[1:]],
+    )
+    arr_to_append = arr[vslice_to_append.raw]
+    arr_to_write = arr[vslice_remaining.raw]
+
+    # Compute the new size of the last used chunk
+    new_raw_last_chunk = Tuple(
+        Slice(
+            raw_last_used_chunk.args[0].start,
+            raw_last_used_chunk.args[0].stop + arr_to_append.shape[0],
+        ),
+        *[Slice(None, None) for _ in raw_data.shape[1:]],
+    )
+
+    # Since we're appending to the last chunk, we need to grab the last
+    # chunk, append the data, then hash it.
+    new_raw_last_chunk_data = np.concatenate(
+        (
+            raw_data[raw_last_used_chunk.raw],
+            arr_to_append,
+        )
+    )
+
+    return SplitWhatFitsResult(
+        arr_to_append,
+        arr_to_write,
+        new_raw_last_chunk,
+        new_raw_last_chunk_data,
+    )

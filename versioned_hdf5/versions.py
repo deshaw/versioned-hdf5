@@ -6,7 +6,12 @@ from uuid import uuid4
 import numpy as np
 from h5py import Dataset, Group
 
-from .backend import create_virtual_dataset, write_dataset, write_dataset_chunks
+from .backend import (
+    create_virtual_dataset,
+    write_dataset,
+    write_dataset_chunks,
+    write_operations,
+)
 from .wrappers import (
     DatasetWrapper,
     InMemoryArrayDataset,
@@ -130,7 +135,8 @@ def commit_version(
         shape = None
         if isinstance(data, InMemoryDataset):
             shape = data.shape
-            if data.id._data_dict is None:
+            # if data.id._data_dict is None:
+            if data._operations is None:
                 # The virtual dataset was not changed from the previous
                 # version. Just copy it to the new version directly.
                 assert data.name.startswith(prev_version.name + "/")
@@ -142,7 +148,44 @@ def commit_version(
                 for k, v in data.attrs.items():
                     data_copy.attrs[k] = v
                 continue
-            data = data.id._data_dict
+            # data = data.id._data_dict
+            else:
+                slices, shape = write_operations(
+                    f, version_name, name, data._operations
+                )
+
+                create_virtual_dataset(
+                    f,
+                    version_name,
+                    name,
+                    shape,
+                    slices,
+                    attrs=attrs,
+                    fillvalue=fillvalue,
+                )
+
+            version_group.attrs["committed"] = True
+
+            if timestamp is not None:
+                if isinstance(timestamp, datetime.datetime):
+                    if timestamp.utcoffset() != datetime.timedelta(0):
+                        raise ValueError("timestamp must be in UTC")
+                    version_group.attrs["timestamp"] = timestamp.strftime(TIMESTAMP_FMT)
+                elif isinstance(timestamp, np.datetime64):
+                    version_group.attrs["timestamp"] = (
+                        timestamp.astype(datetime.datetime)
+                        .replace(tzinfo=datetime.timezone.utc)
+                        .strftime(TIMESTAMP_FMT)
+                    )
+                else:
+                    raise TypeError(
+                        "timestamp must be either a datetime.datetime or numpy.datetime64 object"
+                    )
+            else:
+                ts = datetime.datetime.now(datetime.timezone.utc)
+                version_group.attrs["timestamp"] = ts.strftime(TIMESTAMP_FMT)
+            return
+
         if isinstance(data, dict):
             if chunks[name] is not None:
                 raise NotImplementedError("Specifying chunk size with dict data")
@@ -159,26 +202,58 @@ def commit_version(
             )
             slices = write_dataset_chunks(f, name, data.data_dict, shape=data.shape)
         else:
-            slices = write_dataset(
-                f,
-                name,
-                data,
-                chunks=chunks[name],
-                compression=compression[name],
-                compression_opts=compression_opts[name],
-                fillvalue=fillvalue,
-            )
-        if shape is None:
-            if isinstance(data, dict):
-                raw_data = f["_version_data"][name]["raw_data"]
-                shape = tuple(
-                    [
-                        max(c.args[i].stop for c in slices)
-                        for i in range(len(tuple(raw_data.attrs["chunks"])))
-                    ]
-                )
-            else:
+            shape = None
+            if isinstance(data, InMemoryDataset):
                 shape = data.shape
+                if data.id._data_dict is None:
+                    # The virtual dataset was not changed from the previous
+                    # version. Just copy it to the new version directly.
+                    assert data.name.startswith(prev_version.name + "/")
+                    data_name = data.name[len(prev_version.name + "/") :]
+                    data_copy_name = posixpath.join(version_group.name, data_name)
+                    version_group.copy(data, data_copy_name)
+                    data_copy = f[data_copy_name]
+                    data_copy.attrs.clear()
+                    for k, v in data.attrs.items():
+                        data_copy.attrs[k] = v
+                    continue
+                data = data.id._data_dict
+            if isinstance(data, dict):
+                if chunks[name] is not None:
+                    raise NotImplementedError("Specifying chunk size with dict data")
+                slices = write_dataset_chunks(f, name, data, shape=shape)
+            elif isinstance(data, InMemorySparseDataset):
+                write_dataset(
+                    f,
+                    name,
+                    np.empty((0,) * len(data.shape), dtype=data.dtype),
+                    chunks=chunks[name],
+                    compression=compression[name],
+                    compression_opts=compression_opts[name],
+                    fillvalue=fillvalue,
+                )
+                slices = write_dataset_chunks(f, name, data.data_dict, shape=data.shape)
+            else:
+                slices = write_dataset(
+                    f,
+                    name,
+                    data,
+                    chunks=chunks[name],
+                    compression=compression[name],
+                    compression_opts=compression_opts[name],
+                    fillvalue=fillvalue,
+                )
+            if shape is None:
+                if isinstance(data, dict):
+                    raw_data = f["_version_data"][name]["raw_data"]
+                    shape = tuple(
+                        [
+                            max(c.args[i].stop for c in slices)
+                            for i in range(len(tuple(raw_data.attrs["chunks"])))
+                        ]
+                    )
+                else:
+                    shape = data.shape
         create_virtual_dataset(
             f, version_name, name, shape, slices, attrs=attrs, fillvalue=fillvalue
         )

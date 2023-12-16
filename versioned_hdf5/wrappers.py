@@ -21,7 +21,7 @@ from h5py._hl.selections import guess_shape
 from h5py._hl.vds import VDSmap
 from ndindex import ChunkSize, Slice, Tuple, ndindex
 
-from .backend import DEFAULT_CHUNK_SIZE
+from .backend import DEFAULT_CHUNK_SIZE, AppendOperation, SetOperation
 from .slicetools import spaceid_to_slice
 
 _groups = WeakValueDictionary({})
@@ -505,6 +505,7 @@ class InMemoryDataset(Dataset):
         super().__init__(InMemoryDatasetID(bind.id), **kwargs)
         self._parent = parent
         self._attrs = dict(super().attrs)
+        self._operations = []
 
     def __repr__(self):
         name = posixpath.basename(posixpath.normpath(self.name))
@@ -844,6 +845,8 @@ class InMemoryDataset(Dataset):
 
         # === END CODE FROM h5py.Dataset.__setitem__ ===
 
+        self._operations.append(SetOperation(args, val))
+
         idx = ndindex(args).reduce(self.shape)
 
         val = np.broadcast_to(val, idx.newshape(self.shape))
@@ -866,6 +869,53 @@ class InMemoryDataset(Dataset):
                     self.id.data_dict[c] = self.id.data_dict[c].copy()
                 index = idx.as_subindex(c)
                 self.id.data_dict[c][index.raw] = val[val_idx.raw]
+
+    def append(self, arr: np.ndarray):
+        """Append to the HDF5 dataset from a NumPy array.
+
+        NumPy's broadcasting rules are honored, for "simple" indexing
+        (slices and integers).  For advanced indexing, the shapes must
+        match.
+
+        Only appends along the first dimension are supported; all other dimensions
+        of the array to be appended must match the existing dataset.
+
+        Parameters
+        ----------
+        arr : np.ndarray
+            Array to append to the dataset. Must have the same shape as
+            the existing dataset, except along the first dimenison
+        """
+        self.parent._check_committed()
+
+        # Find remaining spaces in the raw dataset's last chunk
+        # raw_data_name = self.attrs.get('raw_data')
+        # if raw_data_name is None:
+        #     raise ValueError(f"Cannot append: no raw data for {self}")
+
+        # raw_data = self.file[raw_data_name]
+        # last_element = raw_data.attrs.get('last_element')
+        # if last_element is None:
+        #     raise ValueError(f"Cannot append to {self}: no data written yet.")
+
+        # Find the number of chunks in the raw dataset
+        # n_chunks = ChunkSize(raw_data.chunks).num_subchunks(
+        #     (Slice(None, None, None) for _ in raw_data.shape),
+        #     raw_data.shape
+        # )
+
+        # Check if the shape of the array to be appended has the correct dimensions.
+        # Only appends along the first dimension are supported.
+        # assert np.all(self.shape[1:] == arr.shape[1:])
+        # new_shape = (self.shape[0] + arr.shape[0], *self.shape[1:])
+        # breakpoint()
+
+        # idx = ndindex(arr)
+
+        self._operations.append(AppendOperation(arr))
+
+    def __iadd__(self, arr: np.ndarray):
+        self.append(arr)
 
 
 class DatasetLike:
@@ -1023,6 +1073,9 @@ class InMemoryArrayDataset(DatasetLike):
     def __setitem__(self, item, value):
         self.parent._check_committed()
         self.array.__setitem__(item, value)
+
+    def append(self, arr: np.ndarray):
+        self.array = np.concatenate((self.array, arr))
 
     def __array__(self, dtype=None):
         return self.array
