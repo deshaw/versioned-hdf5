@@ -17,9 +17,10 @@ from numpy.testing import assert_equal
 from .helpers import setup_vfile
 from ..backend import DEFAULT_CHUNK_SIZE, DATA_VERSION
 from ..api import VersionedHDF5File
-from ..versions import TIMESTAMP_FMT
+from ..versions import TIMESTAMP_FMT, all_versions
 from ..wrappers import (InMemoryArrayDataset, InMemoryDataset,
                         InMemorySparseDataset, DatasetWrapper, InMemoryGroup)
+from ..replay import delete_versions
 
 
 def test_stage_version(vfile):
@@ -2403,3 +2404,28 @@ def test_get_diff_same_version(tmp_path):
         diff = vfile.get_diff('test_data', 'v1', 'v1')
 
     assert diff == {}
+
+
+def test_versions_property(vfile):
+    """Test that VersionedHDF5File.versions returns the same as
+    all_versions(vfile).
+    """
+
+    for i in range(100):
+        with vfile.stage_version(f'r{i}') as sv:
+            sv['values'] = np.arange(i, 100)
+            assert set(all_versions(vfile.f)) == set(vfile.versions)
+
+    # keep only every 10th version
+    versions_to_delete = []
+    versions = sorted(
+        [(v, vfile._versions[v].attrs['timestamp']) for v in vfile._versions],
+        key=lambda t: t[1]
+    )
+    for i, v in enumerate(versions):
+        if i % 10 != 0:
+            versions_to_delete.append(v[0])
+
+    # Delete some versions and check for the correct versions again
+    delete_versions(vfile, versions_to_delete)
+    assert set(all_versions(vfile.f)) == set(vfile.versions)

@@ -575,3 +575,17 @@ class VersionedHDF5File:
                 diff[vir1] = (self[v1][name][vir1.raw], None)
 
         return diff
+
+    @property
+    def versions(self) -> List[str]:
+        """Return the names of the version groups in the file.
+
+        This should return the same as calling
+        ``versioned_hdf5.versions.all_versions(self.f, include_first=False)``.
+
+        Returns
+        -------
+        List[str]
+            The names of versions in the file; order is arbitrary
+        """
+        return [v for v in self._versions if '__first_version__' not in v]
