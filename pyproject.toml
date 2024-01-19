@@ -1,0 +1,85 @@
+[build-system]
+requires = [
+    "meson-python",
+    "setuptools_scm",
+]
+build-backend = "mesonpy"
+
+[project]
+name = "versioned-hdf5"
+dynamic = ["version"]
+authors = [
+  { name="Quansight" },
+]
+description = "Versioned HDF5 provides a versioned abstraction on top of h5py"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "numpy",
+    "h5py",
+    "ndindex>=1.5.1",
+]
+urls = { Homepage = "https://github.com/deshaw/versioned-hdf5" }
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+  # pycodestyle
+  "E",
+  "W",
+  # Pyflakes
+  "F",
+  # pyupgrade
+  "UP",
+  # flake8-bugbear
+  "B",
+  # flake8-simplify
+  "SIM",
+  # isort
+  "I",
+  # pep8 naming
+  "N",
+  # pydocstyle
+  "D",
+  # annotations
+  "ANN",
+  # debugger
+  "T10",
+  # flake8-pytest
+  "PT",
+  # flake8-return
+  "RET",
+  # flake8-unused-arguments
+  "ARG",
+  # flake8-fixme
+  "FIX",
+  # flake8-eradicate
+  "ERA",
+  # pandas-vet
+  "PD",
+  # numpy-specific rules
+  "NPY",
+]
+ignore = [
+  "D100", # Missing docstring in public module
+  "D104", # Missing docstring in public package
+  "D211", # No blank line before class
+  "D213", # Multiline summary second line
+]
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[project.optional-dependencies]
+dev = ["pre-commit>=3.6.0"]
+test = ["pytest"]
+doc = ["sphinx", "myst-parser"]
+
+[tool.setuptools_scm]
