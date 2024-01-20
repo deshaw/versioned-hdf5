@@ -14,7 +14,6 @@ import datetime
 import numpy as np
 from numpy.testing import assert_equal
 
-from .helpers import setup_vfile
 from ..backend import DEFAULT_CHUNK_SIZE, DATA_VERSION
 from ..api import VersionedHDF5File
 from ..versions import TIMESTAMP_FMT, all_versions
@@ -1046,8 +1045,10 @@ def test_group_contains(vfile):
     assert '/_version_data/versions/version1/group1/group2' in version1
     assert '/_version_data/versions/version1/group1/group2' not in version2
 
-@mark.setup_args(file_name='test.hdf5')
-def test_moved_file(tmp_path, h5file):
+def test_moved_file(setup_vfile, tmpdir):
+    h5file = setup_vfile()
+    path = pathlib.Path(h5file.filename)
+
     # See issue #28. Make sure the virtual datasets do not hard-code the filename.
     file = VersionedHDF5File(h5file)
     data = np.ones(2*DEFAULT_CHUNK_SIZE)
@@ -1055,15 +1056,16 @@ def test_moved_file(tmp_path, h5file):
         group['dataset'] = data
     file.close()
 
-    with h5py.File('test.hdf5', 'r') as f:
+    with h5py.File(h5file.filename, 'r') as f:
         file = VersionedHDF5File(f)
         assert_equal(file['version1']['dataset'][:], data)
         file.close()
 
     # XXX: os.replace
-    os.rename('test.hdf5', 'test2.hdf5')
+    new_path = path.parent / 'test2.hdf5'
+    os.rename(path, new_path)
 
-    with h5py.File('test2.hdf5', 'r') as f:
+    with h5py.File(new_path, 'r') as f:
         file = VersionedHDF5File(f)
         assert_equal(file['version1']['dataset'][:], data)
         file.close()
@@ -1292,7 +1294,7 @@ def test_closes(vfile):
     raises(ValueError, lambda: vfile['version2'])
     assert repr(vfile) == "<Closed VersionedHDF5File>"
 
-def test_scalar_dataset():
+def test_scalar_dataset(setup_vfile):
     for data1, data2 in [
             (b'baz', b'foo'),
             (np.asarray('baz', dtype='S'), np.asarray('foo', dtype='S')),
@@ -1406,7 +1408,7 @@ def test_InMemoryArrayDataset_chunks(vfile):
         assert data_group['g/bar'].compression_opts == 3
 
 
-def test_string_dtypes():
+def test_string_dtypes(setup_vfile):
 
     # Make sure the fillvalue logic works correctly for custom h5py string
     # dtypes.
@@ -1473,8 +1475,10 @@ def test_empty(vfile):
     assert_equal(vfile['version2']['data2'][()], np.empty((1, 0, 2)))
 
 
-def test_read_only():
-    with setup_vfile('test.hdf5') as f:
+def test_read_only(setup_vfile):
+    vfile = setup_vfile()
+    filename = vfile.filename
+    with vfile as f:
         file = VersionedHDF5File(f)
         timestamp = datetime.datetime.now(datetime.timezone.utc)
         with file.stage_version('version1', timestamp=timestamp) as g:
@@ -1495,7 +1499,7 @@ def test_read_only():
         with raises(ValueError):
             file[timestamp]['data2'] = [1, 2, 3]
 
-    with h5py.File('test.hdf5', 'r+') as f:
+    with h5py.File(filename, 'r+') as f:
         file = VersionedHDF5File(f)
 
         with raises(ValueError):
@@ -1596,21 +1600,23 @@ def test_auto_create_group(vfile):
 
     assert_equal(vfile['version1']['a']['b']['c'][:], [0, 1, 2])
 
-def test_scalar():
-    with setup_vfile('test.hdf5') as f:
+def test_scalar(setup_vfile):
+    file = setup_vfile()
+    filename = file.filename
+    with file as f:
         vfile = VersionedHDF5File(f)
         with vfile.stage_version('version1') as g:
             dtype = h5py.special_dtype(vlen=bytes)
             g.create_dataset('bar', data=np.array(['aaa'], dtype='O'), dtype=dtype)
 
-    with h5py.File('test.hdf5', 'r+') as f:
+    with h5py.File(filename, 'r+') as f:
         vfile = VersionedHDF5File(f)
         assert isinstance(vfile['version1']['bar'], DatasetWrapper)
         assert isinstance(vfile['version1']['bar'].dataset, InMemoryDataset)
         # Should return a scalar, not a shape () array
         assert isinstance(vfile['version1']['bar'][0], bytes)
 
-    with h5py.File('test.hdf5', 'r') as f:
+    with h5py.File(filename, 'r') as f:
         vfile = VersionedHDF5File(f)
         assert isinstance(vfile['version1']['bar'], h5py.Dataset)
         # Should return a scalar, not a shape () array
@@ -1825,20 +1831,22 @@ def test_mask_reading_read_only(tmp_path):
         b = sv['bar'][mask]
         assert_equal(b, [1, 2])
 
-def test_read_only_no_wrappers():
+def test_read_only_no_wrappers(setup_vfile):
+    file = setup_vfile()
+    filename = file.filename
     # Read-only files should not use the wrapper classes
-    with setup_vfile('test.hdf5') as f:
+    with file as f:
         vfile = VersionedHDF5File(f)
         with vfile.stage_version('version1') as g:
             g.create_dataset('bar', data=np.array([0, 1, 2]))
 
-    with h5py.File('test.hdf5', 'r+') as f:
+    with h5py.File(filename, 'r+') as f:
         vfile = VersionedHDF5File(f)
         assert isinstance(vfile['version1'], InMemoryGroup)
         assert isinstance(vfile['version1']['bar'], DatasetWrapper)
         assert isinstance(vfile['version1']['bar'].dataset, InMemoryDataset)
 
-    with h5py.File('test.hdf5', 'r') as f:
+    with h5py.File(filename, 'r') as f:
         vfile = VersionedHDF5File(f)
         assert isinstance(vfile['version1'], h5py.Group)
         assert isinstance(vfile['version1']['bar'], h5py.Dataset)
