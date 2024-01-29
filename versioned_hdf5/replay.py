@@ -1,6 +1,6 @@
 from __future__ import annotations
 import gc
-from typing import List, Iterable, Union, Dict, Any, Optional, Set
+from typing import List, Iterable, Union, Dict, Any, Optional
 from h5py import (
     VirtualLayout,
     h5s,
@@ -21,7 +21,6 @@ import numpy as np
 
 from copy import deepcopy
 import posixpath
-from collections import defaultdict
 
 from .versions import all_versions
 from .wrappers import (InMemoryGroup, DatasetWrapper, InMemoryDataset,
@@ -162,7 +161,7 @@ def _get_np_fillvalue(data: Dataset) -> Any:
 
 
 def _recreate_raw_data(
-    f: VersionedHDF5File,
+    f: VersionedHDF5File | File,
     name: str,
     versions_to_delete: Iterable[str],
 ) -> Optional[Dict[NDIndex, NDIndex]]:
@@ -170,7 +169,7 @@ def _recreate_raw_data(
 
     Parameters
     ----------
-    f : VersionedHDF5File
+    f : VersionedHDF5File | File
         File for which the raw data is to be reconstructed
     name : str
         Name of the dataset
@@ -185,27 +184,20 @@ def _recreate_raw_data(
         If no chunks would be left, i.e., the dataset does not appear in any
         version not in versions_to_delete, None is returned.
     """
-    chunks_map = defaultdict(dict)
+    chunks_to_keep = set()
 
-    for version_name in all_versions(f):
-        if (version_name in versions_to_delete
-            or name not in f['_version_data/versions'][version_name]):
-            continue
+    if isinstance(f, VersionedHDF5File):
+        vf = f
+    else:
+        vf = VersionedHDF5File(f)
 
-        dataset = f['_version_data/versions'][version_name][name]
+    for version in vf.versions:
+        if version not in versions_to_delete and name in vf[version]:
+            dataset = f['_version_data/versions'][version][name]
 
-        if dataset.is_virtual:
-            for i in dataset.virtual_sources():
-                chunks_map[version_name].update(
-                    {spaceid_to_slice(i.vspace): spaceid_to_slice(i.src_space)}
-                )
-        else:
-            chunks_map[version_name] = {}
-
-    chunks_to_keep = set().union(*[map.values() for map in
-                                 chunks_map.values()])
-
-
+            if dataset.is_virtual:
+                for i in dataset.virtual_sources():
+                    chunks_to_keep.add(spaceid_to_slice(i.src_space))
 
     raw_data = f['_version_data'][name]['raw_data']
     chunks = ChunkSize(raw_data.chunks)
@@ -282,13 +274,11 @@ def _recreate_hashtable(f, name, raw_data_chunks_map, tmp=False):
     If tmp=True, a new hashtable called '_tmp_hash_table' is created.
     Otherwise the hashtable is replaced.
     """
-
     # We could just reconstruct the hashtable with from_raw_data, but that is
     # slow, so instead we recreate it manually from the old hashable and the
     # raw_data_chunks_map.
-    old_hashtable = Hashtable(f, name)
     new_hash_table = Hashtable(f, name, hash_table_name='_tmp_hash_table')
-    old_inverse = old_hashtable.inverse()
+    old_inverse = Hashtable(f, name).inverse()
 
     for old_chunk, new_chunk in raw_data_chunks_map.items():
         if isinstance(old_chunk, Tuple):

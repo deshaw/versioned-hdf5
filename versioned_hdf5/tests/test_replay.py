@@ -548,6 +548,7 @@ def test_delete_versions(vfile):
     f = vfile.f
 
     delete_versions(f, ['version2', 'version3'])
+
     check_data(vfile, version2=False)
     assert list(vfile) == ['version1']
     assert set(f['_version_data']) == {'group', 'test_data', 'test_data2', 'versions'}
