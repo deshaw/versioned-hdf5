@@ -254,3 +254,13 @@ def test_delete_version(h5file):
 
     assert versions.attrs['current_version'] == '__first_version__'
     assert list(versions) == ['__first_version__']
+
+
+def test_forbidden_dataset_name(h5file):
+    data = np.concatenate((np.ones((2*DEFAULT_CHUNK_SIZE,)),
+                           2*np.ones((DEFAULT_CHUNK_SIZE,)),
+                           3*np.ones((DEFAULT_CHUNK_SIZE,))))
+    v1 = create_version_group(h5file, 'v1')
+
+    with raises(ValueError):
+        commit_version(v1, {'versions': data})

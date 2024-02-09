@@ -10,6 +10,7 @@ from .backend import write_dataset, write_dataset_chunks, create_virtual_dataset
 from .wrappers import InMemoryGroup, DatasetWrapper, InMemoryDataset, InMemoryArrayDataset, InMemorySparseDataset
 
 TIMESTAMP_FMT = "%Y-%m-%d %H:%M:%S.%f%z"
+FORBIDDEN_NAMES = ["versions"]
 
 def create_version_group(f, version_name, prev_version=None):
     """
@@ -64,7 +65,7 @@ def commit_version(version_group, datasets, *,
                    compression=None, compression_opts=None,
                    timestamp=None):
     """
-    Create a new version
+    Create a new version.
 
     datasets should be a dictionary mapping {path: dataset}, where `dataset`
     is either a numpy array, or a dictionary mapping {chunk_index:
@@ -72,6 +73,8 @@ def commit_version(version_group, datasets, *,
     pointing into the raw data for that chunk.
 
     If make_current is True, the new version will be set as the current version.
+
+    If the user specifies a dataset name found in FORBIDDEN_NAMES, a ValueError will be raised.
 
     Returns the group for the new version.
     """
@@ -90,6 +93,11 @@ def commit_version(version_group, datasets, *,
 
     if make_current:
         versions.attrs['current_version'] = version_name
+
+    # Check all dataset names for forbidden names before attempting any data writes
+    for name in datasets:
+        if name in FORBIDDEN_NAMES:
+            raise ValueError(f"{name} is not a forbidden dataset name; aborting.")
 
     for name, data in datasets.items():
         fillvalue = None
