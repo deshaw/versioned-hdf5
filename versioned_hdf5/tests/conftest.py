@@ -1,9 +1,12 @@
 import os
+from typing import Optional, Callable
 import uuid
 
+import h5py
 from pytest import fixture
-from .helpers import setup_vfile
+
 from ..api import VersionedHDF5File
+from ..backend import initialize
 
 # Run tests marked with @pytest.mark.slow last. See
 # https://stackoverflow.com/questions/61533694/run-slow-pytest-commands-at-the-end-of-the-test-suite
@@ -23,7 +26,7 @@ def filepath(tmp_path, request):
     yield file_name
 
 @fixture
-def h5file(tmp_path, request):
+def h5file(setup_vfile, tmp_path, request):
     file_name = os.path.join(tmp_path, 'file.hdf5')
     version_name = None
     m = request.node.get_closest_marker('setup_args')
@@ -308,3 +311,18 @@ def _check_running_version(target):
             f"versioned_hdf5=={__version__} installed; "
             f"this file only generates bad data for DATA_VERSION=={target}"
         )
+
+
+@fixture
+def setup_vfile(tmp_path: str) -> Callable[[Optional[str], Optional[str]], h5py.File]:
+    """Fixture which provides a function that creates an hdf5 file, optionally with groups."""
+    def _setup_vfile(file_name='file.hdf5', *, version_name=None):
+        f = h5py.File(tmp_path / file_name, 'w')
+        initialize(f)
+        if version_name:
+            if isinstance(version_name, str):
+                version_name = [version_name]
+            for name in version_name:
+                f['_version_data/versions'].create_group(name)
+        return f
+    return _setup_vfile

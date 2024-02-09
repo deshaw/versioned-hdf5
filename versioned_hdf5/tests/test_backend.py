@@ -8,8 +8,6 @@ from pytest import mark, raises
 
 import itertools
 
-from .helpers import setup_vfile
-
 from ..backend import (create_base_dataset, write_dataset,
                        create_virtual_dataset, DEFAULT_CHUNK_SIZE,
                        write_dataset_chunks)
@@ -17,7 +15,7 @@ from ..backend import (create_base_dataset, write_dataset,
 CHUNK_SIZE_3D = 2**4  # = cbrt(DEFAULT_CHUNK_SIZE)
 
 
-def test_initialize():
+def test_initialize(setup_vfile):
     with setup_vfile() as f:
         pass
     f.close()

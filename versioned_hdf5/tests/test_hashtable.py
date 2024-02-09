@@ -6,7 +6,6 @@ import h5py
 
 from ..backend import create_base_dataset
 from ..hashtable import Hashtable
-from .helpers import setup_vfile
 from .. import VersionedHDF5File
 
 def test_hashtable(h5file):
@@ -30,7 +29,7 @@ def test_hashtable(h5file):
         with raises(ValueError):
             h[b'\x01'*32] = slice(0, 4, 2)
 
-def test_from_raw_data():
+def test_from_raw_data(setup_vfile):
     with setup_vfile('test.h5') as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version('0') as sv:
@@ -50,13 +49,15 @@ def test_hashtable_multidimension(h5file):
     h = Hashtable(h5file, 'test_data')
     assert h.hash(np.ones((1, 2, 3,))) != h.hash(np.ones((3, 2, 1)))
 
-def test_issue_208():
-    with setup_vfile('test.h5') as f:
+def test_issue_208(setup_vfile):
+    file = setup_vfile()
+    filename = file.filename
+    with file as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version('0') as sv:
             sv.create_dataset('bar', data=np.arange(10))
 
-    with h5py.File('test.h5', 'r+') as f:
+    with h5py.File(filename, 'r+') as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version('1') as sv:
             sv['bar'].resize((12,))
