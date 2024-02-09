@@ -374,7 +374,7 @@ def _make_new_dset(shape=None, dtype=None, data=None, chunks=None,
         shape = data.shape
     else:
         shape = (shape,) if isinstance(shape, int) else tuple(shape)
-        if data is not None and (np.product(shape, dtype=np.ulonglong) != np.product(data.shape, dtype=np.ulonglong)):
+        if data is not None and (np.prod(shape, dtype=np.ulonglong) != np.product(data.shape, dtype=np.ulonglong)):
             raise ValueError("Shape tuple is incompatible with data")
 
     if isinstance(maxshape, int):
@@ -711,7 +711,7 @@ class InMemoryDataset(Dataset):
                 if val.ndim > 1:
                     tmp = np.empty(shape=val.shape[:-1], dtype=object)
                     tmp.ravel()[:] = [i for i in val.reshape(
-                        (np.product(val.shape[:-1], dtype=np.ulonglong), val.shape[-1]))]
+                        (np.prod(val.shape[:-1], dtype=np.ulonglong), val.shape[-1]))]
                 else:
                     tmp = np.array([None], dtype=object)
                     tmp[0] = val
