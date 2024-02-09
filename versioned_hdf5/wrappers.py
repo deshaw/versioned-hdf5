@@ -403,8 +403,8 @@ def _make_new_dset(
     else:
         shape = (shape,) if isinstance(shape, int) else tuple(shape)
         if data is not None and (
-            np.product(shape, dtype=np.ulonglong)
-            != np.product(data.shape, dtype=np.ulonglong)
+            np.prod(shape, dtype=np.ulonglong)
+            != np.prod(data.shape, dtype=np.ulonglong)
         ):
             raise ValueError("Shape tuple is incompatible with data")
 
@@ -760,7 +760,7 @@ class InMemoryDataset(Dataset):
                         i
                         for i in val.reshape(
                             (
-                                np.product(val.shape[:-1], dtype=np.ulonglong),
+                                np.prod(val.shape[:-1], dtype=np.ulonglong),
                                 val.shape[-1],
                             )
                         )
