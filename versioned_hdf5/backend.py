@@ -48,7 +48,7 @@ def create_base_dataset(f, name, *, shape=None, data=None, dtype=None,
         shape = data.shape
     else:
         shape = (shape,) if isinstance(shape, int) else tuple(shape)
-        if data is not None and (np.product(shape, dtype=np.ulonglong) != np.product(data.shape, dtype=np.ulonglong)):
+        if data is not None and (np.prod(shape, dtype=np.ulonglong) != np.product(data.shape, dtype=np.ulonglong)):
             raise ValueError("Shape tuple is incompatible with data")
 
     ndims = len(shape)
