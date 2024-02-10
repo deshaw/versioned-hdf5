@@ -84,6 +84,9 @@ ignore = [
     "D204", # 1 blank line required after class docstring
     "D413", # 1 black line after parameters
     "SIM108", # Simplify if/else to one line; not always clearer
+    "D206", # Docstrings should be indented with spaces; unnecessary when running ruff-format
+    "E501", # Line length too long; unnecessary when running ruff-format
+    "W191", # Indentation contains tabs; unnecessary when running ruff-format
 ]
 
 [tool.ruff.per-file-ignores]
@@ -95,3 +98,6 @@ test = ["pytest"]
 doc = ["sphinx", "myst-parser"]
 
 [tool.setuptools_scm]
+
+[tool.isort]
+profile = "black"

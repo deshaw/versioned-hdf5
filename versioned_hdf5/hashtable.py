@@ -33,6 +33,7 @@ class Hashtable(MutableMapping):
     dataset until you call write() or it exit as a context manager.
 
     """
+
     hash_function = hashlib.sha256
     hash_size = hash_function().digest_size
 
@@ -47,7 +48,7 @@ class Hashtable(MutableMapping):
         obj = super().__new__(cls)
         return obj
 
-    def __init__(self, f, name, *, chunk_size=None, hash_table_name='hash_table'):
+    def __init__(self, f, name, *, chunk_size=None, hash_table_name="hash_table"):
         from .backend import DEFAULT_CHUNK_SIZE
 
         self.f = f
@@ -55,13 +56,13 @@ class Hashtable(MutableMapping):
         self.chunk_size = chunk_size or DEFAULT_CHUNK_SIZE
         self.hash_table_name = hash_table_name
 
-        if hash_table_name in f['_version_data'][name]:
+        if hash_table_name in f["_version_data"][name]:
             self._load_hashtable()
         else:
             self._create_hashtable()
         self._largest_index = None
-        self.hash_table = f['_version_data'][name][hash_table_name][:]
-        self.hash_table_dataset = f['_version_data'][name][hash_table_name]
+        self.hash_table = f["_version_data"][name][hash_table_name][:]
+        self.hash_table_dataset = f["_version_data"][name][hash_table_name]
 
     @classmethod
     def from_versions_traverse(
@@ -78,9 +79,9 @@ class Hashtable(MutableMapping):
         name : str
             Name of the dataset for which a hash table is to be generated
         """
-        name = name.removeprefix('/_version_data/')
+        name = name.removeprefix("/_version_data/")
 
-        for version, version_group in f['_version_data']['versions'].items():
+        for version, version_group in f["_version_data"]["versions"].items():
             if name in version_group:
                 dataset = version_group[name]
                 with Hashtable(f, name) as hashtable:
@@ -95,13 +96,15 @@ class Hashtable(MutableMapping):
                                 hashtable[slice_hash] = sl.raw[0]
 
     @classmethod
-    def from_raw_data(cls, f, name, chunk_size=None, hash_table_name='hash_table'):
-        if hash_table_name in f['_version_data'][name]:
-            raise ValueError(f"a hash table {hash_table_name!r} for {name!r} already exists")
+    def from_raw_data(cls, f, name, chunk_size=None, hash_table_name="hash_table"):
+        if hash_table_name in f["_version_data"][name]:
+            raise ValueError(
+                f"a hash table {hash_table_name!r} for {name!r} already exists"
+            )
 
         hashtable = cls(f, name, chunk_size=chunk_size, hash_table_name=hash_table_name)
 
-        raw_data = f['_version_data'][name]['raw_data']
+        raw_data = f["_version_data"][name]["raw_data"]
         chunks = ChunkSize(raw_data.chunks)
         for c in chunks.indices(raw_data.shape):
             data_hash = hashtable.hash(raw_data[c.raw])
@@ -117,27 +120,27 @@ class Hashtable(MutableMapping):
         # Object dtype arrays store the ids of the elements, which may or may not be
         # reused, making it unsuitable for hashing. Instead, we need to make a combined
         # hash with the value of each element.
-        if data.dtype == 'object':
+        if data.dtype == "object":
             hash_value = self.hash_function()
             for value in data.flat:
                 if isinstance(value, str):
                     # default to utf-8 encoding since it's a superset of ascii (the only other
                     # valid encoding supported in h5py)
-                    value = value.encode('utf-8')
+                    value = value.encode("utf-8")
                 # hash the length of value ('n' is ssize_t, which matches the internal type for lengths)
-                hash_value.update(struct.pack('n', len(value)))
+                hash_value.update(struct.pack("n", len(value)))
                 hash_value.update(value)
-            hash_value.update(bytes(str(data.shape), 'utf-8'))
+            hash_value.update(bytes(str(data.shape), "utf-8"))
             return hash_value.digest()
         else:
             return self.hash_function(
-                data.data.tobytes() + bytes(str(data.shape), 'ascii')
+                data.data.tobytes() + bytes(str(data.shape), "ascii")
             ).digest()
 
     @property
     def largest_index(self):
         if self._largest_index is None:
-            self._largest_index = self.hash_table_dataset.attrs['largest_index']
+            self._largest_index = self.hash_table_dataset.attrs["largest_index"]
         return self._largest_index
 
     @largest_index.setter
@@ -151,7 +154,7 @@ class Hashtable(MutableMapping):
 
         # largest_index is here for backwards compatibility for when the hash
         # table shape used to always be chunk_size aligned.
-        self.hash_table_dataset.attrs['largest_index'] = self.largest_index
+        self.hash_table_dataset.attrs["largest_index"] = self.largest_index
         self.hash_table_dataset[:largest_index] = self.hash_table[:largest_index]
 
     def inverse(self):
@@ -176,28 +179,34 @@ class Hashtable(MutableMapping):
 
         # TODO: Use get_chunks() here (the real chunk size should be based on
         # bytes, not number of elements)
-        dtype = np.dtype([('hash', 'B', (self.hash_size,)), ('shape', 'i8', (2,))])
-        hash_table = f['_version_data'][name].create_dataset(self.hash_table_name,
-                                                             shape=(1,), dtype=dtype,
-                                                             chunks=(self.chunk_size,),
-                                                             maxshape=(None,),
-                                                             compression='lzf')
-        hash_table.attrs['largest_index'] = 0
+        dtype = np.dtype([("hash", "B", (self.hash_size,)), ("shape", "i8", (2,))])
+        hash_table = f["_version_data"][name].create_dataset(
+            self.hash_table_name,
+            shape=(1,),
+            dtype=dtype,
+            chunks=(self.chunk_size,),
+            maxshape=(None,),
+            compression="lzf",
+        )
+        hash_table.attrs["largest_index"] = 0
         self._indices = {}
 
     def _load_hashtable(self):
-        hash_table = self.f['_version_data'][self.name][self.hash_table_name]
-        largest_index = hash_table.attrs['largest_index']
+        hash_table = self.f["_version_data"][self.name][self.hash_table_name]
+        largest_index = hash_table.attrs["largest_index"]
         hash_table_arr = hash_table[:largest_index]
-        hashes = bytes(hash_table_arr['hash'])
-        hashes = [hashes[i*self.hash_size:(i+1)*self.hash_size] for i in range(largest_index)]
+        hashes = bytes(hash_table_arr["hash"])
+        hashes = [
+            hashes[i * self.hash_size : (i + 1) * self.hash_size]
+            for i in range(largest_index)
+        ]
         self._indices = {k: i for i, k in enumerate(hashes)}
 
     def __getitem__(self, key):
         if isinstance(key, np.ndarray):
             key = key.tobytes()
         i = self._indices[key]
-        shapes = self.hash_table['shape']
+        shapes = self.hash_table["shape"]
         return Slice(*shapes[i])
 
     def __setitem__(self, key, value):
@@ -209,7 +218,9 @@ class Hashtable(MutableMapping):
             raise ValueError("key must be %d bytes" % self.hash_size)
         if isinstance(value, Tuple):
             if len(value.args) > 1:
-                raise NotImplementedError("Chunking in more other than the first dimension")
+                raise NotImplementedError(
+                    "Chunking in more other than the first dimension"
+                )
             value = value.args[0]
         if not isinstance(value, (slice, Slice)):
             raise TypeError("value must be a slice object")
@@ -222,13 +233,15 @@ class Hashtable(MutableMapping):
         kv = (list(key), (value.start, value.stop))
         if key in self._indices:
             if bytes(self.hash_table[self._indices[key]])[0] != key:
-                raise ValueError("The key %s is already in the hashtable under another index.")
+                raise ValueError(
+                    "The key %s is already in the hashtable under another index."
+                )
             self.hash_table[self._indices[key]] = kv
         else:
             if self.largest_index >= self.hash_table.shape[0]:
                 newshape = (self.hash_table.shape[0] + self.chunk_size,)
                 new_hash_table = np.zeros(newshape, dtype=self.hash_table.dtype)
-                new_hash_table[:self.hash_table.shape[0]] = self.hash_table
+                new_hash_table[: self.hash_table.shape[0]] = self.hash_table
                 self.hash_table = new_hash_table
             self.hash_table[self.largest_index] = kv
             self._indices[key] = self.largest_index

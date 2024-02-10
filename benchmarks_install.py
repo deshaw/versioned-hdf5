@@ -9,9 +9,9 @@ versioned-hdf5.
 """
 
 import builtins
+import sys
 import os
 import subprocess
-import sys
 
 # The first commit in versioned-hdf5 that is not compatible with ndindex 1.5
 ndindex_16_commit = 'af9ba2313c73cf00c10f490407956ed3c0e6467e'

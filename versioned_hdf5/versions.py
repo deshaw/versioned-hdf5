@@ -6,13 +6,18 @@ from uuid import uuid4
 import numpy as np
 from h5py import Dataset, Group
 
-from .backend import (create_virtual_dataset, write_dataset,
-                      write_dataset_chunks)
-from .wrappers import (DatasetWrapper, InMemoryArrayDataset, InMemoryDataset,
-                       InMemoryGroup, InMemorySparseDataset)
+from .backend import create_virtual_dataset, write_dataset, write_dataset_chunks
+from .wrappers import (
+    DatasetWrapper,
+    InMemoryArrayDataset,
+    InMemoryDataset,
+    InMemoryGroup,
+    InMemorySparseDataset,
+)
 
 TIMESTAMP_FMT = "%Y-%m-%d %H:%M:%S.%f%z"
 FORBIDDEN_NAMES = ["versions"]
+
 
 def create_version_group(f, version_name, prev_version=None):
     """
@@ -22,12 +27,12 @@ def create_version_group(f, version_name, prev_version=None):
     If it is None, it defaults to the current version. If it is '', it creates
     a version with no parent version.
     """
-    versions = f['_version_data/versions']
+    versions = f["_version_data/versions"]
 
-    if prev_version == '':
-        prev_version = '__first_version__'
+    if prev_version == "":
+        prev_version = "__first_version__"
     elif prev_version is None:
-        prev_version = versions.attrs['current_version']
+        prev_version = versions.attrs["current_version"]
 
     if version_name is None:
         version_name = str(uuid4())
@@ -38,13 +43,13 @@ def create_version_group(f, version_name, prev_version=None):
         raise ValueError(f"Previous version {prev_version!r} not found")
 
     group = InMemoryGroup(versions.create_group(version_name).id)
-    group.attrs['prev_version'] = prev_version
-    group.attrs['committed'] = False
+    group.attrs["prev_version"] = prev_version
+    group.attrs["committed"] = False
 
     # Placeholder timestamp, just so the attr is there in case something calls
     # get_version_by_timestamp before the version is committed.
     ts = datetime.datetime.now(datetime.timezone.utc)
-    group.attrs['timestamp'] = ts.strftime(TIMESTAMP_FMT)
+    group.attrs["timestamp"] = ts.strftime(TIMESTAMP_FMT)
 
     # Copy everything over from the previous version
     prev_group = versions[prev_version]
@@ -62,10 +67,17 @@ def create_version_group(f, version_name, prev_version=None):
     prev_group.visititems(_get)
     return group
 
-def commit_version(version_group, datasets, *,
-                   make_current=True, chunks=None,
-                   compression=None, compression_opts=None,
-                   timestamp=None):
+
+def commit_version(
+    version_group,
+    datasets,
+    *,
+    make_current=True,
+    chunks=None,
+    compression=None,
+    compression_opts=None,
+    timestamp=None,
+):
     """
     Create a new version.
 
@@ -80,21 +92,23 @@ def commit_version(version_group, datasets, *,
 
     Returns the group for the new version.
     """
-    if 'committed' not in version_group.attrs:
-        raise ValueError("version_group must be a group created by create_version_group()")
-    if version_group.attrs['committed']:
+    if "committed" not in version_group.attrs:
+        raise ValueError(
+            "version_group must be a group created by create_version_group()"
+        )
+    if version_group.attrs["committed"]:
         raise ValueError("This version group has already been committed")
-    version_name = version_group.name.rsplit('/', 1)[1]
+    version_name = version_group.name.rsplit("/", 1)[1]
     versions = version_group.parent
     f = versions.parent.parent
-    prev_version = versions[version_group.attrs['prev_version']]
+    prev_version = versions[version_group.attrs["prev_version"]]
 
     chunks = chunks or defaultdict(type(None))
     compression = compression or defaultdict(type(None))
     compression_opts = compression_opts or defaultdict(type(None))
 
     if make_current:
-        versions.attrs['current_version'] = version_name
+        versions.attrs["current_version"] = version_name
 
     # Check all dataset names for forbidden names before attempting any data writes
     for name in datasets:
@@ -105,7 +119,9 @@ def commit_version(version_group, datasets, *,
         fillvalue = None
         if isinstance(data, DatasetWrapper):
             data = data.dataset
-        if isinstance(data, (InMemoryDataset, InMemoryArrayDataset, InMemorySparseDataset)):
+        if isinstance(
+            data, (InMemoryDataset, InMemoryArrayDataset, InMemorySparseDataset)
+        ):
             attrs = data.attrs
             fillvalue = data.fillvalue
         else:
@@ -117,8 +133,8 @@ def commit_version(version_group, datasets, *,
             if data.id._data_dict is None:
                 # The virtual dataset was not changed from the previous
                 # version. Just copy it to the new version directly.
-                assert data.name.startswith(prev_version.name + '/')
-                data_name = data.name[len(prev_version.name + '/'):]
+                assert data.name.startswith(prev_version.name + "/")
+                data_name = data.name[len(prev_version.name + "/") :]
                 data_copy_name = posixpath.join(version_group.name, data_name)
                 version_group.copy(data, data_copy_name)
                 data_copy = f[data_copy_name]
@@ -132,87 +148,116 @@ def commit_version(version_group, datasets, *,
                 raise NotImplementedError("Specifying chunk size with dict data")
             slices = write_dataset_chunks(f, name, data, shape=shape)
         elif isinstance(data, InMemorySparseDataset):
-            write_dataset(f, name, np.empty((0,)*len(data.shape),
-                                                     dtype=data.dtype), chunks=chunks[name],
-                                   compression=compression[name],
-                                   compression_opts=compression_opts[name],
-                                   fillvalue=fillvalue)
+            write_dataset(
+                f,
+                name,
+                np.empty((0,) * len(data.shape), dtype=data.dtype),
+                chunks=chunks[name],
+                compression=compression[name],
+                compression_opts=compression_opts[name],
+                fillvalue=fillvalue,
+            )
             slices = write_dataset_chunks(f, name, data.data_dict, shape=data.shape)
         else:
-            slices = write_dataset(f, name, data, chunks=chunks[name],
-                                   compression=compression[name],
-                                   compression_opts=compression_opts[name],
-                                   fillvalue=fillvalue)
+            slices = write_dataset(
+                f,
+                name,
+                data,
+                chunks=chunks[name],
+                compression=compression[name],
+                compression_opts=compression_opts[name],
+                fillvalue=fillvalue,
+            )
         if shape is None:
             if isinstance(data, dict):
-                raw_data = f['_version_data'][name]['raw_data']
-                shape = tuple([max(c.args[i].stop for c in slices) for i in range(len(tuple(raw_data.attrs['chunks'])))])
+                raw_data = f["_version_data"][name]["raw_data"]
+                shape = tuple(
+                    [
+                        max(c.args[i].stop for c in slices)
+                        for i in range(len(tuple(raw_data.attrs["chunks"])))
+                    ]
+                )
             else:
                 shape = data.shape
-        create_virtual_dataset(f, version_name, name, shape, slices, attrs=attrs,
-                               fillvalue=fillvalue)
-    version_group.attrs['committed'] = True
+        create_virtual_dataset(
+            f, version_name, name, shape, slices, attrs=attrs, fillvalue=fillvalue
+        )
+    version_group.attrs["committed"] = True
 
     if timestamp is not None:
         if isinstance(timestamp, datetime.datetime):
             if timestamp.utcoffset() != datetime.timedelta(0):
                 raise ValueError("timestamp must be in UTC")
-            version_group.attrs['timestamp'] = timestamp.strftime(TIMESTAMP_FMT)
+            version_group.attrs["timestamp"] = timestamp.strftime(TIMESTAMP_FMT)
         elif isinstance(timestamp, np.datetime64):
-            version_group.attrs['timestamp'] = timestamp.astype(datetime.datetime).replace(tzinfo=datetime.timezone.utc).strftime(TIMESTAMP_FMT)
+            version_group.attrs["timestamp"] = (
+                timestamp.astype(datetime.datetime)
+                .replace(tzinfo=datetime.timezone.utc)
+                .strftime(TIMESTAMP_FMT)
+            )
         else:
-            raise TypeError("timestamp must be either a datetime.datetime or numpy.datetime64 object")
+            raise TypeError(
+                "timestamp must be either a datetime.datetime or numpy.datetime64 object"
+            )
     else:
         ts = datetime.datetime.now(datetime.timezone.utc)
-        version_group.attrs['timestamp'] = ts.strftime(TIMESTAMP_FMT)
+        version_group.attrs["timestamp"] = ts.strftime(TIMESTAMP_FMT)
 
 
 def delete_version(f, version_name, new_current=None):
     """
     Delete version `version_name`.
     """
-    versions = f['_version_data/versions']
+    versions = f["_version_data/versions"]
 
     if version_name not in versions:
         raise ValueError(f"version {version_name!r} does not exist")
     if not new_current:
-        new_current = '__first_version__'
+        new_current = "__first_version__"
     if new_current not in versions:
         raise ValueError(f"version {new_current!r} does not exist")
 
     del versions[version_name]
-    versions.attrs['current_version'] = new_current
+    versions.attrs["current_version"] = new_current
+
 
 def get_nth_previous_version(f, version_name, n):
-    versions = f['_version_data/versions']
+    versions = f["_version_data/versions"]
     if version_name not in versions:
         raise IndexError(f"Version {version_name!r} not found")
 
     version = version_name
     for i in range(n):
-        version = versions[version].attrs['prev_version']
+        version = versions[version].attrs["prev_version"]
 
         # __first_version__ is a meta-version and should not be returnable
-        if version == '__first_version__':
+        if version == "__first_version__":
             raise IndexError(f"{version_name!r} has fewer than {n} versions before it")
 
     return version
 
+
 def get_version_by_timestamp(f, timestamp, exact=False):
-    versions = f['_version_data/versions']
+    versions = f["_version_data/versions"]
     if isinstance(timestamp, np.datetime64):
-        ts = timestamp.astype(datetime.datetime).replace(tzinfo=datetime.timezone.utc).strftime(TIMESTAMP_FMT)
+        ts = (
+            timestamp.astype(datetime.datetime)
+            .replace(tzinfo=datetime.timezone.utc)
+            .strftime(TIMESTAMP_FMT)
+        )
     elif isinstance(timestamp, datetime.datetime):
         if timestamp.utcoffset() != datetime.timedelta(0):
             raise ValueError("timestamp must be in UTC")
         ts = timestamp.strftime(TIMESTAMP_FMT)
     else:
-        raise TypeError("timestamp must be either a datetime.datetime or numpy.datetime64 object")
-    best_match = '__first_version__'
-    best_ts = versions[best_match].attrs['timestamp']
+        raise TypeError(
+            "timestamp must be either a datetime.datetime or numpy.datetime64 object"
+        )
+    best_match = "__first_version__"
+    best_ts = versions[best_match].attrs["timestamp"]
     for version in versions:
-        version_ts = versions[version].attrs['timestamp']
-        if version != '__first_version__':
+        version_ts = versions[version].attrs["timestamp"]
+        if version != "__first_version__":
             if exact:
                 if ts == version_ts:
                     return version
@@ -224,18 +269,20 @@ def get_version_by_timestamp(f, timestamp, exact=False):
                 if best_ts < version_ts <= ts:
                     best_match = version
                     best_ts = version_ts
-    if best_match == '__first_version__':
+    if best_match == "__first_version__":
         if exact:
             raise KeyError(f"Version with timestamp {timestamp} not found")
         raise KeyError(f"Version with timestamp before {timestamp} not found")
     return best_match
 
+
 def set_current_version(f, version_name):
-    versions = f['_version_data/versions']
+    versions = f["_version_data/versions"]
     if version_name not in versions:
         raise ValueError(f"Version {version_name!r} not found")
 
-    versions.attrs['current_version'] = version_name
+    versions.attrs["current_version"] = version_name
+
 
 def all_versions(f, *, include_first=False):
     """
@@ -245,9 +292,9 @@ def all_versions(f, *, include_first=False):
 
     Note that the order of the versions is completely arbitrary.
     """
-    versions = f['_version_data/versions']
+    versions = f["_version_data/versions"]
     for version in versions:
-        if version == '__first_version__':
+        if version == "__first_version__":
             if include_first:
                 yield version
         else:

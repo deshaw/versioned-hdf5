@@ -15,7 +15,7 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/deshaw/versioned-hdf5",
-    packages=['versioned_hdf5', 'versioned_hdf5.tests'],
+    packages=["versioned_hdf5", "versioned_hdf5.tests"],
     license="BSD",
     install_requires=[
         "h5py",
@@ -27,17 +27,15 @@ setuptools.setup(
         "License :: OSI Approved :: BSD License",
         "Operating System :: OS Independent",
     ],
-    python_requires='>=3.8',
+    python_requires=">=3.8",
     extras_require={
-        "dev" : [
-            "pre-commit"
-        ],
+        "dev": ["pre-commit"],
         "test": [
             "pytest",
         ],
         "doc": [
             "sphinx",
             "myst-parser",
-        ]
-    }
+        ],
+    },
 )
