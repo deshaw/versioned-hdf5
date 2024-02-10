@@ -1,10 +1,12 @@
 import itertools
 
 import numpy as np
+import pytest
 from numpy.testing import assert_equal
 
-from ..wrappers import InMemoryArrayDataset, InMemorySparseDataset, InMemoryGroup
-import pytest
+from ..wrappers import (InMemoryArrayDataset, InMemoryGroup,
+                        InMemorySparseDataset)
+
 
 def test_InMemoryArrayDataset(h5file):
     group = h5file.create_group('group')

@@ -1,9 +1,9 @@
 import numpy as np
+from h5py._hl.selections import Selection
 from numpy.testing import assert_equal
 
-from h5py._hl.selections import Selection
-
 from ..slicetools import spaceid_to_slice
+
 
 def test_spaceid_to_slice(h5file):
     shape = 10

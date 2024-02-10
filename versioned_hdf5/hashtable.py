@@ -5,7 +5,7 @@ from functools import lru_cache
 
 import numpy as np
 from h5py import File
-from ndindex import Slice, Tuple, ChunkSize
+from ndindex import ChunkSize, Slice, Tuple
 
 from .slicetools import spaceid_to_slice
 

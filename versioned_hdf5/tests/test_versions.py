@@ -1,14 +1,12 @@
+import numpy as np
+from ndindex import Slice, Tuple
+from numpy.testing import assert_equal
 from pytest import raises
 
-import numpy as np
-from numpy.testing import assert_equal
-
-from ndindex import Tuple, Slice
-
 from ..backend import DEFAULT_CHUNK_SIZE
-from ..versions import (create_version_group, commit_version,
-                        get_nth_previous_version, set_current_version,
-                        all_versions, delete_version)
+from ..versions import (all_versions, commit_version, create_version_group,
+                        delete_version, get_nth_previous_version,
+                        set_current_version)
 
 
 def test_create_version(h5file):

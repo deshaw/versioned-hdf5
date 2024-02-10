@@ -1,13 +1,15 @@
-from uuid import uuid4
-from collections import defaultdict
-import posixpath
-
-from h5py import Dataset, Group
 import datetime
-import numpy as np
+import posixpath
+from collections import defaultdict
+from uuid import uuid4
 
-from .backend import write_dataset, write_dataset_chunks, create_virtual_dataset
-from .wrappers import InMemoryGroup, DatasetWrapper, InMemoryDataset, InMemoryArrayDataset, InMemorySparseDataset
+import numpy as np
+from h5py import Dataset, Group
+
+from .backend import (create_virtual_dataset, write_dataset,
+                      write_dataset_chunks)
+from .wrappers import (DatasetWrapper, InMemoryArrayDataset, InMemoryDataset,
+                       InMemoryGroup, InMemorySparseDataset)
 
 TIMESTAMP_FMT = "%Y-%m-%d %H:%M:%S.%f%z"
 FORBIDDEN_NAMES = ["versions"]

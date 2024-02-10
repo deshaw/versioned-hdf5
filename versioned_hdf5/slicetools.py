@@ -2,6 +2,7 @@ from functools import lru_cache
 
 from ndindex import Slice, Tuple
 
+
 def spaceid_to_slice(space):
     """
     Convert an h5py spaceid object into an ndindex index

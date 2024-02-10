@@ -1,25 +1,22 @@
-import pathlib
+import datetime
+import itertools
 import logging
 import os
-import itertools
+import pathlib
 import shutil
 
-from pytest import raises, mark
-
 import h5py
-from h5py._hl.filters import guess_chunk
-
-import datetime
-
 import numpy as np
+from h5py._hl.filters import guess_chunk
 from numpy.testing import assert_equal
+from pytest import mark, raises
 
-from ..backend import DEFAULT_CHUNK_SIZE, DATA_VERSION
 from ..api import VersionedHDF5File
-from ..versions import TIMESTAMP_FMT, all_versions
-from ..wrappers import (InMemoryArrayDataset, InMemoryDataset,
-                        InMemorySparseDataset, DatasetWrapper, InMemoryGroup)
+from ..backend import DATA_VERSION, DEFAULT_CHUNK_SIZE
 from ..replay import delete_versions
+from ..versions import TIMESTAMP_FMT, all_versions
+from ..wrappers import (DatasetWrapper, InMemoryArrayDataset, InMemoryDataset,
+                        InMemoryGroup, InMemorySparseDataset)
 
 
 def test_stage_version(vfile):

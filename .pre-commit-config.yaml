@@ -6,6 +6,7 @@ exclude: |
     utils/|
     github_deploy_key_deshaw_versioned_hdf5.enc|
     _versioneer.py
+    benchmarks_install.py
   )
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -37,10 +38,10 @@ repos:
   #     - id: mypy
   #       args: ['--follow-imports=skip', '--ignore-missing-imports']
 
-  # - repo: https://github.com/pycqa/isort
-  #   rev: 5.12.0
-  #   hooks:
-  #     - id: isort
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
 
   # - repo: https://github.com/astral-sh/ruff-pre-commit
   #   rev: v0.1.2

@@ -5,22 +5,21 @@ Much of this code is modified from code in h5py. See the LICENSE file for the
 h5py license.
 """
 
-from h5py import (Empty, Dataset, Datatype, Group, h5a, h5d, h5i, h5p, h5s,
-                  h5t, h5r, h5g, __version__ as h5py_version)
-from h5py._hl.base import guess_dtype, with_phil, phil
-from h5py._hl.dataset import _LEGACY_GZIP_COMPRESSION_VALS
-from h5py._hl import filters
-from h5py._hl.selections import guess_shape
-from h5py._hl.vds import VDSmap
-
-from ndindex import ndindex, Tuple, Slice, ChunkSize
-
-import numpy as np
-
-from collections import defaultdict
 import posixpath
 import warnings
+from collections import defaultdict
 from weakref import WeakValueDictionary
+
+import numpy as np
+from h5py import Dataset, Datatype, Empty, Group
+from h5py import __version__ as h5py_version
+from h5py import h5a, h5d, h5g, h5i, h5p, h5r, h5s, h5t
+from h5py._hl import filters
+from h5py._hl.base import guess_dtype, phil, with_phil
+from h5py._hl.dataset import _LEGACY_GZIP_COMPRESSION_VALS
+from h5py._hl.selections import guess_shape
+from h5py._hl.vds import VDSmap
+from ndindex import ChunkSize, Slice, Tuple, ndindex
 
 from .backend import DEFAULT_CHUNK_SIZE
 from .slicetools import spaceid_to_slice

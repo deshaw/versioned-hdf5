@@ -4,28 +4,23 @@ Public API functions
 Everything outside of this file is considered internal API and is subject to
 change.
 """
-import logging
-import numpy as np
-from typing import Set, Optional, List, Tuple, Dict
-import ndindex
-import h5py
-
-from contextlib import contextmanager
 import datetime
+import logging
+from contextlib import contextmanager
+from typing import Dict, List, Optional, Set, Tuple
 
-from .backend import initialize, DATA_VERSION, CORRUPT_DATA_VERSIONS
-from .versions import (create_version_group, commit_version,
-                       get_version_by_timestamp, get_nth_previous_version,
-                       set_current_version, all_versions, delete_version, )
-from .wrappers import (
-    InMemoryGroup,
-    InMemoryDataset,
-    InMemoryArrayDataset,
-    DatasetWrapper
-)
+import h5py
+import ndindex
+import numpy as np
+
+from .backend import CORRUPT_DATA_VERSIONS, DATA_VERSION, initialize
 from .hashtable import Hashtable
 from .slicetools import spaceid_to_slice
-
+from .versions import (all_versions, commit_version, create_version_group,
+                       delete_version, get_nth_previous_version,
+                       get_version_by_timestamp, set_current_version)
+from .wrappers import (DatasetWrapper, InMemoryArrayDataset, InMemoryDataset,
+                       InMemoryGroup)
 
 logger = logging.getLogger(__name__)
 

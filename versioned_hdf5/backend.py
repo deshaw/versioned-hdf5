@@ -1,10 +1,10 @@
 from typing import Dict, Optional
 
 import numpy as np
-from numpy.testing import assert_array_equal
-from h5py._hl.filters import guess_chunk
 from h5py import VirtualLayout, VirtualSource, h5s
-from ndindex import Slice, ndindex, Tuple, ChunkSize
+from h5py._hl.filters import guess_chunk
+from ndindex import ChunkSize, Slice, Tuple, ndindex
+from numpy.testing import assert_array_equal
 
 from .hashtable import Hashtable
 
@@ -25,6 +25,7 @@ def get_chunks(shape, dtype, chunk_size):
 
 def initialize(f):
     import datetime
+
     from .versions import TIMESTAMP_FMT
 
     version_data = f.create_group('_version_data')

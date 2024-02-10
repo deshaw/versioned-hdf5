@@ -1,12 +1,13 @@
-from pytest import raises
 from unittest import mock
 
-import numpy as np
 import h5py
+import numpy as np
+from pytest import raises
 
+from .. import VersionedHDF5File
 from ..backend import create_base_dataset
 from ..hashtable import Hashtable
-from .. import VersionedHDF5File
+
 
 def test_hashtable(h5file):
     create_base_dataset(h5file, 'test_data', data=np.empty((0,)))

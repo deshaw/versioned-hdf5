@@ -1,15 +1,13 @@
-import numpy as np
-from numpy.testing import assert_equal
-
-from ndindex import Slice, Tuple, ChunkSize
-from h5py._hl.filters import guess_chunk
-
-from pytest import mark, raises
-
 import itertools
 
-from ..backend import (create_base_dataset, write_dataset,
-                       create_virtual_dataset, DEFAULT_CHUNK_SIZE,
+import numpy as np
+from h5py._hl.filters import guess_chunk
+from ndindex import ChunkSize, Slice, Tuple
+from numpy.testing import assert_equal
+from pytest import mark, raises
+
+from ..backend import (DEFAULT_CHUNK_SIZE, create_base_dataset,
+                       create_virtual_dataset, write_dataset,
                        write_dataset_chunks)
 
 CHUNK_SIZE_3D = 2**4  # = cbrt(DEFAULT_CHUNK_SIZE)

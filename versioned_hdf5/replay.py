@@ -1,36 +1,29 @@
 from __future__ import annotations
-import gc
-from typing import List, Iterable, Union, Dict, Any, Optional
-from h5py import (
-    VirtualLayout,
-    h5s,
-    HLObject,
-    Dataset,
-    Group,
-    File,
-    __version__ as h5py_version
-)
-from h5py._hl.vds import VDSmap
-from h5py._hl.selections import select
-from h5py.h5i import get_name
 
-from ndindex import Slice, ChunkSize, Tuple
-from ndindex.ndindex import NDIndex
+import gc
+import posixpath
+from copy import deepcopy
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 import numpy as np
+from h5py import Dataset, File, Group, HLObject, VirtualLayout
+from h5py import __version__ as h5py_version
+from h5py import h5s
+from h5py._hl.selections import select
+from h5py._hl.vds import VDSmap
+from h5py.h5i import get_name
+from ndindex import ChunkSize, Slice, Tuple
+from ndindex.ndindex import NDIndex
 
-from copy import deepcopy
-import posixpath
-
-from .versions import all_versions
-from .wrappers import (InMemoryGroup, DatasetWrapper, InMemoryDataset,
-                       InMemoryArrayDataset, InMemorySparseDataset, _groups)
 from .api import VersionedHDF5File
-from .backend import (create_base_dataset, write_dataset,
-                      write_dataset_chunks, create_virtual_dataset,
-                      initialize)
-from .slicetools import spaceid_to_slice
+from .backend import (create_base_dataset, create_virtual_dataset, initialize,
+                      write_dataset, write_dataset_chunks)
 from .hashtable import Hashtable
+from .slicetools import spaceid_to_slice
+from .versions import all_versions
+from .wrappers import (DatasetWrapper, InMemoryArrayDataset, InMemoryDataset,
+                       InMemoryGroup, InMemorySparseDataset, _groups)
+
 
 def recreate_dataset(f, name, newf, callback=None):
     """

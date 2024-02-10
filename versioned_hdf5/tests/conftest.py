@@ -1,12 +1,13 @@
 import os
-from typing import Optional, Callable
 import uuid
+from typing import Callable, Optional
 
 import h5py
 from pytest import fixture
 
 from ..api import VersionedHDF5File
 from ..backend import initialize
+
 
 # Run tests marked with @pytest.mark.slow last. See
 # https://stackoverflow.com/questions/61533694/run-slow-pytest-commands-at-the-end-of-the-test-suite
@@ -71,9 +72,9 @@ def generate_bad_data():
         ImportError: Raised if the user tries to generate bad data with newer versions
         of the library; you need an old version to replicate the hash table issue.
     """
-    import numpy as np
     import h5py
     from versioned_hdf5 import VersionedHDF5File
+    import numpy as np
 
     _check_running_version(None)
 
@@ -233,8 +234,9 @@ def generate_bad_data_version_2():
         ImportError: Raised if the user tries to generate bad data with newer versions
         of the library; you need an old version to replicate the hash table issue.
     """
-    import numpy as np
     import h5py
+    import numpy as np
+
     from versioned_hdf5 import VersionedHDF5File
 
     _check_running_version(2)
@@ -264,8 +266,9 @@ def generate_bad_data_version_3():
         ImportError: Raised if the user tries to generate bad data with newer versions
         of the library; you need an old version to replicate the hash table issue.
     """
-    import numpy as np
     import h5py
+    import numpy as np
+
     from versioned_hdf5 import VersionedHDF5File
 
     _check_running_version(3)

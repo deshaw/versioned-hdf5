@@ -1,20 +1,18 @@
 import pathlib
 import shutil
 import subprocess
+from unittest import mock
 
 import h5py
 import numpy as np
 import pytest
-from unittest import mock
 
-from   versioned_hdf5           import VersionedHDF5File
-from   versioned_hdf5.hashtable import Hashtable
-from   versioned_hdf5.replay    import (_recreate_hashtable,
-                                        _recreate_raw_data,
-                                        _recreate_virtual_dataset,
-                                        delete_version, delete_versions,
-                                        modify_metadata,
-                                        _get_parent)
+from versioned_hdf5 import VersionedHDF5File
+from versioned_hdf5.hashtable import Hashtable
+from versioned_hdf5.replay import (_get_parent, _recreate_hashtable,
+                                   _recreate_raw_data,
+                                   _recreate_virtual_dataset, delete_version,
+                                   delete_versions, modify_metadata)
 
 
 def setup_vfile(file):
