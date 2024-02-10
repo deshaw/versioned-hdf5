@@ -29,7 +29,7 @@ The tests are as follows:
 2. A small fraction of changes is made to the dataset with each new version: The dataset initially has three arrays with 5000, but only 10 positions are chosen at random and changed, and a small number (at most 10) rows are added or deleted with each new version. We will refer to this test as `test_small_fraction_changes_sparse`.
 
 3. A large fraction of changes is made to the dataset with each version, with the same three arrays of 5000 rows defined initially, 1000 positions are chosen at random and changed, but the size of the final array remains constant (no new rows are added and no rows are deleted). We will refer to this test as `test_large_fraction_constant_sparse`.
-   
+
 4. The number of modifications is dominated by the number of appended rows. This is divided into two tests:
 
    - In the first case, the dataset contains three one-dimensional arrays with 1000 rows initially, and 1000 rows are added with each new version. A small number (at most 10) values are chosen at random, following the power law described above, and changed or deleted. We call this test `test_mostly_appends_sparse`.
@@ -42,6 +42,6 @@ To test the performance of VersionedHDF5 files, we have chosen to compare a few 
 
 .. toctree::
    :hidden:
-      
+
    performance_filesizes.rst
    performance_io.rst

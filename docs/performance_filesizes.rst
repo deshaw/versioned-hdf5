@@ -71,7 +71,7 @@ First, let’s obtain some common parameters from the tests:
     filesizes = np.array([test['size'] for test in testcase_1])
     sizelabels = np.array([test['size_label'] for test in testcase_1])
     max_no_versions = max(np.array([test['size'] for test in testcase_1_no_versions]))
-    
+
     n = len(set(num_transactions))
     ncs = len(set(chunk_sizes))
     ncomp = len(set(compression))
@@ -97,20 +97,20 @@ versioning (that is, not using VersionedHDF5).
 .. code:: python
 
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(20,8))
-    
+
     # Changing the indices in selected will change the y-axis ticks in the graph for better visualization
     selected = [4, 5, 9, 10]
-    
+
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
             ax[0].plot(num_transactions[:n],
                        filesizes[start+j*n:start+(j+1)*n],
-                       '*--', ms=12, 
+                       '*--', ms=12,
                        label=f"Chunk size {chunk_sizes[start+j*n]}, {compression[start]}")
             ax[1].loglog(num_transactions[:n],
                          filesizes[start+j*n:start+(j+1)*n],
-                         '*--', ms=12, 
+                         '*--', ms=12,
                          label=f"Chunk size {chunk_sizes[start+j*n]}, {compression[start]}")
             ax[0].legend(loc='upper left')
             ax[1].legend(loc='upper left')
@@ -128,7 +128,7 @@ versioning (that is, not using VersionedHDF5).
             ax[1].set_yticklabels(sizelabels[selected])
             ax[1].set_xlabel("Transactions")
             ax[1].grid(True)
-    
+
     ax[0].axhline(max_no_versions)
     ax[1].axhline(max_no_versions)
     plt.suptitle(f"{testname}")
@@ -149,13 +149,13 @@ corresponding to each compression algorithm that we used.
 
     fig, ax = plt.subplots(ncs, figsize=(10,10), sharey=True)
     fig.suptitle(f"{testname}: File sizes")
-    
+
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
             ax[j].loglog(num_transactions[:n],
                          filesizes[start+j*n:start+(j+1)*n],
-                         '*--', ms=12, 
+                         '*--', ms=12,
                          label=f"{compression[start]}")
             ax[j].legend(loc='upper left')
             ax[j].set_title(f"Chunk Size {chunk_sizes[start+j*n]}")
@@ -165,7 +165,7 @@ corresponding to each compression algorithm that we used.
             ax[j].set_yticklabels(sizelabels[selected])
             ax[j].grid(True)
             ax[j].minorticks_off()
-    
+
     plt.xlabel("Transactions")
     plt.suptitle(f"{testname}")
     plt.show()
@@ -185,7 +185,7 @@ chunk sizes.
 
     fig, ax = plt.subplots(ncomp, figsize=(10,10), sharey=True)
     fig.suptitle(f"{testname}: File sizes")
-        
+
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
@@ -193,7 +193,7 @@ chunk sizes.
             plottitle = f"Compression: {compression[start]}"
             ax[i].loglog(num_transactions[:n],
                          filesizes[start+j*n:start+(j+1)*n],
-                         '*--', ms=12, 
+                         '*--', ms=12,
                          label=plotlabel)
             ax[i].legend(loc='upper left')
             ax[i].set_title(plottitle)
@@ -203,7 +203,7 @@ chunk sizes.
             ax[i].set_yticklabels(sizelabels[selected])
             ax[i].grid(True)
             ax[i].minorticks_off()
-    
+
     plt.xlabel("Transactions")
     plt.suptitle(f"{testname}")
     plt.show()
@@ -226,22 +226,22 @@ this:
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
-            plt.plot(num_transactions[:n], 
-                     t_write[start+j*n:start+(j+1)*n], 
-                     'o--', ms=8, 
+            plt.plot(num_transactions[:n],
+                     t_write[start+j*n:start+(j+1)*n],
+                     'o--', ms=8,
                      label=f"Chunk size {chunk_sizes[start+j*n]}, {compression[start]}")
-    
-    # If you also with to plot information about the "no versions" test,  
+
+    # If you also with to plot information about the "no versions" test,
     # run the following lines:
     t_write_nv = np.array([test['t_write'][-1] for test in testcase_1_no_versions])
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
-            plt.plot(num_transactions[:n], 
-                     t_write_nv[start+j*n:start+(j+1)*n], 
-                     '*-', ms=12, 
+            plt.plot(num_transactions[:n],
+                     t_write_nv[start+j*n:start+(j+1)*n],
+                     '*-', ms=12,
                      label=f"Chunk size {chunk_sizes[start+j*n]}, {compression[start]}, No versioning")
-    
+
     plt.xlabel("Transactions")
     plt.title(f"{testname} - creation times in seconds")
     plt.legend()
@@ -262,25 +262,25 @@ the file is created.
 
     fig_times, ax = plt.subplots(n+1, figsize=(14,20))
     fig_times.suptitle(f"{testname}: time to write each new version")
-    
+
     for i in range(n):
         for test in testcase_1:
             if test['num_transactions'] == num_transactions[i]:
                 t_write = np.array(test['t_write'][:-1])
-                ax[i].plot(t_write, 
+                ax[i].plot(t_write,
                            label=f"chunk size {test['chunk_size']}, {test['compression']}")
                 ax[i].legend(loc='upper left')
-    
-    # If you also with to plot information about the "no versions" test,  
+
+    # If you also with to plot information about the "no versions" test,
     # run the following lines:
     for test in testcase_1_no_versions:
         if test['num_transactions'] == num_transactions[i]:
             t_write = np.array(test['t_write'][:-1])
-            ax[n].plot(t_write, 
+            ax[n].plot(t_write,
                        label=f"chunk size {test['chunk_size']}, {test['compression']}")
             ax[n].legend(loc='upper left')
             ax[n].set_title('No versioning')
-                
+
     plt.xlabel("Number of transactions")
     plt.ylabel("Time (in seconds)")
     plt.show()
@@ -334,7 +334,7 @@ information in a graph:
     filesizes = np.array([test['size'] for test in testcase_2])
     sizelabels = np.array([test['size_label'] for test in testcase_2])
     max_no_versions = max(np.array([test['size'] for test in testcase_2_no_versions]))
-    
+
     n = len(set(num_transactions))
     ncs = len(set(chunk_sizes))
     ncomp = len(set(compression))
@@ -348,19 +348,19 @@ VersionedHDF5).
 .. code:: python
 
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(20,8))
-    
+
     selected = [4, 5, 9, 10]
-    
+
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
             ax[0].plot(num_transactions[:n],
-                       filesizes[start+j*n:start+(j+1)*n], 
-                       '*--', ms=12, 
+                       filesizes[start+j*n:start+(j+1)*n],
+                       '*--', ms=12,
                        label=f"Chunk size {chunk_sizes[start+j*n]}, {compression[start]}")
             ax[1].loglog(num_transactions[:n],
-                         filesizes[start+j*n:start+(j+1)*n], 
-                         '*--', ms=12, 
+                         filesizes[start+j*n:start+(j+1)*n],
+                         '*--', ms=12,
                          label=f"Chunk size {chunk_sizes[start+j*n]}, {compression[start]}")
             ax[0].legend(loc='upper left')
             ax[1].legend(loc='upper left')
@@ -379,7 +379,7 @@ VersionedHDF5).
             ax[1].set_yticklabels(sizelabels[selected])
             ax[1].set_xlabel("Transactions")
             ax[1].grid(True)
-    
+
     ax[0].axhline(max_no_versions)
     ax[1].axhline(max_no_versions)
     plt.suptitle(f"{testname}")
@@ -400,13 +400,13 @@ corresponding to each compression algorithm that we used.
 
     fig, ax = plt.subplots(ncs, figsize=(10,10), sharey=True)
     fig.suptitle(f"{testname}: File sizes")
-    
+
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
             ax[j].loglog(num_transactions[:n],
                          filesizes[start+j*n:start+(j+1)*n],
-                         '*--', ms=12, 
+                         '*--', ms=12,
                          label=f"{compression[start]}")
             ax[j].legend(loc='upper left')
             ax[j].set_title(f"Chunk Size {chunk_sizes[start+j*n]}")
@@ -416,7 +416,7 @@ corresponding to each compression algorithm that we used.
             ax[j].set_yticklabels(sizelabels[selected])
             ax[j].grid(True)
             ax[j].minorticks_off()
-    
+
     plt.xlabel("Transactions")
     plt.suptitle(f"{testname}")
     plt.show()
@@ -436,7 +436,7 @@ chunk sizes.
 
     fig, ax = plt.subplots(ncomp, figsize=(10,10), sharey=True)
     fig.suptitle(f"{testname}: File sizes")
-        
+
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
@@ -444,7 +444,7 @@ chunk sizes.
             plottitle = f"Compression: {compression[start]}"
             ax[i].loglog(num_transactions[:n],
                          filesizes[start+j*n:start+(j+1)*n],
-                         '*--', ms=12, 
+                         '*--', ms=12,
                          label=plotlabel)
             ax[i].legend(loc='upper left')
             ax[i].set_title(plottitle)
@@ -454,7 +454,7 @@ chunk sizes.
             ax[i].set_yticklabels(sizelabels[selected])
             ax[i].grid(True)
             ax[i].minorticks_off()
-    
+
     plt.xlabel("Transactions")
     plt.suptitle(f"{testname}")
     plt.show()
@@ -476,22 +476,22 @@ The creation times for each file are as follows.
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
-            plt.plot(num_transactions[:n], 
-                     t_write[start+j*n:start+(j+1)*n], 
-                     'o--', ms=8, 
+            plt.plot(num_transactions[:n],
+                     t_write[start+j*n:start+(j+1)*n],
+                     'o--', ms=8,
                      label=f"Chunk size {chunk_sizes[start+j*n]}, {compression[start]}")
-    
-    # If you also with to plot information about the "no versions" test,  
+
+    # If you also with to plot information about the "no versions" test,
     # run the following lines:
     t_write_nv = np.array([test['t_write'][-1] for test in testcase_2_no_versions])
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
-            plt.plot(num_transactions[:n], 
-                     t_write_nv[start+j*n:start+(j+1)*n], 
-                     '*-', ms=12, 
+            plt.plot(num_transactions[:n],
+                     t_write_nv[start+j*n:start+(j+1)*n],
+                     '*-', ms=12,
                      label=f"Chunk size {chunk_sizes[start+j*n]}, {compression[start]}, No versioning")
-    
+
     plt.xlabel("Transactions")
     plt.title(f"{testname} - creation times in seconds")
     plt.legend()
@@ -510,25 +510,25 @@ time required to add new versions as the file is created.
 
     fig_times, ax = plt.subplots(n+1, figsize=(14,20))
     fig_times.suptitle(f"{testname}: time to write each new version")
-    
+
     for i in range(n):
         for test in testcase_2:
             if test['num_transactions'] == num_transactions[i]:
                 t_write = np.array(test['t_write'][:-1])
-                ax[i].plot(t_write, 
+                ax[i].plot(t_write,
                            label=f"chunk size {test['chunk_size']}, {test['compression']}")
                 ax[i].legend(loc='upper left')
-    
-    # If you also with to plot information about the "no versions" test,  
+
+    # If you also with to plot information about the "no versions" test,
     # run the following lines:
     for test in testcase_2_no_versions:
         if test['num_transactions'] == num_transactions[i]:
             t_write = np.array(test['t_write'][:-1])
-            ax[n].plot(t_write, 
+            ax[n].plot(t_write,
                        label=f"chunk size {test['chunk_size']}, {test['compression']}")
             ax[n].legend(loc='upper left')
             ax[n].set_title('No versioning')
-                
+
     plt.xlabel("Number of transactions")
     plt.ylabel("Time (in seconds)")
     plt.show()
@@ -562,7 +562,7 @@ Test 3: Small fraction changes (sparse)
 We have tested the following options:
 
 .. code:: python
-          
+
    num_transactions_3 = [50, 100, 500, 1000, 5000]
    exponents_3 = [12, 14]
    compression_3 = [None, "gzip", "lzf"]
@@ -580,7 +580,7 @@ Again, let’s show the size information in a graph:
     filesizes = np.array([test['size'] for test in testcase_3])
     sizelabels = np.array([test['size_label'] for test in testcase_3])
     max_no_versions = max(np.array([test['size'] for test in testcase_3_no_versions]))
-    
+
     n = len(set(num_transactions))
     ncs = len(set(chunk_sizes))
     ncomp = len(set(compression))
@@ -593,20 +593,20 @@ tests with no versioning (that is, not using VersionedHDF5).
 .. code:: python
 
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(20,8))
-    
+
     # Changing the indices in selected will change the y-axis ticks in the graph for better visualization
     selected = [0, 3, 4, 9, 19]
-    
+
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
             ax[0].plot(num_transactions[:n],
-                       filesizes[start+j*n:start+(j+1)*n], 
-                       '*--', ms=12, 
+                       filesizes[start+j*n:start+(j+1)*n],
+                       '*--', ms=12,
                        label=f"Chunk size {chunk_sizes[start+j*n]}, {compression[start]}")
             ax[1].loglog(num_transactions[:n],
-                         filesizes[start+j*n:start+(j+1)*n], 
-                         '*--', ms=12, 
+                         filesizes[start+j*n:start+(j+1)*n],
+                         '*--', ms=12,
                          label=f"Chunk size {chunk_sizes[start+j*n]}, {compression[start]}")
             ax[0].legend(loc='upper left')
             ax[1].legend(loc='upper left')
@@ -624,7 +624,7 @@ tests with no versioning (that is, not using VersionedHDF5).
             ax[1].set_yticklabels(sizelabels[selected])
             ax[1].set_xlabel("Transactions")
             ax[1].grid(True)
-    
+
     ax[0].axhline(max_no_versions)
     ax[1].axhline(max_no_versions)
     plt.suptitle(f"{testname}")
@@ -645,13 +645,13 @@ corresponding to each compression algorithm that we used.
 
     fig, ax = plt.subplots(ncs, figsize=(10,10), sharey=True)
     fig.suptitle(f"{testname}: File sizes")
-    
+
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
             ax[j].loglog(num_transactions[:n],
                          filesizes[start+j*n:start+(j+1)*n],
-                         '*--', ms=12, 
+                         '*--', ms=12,
                          label=f"{compression[start]}")
             ax[j].legend(loc='upper left')
             ax[j].set_title(f"Chunk Size {chunk_sizes[start+j*n]}")
@@ -661,7 +661,7 @@ corresponding to each compression algorithm that we used.
             ax[j].set_yticklabels(sizelabels[selected])
             ax[j].grid(True)
             ax[j].minorticks_off()
-    
+
     plt.xlabel("Transactions")
     plt.suptitle(f"{testname}")
     plt.show()
@@ -681,7 +681,7 @@ chunk sizes.
 
     fig, ax = plt.subplots(ncomp, figsize=(10,10), sharey=True)
     fig.suptitle(f"{testname}: File sizes")
-        
+
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
@@ -689,7 +689,7 @@ chunk sizes.
             plottitle = f"Compression: {compression[start]}"
             ax[i].loglog(num_transactions[:n],
                          filesizes[start+j*n:start+(j+1)*n],
-                         '*--', ms=12, 
+                         '*--', ms=12,
                          label=plotlabel)
             ax[i].legend(loc='upper left')
             ax[i].set_title(plottitle)
@@ -699,7 +699,7 @@ chunk sizes.
             ax[i].set_yticklabels(sizelabels[selected])
             ax[i].grid(True)
             ax[i].minorticks_off()
-    
+
     plt.xlabel("Transactions")
     plt.suptitle(f"{testname}")
     plt.show()
@@ -722,22 +722,22 @@ this:
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
-            plt.plot(num_transactions[:n], 
-                     t_write[start+j*n:start+(j+1)*n], 
-                     'o--', ms=8, 
+            plt.plot(num_transactions[:n],
+                     t_write[start+j*n:start+(j+1)*n],
+                     'o--', ms=8,
                      label=f"Chunk size {chunk_sizes[start+j*n]}, {compression[start]}")
-    
-    # If you also with to plot information about the "no versions" test,  
+
+    # If you also with to plot information about the "no versions" test,
     # run the following lines:
     t_write_nv = np.array([test['t_write'][-1] for test in testcase_3_no_versions])
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
-            plt.plot(num_transactions[:n], 
-                     t_write_nv[start+j*n:start+(j+1)*n], 
-                     '*-', ms=12, 
+            plt.plot(num_transactions[:n],
+                     t_write_nv[start+j*n:start+(j+1)*n],
+                     '*-', ms=12,
                      label=f"Chunk size {chunk_sizes[start+j*n]}, {compression[start]}, No versioning")
-    
+
     plt.xlabel("Transactions")
     plt.title(f"{testname} - creation times in seconds")
     plt.legend()
@@ -756,25 +756,25 @@ time required to add new versions as the file is created.
 
     fig_times, ax = plt.subplots(n+1, figsize=(14,20))
     fig_times.suptitle(f"{testname}: time to write each new version")
-    
+
     for i in range(n):
         for test in testcase_3:
             if test['num_transactions'] == num_transactions[i]:
                 t_write = np.array(test['t_write'][:-1])
-                ax[i].plot(t_write, 
+                ax[i].plot(t_write,
                            label=f"chunk size {test['chunk_size']}, {test['compression']}")
                 ax[i].legend(loc='upper left')
-    
-    # If you also with to plot information about the "no versions" test,  
+
+    # If you also with to plot information about the "no versions" test,
     # run the following lines:
     for test in testcase_3_no_versions:
         if test['num_transactions'] == num_transactions[i]:
             t_write = np.array(test['t_write'][:-1])
-            ax[n].plot(t_write, 
+            ax[n].plot(t_write,
                        label=f"chunk size {test['chunk_size']}, {test['compression']}")
             ax[n].legend(loc='upper left')
             ax[n].set_title('No versioning')
-                
+
     plt.xlabel("Number of transactions")
     plt.ylabel("Time (in seconds)")
     plt.show()
@@ -821,7 +821,7 @@ Again, let’s show the size information in a graph:
     filesizes = np.array([test['size'] for test in testcase_4])
     sizelabels = np.array([test['size_label'] for test in testcase_4])
     max_no_versions = max(np.array([test['size'] for test in testcase_4_no_versions]))
-    
+
     n = len(set(num_transactions))
     ncs = len(set(chunk_sizes))
     ncomp = len(set(compression))
@@ -834,19 +834,19 @@ tests with no versioning (that is, not using VersionedHDF5).
 .. code:: python
 
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(20,8))
-    
+
     selected = [10, 4, 7, 9, 10, 19]
-    
+
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
             ax[0].plot(num_transactions[:n],
-                       filesizes[start+j*n:start+(j+1)*n], 
-                       '*--', ms=12, 
+                       filesizes[start+j*n:start+(j+1)*n],
+                       '*--', ms=12,
                        label=f"Chunk size {chunk_sizes[start+j*n]}, {compression[start]}")
             ax[1].loglog(num_transactions[:n],
-                         filesizes[start+j*n:start+(j+1)*n], 
-                         '*--', ms=12, 
+                         filesizes[start+j*n:start+(j+1)*n],
+                         '*--', ms=12,
                          label=f"Chunk size {chunk_sizes[start+j*n]}, {compression[start]}")
             ax[0].legend(loc='upper left')
             ax[1].legend(loc='upper left')
@@ -865,7 +865,7 @@ tests with no versioning (that is, not using VersionedHDF5).
             ax[1].set_yticklabels(sizelabels[selected])
             ax[1].set_xlabel("Transactions")
             ax[1].grid(True)
-    
+
     ax[0].axhline(max_no_versions)
     ax[1].axhline(max_no_versions)
     plt.suptitle(f"{testname}")
@@ -886,13 +886,13 @@ corresponding to each compression algorithm that we used.
 
     fig, ax = plt.subplots(ncs, figsize=(10,10), sharey=True)
     fig.suptitle(f"{testname}: File sizes")
-    
+
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
             ax[j].loglog(num_transactions[:n],
                          filesizes[start+j*n:start+(j+1)*n],
-                         '*--', ms=12, 
+                         '*--', ms=12,
                          label=f"{compression[start]}")
             ax[j].legend(loc='upper left')
             ax[j].set_title(f"Chunk Size {chunk_sizes[start+j*n]}")
@@ -902,7 +902,7 @@ corresponding to each compression algorithm that we used.
             ax[j].set_yticklabels(sizelabels[selected])
             ax[j].grid(True)
             ax[j].minorticks_off()
-    
+
     plt.xlabel("Transactions")
     plt.suptitle(f"{testname}")
     plt.show()
@@ -922,7 +922,7 @@ chunk sizes.
 
     fig, ax = plt.subplots(ncomp, figsize=(10,10), sharey=True)
     fig.suptitle(f"{testname}: File sizes")
-        
+
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
@@ -930,7 +930,7 @@ chunk sizes.
             plottitle = f"Compression: {compression[start]}"
             ax[i].loglog(num_transactions[:n],
                          filesizes[start+j*n:start+(j+1)*n],
-                         '*--', ms=12, 
+                         '*--', ms=12,
                          label=plotlabel)
             ax[i].legend(loc='upper left')
             ax[i].set_title(plottitle)
@@ -940,7 +940,7 @@ chunk sizes.
             ax[i].set_yticklabels(sizelabels[selected])
             ax[i].grid(True)
             ax[i].minorticks_off()
-    
+
     plt.xlabel("Transactions")
     plt.suptitle(f"{testname}")
     plt.show()
@@ -963,22 +963,22 @@ this:
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
-            plt.plot(num_transactions[:n], 
-                     t_write[start+j*n:start+(j+1)*n], 
-                     'o--', ms=8, 
+            plt.plot(num_transactions[:n],
+                     t_write[start+j*n:start+(j+1)*n],
+                     'o--', ms=8,
                      label=f"Chunk size {chunk_sizes[start+j*n]}, {compression[start]}")
-    
-    # If you also with to plot information about the "no versions" test,  
+
+    # If you also with to plot information about the "no versions" test,
     # run the following lines:
     t_write_nv = np.array([test['t_write'][-1] for test in testcase_4_no_versions])
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
-            plt.plot(num_transactions[:n], 
-                     t_write_nv[start+j*n:start+(j+1)*n], 
-                     '*-', ms=12, 
+            plt.plot(num_transactions[:n],
+                     t_write_nv[start+j*n:start+(j+1)*n],
+                     '*-', ms=12,
                      label=f"Chunk size {chunk_sizes[start+j*n]}, {compression[start]}, No versioning")
-    
+
     plt.xlabel("Transactions")
     plt.title(f"{testname} - creation times in seconds")
     plt.legend()
@@ -997,25 +997,25 @@ time required to add new versions as the file is created.
 
     fig_times, ax = plt.subplots(n+1, figsize=(14,20))
     fig_times.suptitle(f"{testname}: time to write each new version")
-    
+
     for i in range(n):
         for test in testcase_4:
             if test['num_transactions'] == num_transactions[i]:
                 t_write = np.array(test['t_write'][:-1])
-                ax[i].plot(t_write, 
+                ax[i].plot(t_write,
                            label=f"chunk size {test['chunk_size']}, {test['compression']}")
                 ax[i].legend(loc='upper left')
-    
-    # If you also with to plot information about the "no versions" test,  
+
+    # If you also with to plot information about the "no versions" test,
     # run the following lines:
     for test in testcase_4_no_versions:
         if test['num_transactions'] == num_transactions[i]:
             t_write = np.array(test['t_write'][:-1])
-            ax[n].plot(t_write, 
+            ax[n].plot(t_write,
                        label=f"chunk size {test['chunk_size']}, {test['compression']}")
             ax[n].legend(loc='upper left')
             ax[n].set_title('No versioning')
-                
+
     plt.xlabel("Number of transactions")
     plt.ylabel("Time (in seconds)")
     plt.show()
@@ -1061,7 +1061,7 @@ Let’s show the size information in a graph:
     filesizes = np.array([test['size'] for test in testcase_5])
     sizelabels = np.array([test['size_label'] for test in testcase_5])
     max_no_versions = max(np.array([test['size'] for test in testcase_5_no_versions]))
-    
+
     n = len(set(num_transactions))
     ncs = len(set(chunk_sizes))
     ncomp = len(set(compression))
@@ -1074,19 +1074,19 @@ the same tests with no versioning (that is, not using VersionedHDF5).
 .. code:: python
 
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(20,8))
-    
+
     selected = [6, 7, 10, 11, 12]
-    
+
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
             ax[0].plot(num_transactions[:n],
-                       filesizes[start+j*n:start+(j+1)*n], 
-                       '*--', ms=12, 
+                       filesizes[start+j*n:start+(j+1)*n],
+                       '*--', ms=12,
                        label=f"Chunk size {chunk_sizes[start+j*n]}, {compression[start]}")
             ax[1].loglog(num_transactions[:n],
-                         filesizes[start+j*n:start+(j+1)*n], 
-                         '*--', ms=12, 
+                         filesizes[start+j*n:start+(j+1)*n],
+                         '*--', ms=12,
                          label=f"Chunk size {chunk_sizes[start+j*n]}, {compression[start]}")
             ax[0].legend(loc='upper left')
             ax[1].legend(loc='upper left')
@@ -1105,7 +1105,7 @@ the same tests with no versioning (that is, not using VersionedHDF5).
             ax[1].set_yticklabels(sizelabels[selected])
             ax[1].set_xlabel("Transactions")
             ax[1].grid(True)
-    
+
     ax[0].axhline(max_no_versions)
     ax[1].axhline(max_no_versions)
     plt.suptitle(f"{testname}")
@@ -1126,13 +1126,13 @@ corresponding to each compression algorithm that we used.
 
     fig, ax = plt.subplots(ncs, figsize=(10,10), sharey=True)
     fig.suptitle(f"{testname}: File sizes")
-    
+
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
             ax[j].loglog(num_transactions[:n],
                          filesizes[start+j*n:start+(j+1)*n],
-                         '*--', ms=12, 
+                         '*--', ms=12,
                          label=f"{compression[start]}")
             ax[j].legend(loc='upper left')
             ax[j].set_title(f"Chunk Size {chunk_sizes[start+j*n]}")
@@ -1142,7 +1142,7 @@ corresponding to each compression algorithm that we used.
             ax[j].set_yticklabels(sizelabels[selected])
             ax[j].grid(True)
             ax[j].minorticks_off()
-    
+
     plt.xlabel("Transactions")
     plt.suptitle(f"{testname}")
     plt.show()
@@ -1162,7 +1162,7 @@ chunk sizes.
 
     fig, ax = plt.subplots(ncomp, figsize=(10,10), sharey=True)
     fig.suptitle(f"{testname}: File sizes")
-        
+
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
@@ -1170,7 +1170,7 @@ chunk sizes.
             plottitle = f"Compression: {compression[start]}"
             ax[i].loglog(num_transactions[:n],
                          filesizes[start+j*n:start+(j+1)*n],
-                         '*--', ms=12, 
+                         '*--', ms=12,
                          label=plotlabel)
             ax[i].legend(loc='upper left')
             ax[i].set_title(plottitle)
@@ -1180,7 +1180,7 @@ chunk sizes.
             ax[i].set_yticklabels(sizelabels[selected])
             ax[i].grid(True)
             ax[i].minorticks_off()
-    
+
     plt.xlabel("Transactions")
     plt.suptitle(f"{testname}")
     plt.show()
@@ -1203,22 +1203,22 @@ this:
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
-            plt.plot(num_transactions[:n], 
-                     t_write[start+j*n:start+(j+1)*n], 
-                     'o--', ms=8, 
+            plt.plot(num_transactions[:n],
+                     t_write[start+j*n:start+(j+1)*n],
+                     'o--', ms=8,
                      label=f"Chunk size {chunk_sizes[start+j*n]}, {compression[start]}")
-    
-    # If you also with to plot information about the "no versions" test,  
+
+    # If you also with to plot information about the "no versions" test,
     # run the following lines:
     t_write_nv = np.array([test['t_write'][-1] for test in testcase_5_no_versions])
     for i in range(ncomp):
         start = i*ncs*n
         for j in range(ncs):
-            plt.plot(num_transactions[:n], 
-                     t_write_nv[start+j*n:start+(j+1)*n], 
-                     '*-', ms=12, 
+            plt.plot(num_transactions[:n],
+                     t_write_nv[start+j*n:start+(j+1)*n],
+                     '*-', ms=12,
                      label=f"Chunk size {chunk_sizes[start+j*n]}, {compression[start]}, No versioning")
-    
+
     plt.xlabel("Transactions")
     plt.title(f"{testname} - creation times in seconds")
     plt.legend()
@@ -1237,25 +1237,25 @@ time required to add new versions as the file is created.
 
     fig_times, ax = plt.subplots(n+1, figsize=(14,20))
     fig_times.suptitle(f"{testname}: time to write each new version")
-    
+
     for i in range(n):
         for test in testcase_5:
             if test['num_transactions'] == num_transactions[i]:
                 t_write = np.array(test['t_write'][:-1])
-                ax[i].plot(t_write, 
+                ax[i].plot(t_write,
                            label=f"chunk size {test['chunk_size']}, {test['compression']}")
                 ax[i].legend(loc='upper left')
-    
-    # If you also with to plot information about the "no versions" test,  
+
+    # If you also with to plot information about the "no versions" test,
     # run the following lines:
     for test in testcase_5_no_versions:
         if test['num_transactions'] == num_transactions[i]:
             t_write = np.array(test['t_write'][:-1])
-            ax[n].plot(t_write, 
+            ax[n].plot(t_write,
                        label=f"chunk size {test['chunk_size']}, {test['compression']}")
             ax[n].legend(loc='upper left')
             ax[n].set_title('No versioning')
-                
+
     plt.xlabel("Number of transactions")
     plt.ylabel("Time (in seconds)")
     plt.show()
@@ -1278,5 +1278,3 @@ addition, we can see that in the case of 500 transactions, the creation
 of the unversioned file can also take a hit in performance. These are
 preliminary tests, and multidimensional datasets are still experimental
 at this point in VersionedHDF5.
-
-

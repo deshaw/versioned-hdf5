@@ -4,7 +4,7 @@ Installation
 You can install Versioned HDF5 via pypi with
 
 .. code::
-   
+
    pip install versioned-hdf5
 
 Dependencies
