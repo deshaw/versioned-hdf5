@@ -73,20 +73,9 @@ def generate_bad_data():
     """
     import numpy as np
     import h5py
-    from versioned_hdf5 import VersionedHDF5File, __version__
+    from versioned_hdf5 import VersionedHDF5File
 
     _check_running_version(None)
-
-    try:
-        from versioned_hdf5.backend import DATA_VERSION  # noqa: F401
-    except ImportError:
-        DATA_VERSION = None
-
-    if DATA_VERSION is not None:
-        raise ImportError(
-            f"versioned_hdf5=={__version__} installed; "
-            "this file only generates bad data on versioned_hdf5 <= 1.3.14."
-        )
 
     filename = "object_dtype_bad_hashtable_data.h5"
     with h5py.File(filename, mode="w") as f:
@@ -299,16 +288,14 @@ def generate_bad_data_version_3():
 
 
 def _check_running_version(target):
-    from versioned_hdf5 import __version__
-
     try:
         from versioned_hdf5.backend import DATA_VERSION  # noqa: F401
     except ImportError:
-        DATA_VERSION = None
+        DATA_VERSION = None # noqa: N806
 
     if DATA_VERSION != target:
         raise ImportError(
-            f"versioned_hdf5=={__version__} installed; "
+            f"This version of versioned_hdf5 has DATA_VERSION=={DATA_VERSION}; "
             f"this file only generates bad data for DATA_VERSION=={target}"
         )
 
