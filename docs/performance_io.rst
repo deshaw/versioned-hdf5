@@ -79,9 +79,9 @@ Plotting with respect to the number of versions, we get the following:
     for n in num_transactions:
         filename = f"{testname}_{n}_{exponent}_{compression}.h5"
         rtimes.append(read_times(filename))
-        
+
     fig = plt.figure(figsize=(10,6))
-        
+
     plt.plot(num_transactions, rtimes, 'o-')
     selected = [0, 2, 3, 4]
     plt.xticks(np.array(num_transactions)[selected])
@@ -142,9 +142,9 @@ system load while running the test.
 .. code:: python
 
     num_transactions = [50, 100, 500, 1000, 5000]
-    
+
     fig = plt.figure(figsize=(10, 6))
-    
+
     for _ in range(20):
         vtimes = []
         for i in range(5):
@@ -152,7 +152,7 @@ system load while running the test.
             filename = f"{testname}_{n}_{exponent}_{compression}.h5"
             vtimes.append(read_version(filename, n))
         plt.plot(num_transactions, vtimes, '*-')
-    
+
     plt.xticks(np.array(num_transactions)[selected])
     plt.title(f"Time (in sec) to read specific version for {testname}")
     plt.xlabel("Number of transactions")
@@ -189,9 +189,9 @@ the latest version on each file.
 .. code:: python
 
     num_transactions = [50, 100, 500, 1000, 5000]
-    
+
     fig = plt.figure(figsize=(10, 6))
-    
+
     for _ in range(20):
         ftimes = []
         for i in range(5):
@@ -199,7 +199,7 @@ the latest version on each file.
             filename = f"{testname}_{n}_{exponent}_{compression}.h5"
             ftimes.append(read_first(filename))
         plt.plot(num_transactions, ftimes, '*-')
-        
+
     plt.xticks(np.array(num_transactions)[selected])
     plt.title(f"Time (in sec) to read first version for {testname}")
     plt.xlabel("Number of transactions")
@@ -227,7 +227,7 @@ HDF5). Note that these should be similar data.
         t0 = time.time()
         #
         # Current version is 0
-        # This is the same as 
+        # This is the same as
         # version = vfile[vfile._versions.attrs['current_version']]
         #
         version = vfile[0]
@@ -251,9 +251,9 @@ HDF5). Note that these should be similar data.
 .. code:: python
 
     num_transactions = [50, 100, 500, 1000, 5000]
-    
+
     fig = plt.figure(figsize=(10,6))
-    
+
     # We only do one run for the unversioned files.
     notimes = []
     for i in range(5):
@@ -262,15 +262,15 @@ HDF5). Note that these should be similar data.
         notimes.append(read_no_versions(filename))
     plt.plot(num_transactions, notimes, 'ko-', ms=6)
     plt.legend(["No versions"], loc="upper left")
-    
+
     for _ in range(20):
         ltimes = []
         for i in range(5):
             n = num_transactions[i]
             filename = f"{testname}_{n}_{exponent}_{compression}.h5"
             ltimes.append(read_last(filename))
-        plt.plot(num_transactions, ltimes, '*-')    
-        
+        plt.plot(num_transactions, ltimes, '*-')
+
     plt.xticks(np.array(num_transactions)[selected])
     plt.title(f"Time (in sec) to read latest version for {testname}")
     plt.xlabel("Number of transactions")
@@ -313,9 +313,9 @@ the following:
     for n in num_transactions:
         filename = f"{testname}_{n}_{exponent}_{compression}.h5"
         rtimes.append(read_times(filename))
-    
+
     fig = plt.figure(figsize=(10,6))
-        
+
     plt.plot(num_transactions, rtimes, 'o-')
     selected = [0, 1, 2, 3]
     plt.xticks(np.array(num_transactions)[selected])
@@ -343,9 +343,9 @@ file.
 .. code:: python
 
     num_transactions = [25, 50, 100, 500]
-    
+
     fig = plt.figure(figsize=(10,6))
-    
+
     for _ in range(20):
         vtimes = []
         for i in range(4):
@@ -353,7 +353,7 @@ file.
             filename = f"{testname}_{n}_{exponent}_{compression}.h5"
             vtimes.append(read_version(filename, n))
         plt.plot(num_transactions, vtimes, '*-')
-    
+
     plt.xticks(num_transactions)
     plt.title(f"Time (in sec) to read random version for {testname}")
     plt.xlabel("Number of transactions")
@@ -378,9 +378,9 @@ version of the files, we get the following results.
 .. code:: python
 
     num_transactions = [25, 50, 100, 500]
-    
+
     fig = plt.figure(figsize=(10,6))
-    
+
     for _ in range(20):
         ftimes = []
         for i in range(4):
@@ -388,7 +388,7 @@ version of the files, we get the following results.
             filename = f"{testname}_{n}_{exponent}_{compression}.h5"
             ftimes.append(read_first(filename))
         plt.plot(num_transactions, ftimes, '*-')
-        
+
     plt.xticks(num_transactions)
     plt.title(f"Time (in sec) to read first version for {testname}")
     plt.xlabel("Number of transactions")
@@ -408,9 +408,9 @@ For the latest version, the results are as follows.
 .. code:: python
 
     num_transactions = [25, 50, 100, 500]
-    
+
     fig = plt.figure(figsize=(10,6))
-    
+
     notimes = []
     for i in range(4):
         n = num_transactions[i]
@@ -418,15 +418,15 @@ For the latest version, the results are as follows.
         notimes.append(read_no_versions(filename))
     plt.plot(num_transactions, notimes, 'ko-', ms=6)
     plt.legend(["No versions"], loc="upper left")
-        
+
     for _ in range(20):
         ltimes = []
         for i in range(4):
             n = num_transactions[i]
             filename = f"{testname}_{n}_{exponent}_{compression}.h5"
             ltimes.append(read_last(filename))
-        plt.plot(num_transactions, ltimes, '*-')    
-        
+        plt.plot(num_transactions, ltimes, '*-')
+
     plt.xticks(np.array(num_transactions)[selected])
     plt.title(f"Time (in sec) to read latest version for {testname}")
     plt.xlabel("Number of transactions")
@@ -470,9 +470,9 @@ Reading all versions in a file sequentially gives the following result.
     for n in num_transactions:
         filename = f"{testname}_{n}_{exponent}_{compression}.h5"
         rtimes.append(read_times(filename))
-        
+
     fig = plt.figure(figsize=(10,6))
-        
+
     plt.plot(num_transactions, rtimes, 'o-')
     selected = [0, 3, 4]
     plt.xticks(np.array(num_transactions)[selected])
@@ -498,9 +498,9 @@ file, as can be seen below.
 .. code:: python
 
     num_transactions = [50, 100, 500, 1000, 5000]
-    
+
     fig = plt.figure(figsize=(10,6))
-    
+
     for _ in range(20):
         vtimes = []
         for i in range(5):
@@ -508,7 +508,7 @@ file, as can be seen below.
             filename = f"{testname}_{n}_{exponent}_{compression}.h5"
             vtimes.append(read_version(filename, n))
         plt.plot(num_transactions, vtimes, '*-')
-    
+
     plt.xticks(np.array(num_transactions)[selected])
     plt.title(f"Time (in sec) to read random version for {testname}")
     plt.xlabel("Number of transactions")
@@ -532,9 +532,9 @@ Reading the first version from each file results in the following:
 .. code:: python
 
     num_transactions = [50, 100, 500, 1000, 5000]
-    
+
     fig = plt.figure(figsize=(10,6))
-    
+
     for _ in range(20):
         ftimes = []
         for i in range(5):
@@ -542,7 +542,7 @@ Reading the first version from each file results in the following:
             filename = f"{testname}_{n}_{exponent}_{compression}.h5"
             ftimes.append(read_first(filename))
         plt.plot(num_transactions, ftimes, '*-')
-        
+
     plt.xticks(np.array(num_transactions)[selected])
     plt.title(f"Time (in sec) to read first version for {testname}")
     plt.xlabel("Number of transactions")
@@ -559,9 +559,9 @@ unversioned file (black line in the plot) results in the following:
 .. code:: python
 
     num_transactions = [50, 100, 500, 1000, 5000]
-    
+
     fig = plt.figure(figsize=(10,6))
-    
+
     notimes = []
     for i in range(5):
         n = num_transactions[i]
@@ -569,15 +569,15 @@ unversioned file (black line in the plot) results in the following:
         notimes.append(read_no_versions(filename))
     plt.plot(num_transactions, notimes, 'ko-', ms=6)
     plt.legend(["No versions"], loc="upper left")
-    
+
     for _ in range(20):
         ltimes = []
         for i in range(5):
             n = num_transactions[i]
             filename = f"{testname}_{n}_{exponent}_{compression}.h5"
             ltimes.append(read_last(filename))
-        plt.plot(num_transactions, ltimes, '*-')    
-        
+        plt.plot(num_transactions, ltimes, '*-')
+
     plt.xticks(np.array(num_transactions)[selected])
     plt.title(f"Time (in sec) to read latest version for {testname}")
     plt.xlabel("Number of transactions")
@@ -617,13 +617,13 @@ Reading all versions from each file sequentially gives the following.
 
     rtimes = []
     num_transactions = [50, 100, 500, 1000, 5000]
-    
+
     fig = plt.figure(figsize=(10,6))
-    
+
     for n in num_transactions:
         filename = f"{testname}_{n}_{exponent}_{compression}.h5"
         rtimes.append(read_times(filename))
-        
+
     plt.plot(num_transactions, rtimes, 'o-')
     selected = [0, 2, 3, 4]
     plt.xticks(np.array(num_transactions)[selected])
@@ -648,9 +648,9 @@ similarly unnaffected by the number of existing versions in the file.
 .. code:: python
 
     num_transactions = [50, 100, 500, 1000, 5000]
-    
+
     fig = plt.figure(figsize=(10,6))
-    
+
     for _ in range(20):
         vtimes = []
         for i in range(5):
@@ -658,7 +658,7 @@ similarly unnaffected by the number of existing versions in the file.
             filename = f"{testname}_{n}_{exponent}_{compression}.h5"
             vtimes.append(read_version(filename, n))
         plt.plot(num_transactions, vtimes, '*-')
-    
+
     plt.xticks(np.array(num_transactions)[selected])
     plt.title(f"Time (in sec) to read random version for {testname}")
     plt.xlabel("Number of transactions")
@@ -681,9 +681,9 @@ Finally, let’s read the first version of each file.
 .. code:: python
 
     num_transactions = [50, 100, 500, 1000, 5000]
-    
+
     fig = plt.figure(figsize=(10,6))
-    
+
     for _ in range(20):
         ftimes = []
         for i in range(5):
@@ -691,7 +691,7 @@ Finally, let’s read the first version of each file.
             filename = f"{testname}_{n}_{exponent}_{compression}.h5"
             ftimes.append(read_first(filename))
         plt.plot(num_transactions, ftimes, '*-')
-        
+
     plt.xticks(np.array(num_transactions)[selected])
     plt.title(f"Time (in sec) to read first version for {testname}")
     plt.xlabel("Number of transactions")
@@ -708,9 +708,9 @@ in the following:
 .. code:: python
 
     num_transactions = [50, 100, 500, 1000, 5000]
-    
+
     fig = plt.figure(figsize=(10,6))
-    
+
     notimes = []
     for i in range(5):
         n = num_transactions[i]
@@ -718,15 +718,15 @@ in the following:
         notimes.append(read_no_versions(filename))
     plt.plot(num_transactions, notimes, 'ko-', ms=6)
     plt.legend(["No versions"], loc="upper left")
-    
+
     for _ in range(50):
         ltimes = []
         for i in range(5):
             n = num_transactions[i]
             filename = f"{testname}_{n}_{exponent}_{compression}.h5"
             ltimes.append(read_last(filename))
-        plt.plot(num_transactions, ltimes, '*-')    
-        
+        plt.plot(num_transactions, ltimes, '*-')
+
     plt.xticks(np.array(num_transactions)[selected])
     plt.title(f"Time (in sec) to read latest version for {testname}")
     plt.xlabel("Number of transactions")
@@ -775,9 +775,9 @@ are as follows.
     for n in num_transactions:
         filename = f"{testname}_{n}_{exponent}_None.h5"
         rtimes.append(read_times(filename))
-    
+
     fig = plt.figure(figsize=(10,6))
-        
+
     plt.plot(num_transactions, rtimes, 'o-')
     selected = [0, 1, 2, 3]
     plt.xticks(np.array(num_transactions)[selected])
@@ -804,16 +804,16 @@ file.
 .. code:: python
 
     num_transactions = [25, 50, 100, 500]
-    
+
     fig = plt.figure(figsize=(10,6))
     for _ in range(20):
         vtimes = []
         for i in range(4):
             n = num_transactions[i]
-            filename = f"{testname}_{n}_{exponent}_{compression}.h5"        
+            filename = f"{testname}_{n}_{exponent}_{compression}.h5"
             vtimes.append(read_version(filename, n))
         plt.plot(num_transactions, vtimes, '*-')
-    
+
     plt.xticks(num_transactions)
     plt.title(f"Time (in sec) to read random version for {testname}")
     plt.xlabel("Number of transactions")
@@ -836,7 +836,7 @@ following.
 .. code:: python
 
     num_transactions = [25, 50, 100, 500]
-    
+
     fig = plt.figure(figsize=(10,6))
     for _ in range(20):
         ftimes = []
@@ -845,7 +845,7 @@ following.
             filename = f"{testname}_{n}_{exponent}_{compression}.h5"
             ftimes.append(read_first(filename))
         plt.plot(num_transactions, ftimes, '*-')
-        
+
     plt.xticks(num_transactions)
     plt.title(f"Time (in sec) to read first version for {testname}")
     plt.xlabel("Number of transactions")
@@ -862,26 +862,26 @@ we have the following results:
 .. code:: python
 
     num_transactions = [25, 50, 100, 500]
-    
+
     fig = plt.figure(figsize=(10,6))
-    
+
     notimes = []
     for i in range(4):
         n = num_transactions[i]
         filename = f"{testname}_{n}_{exponent}_{compression}_no_versions.h5"
         notimes.append(read_no_versions(filename))
-    
+
     plt.plot(num_transactions, notimes, 'ko-', ms=6)
     plt.legend(["No versions"], loc="upper left")
-    
+
     for _ in range(20):
         ltimes = []
         for i in range(4):
             n = num_transactions[i]
             filename = f"{testname}_{n}_{exponent}_{compression}.h5"
             ltimes.append(read_last(filename))
-        plt.plot(num_transactions, ltimes, '*-')    
-        
+        plt.plot(num_transactions, ltimes, '*-')
+
     plt.xticks(np.array(num_transactions)[selected])
     plt.title(f"Time (in sec) to read latest version for {testname}")
     plt.xlabel("Number of transactions")
@@ -917,4 +917,3 @@ Summary
    stored at each version.
 -  Reading the first version is, in all tests, seemingly unaffected by
    the number of transactions involved in the file.
-

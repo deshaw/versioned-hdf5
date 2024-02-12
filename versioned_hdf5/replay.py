@@ -1,36 +1,40 @@
 from __future__ import annotations
-import gc
-from typing import List, Iterable, Union, Dict, Any, Optional
-from h5py import (
-    VirtualLayout,
-    h5s,
-    HLObject,
-    Dataset,
-    Group,
-    File,
-    __version__ as h5py_version
-)
-from h5py._hl.vds import VDSmap
-from h5py._hl.selections import select
-from h5py.h5i import get_name
 
-from ndindex import Slice, ChunkSize, Tuple
-from ndindex.ndindex import NDIndex
+import gc
+import posixpath
+from copy import deepcopy
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 import numpy as np
+from h5py import Dataset, File, Group, HLObject, VirtualLayout
+from h5py import __version__ as h5py_version
+from h5py import h5s
+from h5py._hl.selections import select
+from h5py._hl.vds import VDSmap
+from h5py.h5i import get_name
+from ndindex import ChunkSize, Slice, Tuple
+from ndindex.ndindex import NDIndex
 
-from copy import deepcopy
-import posixpath
-
-from .versions import all_versions
-from .wrappers import (InMemoryGroup, DatasetWrapper, InMemoryDataset,
-                       InMemoryArrayDataset, InMemorySparseDataset, _groups)
 from .api import VersionedHDF5File
-from .backend import (create_base_dataset, write_dataset,
-                      write_dataset_chunks, create_virtual_dataset,
-                      initialize)
-from .slicetools import spaceid_to_slice
+from .backend import (
+    create_base_dataset,
+    create_virtual_dataset,
+    initialize,
+    write_dataset,
+    write_dataset_chunks,
+)
 from .hashtable import Hashtable
+from .slicetools import spaceid_to_slice
+from .versions import all_versions
+from .wrappers import (
+    DatasetWrapper,
+    InMemoryArrayDataset,
+    InMemoryDataset,
+    InMemoryGroup,
+    InMemorySparseDataset,
+    _groups,
+)
+
 
 def recreate_dataset(f, name, newf, callback=None):
     """
@@ -58,7 +62,7 @@ def recreate_dataset(f, name, newf, callback=None):
     if isinstance(f, VersionedHDF5File):
         f = f.f
 
-    raw_data = f['_version_data'][name]['raw_data']
+    raw_data = f["_version_data"][name]["raw_data"]
 
     dtype = raw_data.dtype
     chunks = raw_data.chunks
@@ -68,9 +72,10 @@ def recreate_dataset(f, name, newf, callback=None):
 
     first = True
     for version_name in all_versions(f):
-        if name in f['_version_data/versions'][version_name]:
-            group = InMemoryGroup(f['_version_data/versions'][version_name].id,
-                                  _committed=True)
+        if name in f["_version_data/versions"][version_name]:
+            group = InMemoryGroup(
+                f["_version_data/versions"][version_name].id, _committed=True
+            )
 
             dataset = group[name]
             if callback:
@@ -86,14 +91,16 @@ def recreate_dataset(f, name, newf, callback=None):
             fillvalue = dataset.fillvalue
             attrs = dataset.attrs
             if first:
-                create_base_dataset(newf, name,
-                                    data=np.empty((0,)*len(dataset.shape),
-                                                  dtype=dtype),
-                                    dtype=dtype,
-                                    chunks=chunks,
-                                    compression=compression,
-                                    compression_opts=compression_opts,
-                                    fillvalue=fillvalue)
+                create_base_dataset(
+                    newf,
+                    name,
+                    data=np.empty((0,) * len(dataset.shape), dtype=dtype),
+                    dtype=dtype,
+                    chunks=chunks,
+                    compression=compression,
+                    compression_opts=compression_opts,
+                    fillvalue=fillvalue,
+                )
                 first = False
             # Read in all the chunks of the dataset (we can't assume the new
             # hash table has the raw data in the same locations, even if the
@@ -106,8 +113,16 @@ def recreate_dataset(f, name, newf, callback=None):
                 slices = write_dataset_chunks(newf, name, dataset.data_dict)
             else:
                 slices = write_dataset(newf, name, dataset)
-            create_virtual_dataset(newf, version_name, name, shape, slices,
-                                   attrs=attrs, fillvalue=fillvalue)
+            create_virtual_dataset(
+                newf,
+                version_name,
+                name,
+                shape,
+                slices,
+                attrs=attrs,
+                fillvalue=fillvalue,
+            )
+
 
 def tmp_group(f):
     """
@@ -116,17 +131,18 @@ def tmp_group(f):
     if isinstance(f, VersionedHDF5File):
         f = f.f
 
-    if '__tmp__' not in f['_version_data']:
-        tmp = f['_version_data'].create_group('__tmp__')
+    if "__tmp__" not in f["_version_data"]:
+        tmp = f["_version_data"].create_group("__tmp__")
         initialize(tmp)
         for version_name in all_versions(f):
-            group = f['_version_data/versions'][version_name]
-            new_group = tmp['_version_data/versions'].create_group(version_name)
+            group = f["_version_data/versions"][version_name]
+            new_group = tmp["_version_data/versions"].create_group(version_name)
             for k, v in group.attrs.items():
                 new_group.attrs[k] = v
     else:
-        tmp = f['_version_data/__tmp__']
+        tmp = f["_version_data/__tmp__"]
     return tmp
+
 
 # See InMemoryDataset.fillvalue. In h5py3 variable length strings use None
 # for the h5py fillvalue, but require a string fillvalue for NumPy.
@@ -150,13 +166,12 @@ def _get_np_fillvalue(data: Dataset) -> Any:
     if data.fillvalue is not None:
         return data.fillvalue
     if data.dtype.metadata:
-         if 'vlen' in data.dtype.metadata:
-             if (h5py_version.startswith('3') and
-                 data.dtype.metadata['vlen'] == str):
-                 return bytes()
-             return data.dtype.metadata['vlen']()
-         elif 'h5py_encoding' in data.dtype.metadata:
-             return data.dtype.type()
+        if "vlen" in data.dtype.metadata:
+            if h5py_version.startswith("3") and data.dtype.metadata["vlen"] == str:
+                return bytes()
+            return data.dtype.metadata["vlen"]()
+        elif "h5py_encoding" in data.dtype.metadata:
+            return data.dtype.type()
     return np.zeros((), dtype=data.dtype)[()]
 
 
@@ -193,15 +208,15 @@ def _recreate_raw_data(
 
     for version in vf.versions:
         if version not in versions_to_delete and name in vf[version]:
-            dataset = f['_version_data/versions'][version][name]
+            dataset = f["_version_data/versions"][version][name]
 
             if dataset.is_virtual:
                 for i in dataset.virtual_sources():
                     chunks_to_keep.add(spaceid_to_slice(i.src_space))
 
-    raw_data = f['_version_data'][name]['raw_data']
+    raw_data = f["_version_data"][name]["raw_data"]
     chunks = ChunkSize(raw_data.chunks)
-    new_shape = (len(chunks_to_keep)*chunks[0], *chunks[1:])
+    new_shape = (len(chunks_to_keep) * chunks[0], *chunks[1:])
 
     fillvalue = _get_np_fillvalue(raw_data)
     # Guard against existing _tmp_raw_data
@@ -211,12 +226,11 @@ def _recreate_raw_data(
 
     raw_data_chunks_map = {}
     for new_chunk, chunk in zip(chunks.indices(new_shape), chunks_to_keep):
-
         # Truncate the new slice if it isn't a full chunk
         to_set_fillvalue = []
         new_truncated = []
         for i in range(len(new_chunk.args)):
-            end = new_chunk.args[i].start+len(chunk.args[i])
+            end = new_chunk.args[i].start + len(chunk.args[i])
             new_truncated.append(Slice(new_chunk.args[i].start, end))
 
             # If one dimension is truncated, create slices into
@@ -225,19 +239,15 @@ def _recreate_raw_data(
                 to_fill = []
                 for j in range(len(new_chunk.args)):
                     if j == i:
-                        to_fill.append(
-                            Slice(end, new_chunk.args[i].stop)
-                        )
+                        to_fill.append(Slice(end, new_chunk.args[i].stop))
                     else:
                         to_fill.append(
                             Slice(
                                 new_chunk.args[j].start,
-                                new_chunk.args[j].start+len(chunk.args[j])
+                                new_chunk.args[j].start + len(chunk.args[j]),
                             )
                         )
-                to_set_fillvalue.append(
-                    Tuple(*to_fill)
-                )
+                to_set_fillvalue.append(Tuple(*to_fill))
 
         new_truncated = Tuple(*new_truncated)
         raw_data[new_truncated.raw] = raw_data[chunk.raw]
@@ -262,8 +272,8 @@ def _delete_tmp_raw_data(f: File, name: str):
     name : str
         Name of the dataset where _tmp_raw_data is to be removed
     """
-    if '_tmp_raw_data' in f['_version_data'][name]:
-        del f['_version_data'][name]['_tmp_raw_data']
+    if "_tmp_raw_data" in f["_version_data"][name]:
+        del f["_version_data"][name]["_tmp_raw_data"]
 
 
 def _recreate_hashtable(f, name, raw_data_chunks_map, tmp=False):
@@ -277,7 +287,7 @@ def _recreate_hashtable(f, name, raw_data_chunks_map, tmp=False):
     # We could just reconstruct the hashtable with from_raw_data, but that is
     # slow, so instead we recreate it manually from the old hashable and the
     # raw_data_chunks_map.
-    new_hash_table = Hashtable(f, name, hash_table_name='_tmp_hash_table')
+    new_hash_table = Hashtable(f, name, hash_table_name="_tmp_hash_table")
     old_inverse = Hashtable(f, name).inverse()
 
     for old_chunk, new_chunk in raw_data_chunks_map.items():
@@ -291,8 +301,9 @@ def _recreate_hashtable(f, name, raw_data_chunks_map, tmp=False):
     new_hash_table.write()
 
     if not tmp:
-        del f['_version_data'][name]['hash_table']
-        f['_version_data'][name].move('_tmp_hash_table', 'hash_table')
+        del f["_version_data"][name]["hash_table"]
+        f["_version_data"][name].move("_tmp_hash_table", "hash_table")
+
 
 def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False):
     """
@@ -308,23 +319,23 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
     datasets are replaced.
 
     """
-    raw_data = f['_version_data'][name]['raw_data']
+    raw_data = f["_version_data"][name]["raw_data"]
 
     for version_name in versions:
-        if name not in f['_version_data/versions'][version_name]:
+        if name not in f["_version_data/versions"][version_name]:
             continue
 
-        group = f['_version_data/versions'][version_name]
+        group = f["_version_data/versions"][version_name]
         dataset = group[name]
-
 
         # See the comments in create_virtual_dataset
         layout = VirtualLayout(dataset.shape, dtype=dataset.dtype)
-        layout_has_sources = hasattr(layout, 'sources')
+        layout_has_sources = hasattr(layout, "sources")
 
         if not layout_has_sources:
             from h5py import _selector
-            layout._src_filenames.add(b'.')
+
+            layout._src_filenames.add(b".")
             space = h5s.create_simple(dataset.shape)
             selector = _selector.Selector(space)
 
@@ -333,13 +344,15 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
             virtual_sources = dataset.virtual_sources()
             for vmap in virtual_sources:
                 vspace, fname, dset_name, src_space = vmap
-                fname = fname.encode('utf-8')
-                assert fname == b'.', fname
+                fname = fname.encode("utf-8")
+                assert fname == b".", fname
 
                 vslice = spaceid_to_slice(vspace)
                 src_slice = spaceid_to_slice(src_space)
                 if src_slice not in raw_data_chunks_map:
-                    raise ValueError(f"Could not find the chunk for {vslice} ({src_slice} in the old raw dataset) for {name!r} in {version_name!r}")
+                    raise ValueError(
+                        f"Could not find the chunk for {vslice} ({src_slice} in the old raw dataset) for {name!r} in {version_name!r}"
+                    )
                 new_src_slice = raw_data_chunks_map[src_slice]
 
                 if not layout_has_sources:
@@ -348,7 +361,7 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
 
                     sel = selector.make_selection(vslice.raw)
                     layout.dcpl.set_virtual(
-                        sel.id, b'.', raw_data.name.encode('utf-8'), vs_sel.id
+                        sel.id, b".", raw_data.name.encode("utf-8"), vs_sel.id
                     )
                 else:
                     vs_sel = select(raw_data.shape, new_src_slice.raw, None)
@@ -357,19 +370,25 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
                     layout.sources.append(new_vmap)
 
         head, tail = posixpath.split(name)
-        tmp_name = '_tmp_' + tail
+        tmp_name = "_tmp_" + tail
         tmp_path = posixpath.join(head, tmp_name)
         dtype = raw_data.dtype
         fillvalue = dataset.fillvalue
-        if dtype.metadata and ('vlen' in dtype.metadata or 'h5py_encoding' in dtype.metadata):
+        if dtype.metadata and (
+            "vlen" in dtype.metadata or "h5py_encoding" in dtype.metadata
+        ):
             # Variable length string dtype
             # (https://h5py.readthedocs.io/en/2.10.0/strings.html). Setting the
             # fillvalue in this case doesn't work
             # (https://github.com/h5py/h5py/issues/941).
-            if fillvalue not in [0, '', b'', None]:
-                raise ValueError("Non-default fillvalue not supported for variable length strings")
+            if fillvalue not in [0, "", b"", None]:
+                raise ValueError(
+                    "Non-default fillvalue not supported for variable length strings"
+                )
             fillvalue = None
-        tmp_dataset = group.create_virtual_dataset(tmp_path, layout, fillvalue=fillvalue)
+        tmp_dataset = group.create_virtual_dataset(
+            tmp_path, layout, fillvalue=fillvalue
+        )
 
         for key, val in dataset.attrs.items():
             tmp_dataset.attrs[key] = val
@@ -398,7 +417,7 @@ def _is_empty(f: VersionedHDF5File, name: str, version: str) -> bool:
     bool
         True if the dataset is empty, False otherwise
     """
-    return not f['_version_data/versions'][version][name].is_virtual
+    return not f["_version_data/versions"][version][name].is_virtual
 
 
 def _exists_in_version(f: VersionedHDF5File, name: str, version: str) -> bool:
@@ -418,7 +437,7 @@ def _exists_in_version(f: VersionedHDF5File, name: str, version: str) -> bool:
     bool
         True if the dataset exists in the version, False otherwise
     """
-    return name in f['_version_data/versions'][version]
+    return name in f["_version_data/versions"][version]
 
 
 def _all_extant_are_empty(
@@ -452,10 +471,10 @@ def _all_extant_are_empty(
 
 def _delete_dataset(f: VersionedHDF5File, name: str, versions_to_delete: Iterable[str]):
     """Delete the given dataset from the versions."""
-    version_data = f['_version_data']
-    versions = version_data['versions']
+    version_data = f["_version_data"]
+    versions = version_data["versions"]
 
-    if name == 'versions':
+    if name == "versions":
         return
 
     versions_to_keep = set(versions) - set(versions_to_delete)
@@ -480,7 +499,7 @@ def _delete_dataset(f: VersionedHDF5File, name: str, versions_to_delete: Iterabl
     _recreate_virtual_dataset(f, name, versions_to_keep, raw_data_chunks_map)
 
 
-def _walk(g: HLObject, prefix: str = '') -> List[str]:
+def _walk(g: HLObject, prefix: str = "") -> List[str]:
     """Traverse the object tree, returning all `raw_data` datasets.
 
     We use this instead of version_data.visit(delete_dataset) because
@@ -502,16 +521,16 @@ def _walk(g: HLObject, prefix: str = '') -> List[str]:
     for name in g:
         obj = g[name]
         if isinstance(obj, Group):
-            if 'raw_data' in obj:
+            if "raw_data" in obj:
                 datasets.append(prefix + name)
             else:
-                datasets.extend(_walk(obj, prefix + name + '/'))
+                datasets.extend(_walk(obj, prefix + name + "/"))
 
     return datasets
 
+
 def delete_versions(
-    f: Union[VersionedHDF5File, File],
-    versions_to_delete: Union[str, Iterable[str]]
+    f: Union[VersionedHDF5File, File], versions_to_delete: Union[str, Iterable[str]]
 ):
     """Completely delete the given versions from a file
 
@@ -522,22 +541,22 @@ def delete_versions(
     if isinstance(f, VersionedHDF5File):
         f = f.f
 
-    version_data = f['_version_data']
+    version_data = f["_version_data"]
     if isinstance(versions_to_delete, str):
         versions_to_delete = [versions_to_delete]
 
-    versions = version_data['versions']
+    versions = version_data["versions"]
 
-    if '__first_version__' in versions_to_delete:
+    if "__first_version__" in versions_to_delete:
         raise ValueError("Cannot delete first version")
 
     for version in versions_to_delete:
         if version not in versions:
             raise ValueError(f"Version {version!r} does not exist")
 
-    current_version = versions.attrs['current_version']
+    current_version = versions.attrs["current_version"]
     while current_version in versions_to_delete:
-        current_version = versions[current_version].attrs['prev_version']
+        current_version = versions[current_version].attrs["prev_version"]
 
     for name in _walk(version_data):
         _delete_dataset(f, name, versions_to_delete)
@@ -545,18 +564,21 @@ def delete_versions(
     # find new prev_version which was not deleted
     versions_to_delete_set = set(versions_to_delete)
     for version_name in versions:
-        if version_name == '__first_version__' or version_name in versions_to_delete_set:
+        if (
+            version_name == "__first_version__"
+            or version_name in versions_to_delete_set
+        ):
             continue
-        prev_version = versions[version_name].attrs['prev_version']
+        prev_version = versions[version_name].attrs["prev_version"]
         while prev_version in versions_to_delete_set:
             prev_version = _get_parent(versions, prev_version)
-        versions[version_name].attrs['prev_version'] = prev_version
+        versions[version_name].attrs["prev_version"] = prev_version
 
     # delete the version groups to delete
     for version_name in versions_to_delete:
         del versions[version_name]
 
-    versions.attrs['current_version'] = current_version
+    versions.attrs["current_version"] = current_version
 
     # Collect garbage here to handle intermittent slicing
     # issue; see https://github.com/deshaw/versioned-hdf5/pull/277
@@ -565,14 +587,23 @@ def delete_versions(
 
 
 def _get_parent(versions, version_name):
-    return versions[version_name].attrs['prev_version']
+    return versions[version_name].attrs["prev_version"]
 
 
 # Backwards compatibility
 delete_version = delete_versions
 
-def modify_metadata(f, dataset_name, *, chunks=None, compression=None,
-                    compression_opts=None, dtype=None, fillvalue=None):
+
+def modify_metadata(
+    f,
+    dataset_name,
+    *,
+    chunks=None,
+    compression=None,
+    compression_opts=None,
+    dtype=None,
+    fillvalue=None,
+):
     """
     Modify metadata for a versioned dataset in-place.
 
@@ -609,19 +640,22 @@ def modify_metadata(f, dataset_name, *, chunks=None, compression=None,
         if isinstance(dataset, DatasetWrapper):
             dataset = dataset.dataset
 
-        name = dataset.name[len(dataset.parent.name)+1:]
+        name = dataset.name[len(dataset.parent.name) + 1 :]
         if isinstance(dataset, (InMemoryDataset, InMemoryArrayDataset)):
-            new_dataset = InMemoryArrayDataset(name, dataset[()], tmp_parent,
-                                               fillvalue=_fillvalue,
-                                               chunks=_chunks)
+            new_dataset = InMemoryArrayDataset(
+                name, dataset[()], tmp_parent, fillvalue=_fillvalue, chunks=_chunks
+            )
             if _fillvalue:
                 new_dataset[new_dataset == dataset.fillvalue] = _fillvalue
         elif isinstance(dataset, InMemorySparseDataset):
-            new_dataset = InMemorySparseDataset(name, shape=dataset.shape,
-                                                dtype=dataset.dtype,
-                                                parent=tmp_parent,
-                                                chunks=_chunks,
-                                                fillvalue=_fillvalue)
+            new_dataset = InMemorySparseDataset(
+                name,
+                shape=dataset.shape,
+                dtype=dataset.dtype,
+                parent=tmp_parent,
+                chunks=_chunks,
+                fillvalue=_fillvalue,
+            )
             new_dataset.data_dict = deepcopy(dataset.data_dict)
             if _fillvalue:
                 for a in new_dataset.data_dict.values():
@@ -640,7 +674,7 @@ def modify_metadata(f, dataset_name, *, chunks=None, compression=None,
         return new_dataset
 
     newf = tmp_group(f)
-    tmp_parent = InMemoryGroup(newf.create_group('__tmp_parent__').id)
+    tmp_parent = InMemoryGroup(newf.create_group("__tmp_parent__").id)
 
     try:
         recreate_dataset(f, dataset_name, newf, callback=callback)
@@ -649,6 +683,7 @@ def modify_metadata(f, dataset_name, *, chunks=None, compression=None,
     finally:
         del newf[newf.name]
 
+
 def swap(old, new):
     """
     Swap every dataset in old with the corresponding one in new
@@ -656,6 +691,7 @@ def swap(old, new):
     Datasets in old that aren't in new are ignored.
     """
     move_names = []
+
     def _move(name, object):
         if isinstance(object, Dataset):
             if name in new:
@@ -671,13 +707,13 @@ def swap(old, new):
             newd = new[name]
 
             def _normalize(path):
-                return path if path.endswith('/') else path + '/'
+                return path if path.endswith("/") else path + "/"
 
             def _replace_prefix(path, name1, name2):
                 """Replace the prefix name1 with name2 in path"""
                 name1 = _normalize(name1)
                 name2 = _normalize(name2)
-                return name2 + path[len(name1):]
+                return name2 + path[len(name1) :]
 
             def _new_vds_layout(d, name1, name2):
                 """Recreate a VirtualLayout for d, replacing name1 with name2 in the source dset name"""
@@ -687,15 +723,16 @@ def swap(old, new):
                     vspace, fname, dset_name, src_space = vmap
                     assert dset_name.startswith(name1)
                     dset_name = _replace_prefix(dset_name, name1, name2)
-                    fname = fname.encode('utf-8')
+                    fname = fname.encode("utf-8")
                     new_vmap = VDSmap(vspace, fname, dset_name, src_space)
                     # h5py 3.3 changed the VirtualLayout code. See
                     # https://github.com/h5py/h5py/pull/1905.
-                    if hasattr(layout, 'sources'):
+                    if hasattr(layout, "sources"):
                         layout.sources.append(new_vmap)
                     else:
-                        layout.dcpl.set_virtual(vspace, fname,
-                                                dset_name.encode('utf-8'), src_space)
+                        layout.dcpl.set_virtual(
+                            vspace, fname, dset_name.encode("utf-8"), src_space
+                        )
                 return layout
 
             old_layout = _new_vds_layout(oldd, old.name, new.name)
@@ -720,10 +757,13 @@ def swap(old, new):
             # Invalidate any InMemoryGroups that point to these groups
             delete = []
             for bind in _groups:
-                if get_name(bind) and (get_name(bind).startswith(get_name(old.id)) or get_name(bind).startswith(get_name(new.id))):
+                if get_name(bind) and (
+                    get_name(bind).startswith(get_name(old.id))
+                    or get_name(bind).startswith(get_name(new.id))
+                ):
                     delete.append(bind)
             for d in delete:
                 del _groups[d]
-            old.move(name, posixpath.join(new.name, name + '__tmp'))
+            old.move(name, posixpath.join(new.name, name + "__tmp"))
             new.move(name, posixpath.join(old.name, name))
-            new.move(name + '__tmp', name)
+            new.move(name + "__tmp", name)

@@ -1,0 +1,60 @@
+exclude: |
+  (?x)^(
+    analysis/|
+    benchmarks/|
+    test_data/|
+    utils/|
+    github_deploy_key_deshaw_versioned_hdf5.enc|
+    _versioneer.py|
+    benchmarks_install.py|
+    versioned_hdf5/_version.py
+  )
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-added-large-files
+      - id: check-ast
+      - id: check-json
+        exclude: |
+          (?x)^(
+            # json5 comments prevent parsing
+            asv.conf.json
+          )
+      - id: check-toml
+      - id: mixed-line-ending
+
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.0.3
+    hooks:
+      - id: prettier
+        files: 'docs/'
+        types_or: [javascript, ts, tsx, html, css]
+
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v1.7.0
+  #   hooks:
+  #     - id: mypy
+  #       args: ['--follow-imports=skip', '--ignore-missing-imports']
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.2
+    hooks:
+      # - id: ruff
+      - id: ruff-format
+
+  # - repo: https://github.com/pre-commit/pygrep-hooks
+  #   rev: v1.10.0
+  #   hooks:
+  #     - id: rst-backticks
+  #     - id: rst-directive-colons
+  #     - id: rst-inline-touching-normal
+  #     - id: python-no-log-warn
+  #     - id: python-check-mock-methods

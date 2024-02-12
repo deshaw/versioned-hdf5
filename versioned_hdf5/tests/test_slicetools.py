@@ -1,13 +1,13 @@
 import numpy as np
-from numpy.testing import assert_equal
-
 from h5py._hl.selections import Selection
+from numpy.testing import assert_equal
 
 from ..slicetools import spaceid_to_slice
 
+
 def test_spaceid_to_slice(h5file):
     shape = 10
-    a = h5file.create_dataset('a', data=np.arange(shape))
+    a = h5file.create_dataset("a", data=np.arange(shape))
 
     for start in range(0, shape):
         for count in range(0, shape):
@@ -19,8 +19,7 @@ def test_spaceid_to_slice(h5file):
                         continue
 
                     spaceid = a.id.get_space()
-                    spaceid.select_hyperslab((start,), (count,),
-                                             (stride,), (block,))
+                    spaceid.select_hyperslab((start,), (count,), (stride,), (block,))
                     sel = Selection((shape,), spaceid)
                     try:
                         a[sel]

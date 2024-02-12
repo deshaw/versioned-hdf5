@@ -12,14 +12,15 @@
 #
 import os
 import sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
 # -- Project information -----------------------------------------------------
 
-project = 'Versioned HDF5'
-copyright = '2020, Quansight'
-author = 'Quansight'
+project = "Versioned HDF5"
+copyright = "2020, Quansight"
+author = "Quansight"
 
 # Enable warnings for all bad cross references. These are turned into errors
 # with the -W flag in the Makefile.
@@ -31,29 +32,27 @@ nitpicky = True
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    'myst_parser',
-    'sphinx.ext.autodoc',
-    'sphinx.ext.graphviz',
-    'sphinx.ext.intersphinx',
+    "myst_parser",
+    "sphinx.ext.autodoc",
+    "sphinx.ext.graphviz",
+    "sphinx.ext.intersphinx",
 ]
 
-graphviz_output_format = 'svg'
+graphviz_output_format = "svg"
 
 # Add any paths that contain templates here, relative to this directory.
-templates_path = ['_templates']
+templates_path = ["_templates"]
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
-autodoc_type_aliases = {
-    "File": "h5py.File"
-}
+autodoc_type_aliases = {"File": "h5py.File"}
 
 intersphinx_mapping = {
-    'python': ('https://docs.python.org/3', None),
-    'h5py': ('https://docs.h5py.org/en/stable', None),
+    "python": ("https://docs.python.org/3", None),
+    "h5py": ("https://docs.h5py.org/en/stable", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
 }
 
@@ -62,35 +61,31 @@ intersphinx_mapping = {
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = 'alabaster'
+html_theme = "alabaster"
 
 html_theme_options = {
-    'github_user': 'deshaw',
-    'github_repo': 'versioned-hdf5',
-    'github_banner': False, # https://github.com/bitprophet/alabaster/issues/166
-    'github_button': False,
+    "github_user": "deshaw",
+    "github_repo": "versioned-hdf5",
+    "github_banner": False,  # https://github.com/bitprophet/alabaster/issues/166
+    "github_button": False,
     # 'logo_name': True,
-    'travis_button': False,
-    'show_related': True,
-
+    "travis_button": False,
+    "show_related": True,
     # Remove gray background from inline code
-    'code_bg': '#FFFFFF',
-
+    "code_bg": "#FFFFFF",
     # Originally 940px
-    'page_width': '1000px',
-
+    "page_width": "1000px",
     # Fonts
-    'font_family': "Palatino, 'goudy old style', 'minion pro', 'bell mt', Georgia, 'Hiragino Mincho Pro', serif",
-    'font_size': '18px',
-    'code_font_family': "'Menlo', 'DejaVu Sans Mono', 'Consolas', 'Bitstream Vera Sans Mono', monospace",
-    'code_font_size': '0.85em',
-
+    "font_family": "Palatino, 'goudy old style', 'minion pro', 'bell mt', Georgia, 'Hiragino Mincho Pro', serif",
+    "font_size": "18px",
+    "code_font_family": "'Menlo', 'DejaVu Sans Mono', 'Consolas', 'Bitstream Vera Sans Mono', monospace",
+    "code_font_size": "0.85em",
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
+html_static_path = ["_static"]
 
 # Lets us use single backticks for code
-default_role = 'code'
+default_role = "code"

@@ -4,28 +4,33 @@ Public API functions
 Everything outside of this file is considered internal API and is subject to
 change.
 """
-import logging
-import numpy as np
-from typing import Set, Optional, List, Tuple, Dict
-import ndindex
-import h5py
-
-from contextlib import contextmanager
 import datetime
+import logging
+from contextlib import contextmanager
+from typing import Dict, List, Optional, Set, Tuple
 
-from .backend import initialize, DATA_VERSION, CORRUPT_DATA_VERSIONS
-from .versions import (create_version_group, commit_version,
-                       get_version_by_timestamp, get_nth_previous_version,
-                       set_current_version, all_versions, delete_version, )
-from .wrappers import (
-    InMemoryGroup,
-    InMemoryDataset,
-    InMemoryArrayDataset,
-    DatasetWrapper
-)
+import h5py
+import ndindex
+import numpy as np
+
+from .backend import CORRUPT_DATA_VERSIONS, DATA_VERSION, initialize
 from .hashtable import Hashtable
 from .slicetools import spaceid_to_slice
-
+from .versions import (
+    all_versions,
+    commit_version,
+    create_version_group,
+    delete_version,
+    get_nth_previous_version,
+    get_version_by_timestamp,
+    set_current_version,
+)
+from .wrappers import (
+    DatasetWrapper,
+    InMemoryArrayDataset,
+    InMemoryDataset,
+    InMemoryGroup,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -71,34 +76,44 @@ class VersionedHDF5File:
     to close the `VersionedHDF5File` object (note that the `h5py` file object
     should be closed separately.)
     """
+
     def __init__(self, f):
         self.f = f
-        if '_version_data' not in f:
+        if "_version_data" not in f:
             initialize(f)
         else:
             # This is not a new file; check data version identifier for compatibility
             if self.data_version_identifier < DATA_VERSION:
                 if self.data_version_identifier in CORRUPT_DATA_VERSIONS:
                     raise ValueError(
-                        f'Versioned Hdf5 file {f.filename} has data_version {self.data_version_identifier}, '
-                        'which has corrupted hash_tables. '
-                        'See https://github.com/deshaw/versioned-hdf5/issues/256 and '
-                        'https://github.com/deshaw/versioned-hdf5/issues/288 for details. '
-                        'You should recreate the file from scratch. '
-                        'In an emergency you could also rebuild the hash tables by calling '
-                        f'with h5py.File({f.filename!r}) as f: VersionedHDF5File(f).rebuild_hashtables() and use '
-                        f'delete_versions to delete all versions after the upgrade to '
-                        f'data_version == {self.data_version_identifier} if you can identify them.')
+                        f"Versioned Hdf5 file {f.filename} has data_version {self.data_version_identifier}, "
+                        "which has corrupted hash_tables. "
+                        "See https://github.com/deshaw/versioned-hdf5/issues/256 and "
+                        "https://github.com/deshaw/versioned-hdf5/issues/288 for details. "
+                        "You should recreate the file from scratch. "
+                        "In an emergency you could also rebuild the hash tables by calling "
+                        f"with h5py.File({f.filename!r}) as f: VersionedHDF5File(f).rebuild_hashtables() and use "
+                        f"delete_versions to delete all versions after the upgrade to "
+                        f"data_version == {self.data_version_identifier} if you can identify them."
+                    )
                 if any(self._find_object_dtype_data_groups()):
-                    logger.warning('Detected dtype="O" arrays which are not reused when creating new versions. '
-                                   'See https://github.com/deshaw/versioned-hdf5/issues/256 for details. '
-                                   'Rebuilding hash tables for %s is recommended by calling '
-                                   'with h5py.File(%r) as f: VersionedHDF5File(f).rebuild_object_dtype_hashtables().',
-                                   f.filename, f.filename)
+                    logger.warning(
+                        'Detected dtype="O" arrays which are not reused when creating new versions. '
+                        "See https://github.com/deshaw/versioned-hdf5/issues/256 for details. "
+                        "Rebuilding hash tables for %s is recommended by calling "
+                        "with h5py.File(%r) as f: VersionedHDF5File(f).rebuild_object_dtype_hashtables().",
+                        f.filename,
+                        f.filename,
+                    )
                 else:
-                    if f.mode == 'r+':
-                        logger.info('Ugprading data_version to %d, no action required.', DATA_VERSION)
-                        self.f['_version_data']['versions'].attrs['data_version'] = DATA_VERSION
+                    if f.mode == "r+":
+                        logger.info(
+                            "Ugprading data_version to %d, no action required.",
+                            DATA_VERSION,
+                        )
+                        self.f["_version_data"]["versions"].attrs[
+                            "data_version"
+                        ] = DATA_VERSION
 
             elif self.data_version_identifier > DATA_VERSION:
                 raise ValueError(
@@ -112,11 +127,11 @@ class VersionedHDF5File:
     @property
     def _versions(self):
         """Shorthand reference to the versions group of the file."""
-        return self.f['_version_data']['versions']
+        return self.f["_version_data"]["versions"]
 
     @property
     def _version_data(self):
-        return self.f['_version_data']
+        return self.f["_version_data"]
 
     @property
     def closed(self):
@@ -135,7 +150,7 @@ class VersionedHDF5File:
         :func:`stage_version`, and is also used for negative integer version
         indexing (the current version is `self[0]`).
         """
-        return self._versions.attrs['current_version']
+        return self._versions.attrs["current_version"]
 
     @property
     def data_version_identifier(self) -> str:
@@ -152,7 +167,7 @@ class VersionedHDF5File:
         str
             The data version identifier string
         """
-        return self.f['_version_data/versions'].attrs.get('data_version', 1)
+        return self.f["_version_data/versions"].attrs.get("data_version", 1)
 
     @data_version_identifier.setter
     def data_version_identifier(self, version: int):
@@ -163,7 +178,7 @@ class VersionedHDF5File:
         version : int
             Version value to write to the file.
         """
-        self.f['_version_data/versions'].attrs['data_version'] = version
+        self.f["_version_data/versions"].attrs["data_version"] = version
 
     @current_version.setter
     def current_version(self, version_name):
@@ -171,28 +186,34 @@ class VersionedHDF5File:
         self._version_cache.clear()
 
     def get_version_by_name(self, version):
-        if version.startswith('/'):
-            raise ValueError("Versions cannot start with '/'. VersionedHDF5File should not be used to access the top-level of an h5py File.")
+        if version.startswith("/"):
+            raise ValueError(
+                "Versions cannot start with '/'. VersionedHDF5File should not be used to access the top-level of an h5py File."
+            )
 
-        if version == '':
-            version = '__first_version__'
+        if version == "":
+            version = "__first_version__"
 
         if version not in self._versions:
             raise KeyError(f"Version {version!r} not found")
 
         g = self._versions[version]
-        if not g.attrs['committed']:
-            raise ValueError("Version groups cannot accessed from the VersionedHDF5File object before they are committed.")
-        if self.f.file.mode == 'r':
+        if not g.attrs["committed"]:
+            raise ValueError(
+                "Version groups cannot accessed from the VersionedHDF5File object before they are committed."
+            )
+        if self.f.file.mode == "r":
             return g
         return InMemoryGroup(g._id, _committed=True)
 
     def get_version_by_timestamp(self, timestamp, exact=False):
         version = get_version_by_timestamp(self.f, timestamp, exact=exact)
         g = self._versions[version]
-        if not g.attrs['committed']:
-            raise ValueError("Version groups cannot accessed from the VersionedHDF5File object before they are committed.")
-        if self.f.file.mode == 'r':
+        if not g.attrs["committed"]:
+            raise ValueError(
+                "Version groups cannot accessed from the VersionedHDF5File object before they are committed."
+            )
+        if self.f.file.mode == "r":
             return g
         return InMemoryGroup(g._id, _committed=True)
 
@@ -232,7 +253,11 @@ class VersionedHDF5File:
             raise NotImplementedError("del is only supported for string keys")
         if item not in self._versions:
             raise KeyError(item)
-        new_current = self.current_version if item != self.current_version else self[item].attrs['prev_version']
+        new_current = (
+            self.current_version
+            if item != self.current_version
+            else self[item].attrs["prev_version"]
+        )
         delete_version(self.f, item, new_current)
         self._version_cache.clear()
 
@@ -240,8 +265,9 @@ class VersionedHDF5File:
         return all_versions(self.f, include_first=False)
 
     @contextmanager
-    def stage_version(self, version_name: str, prev_version=None,
-                      make_current=True, timestamp=None):
+    def stage_version(
+        self, version_name: str, prev_version=None, make_current=True, timestamp=None
+    ):
         """
         Return a context manager to stage a new version
 
@@ -273,17 +299,20 @@ class VersionedHDF5File:
         if self.closed:
             raise ValueError("File is closed")
         old_current = self.current_version
-        group = create_version_group(self.f, version_name,
-                                     prev_version=prev_version)
+        group = create_version_group(self.f, version_name, prev_version=prev_version)
 
         try:
             yield group
             group.close()
-            commit_version(group, group.datasets(), make_current=make_current,
-                           chunks=group.chunks,
-                           compression=group.compression,
-                           compression_opts=group.compression_opts,
-                           timestamp=timestamp)
+            commit_version(
+                group,
+                group.datasets(),
+                make_current=make_current,
+                chunks=group.chunks,
+                compression=group.compression,
+                compression_opts=group.compression_opts,
+                timestamp=timestamp,
+            )
 
             self._log_version_diff_stats(old_current, self.current_version)
 
@@ -310,8 +339,10 @@ class VersionedHDF5File:
         if self.closed:
             return "<Closed VersionedHDF5File>"
         else:
-            return f"<VersionedHDF5File object \"{self.f.filename}\" (mode" \
-                   f" {self.f.mode})>"
+            return (
+                f'<VersionedHDF5File object "{self.f.filename}" (mode'
+                f" {self.f.mode})>"
+            )
 
     def _get_hashes(self, name: str) -> Set[bytes]:
         """Get a set of hashes for the chunks in the dataset.
@@ -389,18 +420,18 @@ class VersionedHDF5File:
     def _find_all_data_groups(self):
         # Find all data groups excluding '/_version_data/versions'
         data_groups = []
-        for name, group in self.f['_version_data'].items():
-            if name != 'versions':
+        for name, group in self.f["_version_data"].items():
+            if name != "versions":
                 data_groups.extend(self._find_data_groups(group))
         return data_groups
 
     def _rebuild_hashtables(self, data_groups):
         """Rebuild the hashtables in data_groups."""
         for group in data_groups:
-            del self.f[group.name]['hash_table']
+            del self.f[group.name]["hash_table"]
             Hashtable.from_versions_traverse(self.f, group.name)
 
-    def _find_data_groups(self, node:  h5py.Group) -> List[h5py.Group]:
+    def _find_data_groups(self, node: h5py.Group) -> List[h5py.Group]:
         """Find all groups containing datasets that are descendents of the given node.
 
         Parameters
@@ -416,11 +447,11 @@ class VersionedHDF5File:
         """
         items = []
         if isinstance(node, h5py.Group):
-            if 'raw_data' in node:
+            if "raw_data" in node:
                 items.append(node)
             else:
                 for item in node:
-                    items.extend(self._find_data_groups(self.f[f'{node.name}/{item}']))
+                    items.extend(self._find_data_groups(self.f[f"{node.name}/{item}"]))
         return items
 
     def _find_object_dtype_data_groups(self):
@@ -428,14 +459,16 @@ class VersionedHDF5File:
 
         # Find all data groups excluding '/_version_data/versions' of dtype='O'
         for data_group in self._find_all_data_groups():
-            if data_group['raw_data'].dtype.kind == 'O':
+            if data_group["raw_data"].dtype.kind == "O":
                 yield data_group
 
     def rebuild_object_dtype_hashtables(self):
         """Find all dtype='O' data groups and rebuild their hashtables."""
-        logger.info('Rebuilding hash tables for dtype="O" datasets in %s.', self.f.filename)
+        logger.info(
+            'Rebuilding hash tables for dtype="O" datasets in %s.', self.f.filename
+        )
         self._rebuild_hashtables(self._find_object_dtype_data_groups())
-        self.f['_version_data']['versions'].attrs['data_version'] = DATA_VERSION
+        self.f["_version_data"]["versions"].attrs["data_version"] = DATA_VERSION
 
     def get_diff(
         self, name: str, version1: str, version2: str
@@ -470,9 +503,8 @@ class VersionedHDF5File:
         if isinstance(data2, DatasetWrapper):
             data2 = data2.dataset
 
-        if (
-            isinstance(data1, (InMemoryDataset, InMemoryArrayDataset))
-            or isinstance(data2, (InMemoryDataset, InMemoryArrayDataset))
+        if isinstance(data1, (InMemoryDataset, InMemoryArrayDataset)) or isinstance(
+            data2, (InMemoryDataset, InMemoryArrayDataset)
         ):
             raise ValueError(
                 "Versions have not yet been committed to the file. "
@@ -588,4 +620,4 @@ class VersionedHDF5File:
         List[str]
             The names of versions in the file; order is arbitrary
         """
-        return [v for v in self._versions if '__first_version__' not in v]
+        return [v for v in self._versions if "__first_version__" not in v]

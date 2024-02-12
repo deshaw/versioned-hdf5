@@ -1,68 +1,80 @@
-from pytest import raises
 from unittest import mock
 
-import numpy as np
 import h5py
+import numpy as np
+from pytest import raises
 
+from .. import VersionedHDF5File
 from ..backend import create_base_dataset
 from ..hashtable import Hashtable
-from .. import VersionedHDF5File
+
 
 def test_hashtable(h5file):
-    create_base_dataset(h5file, 'test_data', data=np.empty((0,)))
-    with Hashtable(h5file, 'test_data') as h:
+    create_base_dataset(h5file, "test_data", data=np.empty((0,)))
+    with Hashtable(h5file, "test_data") as h:
         assert len(h) == 0
-        h[b'\xff'*32] = slice(0, 1)
+        h[b"\xff" * 32] = slice(0, 1)
         assert len(h) == 1
-        assert h[b'\xff'*32] == slice(0, 1)
+        assert h[b"\xff" * 32] == slice(0, 1)
         assert h.largest_index == 1
-        assert bytes(h.hash_table[0][0]) == b'\xff'*32
+        assert bytes(h.hash_table[0][0]) == b"\xff" * 32
         assert tuple(h.hash_table[0][1]) == (0, 1)
-        assert h == {b'\xff'*32: slice(0, 1)}
+        assert h == {b"\xff" * 32: slice(0, 1)}
 
         with raises(TypeError):
-            h['\x01'*32] = slice(0, 1)
+            h["\x01" * 32] = slice(0, 1)
         with raises(ValueError):
-            h[b'\x01'] = slice(0, 1)
+            h[b"\x01"] = slice(0, 1)
         with raises(TypeError):
-            h[b'\x01'*32] = (0, 1)
+            h[b"\x01" * 32] = (0, 1)
         with raises(ValueError):
-            h[b'\x01'*32] = slice(0, 4, 2)
+            h[b"\x01" * 32] = slice(0, 4, 2)
+
 
 def test_from_raw_data(setup_vfile):
-    with setup_vfile('test.h5') as f:
+    with setup_vfile("test.h5") as f:
         vf = VersionedHDF5File(f)
-        with vf.stage_version('0') as sv:
-            sv.create_dataset('test_data', data=np.arange(100), chunks=(10,))
+        with vf.stage_version("0") as sv:
+            sv.create_dataset("test_data", data=np.arange(100), chunks=(10,))
 
-        h = Hashtable(f, 'test_data')
+        h = Hashtable(f, "test_data")
         h_dataset = h.hash_table_dataset
-        h2 = Hashtable.from_raw_data(f, 'test_data',
-                                     hash_table_name='test_hash_table')
+        h2 = Hashtable.from_raw_data(f, "test_data", hash_table_name="test_hash_table")
         h2_dataset = h2.hash_table_dataset
-        assert h2_dataset.name == '/_version_data/test_data/test_hash_table'
+        assert h2_dataset.name == "/_version_data/test_data/test_hash_table"
         np.testing.assert_equal(h_dataset[:], h2_dataset[:])
+
 
 def test_hashtable_multidimension(h5file):
     # Ensure that the same data with different shape hashes differently
-    create_base_dataset(h5file, 'test_data', data=np.empty((0,)))
-    h = Hashtable(h5file, 'test_data')
-    assert h.hash(np.ones((1, 2, 3,))) != h.hash(np.ones((3, 2, 1)))
+    create_base_dataset(h5file, "test_data", data=np.empty((0,)))
+    h = Hashtable(h5file, "test_data")
+    assert h.hash(
+        np.ones(
+            (
+                1,
+                2,
+                3,
+            )
+        )
+    ) != h.hash(np.ones((3, 2, 1)))
+
 
 def test_issue_208(setup_vfile):
     file = setup_vfile()
     filename = file.filename
     with file as f:
         vf = VersionedHDF5File(f)
-        with vf.stage_version('0') as sv:
-            sv.create_dataset('bar', data=np.arange(10))
+        with vf.stage_version("0") as sv:
+            sv.create_dataset("bar", data=np.arange(10))
 
-    with h5py.File(filename, 'r+') as f:
+    with h5py.File(filename, "r+") as f:
         vf = VersionedHDF5File(f)
-        with vf.stage_version('1') as sv:
-            sv['bar'].resize((12,))
-            sv['bar'][8:12] = sv['bar'][6:10]
-            sv['bar'][6:8] = [0, 0]
+        with vf.stage_version("1") as sv:
+            sv["bar"].resize((12,))
+            sv["bar"][8:12] = sv["bar"][6:10]
+            sv["bar"][6:8] = [0, 0]
+
 
 def test_object_dtype_hashes_values(tmp_path):
     """Test that object dtype arrays hash values, not element ids.
@@ -82,12 +94,12 @@ def test_object_dtype_hashes_values(tmp_path):
             with file.stage_version(f"r{i}") as group:
                 group.create_dataset(
                     "values", shape=(1,), dtype=h5py.string_dtype(length=None), data=arr
-            )
+                )
 
     with h5py.File(filename, mode="r") as f:
         file = VersionedHDF5File(f)
         for i in range(N):
-            assert file[f"r{i}"]["values"][()] == b"a"*(i+1)
+            assert file[f"r{i}"]["values"][()] == b"a" * (i + 1)
 
 
 def test_object_dtype_hashes_concatenated_values(tmp_path):
@@ -100,9 +112,11 @@ def test_object_dtype_hashes_concatenated_values(tmp_path):
         file = VersionedHDF5File(f)
         with file.stage_version("r0") as group:
             group.create_dataset(
-                "values",  dtype=h5py.string_dtype(encoding='ascii'),
+                "values",
+                dtype=h5py.string_dtype(encoding="ascii"),
                 data=np.array([b"a", b"b", b"cd"], dtype=object),
-                maxshape=(None,), chunks=(100,)
+                maxshape=(None,),
+                chunks=(100,),
             )
         with file.stage_version("r1") as group:
             group["values"] = np.array([b"ab", b"", b"cd"], dtype=object)
@@ -111,9 +125,15 @@ def test_object_dtype_hashes_concatenated_values(tmp_path):
 
     with h5py.File(filename, mode="r") as f:
         file = VersionedHDF5File(f)
-        np.testing.assert_equal(file["r0"]["values"][:], np.array([b"a", b"b", b"cd"], dtype=object))
-        np.testing.assert_equal(file["r1"]["values"][:], np.array([b"ab", b"", b"cd"], dtype=object))
-        np.testing.assert_equal(file["r2"]["values"][:], np.array([b"ab", b"c", b"d"], dtype=object))
+        np.testing.assert_equal(
+            file["r0"]["values"][:], np.array([b"a", b"b", b"cd"], dtype=object)
+        )
+        np.testing.assert_equal(
+            file["r1"]["values"][:], np.array([b"ab", b"", b"cd"], dtype=object)
+        )
+        np.testing.assert_equal(
+            file["r2"]["values"][:], np.array([b"ab", b"c", b"d"], dtype=object)
+        )
 
 
 def test_verify_chunk_reuse_data_version_2(tmp_path):
@@ -124,6 +144,7 @@ def test_verify_chunk_reuse_data_version_2(tmp_path):
     the encoded data, not the data itself, meaning that "b'hello'" would hash
     to the same value as b'hello'.
     """
+
     def data_version_2_hash(self, data: np.ndarray):
         """
         Compute hash for `data` array.
@@ -131,23 +152,22 @@ def test_verify_chunk_reuse_data_version_2(tmp_path):
         (Copied from commit 1f968f4 Hashtable.hash. This version hashes the encoded
         data, not the data itself.)
         """
-        if data.dtype == 'object':
+        if data.dtype == "object":
             hash_value = self.hash_function()
             for value in data.flat:
-                hash_value.update(bytes(str(value), 'utf-8'))
-            hash_value.update(bytes(str(data.shape), 'utf-8'))
+                hash_value.update(bytes(str(value), "utf-8"))
+            hash_value.update(bytes(str(data.shape), "utf-8"))
             return hash_value.digest()
         else:
             return self.hash_function(
-                data.data.tobytes() + bytes(str(data.shape), 'ascii')
+                data.data.tobytes() + bytes(str(data.shape), "ascii")
             ).digest()
-
 
     with mock.patch.object(Hashtable, "hash", autospec=True) as mocked_hash:
         mocked_hash.side_effect = data_version_2_hash
 
-        data1 = np.array(["b'hello'", "b'world'"], dtype='O')
-        data2 = np.array([b'hello', b'world'], dtype='O')
+        data1 = np.array(["b'hello'", "b'world'"], dtype="O")
+        data2 = np.array([b"hello", b"world"], dtype="O")
 
         filename = tmp_path / "data.h5"
         with h5py.File(filename, mode="w") as f:
@@ -155,15 +175,15 @@ def test_verify_chunk_reuse_data_version_2(tmp_path):
             with vf.stage_version("r0") as group:
                 group.create_dataset(
                     "values",
-                    dtype=h5py.string_dtype(encoding='ascii'),
+                    dtype=h5py.string_dtype(encoding="ascii"),
                     data=data1,
                     maxshape=(None,),
-                    chunks=(2,)
+                    chunks=(2,),
                 )
 
             with raises(AssertionError):
                 with vf.stage_version("r1") as group:
-                    group['values'] = np.concatenate((data2, data2))
+                    group["values"] = np.concatenate((data2, data2))
 
 
 def test_verify_chunk_reuse_data_version_3(tmp_path):
@@ -176,6 +196,7 @@ def test_verify_chunk_reuse_data_version_3(tmp_path):
     (because hashing each element in the array is equivalent to hashing
     the concatenated elements of the array).
     """
+
     def data_version_3_hash(self, data: np.ndarray):
         """
         Compute hash for `data` array.
@@ -183,19 +204,18 @@ def test_verify_chunk_reuse_data_version_3(tmp_path):
         (Copied from commit d382673 Hashtable.hash. This version didn't include the
         string length in the hash.)
         """
-        if data.dtype == 'object':
+        if data.dtype == "object":
             hash_value = self.hash_function()
             for value in data.flat:
                 if isinstance(value, str):
-                    value = value.encode('utf-8')
+                    value = value.encode("utf-8")
                 hash_value.update(value)
-            hash_value.update(bytes(str(data.shape), 'utf-8'))
+            hash_value.update(bytes(str(data.shape), "utf-8"))
             return hash_value.digest()
         else:
             return self.hash_function(
-                data.data.tobytes() + bytes(str(data.shape), 'ascii')
+                data.data.tobytes() + bytes(str(data.shape), "ascii")
             ).digest()
-
 
     with mock.patch.object(Hashtable, "hash", autospec=True) as mocked_hash:
         mocked_hash.side_effect = data_version_3_hash
@@ -206,10 +226,10 @@ def test_verify_chunk_reuse_data_version_3(tmp_path):
             with vf.stage_version("r0") as group:
                 group.create_dataset(
                     "values",
-                    dtype=h5py.string_dtype(encoding='ascii'),
+                    dtype=h5py.string_dtype(encoding="ascii"),
                     data=np.array([b"a", b"b", b"cd"], dtype=object),
                     maxshape=(None,),
-                    chunks=(100,)
+                    chunks=(100,),
                 )
 
             with raises(AssertionError):
@@ -225,17 +245,13 @@ def test_verify_chunk_reuse_nan(tmp_path):
     filename = tmp_path / "testdata.h5"
     with h5py.File(filename, mode="w") as f:
         vf = VersionedHDF5File(f)
-        with vf.stage_version('r0') as sv:
-            sv.create_dataset(
-                'values',
-                data=data,
-                chunks=(6,)
-            )
+        with vf.stage_version("r0") as sv:
+            sv.create_dataset("values", data=data, chunks=(6,))
 
-    with h5py.File(filename, mode='r+') as f:
+    with h5py.File(filename, mode="r+") as f:
         vf = VersionedHDF5File(f)
-        with vf.stage_version('r1') as sv:
-            sv['values'] = np.concatenate((data, data))
+        with vf.stage_version("r1") as sv:
+            sv["values"] = np.concatenate((data, data))
 
 
 def test_verify_chunk_reuse_strings(tmp_path):
@@ -253,7 +269,7 @@ def test_verify_chunk_reuse_strings(tmp_path):
                 chunks=(3,),
             )
 
-    with h5py.File(filename, mode='r+') as f:
+    with h5py.File(filename, mode="r+") as f:
         vf = VersionedHDF5File(f)
-        with vf.stage_version('r1') as group:
-            group['values'] = np.concatenate((data, data))
+        with vf.stage_version("r1") as group:
+            group["values"] = np.concatenate((data, data))
