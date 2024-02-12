@@ -25,6 +25,7 @@ dependencies = [
     "ndindex>=1.5.1",
 ]
 urls = { Homepage = "https://github.com/deshaw/versioned-hdf5" }
+license = { file = 'LICENSE' }
 
 [tool.ruff]
 line-length = 100
