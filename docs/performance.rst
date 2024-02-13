@@ -24,16 +24,16 @@ which biases the modifications towards the end of the array, simulating a possib
 
 The tests are as follows:
 
-1. A large fraction of changes is made to the dataset with each new version: The dataset initially has three arrays with 5000 rows, and 1000 positions are chosen at random and changed, and a small number (at most 10) rows are added or deleted with each new version. We will refer to this test as `test_large_fraction_changes_sparse`.
+1. A large fraction of changes is made to the dataset with each new version: The dataset initially has three arrays with 5000 rows, and 1000 positions are chosen at random and changed, and a small number (at most 10) rows are added or deleted with each new version. We will refer to this test as ``test_large_fraction_changes_sparse``.
 
-2. A small fraction of changes is made to the dataset with each new version: The dataset initially has three arrays with 5000, but only 10 positions are chosen at random and changed, and a small number (at most 10) rows are added or deleted with each new version. We will refer to this test as `test_small_fraction_changes_sparse`.
+2. A small fraction of changes is made to the dataset with each new version: The dataset initially has three arrays with 5000, but only 10 positions are chosen at random and changed, and a small number (at most 10) rows are added or deleted with each new version. We will refer to this test as ``test_small_fraction_changes_sparse``.
 
-3. A large fraction of changes is made to the dataset with each version, with the same three arrays of 5000 rows defined initially, 1000 positions are chosen at random and changed, but the size of the final array remains constant (no new rows are added and no rows are deleted). We will refer to this test as `test_large_fraction_constant_sparse`.
+3. A large fraction of changes is made to the dataset with each version, with the same three arrays of 5000 rows defined initially, 1000 positions are chosen at random and changed, but the size of the final array remains constant (no new rows are added and no rows are deleted). We will refer to this test as ``test_large_fraction_constant_sparse``.
 
 4. The number of modifications is dominated by the number of appended rows. This is divided into two tests:
 
-   - In the first case, the dataset contains three one-dimensional arrays with 1000 rows initially, and 1000 rows are added with each new version. A small number (at most 10) values are chosen at random, following the power law described above, and changed or deleted. We call this test `test_mostly_appends_sparse`.
-   - In the second case, the dataset contains one two-dimensional array with shape `(30, 30)` and two one-dimensional arrays acting as indices to the 2d array. In this case, rows are only appended in the first axis of the two-dimensional array, and a small number of positions (at most 10) is chosen at random and changed. We call this test `test_mostly_appends_dense`.
+   - In the first case, the dataset contains three one-dimensional arrays with 1000 rows initially, and 1000 rows are added with each new version. A small number (at most 10) values are chosen at random, following the power law described above, and changed or deleted. We call this test ``test_mostly_appends_sparse``.
+   - In the second case, the dataset contains one two-dimensional array with shape ``(30, 30)`` and two one-dimensional arrays acting as indices to the 2d array. In this case, rows are only appended in the first axis of the two-dimensional array, and a small number of positions (at most 10) is chosen at random and changed. We call this test ``test_mostly_appends_dense``.
 
 To test the performance of VersionedHDF5 files, we have chosen to compare a few different chunk sizes and compression algorithms. These values have been chosen heuristically, and optimal values depend on different use cases and nature of the datasets stored in the file.
 
