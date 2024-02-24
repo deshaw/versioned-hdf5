@@ -106,7 +106,8 @@ def commit_version(
     version_name = version_group.name.rsplit("/", 1)[1]
     versions = version_group.parent
     f = versions.parent.parent
-    prev_version = versions[version_group.attrs["prev_version"]]
+    prev_version_name = version_group.attrs["prev_version"]
+    prev_version = versions[prev_version_name]
 
     chunks = chunks or defaultdict(type(None))
     compression = compression or defaultdict(type(None))
