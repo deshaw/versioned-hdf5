@@ -728,7 +728,7 @@ class SetOperation(WriteOperation):
         raw_data = f["_version_data"][name]["raw_data"]
         chunk_size = tuple(raw_data.attrs["chunks"])[0]
 
-        for virtual_chunk, arr_chunk in zip(
+        for arr_chunk, virtual_chunk in zip(
             partition(arr, chunk_size), partition(index, chunk_size), strict=True
         ):
             data_dict[virtual_chunk] = arr[arr_chunk.raw]
@@ -1124,7 +1124,6 @@ def partition(obj: Union[np.ndarray, Tuple], chunk_size: int) -> List[Tuple]:
     List[Tuple]
         A list of slices of arr that make up the chunks
     """
-    breakpoint()
     if isinstance(obj, np.ndarray):
         index = Tuple(*[Slice(0, dim) for dim in obj.shape])
     else:
