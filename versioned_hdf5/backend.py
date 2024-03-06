@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Union
+from typing import Dict, Iterator, List, Optional, Union
 
 import numpy as np
 from h5py import Dataset, File, VirtualLayout, VirtualSource, h5s
@@ -729,7 +729,9 @@ class SetOperation(WriteOperation):
         chunk_size = tuple(raw_data.attrs["chunks"])[0]
 
         for arr_chunk, virtual_chunk in zip(
-            partition(arr, chunk_size), partition(index, chunk_size), strict=True
+            partition(arr, chunk_size),
+            partition(index, chunk_size, arr.shape),
+            strict=True,
         ):
             data_dict[virtual_chunk] = arr[arr_chunk.raw]
 
@@ -1109,7 +1111,9 @@ def split_across_unused(
     )
 
 
-def partition(obj: Union[np.ndarray, Tuple], chunk_size: int) -> List[Tuple]:
+def partition(
+    obj: Union[np.ndarray, Tuple], chunk_size: int, shape: Optional[tuple[int]] = None
+) -> Iterator[Tuple]:
     """Break an array or a Tuple of slices into chunks of the given chunk size.
 
     Parameters
@@ -1118,34 +1122,25 @@ def partition(obj: Union[np.ndarray, Tuple], chunk_size: int) -> List[Tuple]:
         Array or Tuple index to partition
     chunk_size : int
         The size of each partitioned chunk
+    shape: Optional[tuple[int]]
+        Shape that the index should be partitioned onto. To partition an array,
+        this should be the array shape; to partition an index, this must be the
+        shape of the array the index will be indexing into
 
     Returns
     -------
-    List[Tuple]
+    Iterator[Tuple]
         A list of slices of arr that make up the chunks
     """
     if isinstance(obj, np.ndarray):
         index = Tuple(*[Slice(0, dim) for dim in obj.shape])
+        if shape is None:
+            shape = obj.shape
     else:
+        if shape is None:
+            raise ValueError(
+                "A shape must be specified to partition the index {obj} onto."
+            )
         index = obj
 
-    # This is the size of the index along the axis to be chunked
-    dim0_size = len(index.args[0])
-
-    # If it all fits in one chunk, just return the whole index
-    if dim0_size < chunk_size:
-        return [index]
-
-    chunks = []
-    # Loop through the part of the data that fits into filled chunks
-    for chunk_start in range(0, dim0_size - chunk_size, step=chunk_size):
-        chunks.append(
-            Tuple(Slice(chunk_start, chunk_start + chunk_size), *index.args[1:])
-        )
-
-    # Partition any additional elements into a final partly-full chunk
-    chunk_start += chunk_size
-    if chunk_start < arr.shape[0]:
-        chunks.append(Tuple(Slice(chunk_start, arr.shape[0]), *index.args[1:]))
-
-    return chunks
+    yield from ChunkSize((chunk_size,)).as_subchunks(index, shape)
