@@ -772,3 +772,31 @@ def test_write_dataset_compression(h5file):
     assert ds.dtype == np.float64
     assert ds.compression == "gzip"
     assert ds.compression_opts == 3
+
+
+def test_create_empty_virtual_dataset(setup_vfile):
+    """Check that creating an empty virtual dataset writes no raw data.
+
+    Also check that the empty virtual dataset is formed correctly.
+    See https://github.com/deshaw/versioned-hdf5/issues/314 for context.
+    """
+    name = "empty_dataset"
+
+    with setup_vfile(version_name="r0") as f:
+        write_dataset(f, "empty_dataset", np.array([]))
+        create_virtual_dataset(
+            f,
+            "r0",
+            name,
+            (0,),
+            {},
+        )
+
+        # Check that the raw data has only fill_value in it
+        assert_equal(f["_version_data"][name]["raw_data"][:], 0.0)
+
+        # Check that the virtual data is empty
+        ds = f["_version_data"]["versions"]["r0"][name][:]
+        assert_equal(ds, np.array([]))
+        assert ds.shape == (0,)
+        assert ds.size == 0
