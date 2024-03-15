@@ -2646,3 +2646,43 @@ def test_versions_property(vfile):
     # Delete some versions and check for the correct versions again
     delete_versions(vfile, versions_to_delete)
     assert set(all_versions(vfile.f)) == set(vfile.versions)
+
+
+@mark.append
+def test_append_small_dataset(tmp_path):
+    """Test that a small dataset can be appended to an existing dataset.
+
+    The small dataset is small enough to fit in the unused space at the end of raw_data
+    without allocating a new chunk.
+    """
+    chunks = (10,)
+    filename = tmp_path / "data.h5"
+
+    with h5py.File(filename, "w") as f:
+        vf = VersionedHDF5File(f)
+
+        with vf.stage_version("r0") as sv:
+            sv.create_dataset("values", data=np.array([0]), chunks=chunks)
+
+        with vf.stage_version("r1") as sv:
+            sv["values"].append(np.array([1, 2, 3]))
+
+
+@mark.append
+def test_append_big_dataset(tmp_path):
+    """Test that a big dataset can be appended to an existing dataset.
+
+    The big dataset is big enough to to need a new chunk to be allocated in the
+    raw_data.
+    """
+    chunks = (10,)
+    filename = tmp_path / "data.h5"
+
+    with h5py.File(filename, "w") as f:
+        vf = VersionedHDF5File(f)
+
+        with vf.stage_version("r0") as sv:
+            sv.create_dataset("values", data=np.array([0]), chunks=chunks)
+
+        with vf.stage_version("r1") as sv:
+            sv["values"].append(np.arange(1, 12))
