@@ -147,7 +147,6 @@ def commit_version(
                 data_copy.attrs.clear()
                 for k, v in data.attrs.items():
                     data_copy.attrs[k] = v
-                continue
             else:
                 slices, shape = write_operations(
                     f, version_name, name, data._operations
