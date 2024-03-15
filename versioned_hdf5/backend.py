@@ -728,7 +728,7 @@ class SetOperation(WriteOperation):
 
         for arr_chunk, virtual_chunk in zip(
             partition(arr, chunk_size),
-            partition(index, chunk_size, arr.shape),
+            partition(index, chunk_size),
             strict=True,
         ):
             data_dict[virtual_chunk] = arr[arr_chunk.raw]
@@ -1022,7 +1022,7 @@ def write_to_dataset(
     with Hashtable(f, name) as hashtable:
         for data_slice, vchunk in zip(
             partition(data, chunk_size),
-            partition(virtual_slice, chunk_size, shape=data.shape),
+            partition(virtual_slice, chunk_size),
             strict=True,
         ):
             arr = data[data_slice.raw]
@@ -1031,15 +1031,19 @@ def write_to_dataset(
             if data_hash in hashtable:
                 slices[vchunk] = hashtable[data_hash]
             else:
-                # TODO do I need to resize to get another chunk? Probably
+                new_chunk_axis_size = raw_data.shape[0] + len(data_slice.args[0])
 
+                # There's new
                 rchunk = Tuple(
                     Slice(
                         raw_data.shape[0],
-                        raw_data.shape[0] + data_slice.shape[0],
+                        new_chunk_axis_size,
                     ),
                     *[Slice(None, None) for _ in raw_data.shape[1:]],
                 )
+
+                # Resize the dataset to include a new chunk
+                raw_data.resize(raw_data.shape[0] + chunk_size, axis=0)
 
                 # Map the virtual chunk to the raw data chunk
                 slices[vchunk] = rchunk
@@ -1170,7 +1174,6 @@ def split_across_unused(
 def partition(
     obj: Union[np.ndarray, Tuple],
     chunk_size: int,
-    shape: Optional[tuple[int, ...]] = None,
 ) -> Iterator[Tuple]:
     """Break an array or a Tuple of slices into chunks of the given chunk size.
 
@@ -1180,14 +1183,6 @@ def partition(
         Array or Tuple index to partition
     chunk_size : int
         The size of each partitioned chunk
-    shape: Optional[tuple[int]]
-        Shape that the index should be partitioned onto. To partition an array,
-        this should be the array shape; if None, the shape of the array is used.
-        To partition an index, this must be the shape of the array the index will
-        be indexing into.
-
-        This is needed because the index is chunked along the first axis, but the
-        shape of the other axes is needed to produce the partitioned slices.
 
     Returns
     -------
@@ -1196,13 +1191,9 @@ def partition(
     """
     if isinstance(obj, np.ndarray):
         index = Tuple(*[Slice(0, dim) for dim in obj.shape])
-        if shape is None:
-            shape = obj.shape
+        shape = obj.shape
     else:
-        if shape is None:
-            raise ValueError(
-                "A shape must be specified to partition the index {obj} onto."
-            )
         index = obj
+        shape = tuple(dim.stop for dim in index.args)
 
     yield from ChunkSize((chunk_size,)).as_subchunks(index, shape)

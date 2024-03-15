@@ -8,6 +8,7 @@ import shutil
 import h5py
 import numpy as np
 from h5py._hl.filters import guess_chunk
+from ndindex import ndindex
 from numpy.testing import assert_equal
 from pytest import mark, raises
 
@@ -2667,6 +2668,29 @@ def test_append_small_dataset(tmp_path):
         with vf.stage_version("r1") as sv:
             sv["values"].append(np.array([1, 2, 3]))
 
+        raw_data = f["_version_data"]["values"]["raw_data"]
+        chunks = list(raw_data.iter_chunks())
+
+        # Raw data should have two chunks of length 10
+        assert_equal(
+            raw_data[ndindex(chunks[0]).raw],
+            np.array([0, 1, 2, 3, 0, 0, 0, 0, 0, 0]),
+        )
+
+        # Virtual datasets should only have the numbers 0 -> 3
+        assert len(chunks) == 1
+        assert_equal(
+            f["_version_data"]["versions"]["r0"]["values"],
+            np.array([0]),
+        )
+        assert_equal(
+            f["_version_data"]["versions"]["r1"]["values"],
+            np.array([0, 1, 2, 3]),
+        )
+
+        # 4 elements were written
+        assert raw_data.attrs["last_element"] == 4
+
 
 @mark.append
 def test_append_big_dataset(tmp_path):
@@ -2686,3 +2710,30 @@ def test_append_big_dataset(tmp_path):
 
         with vf.stage_version("r1") as sv:
             sv["values"].append(np.arange(1, 12))
+
+        raw_data = f["_version_data"]["values"]["raw_data"]
+        chunks = list(raw_data.iter_chunks())
+
+        # Raw data should have two chunks of length 10
+        assert len(chunks) == 2
+        assert_equal(
+            raw_data[ndindex(chunks[0]).raw],
+            np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+        )
+        assert_equal(
+            raw_data[ndindex(chunks[1]).raw],
+            np.array([10, 11, 0, 0, 0, 0, 0, 0, 0, 0]),
+        )
+
+        # Virtual datasets should only have the numbers 0 -> 11
+        assert_equal(
+            f["_version_data"]["versions"]["r0"]["values"],
+            np.array([0]),
+        )
+        assert_equal(
+            f["_version_data"]["versions"]["r1"]["values"],
+            np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]),
+        )
+
+        # 12 elements were written
+        assert raw_data.attrs["last_element"] == 12
