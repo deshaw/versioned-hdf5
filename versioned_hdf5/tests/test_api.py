@@ -7,6 +7,7 @@ import shutil
 
 import h5py
 import numpy as np
+import pytest
 from h5py._hl.filters import guess_chunk
 from ndindex import ndindex
 from numpy.testing import assert_equal
@@ -2737,3 +2738,33 @@ def test_append_big_dataset(tmp_path):
 
         # 12 elements were written
         assert raw_data.attrs["last_element"] == 12
+
+
+@pytest.mark.append()
+@pytest.mark.parametrize(
+    ("chunk_size", "updates"),
+    [
+        (2, 5),
+        (10, 7),
+        (20, 20),
+        (100, 100),
+    ],
+)
+def test_append_raw_data_layout(tmp_path, chunk_size, updates):
+    """Test that the raw data is laid out correctly after append operations."""
+    filename = tmp_path / "data.h5"
+    chunks = (chunk_size,)
+
+    with h5py.File(filename, "w") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r00") as sv:
+            sv.create_dataset("values", data=np.array([0]), chunks=chunks)
+        for i in range(1, updates + 1):
+            with vf.stage_version(f"r{i:02d}") as sv:
+                sv["values"].append(np.array([i]))
+
+    with h5py.File(filename, "r") as f:
+        raw_data = f["_version_data/values/raw_data"][:]
+        expected = np.zeros((updates // chunk_size + 1) * chunk_size)
+        expected[: i + 1] = np.arange(i + 1)
+        assert_equal(raw_data, expected)
