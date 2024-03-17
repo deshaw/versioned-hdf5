@@ -7,7 +7,9 @@ import shutil
 
 import h5py
 import numpy as np
+import pytest
 from h5py._hl.filters import guess_chunk
+from ndindex import ndindex
 from numpy.testing import assert_equal
 from pytest import mark, raises
 
@@ -2646,3 +2648,123 @@ def test_versions_property(vfile):
     # Delete some versions and check for the correct versions again
     delete_versions(vfile, versions_to_delete)
     assert set(all_versions(vfile.f)) == set(vfile.versions)
+
+
+@mark.append
+def test_append_small_dataset(tmp_path):
+    """Test that a small dataset can be appended to an existing dataset.
+
+    The small dataset is small enough to fit in the unused space at the end of raw_data
+    without allocating a new chunk.
+    """
+    chunks = (10,)
+    filename = tmp_path / "data.h5"
+
+    with h5py.File(filename, "w") as f:
+        vf = VersionedHDF5File(f)
+
+        with vf.stage_version("r0") as sv:
+            sv.create_dataset("values", data=np.array([0]), chunks=chunks)
+
+        with vf.stage_version("r1") as sv:
+            sv["values"].append(np.array([1, 2, 3]))
+
+        raw_data = f["_version_data"]["values"]["raw_data"]
+        chunks = list(raw_data.iter_chunks())
+
+        # Raw data should have two chunks of length 10
+        assert_equal(
+            raw_data[ndindex(chunks[0]).raw],
+            np.array([0, 1, 2, 3, 0, 0, 0, 0, 0, 0]),
+        )
+
+        # Virtual datasets should only have the numbers 0 -> 3
+        assert len(chunks) == 1
+        assert_equal(
+            f["_version_data"]["versions"]["r0"]["values"],
+            np.array([0]),
+        )
+        assert_equal(
+            f["_version_data"]["versions"]["r1"]["values"],
+            np.array([0, 1, 2, 3]),
+        )
+
+        # 4 elements were written
+        assert raw_data.attrs["last_element"] == 4
+
+
+@mark.append
+def test_append_big_dataset(tmp_path):
+    """Test that a big dataset can be appended to an existing dataset.
+
+    The big dataset is big enough to to need a new chunk to be allocated in the
+    raw_data.
+    """
+    chunks = (10,)
+    filename = tmp_path / "data.h5"
+
+    with h5py.File(filename, "w") as f:
+        vf = VersionedHDF5File(f)
+
+        with vf.stage_version("r0") as sv:
+            sv.create_dataset("values", data=np.array([0]), chunks=chunks)
+
+        with vf.stage_version("r1") as sv:
+            sv["values"].append(np.arange(1, 12))
+
+        raw_data = f["_version_data"]["values"]["raw_data"]
+        chunks = list(raw_data.iter_chunks())
+
+        # Raw data should have two chunks of length 10
+        assert len(chunks) == 2
+        assert_equal(
+            raw_data[ndindex(chunks[0]).raw],
+            np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+        )
+        assert_equal(
+            raw_data[ndindex(chunks[1]).raw],
+            np.array([10, 11, 0, 0, 0, 0, 0, 0, 0, 0]),
+        )
+
+        # Virtual datasets should only have the numbers 0 -> 11
+        assert_equal(
+            f["_version_data"]["versions"]["r0"]["values"],
+            np.array([0]),
+        )
+        assert_equal(
+            f["_version_data"]["versions"]["r1"]["values"],
+            np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]),
+        )
+
+        # 12 elements were written
+        assert raw_data.attrs["last_element"] == 12
+
+
+@pytest.mark.append()
+@pytest.mark.parametrize(
+    ("chunk_size", "updates"),
+    [
+        (2, 5),
+        (10, 7),
+        (20, 20),
+        (100, 100),
+    ],
+)
+def test_append_raw_data_layout(tmp_path, chunk_size, updates):
+    """Test that the raw data is laid out correctly after append operations."""
+    filename = tmp_path / "data.h5"
+    chunks = (chunk_size,)
+
+    with h5py.File(filename, "w") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r00") as sv:
+            sv.create_dataset("values", data=np.array([0]), chunks=chunks)
+        for i in range(1, updates + 1):
+            with vf.stage_version(f"r{i:02d}") as sv:
+                sv["values"].append(np.array([i]))
+
+    with h5py.File(filename, "r") as f:
+        raw_data = f["_version_data/values/raw_data"][:]
+        expected = np.zeros((updates // chunk_size + 1) * chunk_size)
+        expected[: i + 1] = np.arange(i + 1)
+        assert_equal(raw_data, expected)

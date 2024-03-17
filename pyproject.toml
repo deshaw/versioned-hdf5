@@ -91,6 +91,7 @@ ignore = [
 
 [tool.ruff.per-file-ignores]
 "__init__.py" = ["F401"]
+"test_*.py" = ["ANN001"]
 
 [project.optional-dependencies]
 dev = ["pre-commit>=3.6.0"]

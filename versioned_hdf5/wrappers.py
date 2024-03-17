@@ -21,7 +21,7 @@ from h5py._hl.selections import guess_shape
 from h5py._hl.vds import VDSmap
 from ndindex import ChunkSize, Slice, Tuple, ndindex
 
-from .backend import DEFAULT_CHUNK_SIZE
+from .backend import DEFAULT_CHUNK_SIZE, AppendOperation, SetOperation
 from .slicetools import spaceid_to_slice
 
 _groups = WeakValueDictionary({})
@@ -506,6 +506,10 @@ class InMemoryDataset(Dataset):
         self._parent = parent
         self._attrs = dict(super().attrs)
 
+        # List of dataset manipulations carried out by the user but not yet committed;
+        # see WriteOperation class for details
+        self._operations = []
+
     def __repr__(self):
         name = posixpath.basename(posixpath.normpath(self.name))
         namestr = '"%s"' % (name if name != "" else "/")
@@ -699,30 +703,39 @@ class InMemoryDataset(Dataset):
 
         idx = ndindex(args).expand(self.shape)
 
-        if self.id.can_read_direct:
-            return super().__getitem__(idx.raw)
+        # If we can read from the underlying dataset, do so
+        if self._operations:
+            arr = super().__getitem__(idx.raw)
+            for operation in self._operations:
+                pass
 
-        arr = np.ndarray(idx.newshape(self.shape), new_dtype, order="C")
+            return arr
+        return np.array([])
 
-        for chunk in self.chunks.as_subchunks(idx, self.shape):
-            if chunk not in self.id.data_dict:
-                self.id.data_dict[chunk] = np.broadcast_to(
-                    self.fillvalue, chunk.newshape(self.shape)
-                )
-            elif isinstance(self.id.data_dict[chunk], (slice, Slice, tuple, Tuple)):
-                raw_idx = Tuple(
-                    self.id.data_dict[chunk],
-                    *[slice(0, len(i)) for i in chunk.args[1:]],
-                ).raw
-                self.id.data_dict[chunk] = self.id._read_chunk(raw_idx)
-
-            if self.id.data_dict[chunk].size != 0:
-                arr_idx = chunk.as_subindex(idx)
-                index = idx.as_subindex(chunk)
-                arr[arr_idx.raw] = self.id.data_dict[chunk][index.raw]
-
-        # Return arr as a scalar if it is shape () (matching h5py)
-        return arr[()]
+        # if self.id.can_read_direct:
+        #     return super().__getitem__(idx.raw)
+        #
+        # arr = np.ndarray(idx.newshape(self.shape), new_dtype, order="C")
+        #
+        # for chunk in self.chunks.as_subchunks(idx, self.shape):
+        #     if chunk not in self.id.data_dict:
+        #         self.id.data_dict[chunk] = np.broadcast_to(
+        #             self.fillvalue, chunk.newshape(self.shape)
+        #         )
+        #     elif isinstance(self.id.data_dict[chunk], (slice, Slice, tuple, Tuple)):
+        #         raw_idx = Tuple(
+        #             self.id.data_dict[chunk],
+        #             *[slice(0, len(i)) for i in chunk.args[1:]],
+        #         ).raw
+        #         self.id.data_dict[chunk] = self.id._read_chunk(raw_idx)
+        #
+        #     if self.id.data_dict[chunk].size != 0:
+        #         arr_idx = chunk.as_subindex(idx)
+        #         index = idx.as_subindex(chunk)
+        #         arr[arr_idx.raw] = self.id.data_dict[chunk][index.raw]
+        #
+        # # Return arr as a scalar if it is shape () (matching h5py)
+        # return arr[()]
 
     @with_phil
     def __setitem__(self, args, val):
@@ -843,29 +856,29 @@ class InMemoryDataset(Dataset):
             mtype = None
 
         # === END CODE FROM h5py.Dataset.__setitem__ ===
+        self._operations.append(SetOperation(args, val))
 
-        idx = ndindex(args).reduce(self.shape)
+    def append(self, arr: np.ndarray):
+        """Append to the HDF5 dataset from a NumPy array.
 
-        val = np.broadcast_to(val, idx.newshape(self.shape))
+        NumPy's broadcasting rules are honored, for "simple" indexing
+        (slices and integers).  For advanced indexing, the shapes must
+        match.
 
-        for c in self.chunks.as_subchunks(idx, self.shape):
-            if c not in self.id.data_dict:
-                # Broadcasted arrays do not actually consume memory
-                fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
-                self.id.data_dict[c] = fill.astype(self.dtype)
-            elif isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
-                raw_idx = Tuple(
-                    self.id.data_dict[c], *[slice(0, len(i)) for i in c.args[1:]]
-                ).raw
-                self.id.data_dict[c] = self.id._read_chunk(raw_idx)
+        Only appends along the first dimension are supported; all other dimensions
+        of the array to be appended must match the existing dataset.
 
-            if self.id.data_dict[c].size != 0:
-                val_idx = c.as_subindex(idx)
-                if not self.id.data_dict[c].flags.writeable:
-                    # self.id.data_dict[c] is a broadcasted array from above
-                    self.id.data_dict[c] = self.id.data_dict[c].copy()
-                index = idx.as_subindex(c)
-                self.id.data_dict[c][index.raw] = val[val_idx.raw]
+        Parameters
+        ----------
+        arr : np.ndarray
+            Array to append to the dataset. Must have the same shape as
+            the existing dataset, except along the first dimenison
+        """
+        self.parent._check_committed()
+        self._operations.append(AppendOperation(arr))
+
+    def __iadd__(self, arr: np.ndarray):
+        self.append(arr)
 
 
 class DatasetLike:
@@ -1023,6 +1036,9 @@ class InMemoryArrayDataset(DatasetLike):
     def __setitem__(self, item, value):
         self.parent._check_committed()
         self.array.__setitem__(item, value)
+
+    def append(self, arr: np.ndarray):
+        self.array = np.concatenate((self.array, arr))
 
     def __array__(self, dtype=None):
         return self.array
