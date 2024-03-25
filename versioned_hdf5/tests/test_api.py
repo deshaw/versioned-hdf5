@@ -2646,3 +2646,37 @@ def test_versions_property(vfile):
     # Delete some versions and check for the correct versions again
     delete_versions(vfile, versions_to_delete)
     assert set(all_versions(vfile.f)) == set(vfile.versions)
+
+
+def test_make_empty_dataset(tmp_path):
+    """Check that creating a dataset before making it empty can be done successfully.
+
+    This test would pass unless the file gets closed/reopened for each operation,
+    which is why we do that here; unsure about why that is, but it must be related to
+    flushing reads/writes.
+
+    See https://github.com/deshaw/versioned-hdf5/issues/314 for context.
+    """
+    path = tmp_path / "tmp.h5"
+    with h5py.File(path, "w") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r0") as sv:
+            sv.create_dataset("values", data=np.array([1, 2, 3]))
+
+    with h5py.File(path, "r+") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r1") as sv:
+            sv["values"].resize((0,))
+
+    with h5py.File(path, "r+") as f:
+        delete_versions(f, ["r0"])
+
+    with h5py.File(path, "r+") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r2") as sv:
+            sv["values"].resize((0,))
+
+    with h5py.File(path, "r+") as f:
+        vf = VersionedHDF5File(f)
+        cv = vf[vf.current_version]
+        assert_equal(cv["values"][:], np.array([]))

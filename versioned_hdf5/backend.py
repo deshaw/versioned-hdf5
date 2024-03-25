@@ -398,10 +398,7 @@ def create_virtual_dataset(
     slices = {c: s.reduce() for c, s in slices.items()}
 
     if len(raw_data) == 0:
-        shape = ()
-        layout = VirtualLayout((1,), dtype=raw_data.dtype)
-        vs = VirtualSource(".", name=raw_data.name, shape=(1,), dtype=raw_data.dtype)
-        layout[0] = vs[()]
+        layout = VirtualLayout(shape=(0,), dtype=raw_data.dtype)
     else:
         # Chunks in the raw dataset are expanded along the first dimension only.
         # Since the chunks are pointed to by virtual datasets, it doesn't make
