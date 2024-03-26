@@ -7,7 +7,7 @@ from ndindex import ChunkSize, Slice, Tuple, ndindex
 from numpy.testing import assert_array_equal
 
 from .hashtable import Hashtable
-from .slicetools import spaceid_to_slice
+from .slicetools import spaceid_to_slice, to_slice_tuple
 
 DEFAULT_CHUNK_SIZE = 2**12
 DATA_VERSION = 4
@@ -491,11 +491,32 @@ def _convert_to_bytes(arr: np.ndarray) -> np.ndarray:
         return np.vectorize(lambda i: bytes(i, encoding="utf-8"))(arr)
 
 
-def write_dataset_chunks(f, name, data_dict, shape=None):
-    """
+def write_dataset_chunks(
+    f: File,
+    name: str,
+    data_dict: Dict[Tuple, Union[Tuple, np.ndarray]],
+    shape: Optional[tuple] = None,
+) -> Dict[Tuple, Tuple]:
+    """Write chunks in data_dict to the raw data.
+
     data_dict should be a dictionary mapping chunk_size index to either an
     array for that chunk, or a slice into the raw data for that chunk
 
+    Parameters
+    ----------
+    f : File
+
+    name : str
+
+    data_dict : Dict[Tuple, Union[Tuple, np.ndarray]]
+
+    shape : Optional[tuple]
+
+
+    Returns
+    -------
+    Dict[Tuple, Tuple]
+        Mapping between slices in the virtual dataset to slices in the raw dataset
     """
     if name not in f["_version_data"]:
         raise NotImplementedError(
@@ -675,6 +696,29 @@ class WriteOperation:
         """
         raise NotImplementedError
 
+    def show(self, f: File, name: str, version: str) -> np.ndarray:
+        """Return the dataset after having applied the operation in memory.
+
+        Note that this does not write to disk; it is only used when
+        `Dataset.__getitem__` is called before `commit_version` can write the data
+        to the file.
+
+        Parameters
+        ----------
+        f : File
+            File containing the dataset to write to
+        name : str
+            Name of the dataset
+        version : str
+            Version of the dataset to write to
+
+        Returns
+        -------
+        np.ndarray
+            Value of the virtual dataset post-operation
+        """
+        raise NotImplementedError
+
 
 class SetOperation(WriteOperation):
     """Operation which indexes the dataset to write data."""
@@ -698,6 +742,10 @@ class SetOperation(WriteOperation):
     def apply(self, f: File, name: str, version: str) -> Dict[Tuple, Tuple]:
         """Write the stored data to the dataset in chunks.
 
+
+        The only thing you need here is the shape of the raw data, so that you know how to partition
+        the new data to be written into chunks
+
         Parameters
         ----------
         f : File
@@ -713,10 +761,11 @@ class SetOperation(WriteOperation):
             Mapping between {slices in virtual dataset: slices in raw dataset}
             which were written by this function.
         """
+        breakpoint()
         # If the shape of the array doesn't match the shape of the
         # index to assign the array to, broadcast it first.
         index = ndindex(self.index)
-        index_shape = [len(dim) for dim in index.args]
+        index_shape = tuple(len(dim) for dim in index.args)
         if self.arr.shape != index_shape:
             arr = np.broadcast_to(self.arr, index_shape)
         else:
@@ -734,6 +783,26 @@ class SetOperation(WriteOperation):
             data_dict[virtual_chunk] = arr[arr_chunk.raw]
 
         return write_dataset_chunks(f, name, data_dict)
+
+    def show(self, data: np.ndarray) -> np.ndarray:
+        """Return the dataset after having applied the operation in memory.
+
+        Note that this does not write to disk; it is only used when
+        `Dataset.__getitem__` is called before `commit_version` can write the data
+        to the file.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            Data to apply the set operation on
+
+        Returns
+        -------
+        np.ndarray
+            Value of the dataset post-operation
+        """
+        data[self.index] = self.arr
+        return data
 
 
 class AppendOperation(WriteOperation):
@@ -771,6 +840,28 @@ class AppendOperation(WriteOperation):
             which were written by this function.
         """
         return append_to_dataset(f, version, name, self.value)
+
+    def show(self, data: np.ndarray) -> np.ndarray:
+        """Return the dataset after having applied the operation in memory.
+
+        Note that this does not write to disk; it is only used when
+        `Dataset.__getitem__` is called before `commit_version` can write the data
+        to the file.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            Data to apply the set operation on
+
+        Returns
+        -------
+        np.ndarray
+            Value of the dataset post-operation
+        """
+        return np.concatenate(
+            (data, self.value),
+            axis=0,
+        )
 
 
 def write_operations(
@@ -1193,7 +1284,7 @@ def partition(
         index = Tuple(*[Slice(0, dim) for dim in obj.shape])
         shape = obj.shape
     else:
-        index = obj
+        index = to_slice_tuple(obj)
         shape = tuple(dim.stop for dim in index.args)
 
     yield from ChunkSize((chunk_size,)).as_subchunks(index, shape)

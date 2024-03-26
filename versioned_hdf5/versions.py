@@ -134,6 +134,7 @@ def commit_version(
             attrs = {}
 
         shape = None
+        breakpoint()
         if isinstance(data, InMemoryDataset):
             shape = data.shape
             if data._operations is None:

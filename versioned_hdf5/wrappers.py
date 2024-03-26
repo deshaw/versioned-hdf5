@@ -508,7 +508,7 @@ class InMemoryDataset(Dataset):
 
         # List of dataset manipulations carried out by the user but not yet committed;
         # see WriteOperation class for details
-        self._operations = []
+        self._operations: List[WriteOperation] = []
 
     def __repr__(self):
         name = posixpath.basename(posixpath.normpath(self.name))
@@ -705,12 +705,11 @@ class InMemoryDataset(Dataset):
 
         # If we can read from the underlying dataset, do so
         if self._operations:
-            arr = super().__getitem__(idx.raw)
+            arr = super().__getitem__(idx.raw)[:]
             for operation in self._operations:
-                pass
+                arr = operation.show(arr)
 
-            return arr
-        return np.array([])
+        return arr[()]
 
         # if self.id.can_read_direct:
         #     return super().__getitem__(idx.raw)
