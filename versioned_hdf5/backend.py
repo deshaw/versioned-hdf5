@@ -676,7 +676,13 @@ def create_virtual_dataset(
 class WriteOperation:
     """Base class for dataset manipulations."""
 
-    def apply(self, f: File, name: str, version: str) -> Dict[Tuple, Tuple]:
+    def apply(
+        self,
+        f: File,
+        name: str,
+        version: str,
+        slices: Dict[Tuple, Tuple],
+    ) -> Dict[Tuple, Tuple]:
         """Apply the write operation to the dataset.
 
         Parameters
@@ -687,6 +693,9 @@ class WriteOperation:
             Name of the dataset
         version : str
             Version of the dataset to write to
+        slices : Dict[Tuple, Tuple]
+            Mapping between {slices in virtual dataset: slices in raw dataset}
+            in the virtual datset initially
 
         Returns
         -------
@@ -739,12 +748,14 @@ class SetOperation(WriteOperation):
     def __repr__(self):
         return f"SetOperation:\n  Index {self.index}: Data {self.arr}"
 
-    def apply(self, f: File, name: str, version: str) -> Dict[Tuple, Tuple]:
+    def apply(
+        self,
+        f: File,
+        name: str,
+        version: str,
+        slices: Dict[Tuple, Tuple]
+    ) -> Dict[Tuple, Tuple]:
         """Write the stored data to the dataset in chunks.
-
-
-        The only thing you need here is the shape of the raw data, so that you know how to partition
-        the new data to be written into chunks
 
         Parameters
         ----------
@@ -754,6 +765,9 @@ class SetOperation(WriteOperation):
             Name of the dataset
         version : str
             Version of the dataset to write to
+        slices : Dict[Tuple, Tuple]
+            Mapping between {slices in virtual dataset: slices in raw dataset}
+            in the virtual datset initially
 
         Returns
         -------
@@ -761,7 +775,6 @@ class SetOperation(WriteOperation):
             Mapping between {slices in virtual dataset: slices in raw dataset}
             which were written by this function.
         """
-        breakpoint()
         # If the shape of the array doesn't match the shape of the
         # index to assign the array to, broadcast it first.
         index = ndindex(self.index)
@@ -771,18 +784,30 @@ class SetOperation(WriteOperation):
         else:
             arr = self.arr
 
-        data_dict = {}
         raw_data = f["_version_data"][name]["raw_data"]
         chunk_size = tuple(raw_data.attrs["chunks"])[0]
 
+        # Create a dictionary which is essentially a list of changes to virtual
+        # indices that are being made as part of the write operation.
+        changes = {}
         for arr_chunk, virtual_chunk in zip(
             partition(arr, chunk_size),
             partition(index, chunk_size),
             strict=True,
         ):
-            data_dict[virtual_chunk] = arr[arr_chunk.raw]
+            changes[virtual_chunk] = arr[arr_chunk.raw]
 
-        return write_dataset_chunks(f, name, data_dict)
+        # Indices written by write_dataset_chunks need to be full chunks.
+        # Compute the affected chunks and their target values by comparing the
+        # existing (chunk-sized) dataset slices to the (not-chunk-sized) requested
+        # changes.
+        changed_chunks = get_affected_chunks(slices, changes)
+
+        # Operations which set data only write and/or replace entire chunks,
+        # i.e. they do not modify the keys of this mapping. Therefore it is
+        # not necessary to pass in the initial slices to write_dataset_chunks.
+        new_slices = write_dataset_chunks(f, name, changes)
+        return {**slices, **new_slices}
 
     def show(self, data: np.ndarray) -> np.ndarray:
         """Return the dataset after having applied the operation in memory.
@@ -896,9 +921,10 @@ def write_operations(
             "Use write_dataset() if the dataset does not yet exist"
         )
 
-    slices = {}
+    breakpoint()
+    slices = get_previous_version_slices(f, version_name, name)
     for operation in operations:
-        slices.update(operation.apply(f, name, version_name))
+        slices.update(operation.apply(f, name, version_name, slices))
 
     slices = sorted(list(slices.items()), key=lambda s: s[0].args[0].start)
     last_vslice = slices[-1][0]
@@ -963,6 +989,7 @@ def append_to_dataset(
     version_name: str,
     name: str,
     arr: np.ndarray,
+    slices: Dict[Tuple, Tuple],
 ) -> Dict[Tuple, Tuple]:
     """Append data to the raw dataset.
 
@@ -984,12 +1011,19 @@ def append_to_dataset(
         Name of the dataset to append data to
     arr : np.ndarray
         Data to append to the dataset
+    slices : Dict[Tuple, Tuple]
+        Slices of the virtual dataset that is being appended to; maps {slices in
+        virtual dataset: slices in raw dataset}. If only one append
+        operation is being carried out, this is the value returned by.
+        `get_previous_version_slices(f, version_name, name)`. If multiple WriteOperation
+        operations are being carried out, these slices represent the result of all the
+        write operations applied to the virtual dataset
 
     Returns
     -------
     Dict[Tuple, Tuple]
-        Mapping between {slices in virtual dataset: slices in raw dataset} which were
-        written by this function.
+        Mapping between {slices in virtual dataset: slices in raw dataset} which make up
+        the virtual dataset after this function has been executed
     """
     raw_data: Dataset = f["_version_data"][name]["raw_data"]
 
@@ -1000,7 +1034,6 @@ def append_to_dataset(
         )
 
     # Get the slices from the previous version; they are reused here
-    slices = get_previous_version_slices(f, version_name, name)
     last_virtual_slice = list(slices)[-1]
 
     # Split the data to append into a part which fits in the last
@@ -1288,3 +1321,12 @@ def partition(
         shape = tuple(dim.stop for dim in index.args)
 
     yield from ChunkSize((chunk_size,)).as_subchunks(index, shape)
+
+
+def get_affected_chunks(
+    slices: Dict[Tuple, Tuple],
+    changes: Dict[Tuple, np.ndarray],
+) -> Dict[Tuple, np.ndarray]:
+
+    # Find the affected chunks in the slices of the previous virtual dataset
+    for index in changes:

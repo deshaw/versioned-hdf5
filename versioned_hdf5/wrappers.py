@@ -711,31 +711,6 @@ class InMemoryDataset(Dataset):
 
         return arr[()]
 
-        # if self.id.can_read_direct:
-        #     return super().__getitem__(idx.raw)
-        #
-        # arr = np.ndarray(idx.newshape(self.shape), new_dtype, order="C")
-        #
-        # for chunk in self.chunks.as_subchunks(idx, self.shape):
-        #     if chunk not in self.id.data_dict:
-        #         self.id.data_dict[chunk] = np.broadcast_to(
-        #             self.fillvalue, chunk.newshape(self.shape)
-        #         )
-        #     elif isinstance(self.id.data_dict[chunk], (slice, Slice, tuple, Tuple)):
-        #         raw_idx = Tuple(
-        #             self.id.data_dict[chunk],
-        #             *[slice(0, len(i)) for i in chunk.args[1:]],
-        #         ).raw
-        #         self.id.data_dict[chunk] = self.id._read_chunk(raw_idx)
-        #
-        #     if self.id.data_dict[chunk].size != 0:
-        #         arr_idx = chunk.as_subindex(idx)
-        #         index = idx.as_subindex(chunk)
-        #         arr[arr_idx.raw] = self.id.data_dict[chunk][index.raw]
-        #
-        # # Return arr as a scalar if it is shape () (matching h5py)
-        # return arr[()]
-
     @with_phil
     def __setitem__(self, args, val):
         """Write to the HDF5 dataset from a NumPy array.
