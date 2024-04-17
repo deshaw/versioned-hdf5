@@ -7,6 +7,12 @@ from numpy.testing import assert_equal
 from ..wrappers import InMemoryArrayDataset, InMemoryGroup, InMemorySparseDataset
 
 
+@pytest.fixture()
+def premade_group(h5file):
+    group = h5file.create_group("group")
+    return InMemoryGroup(group.id)
+
+
 def test_InMemoryArrayDataset(h5file):
     group = h5file.create_group("group")
     parent = InMemoryGroup(group.id)
@@ -107,3 +113,24 @@ def test_InMemoryArrayDataset_resize_multidimension(oldshape, newshape, h5file):
     )
     h5file["data"].resize(newshape)
     assert_equal(dataset[()], h5file["data"][()], str(newshape))
+
+
+def test_group_repr(premade_group):
+    """Test that repr(InMemoryGroup) also shows reprs of child objects."""
+    foo = premade_group.create_dataset(
+        "foo",
+        data=np.array([1, 2, 3, 4, 5, np.nan]),
+    )
+    bar = premade_group.create_dataset(
+        "bar",
+        data=np.array([1, 2, 3, 4, 5, np.nan]),
+    )
+    baz = premade_group.create_dataset(
+        "baz",
+        data=np.array([1, 2, 3, 4, 5, np.nan]),
+    )
+
+    result = repr(premade_group)
+    assert repr(foo) in result
+    assert repr(bar) in result
+    assert repr(baz) in result
