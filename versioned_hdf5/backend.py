@@ -992,135 +992,8 @@ class AppendOperation(WriteOperation):
         # If there's empty space in the last chunk of the raw data, append as much
         # data as will fit
         if split.has_append_data():
-            with Hashtable(f, name) as hashtable:
-                # Get the new virtual and raw last chunks
-                vchunk = split.get_new_last_vchunk(slices)
-                rchunk = split.get_new_last_rchunk(raw_data, slices)
-
-                # Get the indices to write the new data into
-                append_slice = split.get_append_rchunk_slice(slices)
-
-                # Remove the last chunk of the virtual dataset; we are
-                # replacing it with the chunk containing the appended data
-                del slices[last_virtual_slice]
-
-                # If the hash of the data is already in the hash table,
-                # just reuse the hashed slice. Otherwise, update the
-                # hash table with the new data hash and write the data
-                # to the raw dataset.
-                data_hash = hashtable.hash(split.new_raw_last_chunk_data)
-                if data_hash in hashtable:
-                    slices[vchunk] = hashtable[data_hash]
-                else:
-                    # Update the slices mapping
-                    slices[vchunk] = rchunk
-
-                    # Update the hashtable
-                    hashtable[data_hash] = rchunk
-
-                    # Write the data
-                    raw_data[append_slice.raw] = split.arr_to_append
-
-                    # Keep track of the last index written to in the raw dataset;
-                    # future appends are simplified by this
-                    raw_data.attrs["last_element"] = rchunk.args[0].stop
-
-        if split.has_write_data():
-            if split.has_append_data():
-                last_virtual_index = (
-                    last_virtual_slice.args[0].stop + split.arr_to_append.shape[0]
-                )
-            else:
-                last_virtual_index = last_virtual_slice.args[0].stop
-
-            virtual_slice_to_write = Tuple(
-                Slice(
-                    last_virtual_index,
-                    last_virtual_index + split.arr_to_write.shape[0],
-                ),
-                *[Slice(None, None) for _ in last_virtual_slice.args[1:]],
-            )
-
-            slices.update(
-                write_to_dataset(
-                    f,
-                    version,
-                    name,
-                    virtual_slice_to_write,
-                    split.arr_to_write,
-                )
-            )
-
-        return slices, split.get_new_vshape(shape)
-
-    def apply2(
-        self,
-        f: File,
-        name: str,
-        version: str,
-        slices: Dict[Tuple, Tuple],
-        shape: tuple[int, ...],
-    ) -> tuple[Dict[Tuple, Tuple], tuple[int, ...]]:
-        """Append data to the raw dataset.
-
-        1. Split the data into a part which can fit in the last chunk, and a part which
-           can't.
-        2. Compute the hash of the last virtual chunk with the new data appended.
-        3. Add either the hashed raw slice (if in the hashtable, and therefore the raw data)
-           or the new slice to the slice dict.
-        4. If the data to append doesn't fit in the unused space in the last chunk, write
-           any additional data into new chunk(s).
-
-        Parameters
-        ----------
-        f : File
-            File where the data is to be written
-        version : str
-            Version of the version to appending data to
-        name : str
-            Name of the dataset to append data to
-        arr : np.ndarray
-            Data to append to the dataset
-        slices : Dict[Tuple, Tuple]
-            Slices of the virtual dataset that is being appended to; maps {slices in
-            virtual dataset: slices in raw dataset}. If only one append
-            operation is being carried out, this is the value returned by.
-            `get_previous_version_slices(f, version_name, name)`. If multiple WriteOperation
-            operations are being carried out, these slices represent the result of all the
-            write operations applied to the virtual dataset
-        shape : tuple[int, ...]
-            Shape of the dataset pre-append
-
-        Returns
-        -------
-        Tuple[Dict[Tuple, Tuple], tuple[int, ...]]
-            Mapping between {slices in virtual dataset: slices in raw dataset}
-            which were written by this function; and shape of the current dataset
-        """
-        if not slices:
-            raise ValueError("Cannot append to empty dataset.")
-
-        raw_data: Dataset = f["_version_data"][name]["raw_data"]
-
-        if raw_data.dtype != self.value.dtype:
-            raise ValueError(
-                f"dtypes of raw data ({raw_data.dtype}) does not match data to append "
-                f"({self.value.dtype})"
-            )
-
-        # Get the slices from the previous version; they are reused here
-        last_virtual_slice = list(sorted(slices, key=lambda obj: obj.args[0].start))[-1]
-
-        # Split the data to append into a part which fits in the last
-        # chunk of the raw data, and the part that doesn't
-        split = split_across_unused(f, name, self.value)
-
-        # If there's empty space in the last chunk of the raw data, append as much
-        # data as will fit
-        if split.has_append_data():
             # Get the new virtual and raw last chunks
             vchunk = split.get_new_last_vchunk(slices)
-            # rchunk = split.get_new_last_rchunk(raw_data, slices)
 
             # Get the indices to write the new data into
             append_slice = split.get_append_rchunk_slice(slices)
@@ -1134,7 +1007,6 @@ class AppendOperation(WriteOperation):
                 target_raw_data=split.arr_to_append,
                 raw_last_chunk=split.new_raw_last_chunk,
                 raw_last_chunk_data=split.new_raw_last_chunk_data,
-                # rchunk=rchunk,
             )
 
         if split.has_write_data():

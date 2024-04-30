@@ -13,6 +13,8 @@ class Chunk:
 
 
 class AppendChunk(Chunk):
+    """Class which holds data to be written to the raw_data."""
+
     def __init__(
         self,
         target_raw_index: Tuple,
@@ -41,6 +43,16 @@ class AppendChunk(Chunk):
         self.target_raw_index = target_raw_index
         self.target_raw_data = target_raw_data
 
+    def __repr__(self):
+        return "\n".join(
+            [
+                f"Data to append: {self.target_raw_data}",
+                f"Index to append to: {self.target_raw_index}",
+                f"New last chunk: {self.new_raw_last_chunk_data}",
+                f"New last chunk index: {self.new_raw_last_chunk}",
+            ]
+        )
+
     def write_to_raw(self, hashtable: Hashtable, raw_data: h5py.Dataset) -> Tuple:
         # If the hash of the data is already in the hash table,
         # just reuse the hashed slice. Otherwise, update the
@@ -50,18 +62,21 @@ class AppendChunk(Chunk):
         if data_hash in hashtable:
             return hashtable[data_hash]
 
-        # Update the hashtable
-        hashtable[data_hash] = self.new_raw_last_chunk_data
+        # Update the hashtable; don't modify the largest index, since we are not
+        # actually writing new chunks.
+        largest_index = hashtable.largest_index
+        hashtable[data_hash] = self.new_raw_last_chunk
+        hashtable.largest_index = largest_index
 
         # Write only the data to append
         raw_data[self.target_raw_index.raw] = self.target_raw_data
 
         # Keep track of the last index written to in the raw dataset;
         # future appends are simplified by this
-        raw_data.attrs["last_element"] = self.rchunk.args[0].stop
+        raw_data.attrs["last_element"] = self.new_raw_last_chunk.args[0].stop
 
         # Return the last raw chunk
-        return self.new_raw_last_chunk_data
+        return self.new_raw_last_chunk
 
 
 class WriteChunk(Chunk):
