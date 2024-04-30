@@ -6,6 +6,7 @@ h5py license.
 """
 
 import posixpath
+import textwrap
 import warnings
 from collections import defaultdict
 from weakref import WeakValueDictionary
@@ -66,15 +67,16 @@ class InMemoryGroup(Group):
 
     # Based on Group.__repr__
     def __repr__(self):
-        namestr = ('"%s"' % self.name) if self.name is not None else "(anonymous)"
+        namestr = f'"{self.name}"' if self.name is not None else "(anonymous)"
         if not self:
-            r = "<Closed InMemoryGroup>"
-        elif self._committed:
-            r = "<Committed InMemoryGroup %s>" % namestr
-        else:
-            r = "<InMemoryGroup %s (%d members)>" % (namestr, len(self))
+            return "<Closed InMemoryGroup>"
+        if self._committed:
+            return f"<Committed InMemoryGroup {namestr}>"
 
-        return r
+        text = [f"<InMemoryGroup {namestr} ({len(list(self))} members)>"]
+        for item in self.values():
+            text.append(textwrap.indent(repr(item), prefix="  "))
+        return "\n".join(text)
 
     def _check_committed(self):
         if self._committed:
