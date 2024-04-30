@@ -94,7 +94,7 @@ def test_InMemorySparseDataset_getitem(h5file):
 @pytest.mark.slow
 def test_InMemoryArrayDataset_resize_multidimension(oldshape, newshape, h5file):
     # Test semantics against raw HDF5
-    a = np.arange(np.product(oldshape)).reshape(oldshape)
+    a = np.arange(np.prod(oldshape)).reshape(oldshape)
 
     group = h5file.create_group("group")
     parent = InMemoryGroup(group.id)

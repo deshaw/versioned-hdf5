@@ -604,7 +604,7 @@ def test_resize_multiple_dimensions(tmp_path, h5file):
     for i, (oldshape, newshape) in enumerate(
         itertools.combinations_with_replacement(itertools.product(shapes, repeat=3), 2)
     ):
-        data = np.arange(np.product(oldshape)).reshape(oldshape)
+        data = np.arange(np.prod(oldshape)).reshape(oldshape)
         # Get the ground truth from h5py
         vfile.f.create_dataset(
             f"data{i}",
