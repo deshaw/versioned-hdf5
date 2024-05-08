@@ -248,7 +248,10 @@ def create_base_dataset(
         shape = data.shape
     else:
         shape = (shape,) if isinstance(shape, int) else tuple(shape)
-        if data is not None and (np.prod(shape, dtype=np.ulonglong) != np.prod(data.shape, dtype=np.ulonglong)):
+        if data is not None and (
+            np.prod(shape, dtype=np.ulonglong)
+            != np.prod(data.shape, dtype=np.ulonglong)
+        ):
             raise ValueError("Shape tuple is incompatible with data")
 
     ndims = len(shape)
@@ -1104,10 +1107,7 @@ def last_raw_used_chunk(f: File, name: str) -> Tuple:
     if "last_element" in raw_data.attrs:
         last_chunk_start = raw_data.shape[0] - chunks[0]
         return Tuple(
-            Slice(
-                last_chunk_start,
-                last_chunk_start + raw_data.attrs["last_element"],
-            ),
+            Slice(last_chunk_start, raw_data.attrs["last_element"]),
             *(Slice(0, i) for i in raw_data.shape[1:]),
         )
     raise ValueError("Cannot find the last written element in the raw data.")

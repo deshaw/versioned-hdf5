@@ -148,7 +148,6 @@ def commit_version(
                     data_copy.attrs[k] = v
                 continue
 
-            breakpoint()
             slices, shape = write_dataset_operations(f, version_name, name, data)
 
         elif isinstance(data, dict):

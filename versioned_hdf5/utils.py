@@ -47,9 +47,9 @@ class AppendChunk(Chunk):
         return "\n".join(
             [
                 f"Data to append: {self.target_raw_data}",
-                f"Index to append to: {self.target_raw_index}",
-                f"New last chunk: {self.new_raw_last_chunk_data}",
-                f"New last chunk index: {self.new_raw_last_chunk}",
+                f"Raw index to append to: {self.target_raw_index}",
+                f"New raw last chunk: {self.new_raw_last_chunk_data}",
+                f"New raw last chunk index: {self.new_raw_last_chunk}",
             ]
         )
 
