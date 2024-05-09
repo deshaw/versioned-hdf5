@@ -130,7 +130,12 @@ class SplitResult:
         )
 
     def get_new_last_vchunk(self, slices: Dict[Tuple, Tuple]) -> Tuple:
-        """Get the last slice of the virtual dataset post-append.
+        """Get the last chunk of the virtual dataset post-append.
+
+        This gets the last chunk of the virtual dataset where the data which can fit
+        in the last raw chunk is being appended to. Note that there may also be data
+        written into a brand new raw chunk, but the virtual chunk associated with
+        that is not what is returned here.
 
         Parameters
         ----------
@@ -153,7 +158,12 @@ class SplitResult:
     def get_new_last_rchunk(
         self, raw_data: Dataset, slices: Dict[Tuple, Tuple]
     ) -> Tuple:
-        """Get the last slice of the raw dataset post-append.
+        """Get the last chunk of the raw dataset post-append.
+
+        This gets the last chunk of the raw dataset where the data which can fit
+        in the last raw chunk is being appended to. Note that there may also be data
+        written into a brand new raw chunk, but the raw chunk containing that new
+        data is not what is returned here.
 
         Parameters
         ----------
@@ -1039,6 +1049,25 @@ def write_dataset_operations(
     name: str,
     dataset: "InMemoryDataset",
 ) -> tuple[Dict[Tuple, Tuple], tuple[int, ...]]:
+    """Write any pending dataset operations to the file before clearing them.
+
+    Parameters
+    ----------
+    f : File
+        File to write the data to
+    version_name : str
+        Version name to write the data to
+    name : str
+        Dataset name to write the data to
+    dataset : InMemoryDataset
+        Dataset containing pending operations to write to the file
+
+    Returns
+    -------
+    tuple[Dict[Tuple, Tuple], tuple[int, ...]]
+        Mapping between virtual dataset chunks and raw dataset chunks, and
+        shape of the new virtual dataset
+    """
     chunks, shape = write_operations(f, version_name, name, dataset._operations)
     result = write_dataset_chunks(f, name, chunks, shape)
     dataset._operations.clear()

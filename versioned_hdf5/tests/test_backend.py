@@ -1,15 +1,22 @@
 import itertools
+from unittest import mock
 
+import h5py
 import numpy as np
 from h5py._hl.filters import guess_chunk
 from ndindex import ChunkSize, Slice, Tuple
 from numpy.testing import assert_equal
 from pytest import mark, raises
 
+import versioned_hdf5 as vhdf
+
 from ..backend import (
     DEFAULT_CHUNK_SIZE,
+    SplitResult,
     create_base_dataset,
     create_virtual_dataset,
+    get_space_remaining,
+    last_raw_used_chunk,
     write_dataset,
     write_dataset_chunks,
 )
@@ -800,3 +807,110 @@ def test_create_empty_virtual_dataset(setup_vfile):
         assert_equal(ds, np.array([]))
         assert ds.shape == (0,)
         assert ds.size == 0
+
+
+@mark.parametrize(("chunk_size"), [2, 5, 10])
+def test_last_raw_used_chunk(tmp_path, chunk_size):
+    """Test that last_raw_used_chunk returns the slice containing only used elements in the last chunk."""
+    filename = tmp_path / "data.h5"
+    updates = 30
+    chunks = (chunk_size,)
+
+    with h5py.File(filename, "w") as f:
+        vf = vhdf.VersionedHDF5File(f)
+        with vf.stage_version("r00") as sv:
+            sv.create_dataset("values", data=np.array([0]), chunks=chunks)
+
+        assert last_raw_used_chunk(f, "values") == Tuple(Slice(0, 1))
+
+        for i in range(1, updates + 1):
+            with vf.stage_version(f"r{i:02d}") as sv:
+                sv["values"].append(np.array([i]))
+
+            # Calculate number of chunks; use that to figure out start/end of elements
+            # in the last chunk
+            nchunks = (i // chunk_size) + 1
+            last_chunk_start = (nchunks - 1) * chunk_size
+            used_last_chunk_elements = i + 1 - last_chunk_start
+
+            assert last_raw_used_chunk(f, "values") == Tuple(
+                Slice(last_chunk_start, last_chunk_start + used_last_chunk_elements)
+            )
+
+
+@mark.parametrize(("chunk_size"), [2, 5, 10])
+def test_get_space_remaining(tmp_path, chunk_size):
+    """Test that get_space_remaining returns the number of unused elements in the last chunk."""
+    filename = tmp_path / "data.h5"
+    updates = 30
+    chunks = (chunk_size,)
+
+    with h5py.File(filename, "w") as f:
+        vf = vhdf.VersionedHDF5File(f)
+        with vf.stage_version("r00") as sv:
+            sv.create_dataset("values", data=np.array([0]), chunks=chunks)
+
+        assert get_space_remaining(f, "values") == chunk_size - 1
+
+        for i in range(1, updates + 1):
+            with vf.stage_version(f"r{i:02d}") as sv:
+                sv["values"].append(np.array([i]))
+
+            # Calculate number of chunks; use that to figure out start/end of elements
+            # in the last chunk
+            nchunks = (i // chunk_size) + 1
+            last_chunk_start = (nchunks - 1) * chunk_size
+            used_last_chunk_elements = i + 1 - last_chunk_start
+
+            assert (
+                get_space_remaining(f, "values")
+                == chunk_size - used_last_chunk_elements
+            )
+
+
+def test_split_result():
+    """Test basic indexing calculations provided by the SplitResult class."""
+    chunk_size = 3
+
+    # Assume chunk_size = 3, existing data = [0]
+    split = SplitResult(
+        arr_to_append=np.array([1, 2]),
+        arr_to_write=np.array([11, 12]),
+        new_raw_last_chunk=Tuple(Slice(3, 5)),
+        new_raw_last_chunk_data=np.array([11, 12]),
+    )
+
+    assert split.has_append_data()
+    assert split.has_write_data()
+
+    # Need one more chunk of size 3 to hold arr_to_write
+    assert split.get_additional_rchunks_needed(chunk_size) == 1
+
+    # Adding 4 new elements, so new shape is 5
+    assert split.get_new_vshape((1,)) == (5,)
+
+    chunks = {"chunks": (3,)}
+    mock_raw_data = mock.MagicMock()
+    mock_raw_data.shape = (9,)
+    mock_raw_data.attrs.__getitem__.side_effect = chunks.__getitem__
+
+    # If the raw data starts with 9 elements, we are adding
+    # one new chunk of size 3 for a total new raw shape of (12,)
+    assert split.get_new_raw_shape(mock_raw_data) == (12,)
+
+    previous_version_chunks = {Tuple(Slice(0, 1)): Tuple(Slice(6, 7))}
+
+    # virtual_data              raw_data
+    # Before append
+    # [0] --------------------> [6]
+    #
+    # After append
+    # [0 1 2] ----------------> [6  7  8]
+    # [3 4] ------------------> [9  10]
+    assert split.get_new_last_vchunk(previous_version_chunks) == Tuple(Slice(0, 3))
+    assert split.get_new_last_rchunk(mock_raw_data, previous_version_chunks) == Tuple(
+        Slice(6, 9)
+    )
+
+    # The target indices in the raw dataset where append data is to be written
+    assert split.get_append_rchunk_slice(previous_version_chunks) == Tuple(Slice(7, 9))

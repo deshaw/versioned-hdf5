@@ -2697,7 +2697,7 @@ def test_make_empty_dataset(tmp_path):
         assert_equal(cv["values"][:], np.array([]))
 
 
-@mark.append
+@pytest.mark.append()
 def test_append_small_dataset(tmp_path):
     """Test that a small dataset can be appended to an existing dataset.
 
@@ -2740,6 +2740,7 @@ def test_append_small_dataset(tmp_path):
         assert raw_data.attrs["last_element"] == 4
 
 
+@pytest.mark.append()
 def test_append_small_dataset_inmemorydataset(tmp_path):
     """Test that the InMemoryDataset created by an append has the right structure.
 
@@ -2777,7 +2778,7 @@ def test_append_small_dataset_inmemorydataset(tmp_path):
             )
 
 
-@mark.append
+@pytest.mark.append()
 def test_append_big_dataset(tmp_path):
     """Test that a big dataset can be appended to an existing dataset.
 
