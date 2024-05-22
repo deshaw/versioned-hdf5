@@ -1,3 +1,4 @@
+import logging
 from typing import Dict, Optional
 
 import numpy as np
@@ -175,6 +176,9 @@ def write_dataset(
     chunk_size = chunks[0]
 
     with Hashtable(f, name) as hashtable:
+        old_chunks = hashtable.largest_index
+        chunks_reused = 0
+
         if len(data.shape) != 0:
             for data_slice in ChunkSize(chunks).indices(data.shape):
                 data_s = data[data_slice.raw]
@@ -193,6 +197,8 @@ def write_dataset(
                         slices_to_write=slices_to_write,
                     )
 
+                    chunks_reused += 1
+
                 else:
                     idx = hashtable.largest_index
                     raw_slice = Slice(
@@ -207,6 +213,16 @@ def write_dataset(
                 data_s = data[data_slice.raw]
                 idx = Tuple(raw_slice, *[slice(0, i) for i in data_s.shape[1:]])
                 ds[idx.raw] = data[data_slice.raw]
+
+        new_chunks = hashtable.largest_index
+
+    logging.debug(
+        "  %s: "
+        "New chunks written: %d; "
+        "Number of chunks reused: %d",
+        name, new_chunks - old_chunks, chunks_reused
+    )
+
     return slices
 
 
@@ -316,7 +332,7 @@ def _convert_to_bytes(arr: np.ndarray) -> np.ndarray:
         return np.vectorize(lambda i: bytes(i, encoding="utf-8"))(arr)
 
 
-def write_dataset_chunks(f, name, data_dict, shape=None):
+def write_dataset_chunks(f, name, data_dict):
     """
     data_dict should be a dictionary mapping chunk_size index to either an
     array for that chunk, or a slice into the raw data for that chunk
@@ -331,12 +347,10 @@ def write_dataset_chunks(f, name, data_dict, shape=None):
     chunks = tuple(raw_data.attrs["chunks"])
     chunk_size = chunks[0]
 
-    if shape is None:
-        shape = tuple(
-            max(c.args[i].stop for c in data_dict) for i in range(len(chunks))
-        )
-
     with Hashtable(f, name) as hashtable:
+        old_chunks = hashtable.largest_index
+        chunks_reused = 0
+
         slices = {i: None for i in data_dict}
 
         # Mapping from slices in the raw dataset after this write is complete to ndarray
@@ -366,6 +380,8 @@ def write_dataset_chunks(f, name, data_dict, shape=None):
                         data_to_write=data_to_write,
                     )
 
+                    chunks_reused += 1
+
                 else:
                     idx = hashtable.largest_index
                     raw_slice = Slice(
@@ -375,12 +391,22 @@ def write_dataset_chunks(f, name, data_dict, shape=None):
                     hashtable[data_hash] = raw_slice
                     data_to_write[raw_slice] = data_s
 
+        new_chunks = hashtable.largest_index
+
     assert None not in slices.values()
     old_shape = raw_data.shape
     raw_data.resize((old_shape[0] + len(data_to_write) * chunk_size,) + chunks[1:])
     for raw_slice, data_s in data_to_write.items():
         c = (raw_slice.raw,) + tuple(slice(0, i) for i in data_s.shape[1:])
         raw_data[c] = data_s
+
+    logging.debug(
+        "  %s: "
+        "New chunks written: %d; "
+        "Number of chunks reused: %d",
+        name, new_chunks - old_chunks, chunks_reused
+    )
+
     return slices
 
 

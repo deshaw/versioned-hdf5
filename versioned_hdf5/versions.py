@@ -146,7 +146,7 @@ def commit_version(
         if isinstance(data, dict):
             if chunks[name] is not None:
                 raise NotImplementedError("Specifying chunk size with dict data")
-            slices = write_dataset_chunks(f, name, data, shape=shape)
+            slices = write_dataset_chunks(f, name, data)
         elif isinstance(data, InMemorySparseDataset):
             write_dataset(
                 f,
@@ -157,7 +157,7 @@ def commit_version(
                 compression_opts=compression_opts[name],
                 fillvalue=fillvalue,
             )
-            slices = write_dataset_chunks(f, name, data.data_dict, shape=data.shape)
+            slices = write_dataset_chunks(f, name, data.data_dict)
         else:
             slices = write_dataset(
                 f,

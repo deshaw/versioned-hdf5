@@ -7,7 +7,7 @@ change.
 import datetime
 import logging
 from contextlib import contextmanager
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Tuple
 
 import h5py
 import ndindex
@@ -313,9 +313,6 @@ class VersionedHDF5File:
                 compression_opts=group.compression_opts,
                 timestamp=timestamp,
             )
-
-            self._log_version_diff_stats(old_current, self.current_version)
-
         except:
             delete_version(self.f, version_name, old_current)
             raise
@@ -343,72 +340,6 @@ class VersionedHDF5File:
                 f'<VersionedHDF5File object "{self.f.filename}" (mode'
                 f" {self.f.mode})>"
             )
-
-    def _get_hashes(self, name: str) -> Set[bytes]:
-        """Get a set of hashes for the chunks in the dataset.
-
-        Parameters
-        ----------
-        name : str
-            Name of the dataset for which hashes are to be generated
-
-        Returns
-        -------
-        Set[bytes]
-            A set of hashes for the dataset
-        """
-        with Hashtable(self.f, name) as hashtable:
-            return set(hashtable.keys())
-
-    def _log_version_diff_stats(
-        self,
-        old_version: Optional[str] = None,
-        new_version: Optional[str] = None,
-    ):
-        """Log some stats about differences between two versions.
-
-        Parameters
-        ----------
-        old_version : Optional[str]
-            Old version of the data to compare
-        new_version : Optional[str]
-            New version of the data to compare
-        """
-        old_datasets, new_datasets = {}, {}
-        if old_version in self:
-            old_datasets = self[old_version].datasets()
-        if new_version in self:
-            new_datasets = self[new_version].datasets()
-
-        msg = [""]
-        for name in sorted(set(old_datasets.keys()) | set(new_datasets.keys())):
-            old_dataset = old_datasets.get(name, None)
-            new_dataset = new_datasets.get(name, None)
-
-            old_hashes, new_hashes = set(), set()
-            old_shape, new_shape = None, None
-            old_chunks, new_chunks = None, None
-
-            if old_dataset:
-                old_shape = old_dataset.shape
-                old_chunks = old_dataset.chunks
-                old_hashes = self._get_hashes(name)
-
-            if new_dataset:
-                new_shape = new_dataset.shape
-                new_chunks = new_dataset.chunks
-                new_hashes = self._get_hashes(name)
-
-            chunks_reused = len(old_hashes & new_hashes)
-            new_chunks_written = len(new_hashes - old_hashes)
-
-            msg.append(
-                f"  {name}: Shape: {old_shape} -> {new_shape}; "
-                f"Chunks: {old_chunks} -> {new_chunks}; "
-                f"New chunks written: {new_chunks_written}; "
-                f"Number of chunks reused: {chunks_reused}"
-            )
-        logger.debug("\n".join(msg))
 
     def rebuild_hashtables(self):
         """Delete and rebuild *all* existing hashtables for the raw datasets."""
