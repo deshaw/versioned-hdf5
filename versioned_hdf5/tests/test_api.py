@@ -2999,3 +2999,49 @@ def test_append_raw_data_layout(tmp_path, chunk_size, updates):
         expected = np.zeros((updates // chunk_size + 1) * chunk_size)
         expected[: i + 1] = np.arange(i + 1)
         assert_equal(raw_data, expected)
+
+
+@mark.append()
+def test_append_set_append(tmp_path):
+    """Test that the raw data is laid out correctly after append operations."""
+    filename = tmp_path / "data.h5"
+    chunk_size = 10
+    chunks = (chunk_size,)
+
+    with h5py.File(filename, "w") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r0") as sv:
+            sv.create_dataset("values", data=np.arange(5), chunks=chunks)
+
+        with vf.stage_version("r1") as sv:
+            sv["values"].append(np.arange(5, 7))
+            sv["values"][3:6] = np.arange(-3, -6, -1)
+            sv["values"].append(np.arange(7, 8))
+
+
+@mark.append()
+def test_set_append_set_append(tmp_path):
+    """Test that the raw data is laid out correctly after append operations."""
+    filename = tmp_path / "data.h5"
+    chunk_size = 10
+    chunks = (chunk_size,)
+
+    with h5py.File(filename, "w") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r0") as sv:
+            sv.create_dataset("values", data=np.arange(15), chunks=chunks)
+
+        with vf.stage_version("r1") as sv:
+            sv["values"][3:6] = np.arange(-3, -6, -1)
+            sv["values"].append(np.arange(5, 7))
+            sv["values"][7:9] = np.arange(12, 14)
+            sv["values"].append(np.arange(7, 8))
+
+        assert_equal(
+            vf["r0"]["values"][:],
+            np.arange(15),
+        )
+        assert_equal(
+            vf["r1"]["values"][:],
+            np.array([0, 1, 2, -3, -4, -5, 6, 12, 13, 9, 10, 11, 12, 13, 14, 5, 6, 7]),
+        )

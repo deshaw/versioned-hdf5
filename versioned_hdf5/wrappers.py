@@ -977,12 +977,15 @@ class InMemoryDataset(Dataset):
             # Update the data dict for the indices hit by the append
 
             chunk_start = chunk.args[0].start  # Starting index of the chunk
-            index_to_write = target_vindex.as_subindex(
-                chunk
-            )  # Index to write relative to the chunk start
-            append_start = old_shape[
-                0
-            ]  # Virtual index where the data to append should start to be written
+
+            # Indices of the dataset that the target_vindex overlaps
+            index_to_write = target_vindex.as_subindex(chunk)
+
+            # # Indices of chunk that the target_vindex overlaps
+            # idx_to_write = chunk.as_subindex(target_vindex)
+
+            # Virtual index where the data to append should start to be written
+            append_start = old_shape[0]
             arr_index = Tuple(
                 Slice(
                     chunk_start + index_to_write.args[0].start - append_start,
@@ -1000,27 +1003,38 @@ class InMemoryDataset(Dataset):
                 chunk_extant_vindex = Tuple(
                     Slice(chunk.args[0].start, old_shape[0]), *other_dims
                 ).expand(self.shape)
-                chunk_extant_rindex = old_data_dict[chunk_extant_vindex]
                 assert chunk_extant_vindex in old_data_dict
 
-                # The data to be appended inside this chunk
-                chunk_target_vindex = Tuple(
-                    Slice(old_shape[0], chunk.args[0].stop), *other_dims
-                ).expand(self.shape)
+                # In cases where __setitem__ is called and the InMemoryDataset hasn't yet been
+                # committed, values in the data_dict contain np.ndarray objects instead of slices.
+                # Handle this by just appending the data here to the chunk to be written.
+                if isinstance(old_data_dict[chunk_extant_vindex], np.ndarray):
+                    new_data_dict[chunk] = np.concatenate(
+                        (old_data_dict[chunk_extant_vindex], arr[arr_index.raw])
+                    )
 
-                # Compute the raw indices to write
-                n_dim0_elements = len(chunk_target_vindex.args[0])
-                chunk_target_rindex = Slice(
-                    chunk_extant_rindex.stop, chunk_extant_rindex.stop + n_dim0_elements
-                )
+                else:
+                    chunk_extant_rindex = old_data_dict[chunk_extant_vindex]
 
-                new_data_dict[chunk] = AppendChunk(
-                    target_vindex=chunk_target_vindex,
-                    target_rindex=chunk_target_rindex,
-                    array=arr[arr_index.raw],
-                    extant_vindex=chunk_extant_vindex,
-                    extant_rindex=chunk_extant_rindex,
-                )
+                    # The data to be appended inside this chunk
+                    chunk_target_vindex = Tuple(
+                        Slice(old_shape[0], chunk.args[0].stop), *other_dims
+                    ).expand(self.shape)
+
+                    # Compute the raw indices to write
+                    n_dim0_elements = len(chunk_target_vindex.args[0])
+                    chunk_target_rindex = Slice(
+                        chunk_extant_rindex.stop,
+                        chunk_extant_rindex.stop + n_dim0_elements,
+                    )
+
+                    new_data_dict[chunk] = AppendChunk(
+                        target_vindex=chunk_target_vindex,
+                        target_rindex=chunk_target_rindex,
+                        array=arr[arr_index.raw],
+                        extant_vindex=chunk_extant_vindex,
+                        extant_rindex=chunk_extant_rindex,
+                    )
 
         self.id.data_dict = new_data_dict
 
