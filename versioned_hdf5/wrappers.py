@@ -22,8 +22,8 @@ from h5py._hl.selections import guess_shape
 from h5py._hl.vds import VDSmap
 from ndindex import ChunkSize, Slice, Tuple, ndindex
 
-from .backend import DEFAULT_CHUNK_SIZE
-from .slicetools import AppendChunk, spaceid_to_slice
+from .backend import DEFAULT_CHUNK_SIZE, AppendData
+from .slicetools import spaceid_to_slice
 
 _groups = WeakValueDictionary({})
 
@@ -744,20 +744,23 @@ class InMemoryDataset(Dataset):
                     *[slice(0, len(i)) for i in chunk.args[1:]],
                 ).raw
                 self.id.data_dict[chunk] = self.id._read_chunk(raw_idx)
-            elif isinstance(self.id.data_dict[chunk], AppendChunk):
-                append_chunk = self.id.data_dict[chunk]
+            elif isinstance(self.id.data_dict[chunk], AppendData):
+                # If the requested index hits a chunk containing pending append data,
+                # we read the existing part of the chunk, then write the array contained
+                # in the append data.
+                data = self.id.data_dict[chunk]
 
                 # Read the part of the chunk that is already written
                 raw_idx = Tuple(
-                    append_chunk.extant_rindex,
+                    data.extant_rindex,
                     *[slice(0, len(i)) for i in chunk.args[1:]],
                 ).raw
-                arr_extant_index = append_chunk.extant_vindex.as_subindex(chunk)
+                arr_extant_index = data.extant_vindex.as_subindex(chunk)
                 arr[arr_extant_index.raw] = self.id._read_chunk(raw_idx)
 
-                # Read the pending append data
-                arr_append_index = append_chunk.target_vindex.as_subindex(chunk)
-                arr[arr_append_index.raw] = append_chunk.array
+                # Read the array which has yet to be appended
+                arr_append_index = data.target_vindex.as_subindex(chunk)
+                arr[arr_append_index.raw] = data.array
                 continue
 
             if self.id.data_dict[chunk].size != 0:
@@ -910,7 +913,7 @@ class InMemoryDataset(Dataset):
                     *[slice(0, len(i)) for i in chunk.args[1:]],
                 ).raw
                 self.id.data_dict[chunk] = self.id._read_chunk(raw_idx)
-            elif isinstance(self.id.data_dict[chunk], AppendChunk):
+            elif isinstance(self.id.data_dict[chunk], AppendData):
                 # If the user sets the data on chunk being appended to,
                 # just convert it into a normal chunk
                 arr = np.full(
@@ -1028,7 +1031,7 @@ class InMemoryDataset(Dataset):
                         chunk_extant_rindex.stop + n_dim0_elements,
                     )
 
-                    new_data_dict[chunk] = AppendChunk(
+                    new_data_dict[chunk] = AppendData(
                         target_vindex=chunk_target_vindex,
                         target_rindex=chunk_target_rindex,
                         array=arr[arr_index.raw],

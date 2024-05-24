@@ -9,7 +9,6 @@ from ndindex import ChunkSize, Slice, Tuple, ndindex
 from numpy.testing import assert_array_equal
 
 from .hashtable import Hashtable
-from .slicetools import AppendChunk
 
 DEFAULT_CHUNK_SIZE = 2**12
 DATA_VERSION = 4
@@ -372,7 +371,7 @@ def write_dataset_chunks(f, name, data_dict):
         for chunk, data_s in data_dict.items():
             if isinstance(data_s, (slice, tuple, Tuple, Slice)):
                 slices[chunk] = ndindex(data_s)
-            elif isinstance(data_s, AppendChunk):
+            elif isinstance(data_s, AppendData):
                 # Write chunks to append to the raw data without writing a new chunk
                 if data_s.array.dtype != raw_data.dtype:
                     raise ValueError(
@@ -552,4 +551,62 @@ def create_virtual_dataset(
             virtual_data.attrs[k] = v
     virtual_data.attrs["raw_data"] = raw_data.name
     virtual_data.attrs["chunks"] = raw_data.chunks
+
     return virtual_data
+
+
+class AppendData:
+    """Container for data to be appended.
+
+    Attributes
+    ----------
+    target_vindex : Indices of the virtual dataset which the data to be appended should appear
+    target_rindex : Indices of the raw dataset to write the data to
+    array : Data to append (this is what is written to the raw dataset)
+    extant_vindex : Virtual indices of the data which already exists in the chunk where the
+         data is to be written
+    extant_rindex : Raw indices of the data which already exists in the chunk where the data
+         is to be written
+    """
+
+    def __init__(
+        self,
+        target_vindex: Tuple,
+        target_rindex: Slice,
+        array: np.ndarray,
+        extant_vindex: Tuple,
+        extant_rindex: Slice,
+    ):
+        """Instantiate an AppendData instance.
+
+        Parameters
+        ----------
+        target_vindex : Tuple
+             Indices of the virtual dataset which the data to be appended should appear
+        target_rindex : Slice
+             Indices of the raw dataset to write the data to
+        array : np.ndarray
+             Data to append (this is what is written to the raw dataset)
+        extant_vindex : Tuple
+             Virtual indices of the data which already exists in the chunk where the
+             data is to be written
+        extant_rindex : Slice
+             Raw indices of the data which already exists in the chunk where the data
+             is to be written
+        """
+        self.target_vindex = target_vindex
+        self.target_rindex = target_rindex
+        self.array = array
+        self.extant_vindex = extant_vindex
+        self.extant_rindex = extant_rindex
+
+    def get_concatenated_rindex(self) -> Slice:
+        """Get the raw indices corresponding to the entire span of the chunk post-append.
+
+        Returns
+        -------
+        Slice
+             Index spanning the entire chunk post-append. Since chunking is only carried out
+             along the first dimension, this is a Slice rather than a Tuple.
+        """
+        return Slice(self.extant_rindex.start, self.target_rindex.stop)
