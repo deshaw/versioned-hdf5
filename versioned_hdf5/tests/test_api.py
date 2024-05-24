@@ -4,6 +4,7 @@ import logging
 import os
 import pathlib
 import shutil
+from unittest import mock
 
 import h5py
 import numpy as np
@@ -19,6 +20,7 @@ from ..wrappers import (
     DatasetWrapper,
     InMemoryArrayDataset,
     InMemoryDataset,
+    InMemoryDatasetID,
     InMemoryGroup,
     InMemorySparseDataset,
 )
@@ -2680,3 +2682,33 @@ def test_make_empty_dataset(tmp_path):
         vf = VersionedHDF5File(f)
         cv = vf[vf.current_version]
         assert_equal(cv["values"][:], np.array([]))
+
+
+@mark.parametrize(
+    ("chunk_size", "iterations"), itertools.product([3, 5, 10], [5, 20, 50, 100])
+)
+def test_resize_performance(tmp_path, chunk_size, iterations):
+    """Test that resizing an InMemoryDataset only calls InMemoryDatasetID.can_read_direct once per iteration.
+
+    InMemoryDatasetID.can_read_direct iterates through every chunk in the InMemoryDataset.data_dict. If this
+    is inadvertently called inside a resize operation, it can lead to quadratic performance. This test checks
+    that `can_read_direct` is only called once per resize operation. See
+    https://github.com/deshaw/versioned-hdf5/issues/325 for more information.
+    """
+    path = tmp_path / "tmp.h5"
+    with h5py.File(path, "w") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r0") as sv:
+            sv.create_dataset("values", data=np.array([1, 2, 3]), chunks=(chunk_size,))
+
+        with mock.patch(
+            "versioned_hdf5.wrappers.InMemoryDatasetID.can_read_direct",
+            new_callable=mock.PropertyMock,
+        ) as mock_crd:
+            mock_crd.can_read_direct.return_value = True
+            for i in range(iterations):
+                with vf.stage_version(f"r{i+1}") as sv:
+                    # Grow the dataset
+                    sv["values"].resize((i + 3,))
+
+        assert mock_crd.call_count == iterations

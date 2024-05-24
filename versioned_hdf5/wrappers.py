@@ -9,6 +9,7 @@ import posixpath
 import textwrap
 import warnings
 from collections import defaultdict
+from typing import Optional, Union
 from weakref import WeakValueDictionary
 
 import numpy as np
@@ -634,30 +635,52 @@ class InMemoryDataset(Dataset):
 
         old_shape = self.shape
         data_dict = self.id.data_dict
+        can_read_direct = self.id.can_read_direct
 
         old_shape_idx = Tuple(*[Slice(0, i) for i in old_shape])
         new_data_dict = {}
-        for c in self.chunks.as_subchunks(old_shape_idx, size):
-            if c in data_dict:
-                new_data_dict[c] = data_dict[c]
+        for chunk in self.chunks.as_subchunks(old_shape_idx, size):
+            if chunk in data_dict:
+                new_data_dict[chunk] = data_dict[chunk]
             else:
-                a = self[c.raw]
-                data = np.full(c.newshape(size), self.fillvalue, dtype=self.dtype)
-                index = old_shape_idx.as_subindex(c)
-                data[index.raw] = a
-                new_data_dict[c] = data
+                data = np.full(chunk.newshape(size), self.fillvalue, dtype=self.dtype)
+                index = old_shape_idx.as_subindex(chunk)
+                data[index.raw] = self.get_index(
+                    chunk.raw, can_read_direct=can_read_direct
+                )
+                new_data_dict[chunk] = data
 
         self.id.data_dict = new_data_dict
         self.id.shape = size
 
     @with_phil
-    def __getitem__(self, args, new_dtype=None):
-        """Read a slice from the HDF5 dataset.
+    def get_index(
+        self,
+        args: Union[slice, Slice, Tuple, tuple, h5r.RegionReference],
+        new_dtype: Optional[str] = None,
+        can_read_direct: bool = True,
+    ) -> np.ndarray:
+        """Read a slice from the HDF5 dataset given by the index.
 
         Takes slices and recarray-style field names (more than one is
         allowed!) in any order.  Obeys basic NumPy rules, including
         broadcasting.
 
+        Parameters
+        ----------
+        args : Union[slice, Slice, Tuple, tuple, h5r.RegionReference]
+            Index to read from the Dataset
+        new_dtype : Optional[str]
+            Dtype of the returned array
+        can_read_direct : bool
+            True if we can read directly from the underlying hdf5 Dataset, False otherwise.
+            This should be the value of the InMemoryDatasetID instance's ``can_read_direct``
+            property for this Dataset.
+
+        Returns
+        -------
+        np.ndarray
+            Array containing data from this dataset from the requested index
         """
         # This boilerplate code is based on h5py.Dataset.__getitem__
         args = args if isinstance(args, tuple) else (args,)
@@ -701,7 +724,7 @@ class InMemoryDataset(Dataset):
 
         idx = ndindex(args).expand(self.shape)
 
-        if self.id.can_read_direct:
+        if can_read_direct:
             return super().__getitem__(idx.raw)
 
         arr = np.ndarray(idx.newshape(self.shape), new_dtype, order="C")
@@ -725,6 +748,18 @@ class InMemoryDataset(Dataset):
 
         # Return arr as a scalar if it is shape () (matching h5py)
         return arr[()]
+
+    @with_phil
+    def __getitem__(
+        self,
+        args: Union[slice, Slice, Tuple, tuple, h5r.RegionReference],
+        new_dtype: Optional[str] = None,
+    ) -> np.ndarray:
+        return self.get_index(
+            args,
+            new_dtype,
+            can_read_direct=self.id.can_read_direct,
+        )
 
     @with_phil
     def __setitem__(self, args, val):
@@ -1317,14 +1352,15 @@ class InMemoryDatasetID(h5d.DatasetID):
         self._data_dict = value
 
     @property
-    def can_read_direct(self):
-        """
-        Whether reading directly from the underlying dataset is OK
+    def can_read_direct(self) -> bool:
+        """Check whether reading directly from the underlying dataset is okay.
 
-        If this is True, then h5py.Dataset.__getitem__ can be used, which may
-        be faster than InMemoryDataset.__getitem__. This will happen in
-        particular when reading a read-only dataset.
-
+        Returns
+        -------
+        bool
+            If this is True, then h5py.Dataset.__getitem__ can be used, which may
+            be faster than InMemoryDataset.__getitem__. This will happen in
+            particular when reading a read-only dataset.
         """
         if self._data_dict is not None and any(
             isinstance(i, np.ndarray) for i in self._data_dict.values()
