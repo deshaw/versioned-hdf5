@@ -9,13 +9,12 @@ import posixpath
 import textwrap
 import warnings
 from collections import defaultdict
-from typing import Optional, Union
+from typing import Dict, Optional, Union
 from weakref import WeakValueDictionary
 
 import numpy as np
-from h5py import Dataset, Datatype, Empty, Group
+from h5py import Dataset, Datatype, Empty, Group, h5a, h5d, h5g, h5i, h5p, h5r, h5s, h5t
 from h5py import __version__ as h5py_version
-from h5py import h5a, h5d, h5g, h5i, h5p, h5r, h5s, h5t
 from h5py._hl import filters
 from h5py._hl.base import guess_dtype, phil, with_phil
 from h5py._hl.dataset import _LEGACY_GZIP_COMPRESSION_VALS
@@ -24,7 +23,7 @@ from h5py._hl.vds import VDSmap
 from ndindex import ChunkSize, Slice, Tuple, ndindex
 
 from .backend import DEFAULT_CHUNK_SIZE
-from .slicetools import spaceid_to_slice
+from .slicetools import AppendChunk, spaceid_to_slice
 
 _groups = WeakValueDictionary({})
 
@@ -745,6 +744,21 @@ class InMemoryDataset(Dataset):
                     *[slice(0, len(i)) for i in chunk.args[1:]],
                 ).raw
                 self.id.data_dict[chunk] = self.id._read_chunk(raw_idx)
+            elif isinstance(self.id.data_dict[chunk], AppendChunk):
+                append_chunk = self.id.data_dict[chunk]
+
+                # Read the part of the chunk that is already written
+                raw_idx = Tuple(
+                    append_chunk.extant_rindex,
+                    *[slice(0, len(i)) for i in chunk.args[1:]],
+                ).raw
+                arr_extant_index = append_chunk.extant_vindex.as_subindex(chunk)
+                arr[arr_extant_index.raw] = self.id._read_chunk(raw_idx)
+
+                # Read the pending append data
+                arr_append_index = append_chunk.target_vindex.as_subindex(chunk)
+                arr[arr_append_index.raw] = append_chunk.array
+                continue
 
             if self.id.data_dict[chunk].size != 0:
                 arr_idx = chunk.as_subindex(idx)
@@ -885,24 +899,133 @@ class InMemoryDataset(Dataset):
 
         val = np.broadcast_to(val, idx.newshape(self.shape))
 
-        for c in self.chunks.as_subchunks(idx, self.shape):
-            if c not in self.id.data_dict:
+        for chunk in self.chunks.as_subchunks(idx, self.shape):
+            if chunk not in self.id.data_dict:
                 # Broadcasted arrays do not actually consume memory
-                fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
-                self.id.data_dict[c] = fill.astype(self.dtype)
-            elif isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
+                fill = np.broadcast_to(self.fillvalue, chunk.newshape(self.shape))
+                self.id.data_dict[chunk] = fill.astype(self.dtype)
+            elif isinstance(self.id.data_dict[chunk], (slice, Slice, tuple, Tuple)):
                 raw_idx = Tuple(
-                    self.id.data_dict[c], *[slice(0, len(i)) for i in c.args[1:]]
+                    self.id.data_dict[chunk],
+                    *[slice(0, len(i)) for i in chunk.args[1:]],
                 ).raw
-                self.id.data_dict[c] = self.id._read_chunk(raw_idx)
+                self.id.data_dict[chunk] = self.id._read_chunk(raw_idx)
+            elif isinstance(self.id.data_dict[chunk], AppendChunk):
+                # If the user sets the data on chunk being appended to,
+                # just convert it into a normal chunk
+                arr = np.full(
+                    shape=chunk.newshape(self.shape),
+                    fill_value=self.fillvalue,
+                    dtype=self.dtype,
+                )
+                append_chunk = self.id.data_dict[chunk]
 
-            if self.id.data_dict[c].size != 0:
-                val_idx = c.as_subindex(idx)
-                if not self.id.data_dict[c].flags.writeable:
+                # Read the part of the chunk that is already written
+                raw_idx = Tuple(
+                    append_chunk.extant_rindex,
+                    *[slice(0, len(i)) for i in chunk.args[1:]],
+                ).raw
+                arr_extant_index = append_chunk.extant_vindex.as_subindex(chunk)
+                arr[arr_extant_index.raw] = self.id._read_chunk(raw_idx)
+
+                # Read the pending append data
+                arr_append_index = append_chunk.target_vindex.as_subindex(chunk)
+                arr[arr_append_index.raw] = append_chunk.array
+
+                self.id.data_dict[chunk] = arr
+
+            if self.id.data_dict[chunk].size != 0:
+                val_idx = chunk.as_subindex(idx)
+                if not self.id.data_dict[chunk].flags.writeable:
                     # self.id.data_dict[c] is a broadcasted array from above
-                    self.id.data_dict[c] = self.id.data_dict[c].copy()
-                index = idx.as_subindex(c)
-                self.id.data_dict[c][index.raw] = val[val_idx.raw]
+                    self.id.data_dict[chunk] = self.id.data_dict[chunk].copy()
+                index = idx.as_subindex(chunk)
+                self.id.data_dict[chunk][index.raw] = val[val_idx.raw]
+
+    def append(self, arr: np.ndarray):
+        """Append ``arr`` to the dataset.
+
+        Parameters
+        ----------
+        arr : np.ndarray
+            Array to append. Note that the shape of ``arr`` along the first dimension
+            is arbitrary, but the rest of the dimensions must match shape.
+        """
+        old_data_dict = self.id.data_dict
+        new_data_dict: Dict[Tuple, Union[Tuple, np.ndarray]] = {}
+        old_shape = self.shape
+        other_dims = [Slice(0, dim) for dim in old_shape[1:]]
+
+        if arr.shape[1:] != old_shape[1:]:
+            raise ValueError(
+                f"Can only append datasets of shape (<any>, {old_shape[1:]})"
+            )
+
+        new_shape = tuple([old_shape[0] + arr.shape[0], *old_shape[1:]])
+        target_vindex = Tuple(Slice(old_shape[0], new_shape[0]), *other_dims)
+
+        # Resize to accommodate new data
+        self.resize(new_shape)
+
+        # Copy over the unchanged chunks
+        for chunk in self.chunks.indices(new_shape):
+            if chunk in old_data_dict:
+                new_data_dict[chunk] = old_data_dict[chunk]
+
+        # Iterate over the chunks hit by the appended indices
+        for chunk in self.chunks.as_subchunks(target_vindex, new_shape):
+            # Update the data dict for the indices hit by the append
+
+            chunk_start = chunk.args[0].start  # Starting index of the chunk
+            index_to_write = target_vindex.as_subindex(
+                chunk
+            )  # Index to write relative to the chunk start
+            append_start = old_shape[
+                0
+            ]  # Virtual index where the data to append should start to be written
+            arr_index = Tuple(
+                Slice(
+                    chunk_start + index_to_write.args[0].start - append_start,
+                    chunk_start + index_to_write.args[0].stop - append_start,
+                ),
+                *other_dims,
+            )
+
+            if chunk.args[0].start >= old_shape[0]:
+                # The virtual index of this chunk is outside the old shape;
+                # therefore this is purely a new chunk that needs to be written.
+                new_data_dict[chunk] = arr[arr_index.raw]
+            else:
+                # The existing data must always exist in the old data dict
+                chunk_extant_vindex = Tuple(
+                    Slice(chunk.args[0].start, old_shape[0]), *other_dims
+                ).expand(self.shape)
+                chunk_extant_rindex = old_data_dict[chunk_extant_vindex]
+                assert chunk_extant_vindex in old_data_dict
+
+                # The data to be appended inside this chunk
+                chunk_target_vindex = Tuple(
+                    Slice(old_shape[0], chunk.args[0].stop), *other_dims
+                ).expand(self.shape)
+
+                # Compute the raw indices to write
+                n_dim0_elements = len(chunk_target_vindex.args[0])
+                chunk_target_rindex = Slice(
+                    chunk_extant_rindex.stop, chunk_extant_rindex.stop + n_dim0_elements
+                )
+
+                new_data_dict[chunk] = AppendChunk(
+                    target_vindex=chunk_target_vindex,
+                    target_rindex=chunk_target_rindex,
+                    array=arr[arr_index.raw],
+                    extant_vindex=chunk_extant_vindex,
+                    extant_rindex=chunk_extant_rindex,
+                )
+
+        self.id.data_dict = new_data_dict
+
+    def __iadd__(self, arr: np.ndarray):
+        self.append(arr)
 
 
 class DatasetLike:

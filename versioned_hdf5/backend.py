@@ -9,6 +9,7 @@ from ndindex import ChunkSize, Slice, Tuple, ndindex
 from numpy.testing import assert_array_equal
 
 from .hashtable import Hashtable
+from .slicetools import AppendChunk
 
 DEFAULT_CHUNK_SIZE = 2**12
 DATA_VERSION = 4
@@ -371,6 +372,48 @@ def write_dataset_chunks(f, name, data_dict):
         for chunk, data_s in data_dict.items():
             if isinstance(data_s, (slice, tuple, Tuple, Slice)):
                 slices[chunk] = ndindex(data_s)
+            elif isinstance(data_s, AppendChunk):
+                # Write chunks to append to the raw data without writing a new chunk
+                if data_s.array.dtype != raw_data.dtype:
+                    raise ValueError(
+                        f"dtypes do not match ({data_s.dtype} != {raw_data.dtype})"
+                    )
+
+                # Calculate a new hash for this chunk using the extant data and the
+                # data to be appended
+                data_hash = hashtable.hash(
+                    np.concatenate((raw_data[data_s.extant_rindex.raw], data_s.array))
+                )
+
+                if data_hash in hashtable:
+                    hashed_slice = hashtable[data_hash]
+                    slices[chunk] = hashed_slice
+
+                    _verify_new_chunk_reuse(
+                        raw_data=raw_data,
+                        new_data=data_s.array,
+                        data_hash=data_hash,
+                        hashed_slice=hashed_slice,
+                        chunk_being_written=data_s.array,
+                        data_to_write=data_to_write,
+                    )
+                else:
+                    raw_slice = data_s.get_concatenated_rindex()
+                    slices[chunk] = raw_slice
+                    hashtable[data_hash] = raw_slice
+
+                    # Decrement the number of stored chunks because we aren't actually
+                    # writing a new chunk.
+                    hashtable.largest_index -= 1
+
+                    # Write the data here, because if you add it to data_to_write the shape of the
+                    # data will be changed.
+                    raw_chunk = Tuple(
+                        data_s.target_rindex,
+                        *[Slice(0, dim) for dim in data_s.array.shape[1:]],
+                    )
+                    raw_data[raw_chunk.raw] = data_s.array
+
             else:
                 if data_s.dtype != raw_data.dtype:
                     raise ValueError(
