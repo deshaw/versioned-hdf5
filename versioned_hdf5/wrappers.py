@@ -755,11 +755,13 @@ class InMemoryDataset(Dataset):
                     data.extant_rindex,
                     *[slice(0, len(i)) for i in chunk.args[1:]],
                 ).raw
-                arr_extant_index = data.extant_vindex.as_subindex(chunk)
+
+                # Get the part of idx covered by the extant data
+                arr_extant_index = data.extant_vindex.as_subindex(idx)
                 arr[arr_extant_index.raw] = self.id._read_chunk(raw_idx)
 
-                # Read the array which has yet to be appended
-                arr_append_index = data.target_vindex.as_subindex(chunk)
+                # Get the part of idx covered by the appended data
+                arr_append_index = data.target_vindex.as_subindex(idx)
                 arr[arr_append_index.raw] = data.array
                 continue
 

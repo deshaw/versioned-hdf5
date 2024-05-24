@@ -3104,7 +3104,6 @@ def test_repeated_append(tmp_path):
             with vf.stage_version(f"r{i}") as sv:
                 sv["values"].append(np.arange(3))
 
-        breakpoint()
         assert_equal(
             vf["r0"]["values"][:],
             np.arange(5),
@@ -3126,8 +3125,8 @@ def test_repeated_append(tmp_path):
 
 
 @mark.append()
-def test_append_foo(tmp_path):
-    """Test that repeated appends in different versions correctly fill raw chunks."""
+def test_append_two_chunk_append(tmp_path):
+    """Test that appending to a two-chunk dataset executes correctly."""
     filename = tmp_path / "data.h5"
     chunk_size = 10
     chunks = (chunk_size,)
@@ -3144,7 +3143,6 @@ def test_append_foo(tmp_path):
         with vf.stage_version("r1") as sv:
             sv["values"].append(np.arange(3))
 
-        breakpoint()
         assert_equal(
             vf["r0"]["values"][:],
             np.array([0, 1, 2, 3, 4, 0, 1, 2, 0, 1, 2]),
