@@ -3003,7 +3003,13 @@ def test_append_raw_data_layout(tmp_path, chunk_size, updates):
 
 @mark.append()
 def test_append_set_append(tmp_path):
-    """Test that the raw data is laid out correctly after append operations."""
+    """Check that an append-set-append sequence results in expected data layout.
+
+    This test carries out an append-set-append sequence. Because of the ``__setitem__``
+    call, the first append gets written into a new raw chunk; then the ``__setitem__``
+    call and subsequent append operations apply to that new chunk, resulting in two
+    raw chunks stored in the file.
+    """
     filename = tmp_path / "data.h5"
     chunk_size = 10
     chunks = (chunk_size,)
@@ -3018,10 +3024,32 @@ def test_append_set_append(tmp_path):
             sv["values"][3:6] = np.arange(-3, -6, -1)
             sv["values"].append(np.arange(7, 8))
 
+        assert_equal(
+            vf["r0"]["values"][:],
+            np.arange(5),
+        )
+        assert_equal(
+            vf["r1"]["values"][:],
+            np.array([0, 1, 2, -3, -4, -5, 6, 7]),
+        )
+        assert_equal(
+            f["_version_data"]["values"]["raw_data"][:],
+            np.concatenate(
+                (
+                    np.array([0, 1, 2, 3, 4, 0, 0, 0, 0, 0]),
+                    np.array([0, 1, 2, -3, -4, -5, 6, 7, 0, 0]),
+                )
+            ),
+        )
+
 
 @mark.append()
 def test_set_append_set_append(tmp_path):
-    """Test that the raw data is laid out correctly after append operations."""
+    """Check that a set-append-set-append sequence results in expected data layout.
+
+    This test carries out a set-append-set-append sequence. The number of elements
+    appended exceeds the chunk size, requiring new chunks to be allocated.
+    """
     filename = tmp_path / "data.h5"
     chunk_size = 10
     chunks = (chunk_size,)
@@ -3044,4 +3072,92 @@ def test_set_append_set_append(tmp_path):
         assert_equal(
             vf["r1"]["values"][:],
             np.array([0, 1, 2, -3, -4, -5, 6, 12, 13, 9, 10, 11, 12, 13, 14, 5, 6, 7]),
+        )
+        assert_equal(
+            f["_version_data"]["values"]["raw_data"][:],
+            np.concatenate(
+                (
+                    # Initial write results in two chunks
+                    np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+                    np.array([10, 11, 12, 13, 14, 0, 0, 0, 0, 0]),
+                    # Second version writes another two chunks
+                    np.array([0, 1, 2, -3, -4, -5, 6, 12, 13, 9]),
+                    np.array([10, 11, 12, 13, 14, 5, 6, 7, 0, 0]),
+                )
+            ),
+        )
+
+
+@mark.append()
+def test_repeated_append(tmp_path):
+    """Test that repeated appends in different versions correctly fill raw chunks."""
+    filename = tmp_path / "data.h5"
+    chunk_size = 10
+    chunks = (chunk_size,)
+
+    with h5py.File(filename, "w") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r0") as sv:
+            sv.create_dataset("values", data=np.arange(5), chunks=chunks)
+
+        for i in range(1, 4):
+            with vf.stage_version(f"r{i}") as sv:
+                sv["values"].append(np.arange(3))
+
+        breakpoint()
+        assert_equal(
+            vf["r0"]["values"][:],
+            np.arange(5),
+        )
+        assert_equal(vf["r1"]["values"][:], np.array([0, 1, 2, 3, 4, 0, 1, 2]))
+        assert_equal(vf["r2"]["values"][:], np.array([0, 1, 2, 3, 4, 0, 1, 2, 0, 1, 2]))
+        assert_equal(
+            vf["r3"]["values"][:], np.array([0, 1, 2, 3, 4, 0, 1, 2, 0, 1, 2, 0, 1, 2])
+        )
+        assert_equal(
+            f["_version_data"]["values"]["raw_data"][:],
+            np.concatenate(
+                (
+                    np.array([0, 1, 2, 3, 4, 0, 1, 2, 0, 1]),
+                    np.array([2, 0, 1, 2, 0, 0, 0, 0, 0, 0]),
+                )
+            ),
+        )
+
+
+@mark.append()
+def test_append_foo(tmp_path):
+    """Test that repeated appends in different versions correctly fill raw chunks."""
+    filename = tmp_path / "data.h5"
+    chunk_size = 10
+    chunks = (chunk_size,)
+
+    with h5py.File(filename, "w") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r0") as sv:
+            sv.create_dataset(
+                "values",
+                data=np.array([0, 1, 2, 3, 4, 0, 1, 2, 0, 1, 2]),
+                chunks=chunks,
+            )
+
+        with vf.stage_version("r1") as sv:
+            sv["values"].append(np.arange(3))
+
+        breakpoint()
+        assert_equal(
+            vf["r0"]["values"][:],
+            np.array([0, 1, 2, 3, 4, 0, 1, 2, 0, 1, 2]),
+        )
+        assert_equal(
+            vf["r1"]["values"][:], np.array([0, 1, 2, 3, 4, 0, 1, 2, 0, 1, 2, 0, 1, 2])
+        )
+        assert_equal(
+            f["_version_data"]["values"]["raw_data"][:],
+            np.concatenate(
+                (
+                    np.array([0, 1, 2, 3, 4, 0, 1, 2, 0, 1]),
+                    np.array([2, 0, 1, 2, 0, 0, 0, 0, 0, 0]),
+                )
+            ),
         )

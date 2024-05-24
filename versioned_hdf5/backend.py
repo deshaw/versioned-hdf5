@@ -375,7 +375,7 @@ def write_dataset_chunks(f, name, data_dict):
                 # Write chunks to append to the raw data without writing a new chunk
                 if data_s.array.dtype != raw_data.dtype:
                     raise ValueError(
-                        f"dtypes do not match ({data_s.dtype} != {raw_data.dtype})"
+                        f"dtypes do not match ({data_s.array.dtype} != {raw_data.dtype})"
                     )
 
                 # Calculate a new hash for this chunk using the extant data and the
