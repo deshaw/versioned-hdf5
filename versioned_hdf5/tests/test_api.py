@@ -2712,3 +2712,35 @@ def test_resize_performance(tmp_path, chunk_size, iterations):
                     sv["values"].resize((i + 3,))
 
         assert mock_crd.call_count == iterations
+
+
+@mark.parametrize(
+    ("can_read_direct", "expected_calls"),
+    [
+        [True, 0],
+        [False, 0],
+        [None, 1],
+    ],
+)
+def test_dataset_getitem_can_read_direct(tmp_path, can_read_direct, expected_calls):
+    """Check that InMemoryDataset.get_index only reads directly when expected."""
+    chunk_size = 10
+
+    path = tmp_path / "tmp.h5"
+    with h5py.File(path, "w") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r0") as sv:
+            sv.create_dataset("values", data=np.array([1, 2, 3]), chunks=(chunk_size,))
+
+        with mock.patch(
+            "versioned_hdf5.wrappers.InMemoryDatasetID.can_read_direct",
+            new_callable=mock.PropertyMock,
+        ) as mock_crd:
+            mock_crd.can_read_direct.return_value = can_read_direct
+            with vf.stage_version("r1") as sv:
+                sv["values"].get_index(
+                    slice(None, None),
+                    can_read_direct=can_read_direct
+                )
+
+        assert mock_crd.call_count == expected_calls

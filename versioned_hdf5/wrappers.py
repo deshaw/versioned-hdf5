@@ -604,7 +604,7 @@ class InMemoryDataset(Dataset):
         return self._parent
 
     def __array__(self, dtype=None):
-        return self.__getitem__((), new_dtype=dtype)
+        return self.__getitem__(())
 
     def resize(self, size, axis=None):
         """Resize the dataset, or the specified axis.
@@ -658,7 +658,7 @@ class InMemoryDataset(Dataset):
         self,
         args: Union[slice, Slice, Tuple, tuple, h5r.RegionReference],
         new_dtype: Optional[str] = None,
-        can_read_direct: bool = True,
+        can_read_direct: Optional[bool] = None,
     ) -> np.ndarray:
         """Read a slice from the HDF5 dataset given by the index.
 
@@ -672,10 +672,13 @@ class InMemoryDataset(Dataset):
             Index to read from the Dataset
         new_dtype : Optional[str]
             Dtype of the returned array
-        can_read_direct : bool
+        can_read_direct : Optional[bool]
             True if we can read directly from the underlying hdf5 Dataset, False otherwise.
             This should be the value of the InMemoryDatasetID instance's ``can_read_direct``
             property for this Dataset.
+
+            If None, ``self.id.can_read_direct`` is evaluated first to determine if data can
+            be read directly from the underlying dataset.
 
         Returns
         -------
@@ -724,6 +727,9 @@ class InMemoryDataset(Dataset):
 
         idx = ndindex(args).expand(self.shape)
 
+        if can_read_direct is None:
+            can_read_direct = self.id.can_read_direct
+
         if can_read_direct:
             return super().__getitem__(idx.raw)
 
@@ -753,13 +759,8 @@ class InMemoryDataset(Dataset):
     def __getitem__(
         self,
         args: Union[slice, Slice, Tuple, tuple, h5r.RegionReference],
-        new_dtype: Optional[str] = None,
     ) -> np.ndarray:
-        return self.get_index(
-            args,
-            new_dtype,
-            can_read_direct=self.id.can_read_direct,
-        )
+        return self.get_index(args)
 
     @with_phil
     def __setitem__(self, args, val):
