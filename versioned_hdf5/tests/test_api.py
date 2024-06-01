@@ -2023,14 +2023,12 @@ def test_stage_version_log_stats(tmp_path, caplog):
             )
 
         assert caplog.records
-        assert str(bar_shape_r0) in caplog.records[-1].getMessage()
-        assert str(bar_chunks_r0) in caplog.records[-1].getMessage()
-        assert str(baz_shape_r0) in caplog.records[-1].getMessage()
-        assert str(baz_chunks_r0) in caplog.records[-1].getMessage()
+        assert 'bar: New chunks written: 2; Number of chunks reused: 151' in caplog.records[-2].getMessage()
+        assert 'baz: New chunks written: 1; Number of chunks reused: 4' in caplog.records[-1].getMessage()
 
         with vf.stage_version("r1") as sv:
             bar_shape_r1 = (3, 15222, 2)
-            baz_shape_r1 = (1, (4) * 10, 2)
+            baz_shape_r1 = (1, 40, 2)
 
             bar = sv["bar"]
             bar.resize(bar_shape_r1)
@@ -2038,8 +2036,8 @@ def test_stage_version_log_stats(tmp_path, caplog):
             baz.resize(baz_shape_r1)
             baz[:, -10:, :] = np.full((1, 10, 2), 3)
 
-        assert str(bar_shape_r1) in caplog.records[-1].getMessage()
-        assert str(baz_shape_r1) in caplog.records[-1].getMessage()
+        assert 'bar: New chunks written: 2; Number of chunks reused: 151' in caplog.records[-2].getMessage()
+        assert 'baz: New chunks written: 1; Number of chunks reused: 4' in caplog.records[-1].getMessage()
 
 
 def test_data_version_identifier_valid(tmp_path, caplog):
