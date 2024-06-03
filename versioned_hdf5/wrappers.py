@@ -638,6 +638,7 @@ class InMemoryDataset(Dataset):
         can_read_direct = self.id.can_read_direct
 
         old_shape_idx = Tuple(*[Slice(0, i) for i in old_shape])
+        old_data = self.get_index(old_shape_idx.raw, can_read_direct=can_read_direct)
         new_data_dict = {}
         for chunk in self.chunks.as_subchunks(old_shape_idx, size):
             if chunk in data_dict:
@@ -645,9 +646,7 @@ class InMemoryDataset(Dataset):
             else:
                 data = np.full(chunk.newshape(size), self.fillvalue, dtype=self.dtype)
                 index = old_shape_idx.as_subindex(chunk)
-                data[index.raw] = self.get_index(
-                    chunk.raw, can_read_direct=can_read_direct
-                )
+                data[index.raw] = old_data[chunk.raw]
                 new_data_dict[chunk] = data
 
         self.id.data_dict = new_data_dict
