@@ -5,7 +5,7 @@ import numpy as np
 from h5py import VirtualLayout, VirtualSource, h5s
 from h5py._hl.filters import guess_chunk
 from ndindex import ChunkSize, Slice, Tuple, ndindex
-
+from numpy.testing import assert_array_equal
 
 from .hashtable import Hashtable
 
@@ -292,19 +292,21 @@ def _verify_new_chunk_reuse(
     # utf-8 strings. For this case, when the raw_data is changed, e.g.
     #      raw_data[some_slice] = chunk_being_written[another_slice]
     # the data that gets written is bytes. So in certain cases, just calling
-    # array_equal doesn't work. Instead, we convert each element to a bytestring
+    # assert_array_equal doesn't work. Instead, we convert each element to a bytestring
     # first.
     if reused_chunk.dtype == "O" and chunk_being_written.dtype == "O":
         to_be_written = _convert_to_bytes(chunk_being_written)
     else:
         to_be_written = chunk_being_written
 
-    if not np.array_equal(reused_chunk, to_be_written):
+    try:
+        assert_array_equal(reused_chunk, to_be_written)
+    except AssertionError as e:
         raise ValueError(
             f"Hash {data_hash} of existing data chunk {reused_chunk} "
             f"matches the hash of new data chunk {chunk_being_written}, "
             "but data does not."
-        )
+        ) from e
 
 
 def _convert_to_bytes(arr: np.ndarray) -> np.ndarray:
