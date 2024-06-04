@@ -13,7 +13,7 @@ from numpy.testing import assert_equal
 from pytest import mark, raises
 
 from ..api import VersionedHDF5File
-from ..backend import DATA_VERSION, DEFAULT_CHUNK_SIZE
+from ..backend import DATA_VERSION, DEFAULT_CHUNK_SIZE, _verify_new_chunk_reuse
 from ..replay import delete_versions
 from ..versions import TIMESTAMP_FMT, all_versions
 from ..wrappers import (

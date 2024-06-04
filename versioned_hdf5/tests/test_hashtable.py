@@ -181,7 +181,7 @@ def test_verify_chunk_reuse_data_version_2(tmp_path):
                     chunks=(2,),
                 )
 
-            with raises(AssertionError):
+            with raises(ValueError):
                 with vf.stage_version("r1") as group:
                     group["values"] = np.concatenate((data2, data2))
 
@@ -232,7 +232,7 @@ def test_verify_chunk_reuse_data_version_3(tmp_path):
                     chunks=(100,),
                 )
 
-            with raises(AssertionError):
+            with raises(ValueError):
                 with vf.stage_version("r1") as group:
                     group["values"] = np.array([b"ab", b"", b"cd"], dtype=object)
                 with vf.stage_version("r2") as group:
