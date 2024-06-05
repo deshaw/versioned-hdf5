@@ -299,15 +299,14 @@ def _verify_new_chunk_reuse(
     else:
         to_be_written = chunk_being_written
 
-    assert_array_equal(
-        reused_chunk,
-        to_be_written,
-        err_msg=(
+    try:
+        assert_array_equal(reused_chunk, to_be_written)
+    except AssertionError as e:
+        raise ValueError(
             f"Hash {data_hash} of existing data chunk {reused_chunk} "
             f"matches the hash of new data chunk {chunk_being_written}, "
             "but data does not."
-        ),
-    )
+        ) from e
 
 
 def _convert_to_bytes(arr: np.ndarray) -> np.ndarray:
