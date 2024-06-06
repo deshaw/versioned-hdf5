@@ -36,7 +36,16 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.graphviz",
     "sphinx.ext.intersphinx",
+    "sphinx_multiversion",
 ]
+
+# sphinx-multiversion configuration
+smv_tag_whitelist = r"^[0-9].[0-9].*$"
+smv_branch_whitelist = "master"
+smv_remote_whitelist = None
+smv_released_pattern = r"^tags/.*$"
+smv_outputdir_format = "{ref.name}"
+smv_prefer_remote_refs = False
 
 graphviz_output_format = "svg"
 
@@ -80,6 +89,16 @@ html_theme_options = {
     "font_size": "18px",
     "code_font_family": "'Menlo', 'DejaVu Sans Mono', 'Consolas', 'Bitstream Vera Sans Mono', monospace",
     "code_font_size": "0.85em",
+}
+
+html_sidebars = {
+    "**": [
+        "about.html",
+        "navigation.html",
+        "relations.html",
+        "searchbox.html",
+        "versioning.html",
+    ]
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,
