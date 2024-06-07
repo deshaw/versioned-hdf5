@@ -273,3 +273,24 @@ def test_verify_chunk_reuse_strings(tmp_path):
         vf = VersionedHDF5File(f)
         with vf.stage_version("r1") as group:
             group["values"] = np.concatenate((data, data))
+
+
+def test_verify_chunk_reuse_multidim_1(tmp_path):
+    """Check that we correctly handle chunk reuse verification for multi-dimensional Datasets."""
+    filename = tmp_path / "testdata.h5"
+    with h5py.File(filename, mode="w") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r0") as group:
+            group.create_dataset(
+                "values",
+                data=np.array([[i + (j % 3) for i in range(8)] for j in range(7)]),
+                maxshape=(None, None),
+                chunks=(3, 3),
+            )
+
+    with h5py.File(filename, mode="r+") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r1") as group:
+            values_ds = group["values"]
+            values_ds.resize((8, 8))
+            values_ds[:] = np.array([[i + (j % 3) for i in range(8)] for j in range(8)])
