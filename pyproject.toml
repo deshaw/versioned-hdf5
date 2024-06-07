@@ -95,10 +95,13 @@ ignore = [
 
 [project.optional-dependencies]
 dev = ["pre-commit>=3.6.0"]
-test = ["pytest"]
+test = ["pytest", "pytest-env"]
 doc = ["sphinx", "sphinx-multiversion", "myst-parser"]
 
 [tool.setuptools_scm]
 
 [tool.isort]
 profile = "black"
+
+[tool.pytest_env]
+ENABLE_CHUNK_REUSE_VALIDATION = 1
