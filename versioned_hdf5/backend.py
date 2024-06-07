@@ -120,6 +120,7 @@ def write_dataset(
     compression=None,
     compression_opts=None,
     fillvalue=None,
+    verify_chunk_reuse=True,
 ):
     if name not in f["_version_data"]:
         return create_base_dataset(
@@ -188,14 +189,15 @@ def write_dataset(
                     hashed_slice = hashtable[data_hash]
                     slices[data_slice] = hashed_slice
 
-                    _verify_new_chunk_reuse(
-                        raw_dataset=ds,
-                        new_data=data,
-                        data_hash=data_hash,
-                        hashed_slice=hashed_slice,
-                        chunk_being_written=data_s,
-                        slices_to_write=slices_to_write,
-                    )
+                    if verify_chunk_reuse:
+                        _verify_new_chunk_reuse(
+                            raw_dataset=ds,
+                            new_data=data,
+                            data_hash=data_hash,
+                            hashed_slice=hashed_slice,
+                            chunk_being_written=data_s,
+                            slices_to_write=slices_to_write,
+                        )
 
                     chunks_reused += 1
 
@@ -331,7 +333,7 @@ def _convert_to_bytes(arr: np.ndarray) -> np.ndarray:
         return np.vectorize(lambda i: bytes(i, encoding="utf-8"))(arr)
 
 
-def write_dataset_chunks(f, name, data_dict):
+def write_dataset_chunks(f, name, data_dict, verify_chunk_reuse=True):
     """
     data_dict should be a dictionary mapping chunk_size index to either an
     array for that chunk, or a slice into the raw data for that chunk
@@ -370,14 +372,15 @@ def write_dataset_chunks(f, name, data_dict):
                     hashed_slice = hashtable[data_hash]
                     slices[chunk] = hashed_slice
 
-                    _verify_new_chunk_reuse(
-                        raw_dataset=raw_data,
-                        new_data=data_s,
-                        data_hash=data_hash,
-                        hashed_slice=hashed_slice,
-                        chunk_being_written=data_s,
-                        data_to_write=data_to_write,
-                    )
+                    if verify_chunk_reuse:
+                        _verify_new_chunk_reuse(
+                            raw_dataset=raw_data,
+                            new_data=data_s,
+                            data_hash=data_hash,
+                            hashed_slice=hashed_slice,
+                            chunk_being_written=data_s,
+                            data_to_write=data_to_write,
+                        )
 
                     chunks_reused += 1
 

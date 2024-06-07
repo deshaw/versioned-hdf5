@@ -266,7 +266,7 @@ class VersionedHDF5File:
 
     @contextmanager
     def stage_version(
-        self, version_name: str, prev_version=None, make_current=True, timestamp=None
+        self, version_name: str, prev_version=None, make_current=True, timestamp=None, verify_chunk_reuse=True,
     ):
         """
         Return a context manager to stage a new version
@@ -312,6 +312,7 @@ class VersionedHDF5File:
                 compression=group.compression,
                 compression_opts=group.compression_opts,
                 timestamp=timestamp,
+                verify_chunk_reuse=verify_chunk_reuse,
             )
         except:
             delete_version(self.f, version_name, old_current)
