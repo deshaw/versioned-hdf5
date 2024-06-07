@@ -2742,3 +2742,80 @@ def test_dataset_getitem_can_read_direct(tmp_path, can_read_direct, expected_cal
                 )
 
         assert mock_crd.call_count == expected_calls
+
+
+def test_insert_in_middle_multi_dim(tmp_path):
+    """
+    Test we correctly handle inserting into a multi-dimensional Dataset
+    and shift the existing entries back.
+    """
+    rs = np.random.RandomState(0)
+    dims = 3
+    path = tmp_path / "tmp.h5"
+
+    with h5py.File(path, 'w') as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version('v0') as sv:
+            for i in range(dims):
+                sv.create_dataset(f'axis{i}', dtype=np.dtype('int64'), shape=(0,),
+                                  chunks=(10000,), maxshape=(None,))
+            sv.create_dataset('value', dtype=np.dtype('int64'),
+                              shape=tuple([0 for _ in range(dims)]),
+                              chunks=tuple([20 for _ in range(dims)]),
+                              maxshape=tuple([None for _ in range(dims)]),
+                              fillvalue=0)
+            sv.create_dataset('mask', dtype=np.dtype('int8'),
+                              shape=tuple([0 for _ in range(dims)]),
+                              chunks=tuple([20 for _ in range(dims)]),
+                              maxshape=tuple([None for _ in range(dims)]),
+                              fillvalue=2)
+    for i in range(1, 101):
+        with h5py.File(path, 'r+') as f:
+            vf = VersionedHDF5File(f)
+            with vf.stage_version(f'v{i}') as sv:
+                new_axes = tuple(np.unique(rs.randint(30, size=5))
+                                 for _ in range(dims))
+                new_value = np.full(tuple(len(ax) for ax in new_axes), i)
+                new_mask = np.full(tuple(len(ax) for ax in new_axes), 0)
+
+                # figure out how existing axes map to new axes
+                new_indices = []
+                existing_indices = []
+                new_shape = []
+                for i in range(dims):
+                    axis_ds = sv[f'axis{i}']
+                    all_axis, indices = np.unique(np.concatenate([axis_ds[:], new_axes[i]]),
+                                                  return_inverse=True)
+                    existing_indices.append(tuple(indices[:len(axis_ds)]))
+                    new_indices.append(tuple(indices[len(axis_ds):]))
+                    axis_ds.resize((len(all_axis),))
+                    axis_ds[:] = all_axis
+                    new_shape.append(len(all_axis))
+
+                new_indices = tuple(new_indices)
+                existing_indices = tuple(existing_indices)
+                new_shape = tuple(new_shape)
+
+                # merge value
+                value_ds = sv['value']
+                all_data = np.full(new_shape, value_ds.fillvalue)
+                existing_data = value_ds[:]
+                all_data[np.ix_(*existing_indices)] = existing_data
+                all_data[np.ix_(*new_indices)] = new_value
+                value_ds.resize(new_shape)
+                value_ds[:] = all_data
+
+                # merge mask
+                mask_ds = sv['mask']
+                all_mask = np.full(new_shape, mask_ds.fillvalue)
+                existing_mask = mask_ds[:]
+                all_mask[np.ix_(*existing_indices)] = existing_mask
+                all_mask[np.ix_(*new_indices)] = new_mask
+                mask_ds.resize(new_shape)
+                mask_ds[:] = all_mask
+
+        with h5py.File(path, 'r') as f:
+            vf = VersionedHDF5File(f)
+            cv = vf[vf.current_version]
+            assert_equal(cv['value'], all_data)
+            assert_equal(cv['mask'], all_mask)

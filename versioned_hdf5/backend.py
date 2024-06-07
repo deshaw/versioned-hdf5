@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Optional
 
 import numpy as np
-from h5py import VirtualLayout, VirtualSource, h5s
+from h5py import VirtualLayout, VirtualSource, h5s, Dataset
 from h5py._hl.filters import guess_chunk
 from ndindex import ChunkSize, Slice, Tuple, ndindex
 from numpy.testing import assert_array_equal
@@ -189,7 +189,7 @@ def write_dataset(
                     slices[data_slice] = hashed_slice
 
                     _verify_new_chunk_reuse(
-                        raw_data=ds,
+                        raw_dataset=ds,
                         new_data=data,
                         data_hash=data_hash,
                         hashed_slice=hashed_slice,
@@ -227,11 +227,11 @@ def write_dataset(
 
 
 def _verify_new_chunk_reuse(
-    raw_data: np.ndarray,
+    raw_dataset: Dataset,
     new_data: np.ndarray,
     data_hash: bytes,
-    hashed_slice: Tuple,
-    chunk_being_written: Tuple,
+    hashed_slice: Slice,
+    chunk_being_written: np.ndarray,
     slices_to_write: Optional[Dict[Slice, Tuple]] = None,
     data_to_write: Optional[Dict[Slice, np.ndarray]] = None,
 ):
@@ -247,13 +247,13 @@ def _verify_new_chunk_reuse(
 
     Parameters
     ----------
-    raw_data : np.ndarray
-        Raw data that already exists in the file
+    raw_dataset : Dataset
+        Raw Dataset that already exists in the file
     new_data : np.ndarray
         New data that we are writing
     data_hash : bytes
         Hash of the new data chunk
-    hashed_slice : Tuple
+    hashed_slice : Slice
         Slice that is stored in the hash table for the given data_hash. This is a slice
         into the raw_data for the dataset; however if the data has not yet been written
         it may not point to a valid region in raw_data (but in that case it _would_
@@ -282,11 +282,11 @@ def _verify_new_chunk_reuse(
         # The hash table contains a slice that was written in a previous
         # write operation; grab that chunk from the existing raw data
         reused_slice = Tuple(
-            hashed_slice, *[slice(0, size) for size in new_data.shape[1:]]
+            hashed_slice, *[slice(0, size) for size in chunk_being_written.shape[1:]]
         )
-        reused_chunk = raw_data[reused_slice.raw]
+        reused_chunk = raw_dataset[reused_slice.raw]
 
-    # In some cases type coersion can happen during the write process even if the dtypes
+    # In some cases type coercion can happen during the write process even if the dtypes
     # are the same - for example, if the raw_data.dtype == dtype('O'), but the elements
     # are bytes, and chunk_being_written.dtype == dtype('O'), but the elements are
     # utf-8 strings. For this case, when the raw_data is changed, e.g.
@@ -371,7 +371,7 @@ def write_dataset_chunks(f, name, data_dict):
                     slices[chunk] = hashed_slice
 
                     _verify_new_chunk_reuse(
-                        raw_data=raw_data,
+                        raw_dataset=raw_data,
                         new_data=data_s,
                         data_hash=data_hash,
                         hashed_slice=hashed_slice,
