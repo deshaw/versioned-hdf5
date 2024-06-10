@@ -2,6 +2,7 @@
 requires = [
     "meson-python",
     "setuptools_scm",
+    "Cython >= 3.0.10",
 ]
 build-backend = "mesonpy"
 
