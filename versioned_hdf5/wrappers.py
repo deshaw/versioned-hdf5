@@ -14,17 +14,26 @@ from typing import Optional, Union
 from weakref import WeakValueDictionary
 
 import numpy as np
-from h5py import Dataset, Datatype, Empty, Group
+from h5py import Dataset, Datatype, Empty, Group, h5a, h5d, h5g, h5i, h5p, h5r, h5s, h5t
 from h5py import __version__ as h5py_version
-from h5py import h5a, h5d, h5g, h5i, h5p, h5r, h5s, h5t
 from h5py._hl import filters
 from h5py._hl.base import guess_dtype, phil, with_phil
 from h5py._hl.dataset import _LEGACY_GZIP_COMPRESSION_VALS
 from h5py._hl.selections import guess_shape
-from ndindex import ChunkSize, Slice, Tuple, ndindex, Integer, IntegerArray, BooleanArray
+from ndindex import (
+    BooleanArray,
+    ChunkSize,
+    Integer,
+    IntegerArray,
+    Slice,
+    Tuple,
+    ndindex,
+)
 
-from .backend import DEFAULT_CHUNK_SIZE
+from .backend import DEFAULT_CHUNK_SIZE, get_available_compression_methods
 from .slicetools import build_data_dict
+
+COMPRESSION_OPTS = get_available_compression_methods()
 
 _groups = WeakValueDictionary({})
 

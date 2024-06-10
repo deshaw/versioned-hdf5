@@ -6,6 +6,7 @@ import pathlib
 import shutil
 from unittest import mock
 
+import hdf5plugin # to make compression 32001 available
 import h5py
 import numpy as np
 from h5py._hl.filters import guess_chunk
@@ -13,7 +14,7 @@ from numpy.testing import assert_equal
 from pytest import mark, raises
 
 from ..api import VersionedHDF5File
-from ..backend import DATA_VERSION, DEFAULT_CHUNK_SIZE, _verify_new_chunk_reuse
+from ..backend import DATA_VERSION, DEFAULT_CHUNK_SIZE, _verify_new_chunk_reuse, get_available_compression_methods
 from ..replay import delete_versions
 from ..versions import TIMESTAMP_FMT, all_versions
 from ..wrappers import (
@@ -2863,3 +2864,28 @@ def test_verify_string_chunk_reuse_bytes_one_dimensional(tmp_path):
             f["_version_data/values/raw_data"][:].astype(object),
             np.array([b"a", b"b", b"c"]).astype(object),
         )
+
+
+def test_other_compression(tmp_path):
+    """Test that other compression types validate correctly."""
+    path = tmp_path / "tmp.h5"
+    with h5py.File(path, 'w') as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version('r0') as sv:
+            sv.create_dataset(
+                "values",
+                data=np.arange(10),
+                compression=32002,
+                compression_opts=(0, 0, 0, 0, 7, 1, 2),
+            )
+
+    with h5py.File(path, 'r+') as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version('r1') as sv:
+            del sv['values']
+            sv.create_dataset(
+                "values",
+                data=np.arange(20),
+                compression=32001,
+                compression_opts=(0, 0, 0, 0, 7, 1, 2),
+            )

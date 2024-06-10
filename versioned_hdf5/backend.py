@@ -1,9 +1,9 @@
 import logging
 import os
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
-from h5py import Dataset, VirtualLayout, VirtualSource, h5s
+from h5py import Dataset, VirtualLayout, VirtualSource, h5s, h5z
 from h5py._hl.filters import guess_chunk
 from ndindex import ChunkSize, Slice, Tuple, ndindex
 from numpy.testing import assert_array_equal
@@ -159,7 +159,10 @@ def write_dataset(
         and compression_opts != ds.compression_opts
     ):
         raise ValueError(
-            "Compression options can only be specified for the first version of a dataset"
+            "Compression options can only be specified for the first version of a dataset."
+            f"Dataset: {name}"
+            f"Current compression: {ds.compression}"
+            f"Compression options available: {get_available_compression_methods()}"
         )
     if fillvalue is not None and fillvalue != ds.fillvalue:
         dtype = ds.dtype
@@ -513,3 +516,19 @@ def create_virtual_dataset(
     virtual_data.attrs["raw_data"] = raw_data.name
     virtual_data.attrs["chunks"] = raw_data.chunks
     return virtual_data
+
+
+def get_available_compression_methods() -> List[int]:
+    """Get a list of the available compression filter ids.
+
+    Returns
+    -------
+    List[int]
+        Available compression filter ids
+    """
+    compression = []
+    for filter_id in range(h5z.FILTER_MAX):
+        if h5z.filter_avail(filter_id):
+            compression.append(filter_id)
+
+    return compression
