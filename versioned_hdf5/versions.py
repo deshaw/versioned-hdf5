@@ -77,7 +77,6 @@ def commit_version(
     compression=None,
     compression_opts=None,
     timestamp=None,
-    verify_chunk_reuse=True,
 ):
     """
     Create a new version.
@@ -147,7 +146,7 @@ def commit_version(
         if isinstance(data, dict):
             if chunks[name] is not None:
                 raise NotImplementedError("Specifying chunk size with dict data")
-            slices = write_dataset_chunks(f, name, data, verify_chunk_reuse=verify_chunk_reuse)
+            slices = write_dataset_chunks(f, name, data)
         elif isinstance(data, InMemorySparseDataset):
             write_dataset(
                 f,
@@ -157,9 +156,8 @@ def commit_version(
                 compression=compression[name],
                 compression_opts=compression_opts[name],
                 fillvalue=fillvalue,
-                verify_chunk_reuse=verify_chunk_reuse,
             )
-            slices = write_dataset_chunks(f, name, data.data_dict, verify_chunk_reuse=verify_chunk_reuse)
+            slices = write_dataset_chunks(f, name, data.data_dict)
         else:
             slices = write_dataset(
                 f,
@@ -169,7 +167,6 @@ def commit_version(
                 compression=compression[name],
                 compression_opts=compression_opts[name],
                 fillvalue=fillvalue,
-                verify_chunk_reuse=verify_chunk_reuse,
             )
         if shape is None:
             if isinstance(data, dict):

@@ -1,8 +1,9 @@
 import logging
+import os
 from typing import Dict, Optional
 
 import numpy as np
-from h5py import VirtualLayout, VirtualSource, h5s, Dataset
+from h5py import Dataset, VirtualLayout, VirtualSource, h5s
 from h5py._hl.filters import guess_chunk
 from ndindex import ChunkSize, Slice, Tuple, ndindex
 from numpy.testing import assert_array_equal
@@ -62,7 +63,10 @@ def create_base_dataset(
         shape = data.shape
     else:
         shape = (shape,) if isinstance(shape, int) else tuple(shape)
-        if data is not None and (np.prod(shape, dtype=np.ulonglong) != np.prod(data.shape, dtype=np.ulonglong)):
+        if data is not None and (
+            np.prod(shape, dtype=np.ulonglong)
+            != np.prod(data.shape, dtype=np.ulonglong)
+        ):
             raise ValueError("Shape tuple is incompatible with data")
 
     ndims = len(shape)
@@ -120,7 +124,6 @@ def write_dataset(
     compression=None,
     compression_opts=None,
     fillvalue=None,
-    verify_chunk_reuse=True,
 ):
     if name not in f["_version_data"]:
         return create_base_dataset(
@@ -189,7 +192,9 @@ def write_dataset(
                     hashed_slice = hashtable[data_hash]
                     slices[data_slice] = hashed_slice
 
-                    if verify_chunk_reuse:
+                    if os.environ.get(
+                        "ENABLE_CHUNK_REUSE_VALIDATION", "false"
+                    ).lower() in ("1", "true"):
                         _verify_new_chunk_reuse(
                             raw_dataset=ds,
                             new_data=data,
@@ -219,10 +224,10 @@ def write_dataset(
         new_chunks = hashtable.largest_index
 
     logging.debug(
-        "  %s: "
-        "New chunks written: %d; "
-        "Number of chunks reused: %d",
-        name, new_chunks - old_chunks, chunks_reused
+        "  %s: " "New chunks written: %d; " "Number of chunks reused: %d",
+        name,
+        new_chunks - old_chunks,
+        chunks_reused,
     )
 
     return slices
@@ -333,7 +338,7 @@ def _convert_to_bytes(arr: np.ndarray) -> np.ndarray:
         return np.vectorize(lambda i: bytes(i, encoding="utf-8"))(arr)
 
 
-def write_dataset_chunks(f, name, data_dict, verify_chunk_reuse=True):
+def write_dataset_chunks(f, name, data_dict):
     """
     data_dict should be a dictionary mapping chunk_size index to either an
     array for that chunk, or a slice into the raw data for that chunk
@@ -372,7 +377,9 @@ def write_dataset_chunks(f, name, data_dict, verify_chunk_reuse=True):
                     hashed_slice = hashtable[data_hash]
                     slices[chunk] = hashed_slice
 
-                    if verify_chunk_reuse:
+                    if os.environ.get(
+                        "ENABLE_CHUNK_REUSE_VALIDATION", "false"
+                    ).lower() in ("1", "true"):
                         _verify_new_chunk_reuse(
                             raw_dataset=raw_data,
                             new_data=data_s,
@@ -403,10 +410,10 @@ def write_dataset_chunks(f, name, data_dict, verify_chunk_reuse=True):
         raw_data[c] = data_s
 
     logging.debug(
-        "  %s: "
-        "New chunks written: %d; "
-        "Number of chunks reused: %d",
-        name, new_chunks - old_chunks, chunks_reused
+        "  %s: " "New chunks written: %d; " "Number of chunks reused: %d",
+        name,
+        new_chunks - old_chunks,
+        chunks_reused,
     )
 
     return slices
