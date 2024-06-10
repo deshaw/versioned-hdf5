@@ -179,6 +179,10 @@ def write_dataset(
     slices_to_write = {}
     chunk_size = chunks[0]
 
+    validate_reused_chunks = os.environ.get(
+        "ENABLE_CHUNK_REUSE_VALIDATION", "false"
+    ).lower() in ("1", "true")
+
     with Hashtable(f, name) as hashtable:
         old_chunks = hashtable.largest_index
         chunks_reused = 0
@@ -192,9 +196,7 @@ def write_dataset(
                     hashed_slice = hashtable[data_hash]
                     slices[data_slice] = hashed_slice
 
-                    if os.environ.get(
-                        "ENABLE_CHUNK_REUSE_VALIDATION", "false"
-                    ).lower() in ("1", "true"):
+                    if validate_reused_chunks:
                         _verify_new_chunk_reuse(
                             raw_dataset=ds,
                             new_data=data,
@@ -353,6 +355,10 @@ def write_dataset_chunks(f, name, data_dict):
     chunks = tuple(raw_data.attrs["chunks"])
     chunk_size = chunks[0]
 
+    validate_reused_chunks = os.environ.get(
+        "ENABLE_CHUNK_REUSE_VALIDATION", "false"
+    ).lower() in ("1", "true")
+
     with Hashtable(f, name) as hashtable:
         old_chunks = hashtable.largest_index
         chunks_reused = 0
@@ -377,9 +383,7 @@ def write_dataset_chunks(f, name, data_dict):
                     hashed_slice = hashtable[data_hash]
                     slices[chunk] = hashed_slice
 
-                    if os.environ.get(
-                        "ENABLE_CHUNK_REUSE_VALIDATION", "false"
-                    ).lower() in ("1", "true"):
+                    if validate_reused_chunks:
                         _verify_new_chunk_reuse(
                             raw_dataset=raw_data,
                             new_data=data_s,
