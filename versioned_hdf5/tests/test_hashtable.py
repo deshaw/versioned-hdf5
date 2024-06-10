@@ -294,3 +294,51 @@ def test_verify_chunk_reuse_multidim_1(tmp_path):
             values_ds = group["values"]
             values_ds.resize((8, 8))
             values_ds[:] = np.array([[i + (j % 3) for i in range(8)] for j in range(8)])
+
+
+def test_verify_chunk_disabled_by_default(tmp_path, monkeypatch):
+    """Check that we skip chunk reuse verification if the environment variable is not set."""
+    monkeypatch.delenv("ENABLE_CHUNK_REUSE_VALIDATION", raising=False)
+
+    # This is the same test as test_verify_chunk_reuse_data_version_2,
+    # but with verification turned off with the environment variable.
+    def data_version_2_hash(self, data: np.ndarray):
+        """
+        Compute hash for `data` array.
+
+        (Copied from commit 1f968f4 Hashtable.hash. This version hashes the encoded
+        data, not the data itself.)
+        """
+        if data.dtype == "object":
+            hash_value = self.hash_function()
+            for value in data.flat:
+                hash_value.update(bytes(str(value), "utf-8"))
+            hash_value.update(bytes(str(data.shape), "utf-8"))
+            return hash_value.digest()
+        else:
+            return self.hash_function(
+                data.data.tobytes() + bytes(str(data.shape), "ascii")
+            ).digest()
+
+    with mock.patch.object(Hashtable, "hash", autospec=True) as mocked_hash:
+        mocked_hash.side_effect = data_version_2_hash
+
+        data1 = np.array(["b'hello'", "b'world'"], dtype="O")
+        data2 = np.array([b"hello", b"world"], dtype="O")
+
+        filename = tmp_path / "data.h5"
+        with h5py.File(filename, mode="w") as f:
+            vf = VersionedHDF5File(f)
+            with vf.stage_version("r0") as group:
+                group.create_dataset(
+                    "values",
+                    dtype=h5py.string_dtype(encoding="ascii"),
+                    data=data1,
+                    maxshape=(None,),
+                    chunks=(2,),
+                )
+
+            # This should raise an error, but will not because chunk
+            # reuse verification is turned off.
+            with vf.stage_version("r1") as group:
+                group["values"] = np.concatenate((data2, data2))

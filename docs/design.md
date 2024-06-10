@@ -175,6 +175,12 @@ version groups. The relevant modules are `versioned_hdf5.backend` and
 it to the raw data for the given dataset. The data in each chunk of the
 dataset is SHA256 hashed, and the hash is looked up in the hashtable dataset.
 If it already exists in the raw data, that chunk in the raw data is reused.
+
+To enable a check that the reused chunk matches the data that the user is
+intending to write, set the following environment variable:
+`ENABLE_CHUNK_REUSE_VALIDATION = 1`. This option is enabled during tests, but
+is disabled by default for better performance.
+
 The hashtable maps `SHA256 hash -> (start, stop)` where `(start, stop)` gives
 a slice range for the chunk in the raw dataset (chunks in the `raw_data`
 dataset are concatenated along the first axis only). All chunks that do not

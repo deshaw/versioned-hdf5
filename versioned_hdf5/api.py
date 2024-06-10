@@ -266,7 +266,11 @@ class VersionedHDF5File:
 
     @contextmanager
     def stage_version(
-        self, version_name: str, prev_version=None, make_current=True, timestamp=None
+        self,
+        version_name: str,
+        prev_version=None,
+        make_current=True,
+        timestamp=None,
     ):
         """
         Return a context manager to stage a new version
