@@ -26,7 +26,11 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
+      # Always checkout master branch, even if triggered by a tag.
+      # Otherwise sphinx-multiversion does not pull the master branch.
       - uses: actions/checkout@v4
+        with:
+          ref: master
 
       - uses: actions/setup-python@v4
         with:
@@ -56,7 +60,6 @@ jobs:
       # this redirects users who visit ./index.html ->
       # ./master/index.html, which is the development branch docs.
       - name: Write redirect to development branch
-        if: (github.event_name != 'pull_request')
         run: |
           echo "<!DOCTYPE html>
                   <html>
