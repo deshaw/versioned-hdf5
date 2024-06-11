@@ -1,6 +1,28 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.7.0 (2024-06-10)
+
+### Major Changes
+
+- Added a new `VersionedHDF5File.get_diff` method
+- Added a new `VersionedHDF5File.versions` property
+- Updates to the build system to use `meson-python`
+- Added numpy 2.0 support
+- Make the `InMemoryGroup` repr more informative
+
+### Minor Changes
+
+- Optimizations to `_recreate_raw_dataset`, `InMemoryDataset.resize`
+- Added an optional check for verifying that reused chunks contain the expected
+  data. Can be turned on by setting the environment variable:
+  `ENABLE_CHUNK_REUSE_VALIDATION = 1`
+- The documentation for all published versions is now available!
+- Various DevEx improvements: `pre-commit`, `pygrep-hooks`-fixes, and tests now
+  will not produce unwanted artifacts
+- Dataset names are now checked against a blocklist to avoid colliding with
+  reserved words
+
 ## 1.6.0 (2023-11-15)
 
 ### Major Changes
