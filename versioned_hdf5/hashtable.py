@@ -222,9 +222,12 @@ class Hashtable(MutableMapping):
                     "Chunking in more other than the first dimension"
                 )
             value = value.args[0]
-        if not isinstance(value, (slice, Slice)):
+        if isinstance(value, slice):
+            value = Slice(value.start, value.stop, value.step)
+        elif isinstance(value, Slice):
+            pass
+        else:
             raise TypeError("value must be a slice object")
-        value = Slice(value)
         if value.isempty():
             return
         if value.step not in [1, None]:

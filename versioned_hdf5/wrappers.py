@@ -5,6 +5,7 @@ Much of this code is modified from code in h5py. See the LICENSE file for the
 h5py license.
 """
 
+import itertools
 import posixpath
 import textwrap
 import warnings
@@ -21,7 +22,7 @@ from h5py._hl.base import guess_dtype, phil, with_phil
 from h5py._hl.dataset import _LEGACY_GZIP_COMPRESSION_VALS
 from h5py._hl.selections import guess_shape
 from h5py._hl.vds import VDSmap
-from ndindex import ChunkSize, Slice, Tuple, ndindex
+from ndindex import ChunkSize, Slice, Tuple, ndindex, Integer, IntegerArray
 
 from .backend import DEFAULT_CHUNK_SIZE
 from .slicetools import spaceid_to_slice
@@ -492,6 +493,119 @@ def _make_new_dset(
     return data
 
 
+def as_subchunk_map(chunk_size: ChunkSize, idx, shape: tuple):
+    """
+    Computes the chunk selection assignment. In particular, given a `chunk_size`
+    it returns triple (chunk_slices, arr_subidxs, chunk_subidxs) such that for a
+    chunked Dataset `ds` we can translate selections like
+
+    >> ds[idx]
+
+    into selecting from the individual chunks of `ds` as
+
+    >> arr = np.ndarray(output_shape)
+    >> for chunk, arr_idx_raw, index_raw in as_subchunk_map(ds.chunk_size, idx, ds.shape):
+    ..     arr[arr_idx_raw] = ds.data_dict[chunk][index_raw]
+
+    Similarly, assignments like
+
+    >> ds[idx] = arr
+
+    can be translated into
+
+    >> for chunk, arr_idx_raw, index_raw in as_subchunk_map(ds.chunk_size, idx, ds.shape):
+    ..     ds.data_dict[chunk][index_raw] = arr[arr_idx_raw]
+
+    :param chunk_size: the `ChunkSize` of the Dataset
+    :param idx: the "index" to read from / write to the Dataset
+    :param shape: the shape of the Dataset
+    :return: a generator of `(chunk, arr_idx_raw, index_raw)` tuples
+    """
+    assert isinstance(chunk_size, ChunkSize)
+    if isinstance(idx, Tuple):
+        pass
+    elif isinstance(idx, tuple):
+        idx = Tuple(*idx)
+    else:
+        idx = Tuple(ndindex(idx))
+    assert isinstance(shape, tuple)
+
+    if any(dim < 0 for dim in shape):
+        raise ValueError("shape dimensions must be non-negative")
+
+    if len(shape) != len(chunk_size):
+        raise ValueError("chunks dimensions must equal the array dimensions")
+
+    idx_len = len(idx.args)
+
+    prefix_chunk_size = chunk_size[:idx_len]
+    prefix_shape = shape[:idx_len]
+
+    suffix_chunk_size = chunk_size[idx_len:]
+    suffix_shape = shape[idx_len:]
+
+    chunk_subindexes = []
+
+    n: int
+    i: Slice | IntegerArray | Integer
+    s: int
+
+    # Process the prefix of the axes which idx selects on
+    for n, i, d in zip(prefix_chunk_size, idx.args, prefix_shape):
+        i = i.reduce((d,))
+
+        # Compute chunk_idxs, e.g., chunk_idxs == (2, 4) for chunk sizes (100, 1000)
+        # would correspond to chunk (slice(200, 300), slice(4000, 5000)).
+        chunk_idxs: tuple
+        if isinstance(i, Slice):
+            if i.step <= 0:
+                raise NotImplementedError(f'Slice step must be positive not {i.step}')
+
+            start: int = i.start
+            stop: int = i.stop
+            step: int = i.step
+
+            if step > n:
+                chunk_idxs = tuple((start + k * step) // n for k in range((stop - start + step - 1) // step))
+            else:
+                chunk_idxs = tuple(range(start // n, (stop + n - 1) // n))
+        elif isinstance(i, IntegerArray):
+            chunk_idxs = tuple(np.unique(i.array // n))
+        elif isinstance(i, Integer):
+            chunk_idxs = (i.raw // n,)
+        else:
+            raise NotImplementedError(f"index type {type(i)} not supported")
+
+        # Compute chunk_slices for chunk_idxs
+        chunk_slices = tuple(Slice(chunk_idx * n, min((chunk_idx + 1) * n, d), 1) for chunk_idx in chunk_idxs)
+
+        # Now compute the subindexes for each chunk_slice based on chunk_slice and i.
+        chunk_subindexes.append([(chunk_slice, chunk_slice.as_subindex(i).raw, i.as_subindex(chunk_slice).raw)
+                                 for chunk_slice in chunk_slices])
+
+    # Handle the remaining suffix axes on which we did not select, we still need to break
+    # them up into chunks.
+    for n, d in zip(suffix_chunk_size, suffix_shape):
+        chunk_idxs = tuple(range((d + n - 1) // n))
+        chunk_slices = tuple(Slice(chunk_idx * n, min((chunk_idx + 1) * n, d), 1) for chunk_idx in chunk_idxs)
+        chunk_subindexes.append([(chunk_slice, chunk_slice.raw, ())
+                                 for chunk_slice in chunk_slices])
+
+    # Now combine the chunk_slices and subindexes for each dimension into tuples
+    # across all dimensions.
+    for p in itertools.product(*chunk_subindexes):
+        chunk_slices, arr_subidxs, chunk_subidxs = zip(*p)
+
+        # skip dimensions which were sliced away
+        arr_subidxs = tuple(arr_subidx for arr_subidx in arr_subidxs
+                            if not isinstance(arr_subidx, tuple) or arr_subidx != ())
+
+        # skip suffix dimensions
+        chunk_subidxs = chunk_subidxs[:idx_len]
+
+        yield Tuple(*chunk_slices), arr_subidxs, chunk_subidxs
+
+
 class InMemoryDataset(Dataset):
     """
     Class that looks like a h5py.Dataset but is backed by a versioned dataset
@@ -638,15 +752,18 @@ class InMemoryDataset(Dataset):
         can_read_direct = self.id.can_read_direct
 
         old_shape_idx = Tuple(*[Slice(0, i) for i in old_shape])
-        old_data = self.get_index(old_shape_idx.raw, can_read_direct=can_read_direct)
+
         new_data_dict = {}
-        for chunk in self.chunks.as_subchunks(old_shape_idx, size):
+        # Read entire Dataset into in-memory array in one operation.
+        # Usually that's much faster than reading individual chunks.
+        old_data = self.get_index(old_shape_idx.raw, can_read_direct=can_read_direct)
+        # Now read chunks out of the array.
+        for chunk, _, index_raw in as_subchunk_map(self.chunks, old_shape_idx, size):
             if chunk in data_dict:
                 new_data_dict[chunk] = data_dict[chunk]
             else:
                 data = np.full(chunk.newshape(size), self.fillvalue, dtype=self.dtype)
-                index = old_shape_idx.as_subindex(chunk)
-                data[index.raw] = old_data[chunk.raw]
+                data[index_raw] = old_data[chunk.raw]
                 new_data_dict[chunk] = data
 
         self.id.data_dict = new_data_dict
@@ -734,22 +851,20 @@ class InMemoryDataset(Dataset):
 
         arr = np.ndarray(idx.newshape(self.shape), new_dtype, order="C")
 
-        for chunk in self.chunks.as_subchunks(idx, self.shape):
+        for chunk, arr_idx_raw, index_raw in as_subchunk_map(self.chunks, idx, self.shape):
             if chunk not in self.id.data_dict:
                 self.id.data_dict[chunk] = np.broadcast_to(
                     self.fillvalue, chunk.newshape(self.shape)
                 )
-            elif isinstance(self.id.data_dict[chunk], (slice, Slice, tuple, Tuple)):
-                raw_idx = Tuple(
-                    self.id.data_dict[chunk],
-                    *[slice(0, len(i)) for i in chunk.args[1:]],
-                ).raw
+            elif isinstance(self.id.data_dict[chunk], Slice):
+                raw_idx = tuple(
+                    [self.id.data_dict[chunk].raw]
+                    + [slice(0, len(i)) for i in chunk.args[1:]]
+                )
                 self.id.data_dict[chunk] = self.id._read_chunk(raw_idx)
 
             if self.id.data_dict[chunk].size != 0:
-                arr_idx = chunk.as_subindex(idx)
-                index = idx.as_subindex(chunk)
-                arr[arr_idx.raw] = self.id.data_dict[chunk][index.raw]
+                arr[arr_idx_raw] = self.id.data_dict[chunk][index_raw]
 
         # Return arr as a scalar if it is shape () (matching h5py)
         return arr[()]
@@ -885,24 +1000,23 @@ class InMemoryDataset(Dataset):
 
         val = np.broadcast_to(val, idx.newshape(self.shape))
 
-        for c in self.chunks.as_subchunks(idx, self.shape):
+        for c, val_idx_raw, index_raw in as_subchunk_map(self.chunks, idx, self.shape):
             if c not in self.id.data_dict:
                 # Broadcasted arrays do not actually consume memory
                 fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
                 self.id.data_dict[c] = fill.astype(self.dtype)
-            elif isinstance(self.id.data_dict[c], (slice, Slice, tuple, Tuple)):
-                raw_idx = Tuple(
-                    self.id.data_dict[c], *[slice(0, len(i)) for i in c.args[1:]]
-                ).raw
+            elif isinstance(self.id.data_dict[c], Slice):
+                raw_idx = tuple(
+                    [self.id.data_dict[c].raw]
+                    + [slice(0, len(i)) for i in c.args[1:]]
+                )
                 self.id.data_dict[c] = self.id._read_chunk(raw_idx)
 
             if self.id.data_dict[c].size != 0:
-                val_idx = c.as_subindex(idx)
                 if not self.id.data_dict[c].flags.writeable:
                     # self.id.data_dict[c] is a broadcasted array from above
                     self.id.data_dict[c] = self.id.data_dict[c].copy()
-                index = idx.as_subindex(c)
-                self.id.data_dict[c][index.raw] = val[val_idx.raw]
+                self.id.data_dict[c][index_raw] = val[val_idx_raw]
 
 
 class DatasetLike:
@@ -1206,15 +1320,13 @@ class InMemorySparseDataset(DatasetLike):
         newshape = idx.newshape(self.shape)
         arr = np.full(newshape, self.fillvalue, dtype=self.dtype)
 
-        for c in self.chunks.as_subchunks(idx, self.shape):
+        for c, arr_idx_raw, chunk_idx_raw in as_subchunk_map(self.chunks, idx, self.shape):
             if c not in self.data_dict:
                 fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
                 self.data_dict[c] = fill
 
             if self.data_dict[c].size != 0:
-                arr_idx = c.as_subindex(idx)
-                chunk_idx = idx.as_subindex(c)
-                arr[arr_idx.raw] = self.data_dict[c][chunk_idx.raw]
+                arr[arr_idx_raw] = self.data_dict[c][chunk_idx_raw]
 
         # Return arr as a scalar if it is shape () (matching h5py)
         return arr[()]
@@ -1226,19 +1338,17 @@ class InMemorySparseDataset(DatasetLike):
 
         val = np.broadcast_to(value, idx.newshape(self.shape))
 
-        for c in self.chunks.as_subchunks(idx, self.shape):
+        for c, val_idx_raw, chunk_idx_raw in as_subchunk_map(self.chunks, idx, self.shape):
             if c not in self.data_dict:
                 # Broadcasted arrays do not actually consume memory
                 fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
                 self.data_dict[c] = fill
 
             if self.data_dict[c].size != 0:
-                val_idx = c.as_subindex(idx)
                 if not self.data_dict[c].flags.writeable:
                     # self.data_dict[c] is a broadcasted array from above
                     self.data_dict[c] = self.data_dict[c].copy()
-                chunk_idx = idx.as_subindex(c)
-                self.data_dict[c][chunk_idx.raw] = val[val_idx.raw]
+                self.data_dict[c][chunk_idx_raw] = val[val_idx_raw]
 
 
 class DatasetWrapper(DatasetLike):

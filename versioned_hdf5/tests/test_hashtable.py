@@ -136,7 +136,7 @@ def test_object_dtype_hashes_concatenated_values(tmp_path):
         )
 
 
-def test_verify_chunk_reuse_data_version_2(tmp_path):
+def test_verify_chunk_reuse_data_version_2(tmp_path, monkeypatch):
     """Test whether the issue with DATA_VERSION==2 would have been caught by
     _verify_new_chunk_reuse.
 
@@ -144,6 +144,8 @@ def test_verify_chunk_reuse_data_version_2(tmp_path):
     the encoded data, not the data itself, meaning that "b'hello'" would hash
     to the same value as b'hello'.
     """
+
+    monkeypatch.setenv("ENABLE_CHUNK_REUSE_VALIDATION", "1")
 
     def data_version_2_hash(self, data: np.ndarray):
         """
@@ -186,7 +188,7 @@ def test_verify_chunk_reuse_data_version_2(tmp_path):
                     group["values"] = np.concatenate((data2, data2))
 
 
-def test_verify_chunk_reuse_data_version_3(tmp_path):
+def test_verify_chunk_reuse_data_version_3(tmp_path, monkeypatch):
     """Test whether the issue with DATA_VERSION==3 would have been caught by
     _verify_new_chunk_reuse.
 
@@ -196,6 +198,8 @@ def test_verify_chunk_reuse_data_version_3(tmp_path):
     (because hashing each element in the array is equivalent to hashing
     the concatenated elements of the array).
     """
+
+    monkeypatch.setenv("ENABLE_CHUNK_REUSE_VALIDATION", "1")
 
     def data_version_3_hash(self, data: np.ndarray):
         """
