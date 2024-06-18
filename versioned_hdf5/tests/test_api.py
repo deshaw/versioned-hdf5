@@ -2026,8 +2026,14 @@ def test_stage_version_log_stats(tmp_path, caplog):
             )
 
         assert caplog.records
-        assert 'bar: New chunks written: 2; Number of chunks reused: 151' in caplog.records[-2].getMessage()
-        assert 'baz: New chunks written: 1; Number of chunks reused: 4' in caplog.records[-1].getMessage()
+        assert (
+            "bar: New chunks written: 2; Number of chunks reused: 151"
+            in caplog.records[-2].getMessage()
+        )
+        assert (
+            "baz: New chunks written: 1; Number of chunks reused: 4"
+            in caplog.records[-1].getMessage()
+        )
 
         with vf.stage_version("r1") as sv:
             bar_shape_r1 = (3, 15222, 2)
@@ -2039,8 +2045,14 @@ def test_stage_version_log_stats(tmp_path, caplog):
             baz.resize(baz_shape_r1)
             baz[:, -10:, :] = np.full((1, 10, 2), 3)
 
-        assert 'bar: New chunks written: 2; Number of chunks reused: 151' in caplog.records[-2].getMessage()
-        assert 'baz: New chunks written: 1; Number of chunks reused: 4' in caplog.records[-1].getMessage()
+        assert (
+            "bar: New chunks written: 2; Number of chunks reused: 151"
+            in caplog.records[-2].getMessage()
+        )
+        assert (
+            "baz: New chunks written: 1; Number of chunks reused: 4"
+            in caplog.records[-1].getMessage()
+        )
 
 
 def test_data_version_identifier_valid(tmp_path, caplog):
@@ -2738,8 +2750,7 @@ def test_dataset_getitem_can_read_direct(tmp_path, can_read_direct, expected_cal
             mock_crd.can_read_direct.return_value = can_read_direct
             with vf.stage_version("r1") as sv:
                 sv["values"].get_index(
-                    slice(None, None),
-                    can_read_direct=can_read_direct
+                    slice(None, None), can_read_direct=can_read_direct
                 )
 
         assert mock_crd.call_count == expected_calls
@@ -2754,28 +2765,38 @@ def test_insert_in_middle_multi_dim(tmp_path):
     dims = 3
     path = tmp_path / "tmp.h5"
 
-    with h5py.File(path, 'w') as f:
+    with h5py.File(path, "w") as f:
         vf = VersionedHDF5File(f)
-        with vf.stage_version('v0') as sv:
+        with vf.stage_version("v0") as sv:
             for i in range(dims):
-                sv.create_dataset(f'axis{i}', dtype=np.dtype('int64'), shape=(0,),
-                                  chunks=(10000,), maxshape=(None,))
-            sv.create_dataset('value', dtype=np.dtype('int64'),
-                              shape=tuple([0 for _ in range(dims)]),
-                              chunks=tuple([20 for _ in range(dims)]),
-                              maxshape=tuple([None for _ in range(dims)]),
-                              fillvalue=0)
-            sv.create_dataset('mask', dtype=np.dtype('int8'),
-                              shape=tuple([0 for _ in range(dims)]),
-                              chunks=tuple([20 for _ in range(dims)]),
-                              maxshape=tuple([None for _ in range(dims)]),
-                              fillvalue=2)
+                sv.create_dataset(
+                    f"axis{i}",
+                    dtype=np.dtype("int64"),
+                    shape=(0,),
+                    chunks=(10000,),
+                    maxshape=(None,),
+                )
+            sv.create_dataset(
+                "value",
+                dtype=np.dtype("int64"),
+                shape=tuple([0 for _ in range(dims)]),
+                chunks=tuple([20 for _ in range(dims)]),
+                maxshape=tuple([None for _ in range(dims)]),
+                fillvalue=0,
+            )
+            sv.create_dataset(
+                "mask",
+                dtype=np.dtype("int8"),
+                shape=tuple([0 for _ in range(dims)]),
+                chunks=tuple([20 for _ in range(dims)]),
+                maxshape=tuple([None for _ in range(dims)]),
+                fillvalue=2,
+            )
     for i in range(1, 101):
-        with h5py.File(path, 'r+') as f:
+        with h5py.File(path, "r+") as f:
             vf = VersionedHDF5File(f)
-            with vf.stage_version(f'v{i}') as sv:
-                new_axes = tuple(np.unique(rs.randint(30, size=5))
-                                 for _ in range(dims))
+            with vf.stage_version(f"v{i}") as sv:
+                new_axes = tuple(np.unique(rs.randint(30, size=5)) for _ in range(dims))
                 new_value = np.full(tuple(len(ax) for ax in new_axes), i)
                 new_mask = np.full(tuple(len(ax) for ax in new_axes), 0)
 
@@ -2784,11 +2805,12 @@ def test_insert_in_middle_multi_dim(tmp_path):
                 existing_indices = []
                 new_shape = []
                 for i in range(dims):
-                    axis_ds = sv[f'axis{i}']
-                    all_axis, indices = np.unique(np.concatenate([axis_ds[:], new_axes[i]]),
-                                                  return_inverse=True)
-                    existing_indices.append(tuple(indices[:len(axis_ds)]))
-                    new_indices.append(tuple(indices[len(axis_ds):]))
+                    axis_ds = sv[f"axis{i}"]
+                    all_axis, indices = np.unique(
+                        np.concatenate([axis_ds[:], new_axes[i]]), return_inverse=True
+                    )
+                    existing_indices.append(tuple(indices[: len(axis_ds)]))
+                    new_indices.append(tuple(indices[len(axis_ds) :]))
                     axis_ds.resize((len(all_axis),))
                     axis_ds[:] = all_axis
                     new_shape.append(len(all_axis))
@@ -2798,7 +2820,7 @@ def test_insert_in_middle_multi_dim(tmp_path):
                 new_shape = tuple(new_shape)
 
                 # merge value
-                value_ds = sv['value']
+                value_ds = sv["value"]
                 all_data = np.full(new_shape, value_ds.fillvalue)
                 existing_data = value_ds[:]
                 all_data[np.ix_(*existing_indices)] = existing_data
@@ -2807,7 +2829,7 @@ def test_insert_in_middle_multi_dim(tmp_path):
                 value_ds[:] = all_data
 
                 # merge mask
-                mask_ds = sv['mask']
+                mask_ds = sv["mask"]
                 all_mask = np.full(new_shape, mask_ds.fillvalue)
                 existing_mask = mask_ds[:]
                 all_mask[np.ix_(*existing_indices)] = existing_mask
@@ -2815,11 +2837,11 @@ def test_insert_in_middle_multi_dim(tmp_path):
                 mask_ds.resize(new_shape)
                 mask_ds[:] = all_mask
 
-        with h5py.File(path, 'r') as f:
+        with h5py.File(path, "r") as f:
             vf = VersionedHDF5File(f)
             cv = vf[vf.current_version]
-            assert_equal(cv['value'], all_data)
-            assert_equal(cv['mask'], all_mask)
+            assert_equal(cv["value"], all_data)
+            assert_equal(cv["mask"], all_mask)
 
 
 @mark.append()
@@ -3160,6 +3182,8 @@ def test_append_two_chunk_append(tmp_path):
             ),
         )
 
+
+@mark.append()
 def test_append_multidim_random_axes(tmp_path):
     """Test that appending random indices to a multidimensional dataset is successful."""
     path = tmp_path / "tmp.h5"
@@ -3198,9 +3222,7 @@ def test_append_multidim_random_axes(tmp_path):
         with h5py.File(path, "r+") as f:
             vf = VersionedHDF5File(f)
             with vf.stage_version(f"v{i}") as sv:
-                new_axes = tuple(
-                    np.unique(rs.randint(30, size=5)) for _ in range(dims)
-                )
+                new_axes = tuple(np.unique(rs.randint(30, size=5)) for _ in range(dims))
                 new_value = np.full(tuple(len(ax) for ax in new_axes), i)
                 new_mask = np.full(tuple(len(ax) for ax in new_axes), 0)
 
@@ -3241,3 +3263,92 @@ def test_append_multidim_random_axes(tmp_path):
                 all_mask[np.ix_(*new_indices)] = new_mask
                 mask_ds.resize(new_shape)
                 mask_ds[:] = all_mask
+
+
+@mark.append()
+@mark.parametrize(
+    "chunk_size",
+    [
+        (3, 3),
+        (4, 3),
+        (5, 3),
+    ],
+)
+def test_append_chunk_reuse(tmp_path, chunk_size):
+    """Test that appending multidimensional datasets correctly handles existing data for axes>0."""
+    path = tmp_path / "tmp.h5"
+
+    with h5py.File(path, "w") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r0") as sv:
+            sv.create_dataset(
+                "values",
+                data=np.array(
+                    [
+                        [1, 1, 1, 1, 1],
+                        [2, 2, 2, 2, 2],
+                        [3, 3, 3, 3, 3],
+                        [4, 4, 4, 4, 4],
+                        [0, 0, 0, 0, 0],
+                    ]
+                ),
+                chunks=chunk_size,
+                maxshape=(None, None),
+            )
+
+    with h5py.File(path, "r+") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r1") as sv:
+            sv["values"].append(np.array([[5, 5, 5, -5, -5]]))
+
+    with h5py.File(path, "r") as f:
+        vf = VersionedHDF5File(f)
+        cv = vf[vf.current_version]
+        print(cv["values"][:])
+
+
+@mark.append()
+@mark.parametrize(
+    "chunk_size",
+    [
+        (3, 3),
+        (4, 3),
+        (5, 3),
+    ],
+)
+def test_append_string_data(tmp_path, chunk_size):
+    """Test that appending string datasets works as intended."""
+    path = tmp_path / "tmp.h5"
+
+    dtype = h5py.string_dtype("utf-8")
+
+    with h5py.File(path, "w") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r0") as sv:
+            sv.create_dataset(
+                "values",
+                data=np.array(
+                    [
+                        ["test", "abc", "123", "abc", "123"],
+                        ["test", "abc", "123", "abc", "123"],
+                        ["test", "abc", "123", "abc", "123"],
+                        ["test", "abc", "123", "abc", "123"],
+                        ["test", "abc", "123", "abc", "123"],
+                    ],
+                    dtype=dtype,
+                ),
+                chunks=chunk_size,
+                maxshape=(None, None),
+            )
+
+    with h5py.File(path, "r+") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r1") as sv:
+            sv["values"].append(
+                np.array([["this", "is", "a", "string", "dtype"]], dtype=dtype)
+            )
+
+    with h5py.File(path, "r") as f:
+        vf = VersionedHDF5File(f)
+        cv = vf[vf.current_version]
+        print(cv["values"][:])

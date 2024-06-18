@@ -13,8 +13,9 @@ from typing import Dict, Optional, Union
 from weakref import WeakValueDictionary
 
 import numpy as np
-from h5py import Dataset, Datatype, Empty, Group, h5a, h5d, h5g, h5i, h5p, h5r, h5s, h5t
+from h5py import Dataset, Datatype, Empty, Group
 from h5py import __version__ as h5py_version
+from h5py import h5a, h5d, h5g, h5i, h5p, h5r, h5s, h5t
 from h5py._hl import filters
 from h5py._hl.base import guess_dtype, phil, with_phil
 from h5py._hl.dataset import _LEGACY_GZIP_COMPRESSION_VALS
@@ -954,7 +955,14 @@ class InMemoryDataset(Dataset):
         ----------
         arr : np.ndarray
             Array to append. Note that the shape of ``arr`` along the first dimension
-            is arbitrary, but the rest of the dimensions must match shape.
+            is arbitrary, but the rest of the dimensions must match the shape of the
+            virtual dataset.
+
+            However, since the virtual dataset can be any shape but the raw dataset
+            is always broken into an integer number of chunks, the shape of the
+            underlying raw data can be different along axes >1. Thus the data to
+            append will be padded out to the correct shape to concatenate to the
+            underlying raw dataset. See `write_datset_chunks` for more information.
         """
         old_data_dict = self.id.data_dict
         new_data_dict: Dict[Tuple, Union[Tuple, np.ndarray]] = {}
@@ -981,32 +989,30 @@ class InMemoryDataset(Dataset):
         for chunk in self.chunks.as_subchunks(target_vindex, new_shape):
             # Update the data dict for the indices hit by the append
 
-            chunk_start = chunk.args[0].start  # Starting index of the chunk
-
-            # Indices of the dataset that the target_vindex overlaps
-            index_to_write = target_vindex.as_subindex(chunk)
-
-            # # Indices of chunk that the target_vindex overlaps
-            # idx_to_write = chunk.as_subindex(target_vindex)
-
-            # Virtual index where the data to append should start to be written
-            append_start = old_shape[0]
-            arr_index = Tuple(
-                Slice(
-                    chunk_start + index_to_write.args[0].start - append_start,
-                    chunk_start + index_to_write.args[0].stop - append_start,
-                ),
-                *other_dims,
-            )
+            # Indices of the array to append that overlap the chunk;
+            # these values will be written into
+            # target_vindex.as_subindex(chunk) in the chunk
+            arr_index = chunk.as_subindex(target_vindex)
 
             if chunk.args[0].start >= old_shape[0]:
                 # The virtual index of this chunk is outside the old shape;
                 # therefore this is purely a new chunk that needs to be written.
                 new_data_dict[chunk] = arr[arr_index.raw]
             else:
+                # The virtual index of this chunk is inside the old shape. We
+                # thus need to search the old_data_dict for the data that is
+                # part of this chunk. If that old data is an array, concatenate
+                # it to the the new data to be appended; this will be written
+                # into a brand new chunk. Otherwise, get the virtual and raw
+                # indices of the extant data, and add an AppendData object
+                # with this information to the new_data_dict to be handled when
+                # the data is written at commit time.
+
+                other_chunk_dims = chunk.args[1:]
+
                 # The existing data must always exist in the old data dict
                 chunk_extant_vindex = Tuple(
-                    Slice(chunk.args[0].start, old_shape[0]), *other_dims
+                    Slice(chunk.args[0].start, old_shape[0]), *other_chunk_dims
                 ).expand(self.shape)
                 assert chunk_extant_vindex in old_data_dict
 
@@ -1023,7 +1029,7 @@ class InMemoryDataset(Dataset):
 
                     # The data to be appended inside this chunk
                     chunk_target_vindex = Tuple(
-                        Slice(old_shape[0], chunk.args[0].stop), *other_dims
+                        Slice(old_shape[0], chunk.args[0].stop), *other_chunk_dims
                     ).expand(self.shape)
 
                     # Compute the raw indices to write

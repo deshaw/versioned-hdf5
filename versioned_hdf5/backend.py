@@ -378,10 +378,28 @@ def write_dataset_chunks(f, name, data_dict):
                         f"dtypes do not match ({data_s.array.dtype} != {raw_data.dtype})"
                     )
 
+                # The extant raw indices are of shape `chunks`; chunks at the edge of
+                # multidimensional datasets can have `fillvalue` elements in the parts
+                # of the chunk that are outside the area referenced by the virtual
+                # dataset. Therefore the array to append can differ in shape along
+                # axes >1, and must be expanded to fill those other dimensions that
+                # are not along the append axis in order to concatenate.
+                raw_chunk_data = raw_data[data_s.extant_rindex.raw]
+
+                # Pad out the array to append. Use the shape along axis 0 of the
+                # array to append (since that can be anything), but for the other
+                # dimensions use the shape of the underlying data chunk.
+                array_padded = np.full(
+                    (data_s.array.shape[0], *raw_chunk_data.shape[1:]),
+                    fill_value=raw_data.fillvalue,
+                )
+                arr_index = Tuple(*[Slice(0, dim) for dim in data_s.array.shape])
+                array_padded[arr_index.raw] = data_s.array
+
                 # Calculate a new hash for this chunk using the extant data and the
                 # data to be appended
                 data_hash = hashtable.hash(
-                    np.concatenate((raw_data[data_s.extant_rindex.raw], data_s.array))
+                    np.concatenate((raw_chunk_data, array_padded))
                 )
 
                 if data_hash in hashtable:
