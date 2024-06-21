@@ -156,19 +156,54 @@ def test_as_subchunk_map(data):
     ndim = data.draw(st.integers(1, 4), label="ndim")
     shape = data.draw(st.tuples(*[st.integers(1, 100)] * ndim), label="shape")
     chunks = data.draw(st.tuples(*[st.integers(5, 20)] * ndim), label="chunks")
-    has_fancy_idx = data.draw(st.booleans(), label="has_fancy_idx")
-    if has_fancy_idx:
-        fancy_idx_axis = data.draw(st.integers(0, ndim - 1), label="fancy_idx_axis")
-        fancy_idx = data.draw(stnp.arrays(np.intp, st.integers(0, shape[fancy_idx_axis] - 1),
-                                          elements=st.integers(0, shape[fancy_idx_axis] - 1),
-                                          unique=True),
-                              label="fancy_idx")
-        idx = ndindex.Tuple(*[data.draw(non_negative_step_slices(shape[dim]), label=f'idx{dim}') for dim in range(fancy_idx_axis)],
-                            fancy_idx,
-                            *[data.draw(non_negative_step_slices(shape[dim]), label=f'idx{dim}') for dim in range(fancy_idx_axis + 1, ndim)])
-    else:
-        idx = ndindex.Tuple(*[data.draw(non_negative_step_slices(shape[dim]), label=f'idx{dim}') for dim in range(ndim)])
+    idx = ndindex.Tuple(*[data.draw(non_negative_step_slices(shape[dim]), label=f'idx{dim}') for dim in range(ndim)])
 
+    _check_as_subchunk_map(chunks, idx, shape)
+
+
+@given(st.data())
+@hypothesis.settings(database=None, max_examples=10_000, deadline=None)
+def test_as_subchunk_map_fancy_idx(data):
+    ndim = data.draw(st.integers(1, 4), label="ndim")
+    shape = data.draw(st.tuples(*[st.integers(1, 100)] * ndim), label="shape")
+    chunks = data.draw(st.tuples(*[st.integers(5, 20)] * ndim), label="chunks")
+    fancy_idx_axis = data.draw(st.integers(0, ndim - 1), label="fancy_idx_axis")
+    fancy_idx = data.draw(stnp.arrays(np.intp, st.integers(0, shape[fancy_idx_axis] - 1),
+                                      elements=st.integers(0, shape[fancy_idx_axis] - 1),
+                                      unique=True),
+                          label="fancy_idx")
+    idx = ndindex.Tuple(
+        *[data.draw(non_negative_step_slices(shape[dim]), label=f'idx{dim}') for dim in range(fancy_idx_axis)],
+        fancy_idx,
+        *[data.draw(non_negative_step_slices(shape[dim]), label=f'idx{dim}') for dim in
+          range(fancy_idx_axis + 1, ndim)])
+
+    _check_as_subchunk_map(chunks, idx, shape)
+
+
+@given(st.data())
+@hypothesis.settings(database=None, max_examples=10_000, deadline=None)
+def test_as_subchunk_map_mask(data):
+    ndim = data.draw(st.integers(1, 4), label="ndim")
+    shape = data.draw(st.tuples(*[st.integers(1, 100)] * ndim), label="shape")
+    chunks = data.draw(st.tuples(*[st.integers(5, 20)] * ndim), label="chunks")
+    mask_idx_axis = data.draw(st.integers(0, ndim - 1), label="mask_idx_axis")
+    mask_idx = data.draw(stnp.arrays(np.bool_, shape[mask_idx_axis],
+                                     elements=st.booleans()),
+                         label="mask_idx")
+    idx = ndindex.Tuple(
+        *[data.draw(non_negative_step_slices(shape[dim]), label=f'idx{dim}') for dim in range(mask_idx_axis)],
+        mask_idx,
+        *[data.draw(non_negative_step_slices(shape[dim]), label=f'idx{dim}') for dim in range(mask_idx_axis + 1, ndim)])
+
+    _check_as_subchunk_map(chunks, idx, shape)
+
+
+def test_faoeritj():
+    _check_as_subchunk_map((5,), ndindex.ndindex(np.array([False, True])), (2,))
+
+
+def _check_as_subchunk_map(chunks, idx, shape):
     idx = idx.reduce(shape)
     if not isinstance(idx, ndindex.Tuple):
         idx = ndindex.Tuple(idx)
@@ -177,15 +212,12 @@ def test_as_subchunk_map(data):
     as_subchunk_map_dict = defaultdict(list)
     for chunk, arr_subidx, chunk_subidx in as_subchunk_map(chunk_size, idx, shape):
         as_subchunk_map_dict[chunk].append((arr_subidx, chunk_subidx))
-
     as_subchunks_dict = defaultdict(list)
     for chunk in chunk_size.as_subchunks(idx, shape):
         arr_subidx = chunk.as_subindex(idx).raw
         chunk_subidx = idx.as_subindex(chunk).raw
         as_subchunks_dict[chunk].append((arr_subidx, chunk_subidx))
-
     assert list(as_subchunk_map_dict.keys()) == list(as_subchunks_dict.keys())
-
     for chunk in as_subchunk_map_dict:
         assert len(as_subchunk_map_dict[chunk]) == len(as_subchunks_dict[chunk]) == 1
         arr_subidx_1, chunk_subidx1 = as_subchunk_map_dict[chunk][0]

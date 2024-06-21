@@ -22,7 +22,7 @@ from h5py._hl.base import guess_dtype, phil, with_phil
 from h5py._hl.dataset import _LEGACY_GZIP_COMPRESSION_VALS
 from h5py._hl.selections import guess_shape
 from h5py._hl.vds import VDSmap
-from ndindex import ChunkSize, Slice, Tuple, ndindex, Integer, IntegerArray
+from ndindex import ChunkSize, Slice, Tuple, ndindex, Integer, IntegerArray, BooleanArray
 
 from .backend import DEFAULT_CHUNK_SIZE
 from .slicetools import spaceid_to_slice
@@ -571,6 +571,23 @@ def as_subchunk_map(chunk_size: ChunkSize, idx, shape: tuple):
                 chunk_idxs = tuple(range(start // n, (stop + n - 1) // n))
         elif isinstance(i, IntegerArray):
             chunk_idxs = tuple(np.unique(i.array // n))
+        elif isinstance(i, BooleanArray):
+            if i.ndim != 1:
+                raise NotImplementedError('boolean mask index must be 1-dimensional')
+            if i.shape != (d,):
+                raise IndexError(f'boolean index did not match indexed array; dimension is {d}, '
+                                 f'but corresponding boolean dimension is {i.shape[0]}')
+
+            # pad i.array to be a multiple of n and group into chunks
+            mask = np.pad(i.array, (0, n - (d % n)), 'constant', constant_values=(False,))
+            mask = mask.reshape((mask.shape[0] // n, n))
+
+            # chunk_idxs for the chunks which are not empty
+            chunk_idxs = np.flatnonzero(mask.any(axis=1))
+
+            # TODO: ndindex does not support slicing BooleanArray, once that's supported remove
+            #       the conversion to IntegerArray below
+            i = IntegerArray(np.flatnonzero(i.array))
         elif isinstance(i, Integer):
             chunk_idxs = (i.raw // n,)
         else:
