@@ -17,7 +17,22 @@ jobs:
         run: |
           sudo apt install graphviz -y
 
+      - name: Install libhdf5-dev
+        run: |
+          set -xe
+          sudo apt install -y libhdf5-dev
+
+      - name: Install mpi-default-dev
+        run: |
+          set -xe
+          sudo apt install -y mpi-default-dev
+
       - name: Install versioned-hdf5
+        run: |
+          set -xe
+          pip install .
+
+      - name: Install versioned-hdf5 doc
         run: |
           pip install .[doc]
 
