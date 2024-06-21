@@ -199,10 +199,6 @@ def test_as_subchunk_map_mask(data):
     _check_as_subchunk_map(chunks, idx, shape)
 
 
-def test_faoeritj():
-    _check_as_subchunk_map((5,), ndindex.ndindex(np.array([False, True])), (2,))
-
-
 def _check_as_subchunk_map(chunks, idx, shape):
     idx = idx.reduce(shape)
     if not isinstance(idx, ndindex.Tuple):
