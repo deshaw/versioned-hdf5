@@ -7,7 +7,7 @@ jobs:
       matrix:
         python-version: ['3.9', '3.10', '3.11']
         h5py-version: ['dev']
-        numpy-version: ['latest', '2.0.0rc1']
+        numpy-version: ['latest', '1.24.4']
       fail-fast: false
     steps:
       - uses: actions/checkout@v3
@@ -25,18 +25,18 @@ jobs:
           set -xe
           pip install .[test]
 
+      - name: Install target numpy version
+        if: matrix.numpy-version != 'latest'
+        run: |
+          set -xe
+          pip install numpy~=${{ matrix.numpy-version }}
+          pip list
+
       - name: Install development h5py version
         if: matrix.h5py-version == 'dev'
         run: |
           set -xe
           pip install git+https://github.com/h5py/h5py
-          pip list
-
-      - name: Install target numpy version
-        if: matrix.numpy-version != 'latest'
-        run: |
-          set -xe
-          pip install numpy==${{ matrix.numpy-version }}
           pip list
 
       - name: Run Tests
