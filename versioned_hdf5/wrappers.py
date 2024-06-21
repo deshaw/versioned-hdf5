@@ -536,6 +536,10 @@ def as_subchunk_map(chunk_size: ChunkSize, idx, shape: tuple):
     if len(shape) != len(chunk_size):
         raise ValueError("chunks dimensions must equal the array dimensions")
 
+    if idx.isempty(shape):
+        # abort early for empty index
+        return
+
     idx_len = len(idx.args)
 
     prefix_chunk_size = chunk_size[:idx_len]
@@ -570,6 +574,7 @@ def as_subchunk_map(chunk_size: ChunkSize, idx, shape: tuple):
             else:
                 chunk_idxs = tuple(range(start // n, (stop + n - 1) // n))
         elif isinstance(i, IntegerArray):
+            assert i.ndim == 1
             chunk_idxs = tuple(np.unique(i.array // n))
         elif isinstance(i, BooleanArray):
             if i.ndim != 1:

@@ -232,3 +232,8 @@ def _check_as_subchunk_map(chunks, idx, shape):
                 assert_equal(ix1, ix2)
             else:
                 assert ix1 == ix2
+
+
+def test_empty_index():
+    # test we correctly handle empty index
+    _check_as_subchunk_map((5,), ndindex.Slice(1, 1), (2,))
