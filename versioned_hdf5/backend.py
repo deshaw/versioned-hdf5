@@ -365,6 +365,8 @@ def write_dataset_chunks(f, name, data_dict):
 
         slices = {i: None for i in data_dict}
 
+        chunks_appended_to = set()
+
         # Mapping from slices in the raw dataset after this write is complete to ndarray
         # chunks of the new data which will be written
         data_to_write = {}
@@ -398,10 +400,32 @@ def write_dataset_chunks(f, name, data_dict):
 
                 # Calculate a new hash for this chunk using the extant data and the
                 # data to be appended
-                data_hash = hashtable.hash(
-                    np.concatenate((raw_chunk_data, array_padded))
-                )
+                concatenated_raw_chunk = np.concatenate((raw_chunk_data, array_padded))
 
+                # Ensure that the new raw chunk data has the correct dimensions
+                # along every axis except for the chunking axis (it's fine to have
+                # partially full raw chunks)
+                assert concatenated_raw_chunk.shape[1:] == chunks[1:]
+
+                # Multidimensional datasets can have multiple chunks which reference the
+                # same underlying chunk. If that happens, only one AppendChunk can fill
+                # the remaining space in the underlying chunk. If a chunk has already
+                # been appended to, bail out and write a new chunk.
+                if data_s.extant_rindex in chunks_appended_to:
+                    chunks_reused += update_hashtable(
+                        raw_data,
+                        concatenated_raw_chunk,
+                        hashtable,
+                        slices,
+                        chunk,
+                        chunk_size,
+                        data_to_write,
+                        validate_reused_chunks
+                    )
+                    continue
+
+                chunks_appended_to.add(data_s.extant_rindex)
+                data_hash = hashtable.hash(concatenated_raw_chunk)
                 if data_hash in hashtable:
                     hashed_slice = hashtable[data_hash]
                     slices[chunk] = hashed_slice
@@ -414,8 +438,14 @@ def write_dataset_chunks(f, name, data_dict):
                         chunk_being_written=data_s.array,
                         data_to_write=data_to_write,
                     )
+
+                    chunks_reused += 1
                 else:
-                    raw_slice = data_s.get_concatenated_rindex()
+                    # Expand the extant raw index to include the concatenated data
+                    raw_slice = Slice(
+                        data_s.extant_rindex.start,
+                        data_s.extant_rindex.start + concatenated_raw_chunk.shape[0],
+                    )
                     slices[chunk] = raw_slice
                     hashtable[data_hash] = raw_slice
 
@@ -423,46 +453,29 @@ def write_dataset_chunks(f, name, data_dict):
                     # writing a new chunk.
                     hashtable.largest_index -= 1
 
-                    # Write the data here, because if you add it to data_to_write the shape of the
-                    # data will be changed.
+                    # Write the data here, because if you add it to data_to_write it
+                    # will actually be written into a new chunk, changing the shape
+                    # of the raw data.
                     raw_chunk = Tuple(
-                        data_s.target_rindex,
+                        Slice(
+                            data_s.extant_rindex.stop,
+                            data_s.extant_rindex.stop + data_s.array.shape[0],
+                        ),
                         *[Slice(0, dim) for dim in data_s.array.shape[1:]],
                     )
                     raw_data[raw_chunk.raw] = data_s.array
 
             else:
-                if data_s.dtype != raw_data.dtype:
-                    raise ValueError(
-                        f"dtypes do not match ({data_s.dtype} != {raw_data.dtype})"
-                    )
-
-                data_hash = hashtable.hash(data_s)
-
-                if data_hash in hashtable:
-                    hashed_slice = hashtable[data_hash]
-                    slices[chunk] = hashed_slice
-
-                    if validate_reused_chunks:
-                        _verify_new_chunk_reuse(
-                            raw_dataset=raw_data,
-                            new_data=data_s,
-                            data_hash=data_hash,
-                            hashed_slice=hashed_slice,
-                            chunk_being_written=data_s,
-                            data_to_write=data_to_write,
-                        )
-
-                    chunks_reused += 1
-
-                else:
-                    idx = hashtable.largest_index
-                    raw_slice = Slice(
-                        idx * chunk_size, idx * chunk_size + data_s.shape[0]
-                    )
-                    slices[chunk] = raw_slice
-                    hashtable[data_hash] = raw_slice
-                    data_to_write[raw_slice] = data_s
+                chunks_reused += update_hashtable(
+                    raw_data,
+                    data_s,
+                    hashtable,
+                    slices,
+                    chunk,
+                    chunk_size,
+                    data_to_write,
+                    validate_reused_chunks,
+                )
 
         new_chunks = hashtable.largest_index
 
@@ -481,6 +494,84 @@ def write_dataset_chunks(f, name, data_dict):
     )
 
     return slices
+
+
+def update_hashtable(
+    raw_data: Dataset,
+    data_s: np.ndarray,
+    hashtable: Hashtable,
+    slices: Dict[Tuple, Slice],
+    chunk: Tuple,
+    chunk_size: int,
+    data_to_write: Dict[Slice, np.ndarray],
+    validate_reused_chunks: bool
+) -> int:
+    """Update the hashtable with the new data hash, if necessary.
+
+    If the hash of `data_s` already exists in the `hashtable`, write the hashed slice
+    into the `slices`. Otherwise, write a new entry into the `hashtable` for the
+    hashed data, then update `slices`, and update `data_to_write` with the data
+    to be written.
+
+    The `hashtable`, `slices`, and `data_to_write` are all mutated by this
+    function.
+
+    Parameters
+    ----------
+    raw_data : Dataset
+        Underlying raw dataset
+    data_s : np.ndarray
+        Chunk of data to possibly write to the underlying dataset
+    hashtable : Hashtable
+        Hashtable containing a mapping of raw data to slices in the raw data
+    slices : Dict[Tuple, Slice]
+        Mapping between virtual indices to underlying Slices in the raw data
+    chunk : Tuple
+        Virtual index being written to
+    chunk_size : int
+        Size of the chunks of the dataset along the first axis
+    data_to_write : Dict[Slice, np.ndarray]
+        Mapping of slices in the raw dataset to data to be written to those
+        slices
+    validate_reused_chunks : bool
+        If True, check that chunks that are reused have data which matches the
+        data to be written
+
+    Returns
+    -------
+    int
+        The number of chunks reused from the underlying raw dataset
+    """
+    if data_s.dtype != raw_data.dtype:
+        raise ValueError(f"dtypes do not match ({data_s.dtype} != {raw_data.dtype})")
+
+    data_hash = hashtable.hash(data_s)
+
+    if data_hash in hashtable:
+        raw_slice = hashtable[data_hash]
+        slices[chunk] = raw_slice
+
+        if validate_reused_chunks:
+            _verify_new_chunk_reuse(
+                raw_dataset=raw_data,
+                new_data=data_s,
+                data_hash=data_hash,
+                hashed_slice=raw_slice,
+                chunk_being_written=data_s,
+                data_to_write=data_to_write,
+            )
+
+        reused_chunks = 1
+
+    else:
+        idx = hashtable.largest_index
+        raw_slice = Slice(idx * chunk_size, idx * chunk_size + data_s.shape[0])
+        slices[chunk] = raw_slice
+        hashtable[data_hash] = raw_slice
+        data_to_write[raw_slice] = data_s
+        reused_chunks = 0
+
+    return reused_chunks
 
 
 def create_virtual_dataset(
@@ -579,7 +670,6 @@ class AppendData:
     Attributes
     ----------
     target_vindex : Indices of the virtual dataset which the data to be appended should appear
-    target_rindex : Indices of the raw dataset to write the data to
     array : Data to append (this is what is written to the raw dataset)
     extant_vindex : Virtual indices of the data which already exists in the chunk where the
          data is to be written
@@ -590,7 +680,6 @@ class AppendData:
     def __init__(
         self,
         target_vindex: Tuple,
-        target_rindex: Slice,
         array: np.ndarray,
         extant_vindex: Tuple,
         extant_rindex: Slice,
@@ -601,8 +690,6 @@ class AppendData:
         ----------
         target_vindex : Tuple
              Indices of the virtual dataset which the data to be appended should appear
-        target_rindex : Slice
-             Indices of the raw dataset to write the data to
         array : np.ndarray
              Data to append (this is what is written to the raw dataset)
         extant_vindex : Tuple
@@ -613,18 +700,14 @@ class AppendData:
              is to be written
         """
         self.target_vindex = target_vindex
-        self.target_rindex = target_rindex
         self.array = array
         self.extant_vindex = extant_vindex
         self.extant_rindex = extant_rindex
 
-    def get_concatenated_rindex(self) -> Slice:
-        """Get the raw indices corresponding to the entire span of the chunk post-append.
-
-        Returns
-        -------
-        Slice
-             Index spanning the entire chunk post-append. Since chunking is only carried out
-             along the first dimension, this is a Slice rather than a Tuple.
-        """
-        return Slice(self.extant_rindex.start, self.target_rindex.stop)
+    def __repr__(self):
+        return f"""
+        AppendChunk:
+            array to append: {self.array}
+            target virtual index: {self.target_vindex}
+            extant data virtual index: {self.extant_vindex}
+            extant data raw index: {self.extant_rindex}"""

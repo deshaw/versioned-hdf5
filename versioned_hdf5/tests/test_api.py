@@ -3267,76 +3267,26 @@ def test_append_multidim_random_axes(tmp_path):
 
 @mark.append()
 @mark.parametrize(
-    "chunk_size",
-    [
-        (3, 3),
-        (4, 3),
-        (5, 3),
-    ],
+    ("chunk_size", "nrows"),
+    list(itertools.product(itertools.product(range(3, 8), range(3, 8)), range(3, 8))),
 )
-def test_append_chunk_reuse(tmp_path, chunk_size):
-    """Test that appending multidimensional datasets correctly handles existing data for axes>0."""
-    path = tmp_path / "tmp.h5"
-
-    with h5py.File(path, "w") as f:
-        vf = VersionedHDF5File(f)
-        with vf.stage_version("r0") as sv:
-            sv.create_dataset(
-                "values",
-                data=np.array(
-                    [
-                        [1, 1, 1, 1, 1],
-                        [2, 2, 2, 2, 2],
-                        [3, 3, 3, 3, 3],
-                        [4, 4, 4, 4, 4],
-                        [0, 0, 0, 0, 0],
-                    ]
-                ),
-                chunks=chunk_size,
-                maxshape=(None, None),
-            )
-
-    with h5py.File(path, "r+") as f:
-        vf = VersionedHDF5File(f)
-        with vf.stage_version("r1") as sv:
-            sv["values"].append(np.array([[5, 5, 5, -5, -5]]))
-
-    with h5py.File(path, "r") as f:
-        vf = VersionedHDF5File(f)
-        cv = vf[vf.current_version]
-        print(cv["values"][:])
-
-
-@mark.append()
-@mark.parametrize(
-    "chunk_size",
-    [
-        (3, 3),
-        (4, 3),
-        (5, 3),
-    ],
-)
-def test_append_string_data(tmp_path, chunk_size):
+def test_append_string_data(tmp_path, chunk_size, nrows):
     """Test that appending string datasets works as intended."""
     path = tmp_path / "tmp.h5"
 
     dtype = h5py.string_dtype("utf-8")
+    data = np.array(
+        [["test", "abc", "123", "abc", "123"]] * nrows,
+        dtype=dtype,
+    )
+    append = np.array([["this", "is", "a", "string", "dtype"]], dtype=dtype)
 
     with h5py.File(path, "w") as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version("r0") as sv:
             sv.create_dataset(
                 "values",
-                data=np.array(
-                    [
-                        ["test", "abc", "123", "abc", "123"],
-                        ["test", "abc", "123", "abc", "123"],
-                        ["test", "abc", "123", "abc", "123"],
-                        ["test", "abc", "123", "abc", "123"],
-                        ["test", "abc", "123", "abc", "123"],
-                    ],
-                    dtype=dtype,
-                ),
+                data=data,
                 chunks=chunk_size,
                 maxshape=(None, None),
             )
@@ -3344,11 +3294,50 @@ def test_append_string_data(tmp_path, chunk_size):
     with h5py.File(path, "r+") as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version("r1") as sv:
-            sv["values"].append(
-                np.array([["this", "is", "a", "string", "dtype"]], dtype=dtype)
-            )
+            sv["values"].append(append)
 
     with h5py.File(path, "r") as f:
         vf = VersionedHDF5File(f)
         cv = vf[vf.current_version]
-        print(cv["values"][:])
+        assert_equal(
+            cv["values"][:].astype(bytes), np.concatenate((data, append)).astype(bytes)
+        )
+
+
+@mark.append()
+@mark.parametrize(
+    ("chunk_size", "nrows", "ncols"),
+    list(
+        itertools.product(
+            itertools.product(range(3, 8), range(3, 8)), range(3, 8), range(5, 8)
+        )
+    ),
+)
+def test_append_multiple_vchunks_same_rchunk(tmp_path, chunk_size, nrows, ncols):
+    """Test that appending multidimensional datasets correctly handles existing data for axes>0."""
+    path = tmp_path / "tmp.h5"
+
+    # Make ncols columns, each of which count from 1 to nrows
+    data = np.tile(np.arange(1, nrows + 1).reshape(-1, 1), ncols)
+    append = np.full((1, ncols), nrows + 1)
+    append[ncols // 2 :] *= -1
+
+    with h5py.File(path, "w") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r0") as sv:
+            sv.create_dataset(
+                "values",
+                data=data,
+                chunks=chunk_size,
+                maxshape=(None, None),
+            )
+
+    with h5py.File(path, "r+") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r1") as sv:
+            sv["values"].append(append)
+
+    with h5py.File(path, "r") as f:
+        vf = VersionedHDF5File(f)
+        cv = vf[vf.current_version]
+        assert_equal(cv["values"][:], np.concatenate((data, append)))

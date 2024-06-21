@@ -1025,26 +1025,13 @@ class InMemoryDataset(Dataset):
                     )
 
                 else:
-                    chunk_extant_rindex = old_data_dict[chunk_extant_vindex]
-
-                    # The data to be appended inside this chunk
-                    chunk_target_vindex = Tuple(
-                        Slice(old_shape[0], chunk.args[0].stop), *other_chunk_dims
-                    ).expand(self.shape)
-
-                    # Compute the raw indices to write
-                    n_dim0_elements = len(chunk_target_vindex.args[0])
-                    chunk_target_rindex = Slice(
-                        chunk_extant_rindex.stop,
-                        chunk_extant_rindex.stop + n_dim0_elements,
-                    )
-
                     new_data_dict[chunk] = AppendData(
-                        target_vindex=chunk_target_vindex,
-                        target_rindex=chunk_target_rindex,
+                        target_vindex=Tuple(
+                            Slice(old_shape[0], chunk.args[0].stop), *other_chunk_dims
+                        ).expand(self.shape),
                         array=arr[arr_index.raw],
                         extant_vindex=chunk_extant_vindex,
-                        extant_rindex=chunk_extant_rindex,
+                        extant_rindex=old_data_dict[chunk_extant_vindex],
                     )
 
         self.id.data_dict = new_data_dict
