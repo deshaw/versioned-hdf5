@@ -374,6 +374,7 @@ def write_dataset_chunks(f, name, data_dict):
             if isinstance(data_s, (slice, tuple, Tuple, Slice)):
                 slices[chunk] = ndindex(data_s)
             elif isinstance(data_s, AppendData):
+                breakpoint()
                 # Write chunks to append to the raw data without writing a new chunk
                 if data_s.array.dtype != raw_data.dtype:
                     raise ValueError(
@@ -420,7 +421,7 @@ def write_dataset_chunks(f, name, data_dict):
                         chunk,
                         chunk_size,
                         data_to_write,
-                        validate_reused_chunks
+                        validate_reused_chunks,
                     )
                     continue
 
@@ -504,7 +505,7 @@ def update_hashtable(
     chunk: Tuple,
     chunk_size: int,
     data_to_write: Dict[Slice, np.ndarray],
-    validate_reused_chunks: bool
+    validate_reused_chunks: bool,
 ) -> int:
     """Update the hashtable with the new data hash, if necessary.
 
