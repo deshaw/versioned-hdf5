@@ -1,14 +1,15 @@
 import logging
 import os
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 import numpy as np
-from h5py import Dataset, VirtualLayout, VirtualSource, h5s
+from h5py import Dataset, File, VirtualLayout, VirtualSource, h5s
 from h5py._hl.filters import guess_chunk
 from ndindex import ChunkSize, Slice, Tuple, ndindex
 from numpy.testing import assert_array_equal
 
 from .hashtable import Hashtable
+from .slicetools import spaceid_to_slice
 
 DEFAULT_CHUNK_SIZE = 2**12
 DATA_VERSION = 4
@@ -364,7 +365,6 @@ def write_dataset_chunks(f, name, data_dict):
         chunks_reused = 0
 
         slices = {i: None for i in data_dict}
-
         chunks_appended_to = set()
 
         # Mapping from slices in the raw dataset after this write is complete to ndarray
@@ -374,7 +374,6 @@ def write_dataset_chunks(f, name, data_dict):
             if isinstance(data_s, (slice, tuple, Tuple, Slice)):
                 slices[chunk] = ndindex(data_s)
             elif isinstance(data_s, AppendData):
-                breakpoint()
                 # Write chunks to append to the raw data without writing a new chunk
                 if data_s.array.dtype != raw_data.dtype:
                     raise ValueError(
@@ -408,11 +407,24 @@ def write_dataset_chunks(f, name, data_dict):
                 # partially full raw chunks)
                 assert concatenated_raw_chunk.shape[1:] == chunks[1:]
 
+                # This is the location where the data to append will be written; first
+                # compute it here to check whether the raw space is referenced by any
+                # other version of the dataset.
+                raw_chunk = Tuple(
+                    Slice(
+                        data_s.extant_rindex.stop,
+                        data_s.extant_rindex.stop + data_s.array.shape[0],
+                    ),
+                    *[Slice(0, dim) for dim in data_s.array.shape[1:]],
+                )
+
                 # Multidimensional datasets can have multiple chunks which reference the
                 # same underlying chunk. If that happens, only one AppendChunk can fill
                 # the remaining space in the underlying chunk. If a chunk has already
                 # been appended to, bail out and write a new chunk.
-                if data_s.extant_rindex in chunks_appended_to:
+                if data_s.extant_rindex in chunks_appended_to or _is_occupied_space(
+                    f, name, raw_chunk
+                ):
                     chunks_reused += update_hashtable(
                         raw_data,
                         concatenated_raw_chunk,
@@ -424,6 +436,12 @@ def write_dataset_chunks(f, name, data_dict):
                         validate_reused_chunks,
                     )
                     continue
+
+                # Expand the extant raw index to include the concatenated data
+                raw_slice = Slice(
+                    data_s.extant_rindex.start,
+                    data_s.extant_rindex.start + concatenated_raw_chunk.shape[0],
+                )
 
                 chunks_appended_to.add(data_s.extant_rindex)
                 data_hash = hashtable.hash(concatenated_raw_chunk)
@@ -457,13 +475,6 @@ def write_dataset_chunks(f, name, data_dict):
                     # Write the data here, because if you add it to data_to_write it
                     # will actually be written into a new chunk, changing the shape
                     # of the raw data.
-                    raw_chunk = Tuple(
-                        Slice(
-                            data_s.extant_rindex.stop,
-                            data_s.extant_rindex.stop + data_s.array.shape[0],
-                        ),
-                        *[Slice(0, dim) for dim in data_s.array.shape[1:]],
-                    )
                     raw_data[raw_chunk.raw] = data_s.array
 
             else:
@@ -495,6 +506,44 @@ def write_dataset_chunks(f, name, data_dict):
     )
 
     return slices
+
+
+def _is_occupied_space(
+    f: File,
+    name: str,
+    index: Slice,
+) -> bool:
+    """Check whether the target virtual index references unused space.
+
+    Parameters
+    ----------
+    f : File
+        File containing the various versions of the dataset
+    name : str
+        Name of the dataset to check
+    target_vindex : Tuple
+        Target virtual index to be checked for existing data
+
+    Returns
+    -------
+    bool
+        True if the space referenced by target_vindex is occupied, False
+        otherwise
+    """
+    for version in f["_version_data/versions"]:
+        # Ignore the root version or the current (uncommitted) version
+        if version == "__first_version__" or name not in f["_version_data/versions"]:
+            continue
+
+        for vindex, rindex in get_data_map(f, name, version).items():
+            assert len(vindex.args[0]) != len(rindex.args[0])
+
+            try:
+                index.as_subindex(rindex)
+            except ValueError:
+                return True
+
+    return False
 
 
 def update_hashtable(
@@ -712,3 +761,30 @@ class AppendData:
             target virtual index: {self.target_vindex}
             extant data virtual index: {self.extant_vindex}
             extant data raw index: {self.extant_rindex}"""
+
+
+def get_data_map(f: File, name: str, version: str) -> Dict[Tuple, Tuple]:
+    """Get the Dict which maps virtual dataset sources to raw data slices.
+
+    Parameters
+    ----------
+    f : File
+        File containing the chunks to get for the given version
+    name : str
+        Name of the dataset
+    version : str
+        Version of the dataset for which the data map is to be retrieved
+
+    Returns
+    -------
+    Dict[ndindex.Tuple, ndindex.Tuple]
+        Mapping between the dataset's virtual slices and the slices of the
+        underlying raw data
+    """
+    slices = {}
+    for vs in f["_version_data/versions"][version][name].virtual_sources():
+        src = spaceid_to_slice(vs.src_space)
+        vir = spaceid_to_slice(vs.vspace)
+        slices[vir] = src
+
+    return slices

@@ -1023,7 +1023,6 @@ class InMemoryDataset(Dataset):
                     new_data_dict[chunk] = np.concatenate(
                         (old_data_dict[chunk_extant_vindex], arr[arr_index.raw])
                     )
-
                 else:
                     new_data_dict[chunk] = AppendData(
                         target_vindex=Tuple(

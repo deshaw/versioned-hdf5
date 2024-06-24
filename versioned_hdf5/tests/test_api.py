@@ -3343,52 +3343,7 @@ def test_append_multiple_vchunks_same_rchunk(tmp_path, chunk_size, nrows, ncols)
         assert_equal(cv["values"][:], np.concatenate((data, append)))
 
 
-def test_append_corrupted2(tmp_path):
-    path = tmp_path / "tmp.h5"
-
-    with h5py.File(path, "w") as f:
-        vf = VersionedHDF5File(f)
-        with vf.stage_version("r0") as sv:
-            sv.create_dataset(
-                "values",
-                data=np.arange(3),
-                chunks=(5,),
-                maxshape=(None,),
-            )
-
-    with h5py.File(path, "r+") as f:
-        vf = VersionedHDF5File(f)
-        with vf.stage_version("r1") as sv:
-            values = sv["values"]
-            values.append(np.array([1, 2]))
-
-    with h5py.File(path, "r") as f:
-        vf = VersionedHDF5File(f)
-        cv = vf[vf.current_version]
-        assert_equal(cv["values"][:], np.array([0, 1, 2, 1, 2]))
-
-    with h5py.File(path, "r+") as f:
-        vf = VersionedHDF5File(f)
-        with vf.stage_version("r2") as sv:
-            values = sv["values"]
-            values.resize((8,))
-            values[5:8] = np.arange(3)
-
-    with h5py.File(path, "r+") as f:
-        vf = VersionedHDF5File(f)
-        with vf.stage_version("r3") as sv:
-            values = sv["values"]
-            values.append(np.array([3, 4]))
-
-    with h5py.File(path, "r") as f:
-        vf = VersionedHDF5File(f)
-        cv = vf[vf.current_version]
-        assert_equal(
-            cv["values"][:],
-            np.array([0, 1, 2, 1, 2, 0, 1, 2, 3, 4]),
-        )
-
-
+@mark.append()
 def test_append_corrupted(tmp_path):
     path = tmp_path / "tmp.h5"
 
@@ -3412,6 +3367,7 @@ def test_append_corrupted(tmp_path):
         vf = VersionedHDF5File(f)
         cv = vf[vf.current_version]
         assert_equal(cv["values"][:], np.array([0, 1, 2, 1, 2]))
+        assert_equal(f["_version_data/values/raw_data"][:], np.array([0, 1, 2, 1, 2]))
 
     with h5py.File(path, "r+") as f:
         vf = VersionedHDF5File(f)
@@ -3424,6 +3380,7 @@ def test_append_corrupted(tmp_path):
             vf["r2"]["values"][:],
             np.array([0, 1, 2, 1, 2, 0, 1, 2]),
         )
+        assert_equal(f["_version_data/values/raw_data"][:], np.array([0, 1, 2, 1, 2]))
 
     with h5py.File(path, "r+") as f:
         vf = VersionedHDF5File(f)
@@ -3437,4 +3394,16 @@ def test_append_corrupted(tmp_path):
         assert_equal(
             cv["values"][:],
             np.array([0, 1, 2, 1, 2, 0, 1, 2, 3, 4]),
+        )
+        assert_equal(
+            f["_version_data/values/raw_data"][:],
+            np.array(
+                [
+                    0,
+                    1,
+                    2,
+                    1,
+                    2,
+                ]
+            ),
         )

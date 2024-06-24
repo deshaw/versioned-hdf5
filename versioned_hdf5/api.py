@@ -13,9 +13,8 @@ import h5py
 import ndindex
 import numpy as np
 
-from .backend import CORRUPT_DATA_VERSIONS, DATA_VERSION, initialize
+from .backend import CORRUPT_DATA_VERSIONS, DATA_VERSION, get_data_map, initialize
 from .hashtable import Hashtable
-from .slicetools import spaceid_to_slice
 from .versions import (
     all_versions,
     commit_version,
@@ -474,13 +473,7 @@ class VersionedHDF5File:
             Mapping between the dataset's virtual slices and the slices of the
             underlying raw data
         """
-        slices = {}
-        for vs in self[version][name].virtual_sources():
-            src = spaceid_to_slice(vs.src_space)
-            vir = spaceid_to_slice(vs.vspace)
-            slices[vir] = src
-
-        return slices
+        return get_data_map(self.f, name, version)
 
     def _diff_data(
         self,
