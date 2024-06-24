@@ -532,15 +532,23 @@ def _is_occupied_space(
     """
     for version in f["_version_data/versions"]:
         # Ignore the root version or the current (uncommitted) version
-        if version == "__first_version__" or name not in f["_version_data/versions"]:
+        if (
+            version == "__first_version__"
+            or name not in f["_version_data/versions"][version]
+        ):
             continue
 
         for vindex, rindex in get_data_map(f, name, version).items():
-            assert len(vindex.args[0]) != len(rindex.args[0])
+            assert len(vindex.args[0]) == len(rindex.args[0])
 
             try:
-                index.as_subindex(rindex)
+                subindex = index.as_subindex(rindex)
             except ValueError:
+                continue
+
+            # index.as_subindex(rindex) can return 0-length subindices, but there's
+            # no overlap in that case
+            if len(subindex.args[0]) > 0:
                 return True
 
     return False
