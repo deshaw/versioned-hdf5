@@ -243,9 +243,8 @@ def _verify_new_chunk_reuse(
     chunk_being_written: np.ndarray,
     slices_to_write: Optional[Dict[Slice, Tuple]] = None,
     data_to_write: Optional[Dict[Slice, np.ndarray]] = None,
-):
-    """Check that the data corresponding to the slice in the hashtable matches the data
-    that is going to be written.
+) -> None:
+    """Check that the data from the hashed slice matches the data to be written.
 
     Raises a ValueError if the data reference by the hashed slice doesn't match the
     underlying raw data.
@@ -305,11 +304,13 @@ def _verify_new_chunk_reuse(
     # first.
     if reused_chunk.dtype == "O" and chunk_being_written.dtype == "O":
         to_be_written = _convert_to_bytes(chunk_being_written)
+        to_be_reused = _convert_to_bytes(reused_chunk)
     else:
         to_be_written = chunk_being_written
+        to_be_reused = reused_chunk
 
     try:
-        assert_array_equal(reused_chunk, to_be_written)
+        assert_array_equal(to_be_reused, to_be_written)
     except AssertionError as e:
         raise ValueError(
             f"Hash {data_hash} of existing data chunk {reused_chunk} "
@@ -334,7 +335,9 @@ def _convert_to_bytes(arr: np.ndarray) -> np.ndarray:
     np.ndarray
         Object dtype array filled with elements of type bytes
     """
-    if len(arr) > 0 and isinstance(arr[0], bytes):
+    # Check the actual type of the first element of the array; if it's bytes,
+    # there's no need to cast (and casting won't work anyway)
+    if len(arr) > 0 and isinstance(arr.flatten()[0], bytes):
         return arr
     else:
         return np.vectorize(lambda i: bytes(i, encoding="utf-8"))(arr)
