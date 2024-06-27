@@ -1,7 +1,7 @@
 from functools import lru_cache
 
 from ndindex import Slice, Tuple
-from h5py import h5d
+from h5py import h5d, h5s
 from h5py._hl.base import phil
 
 import cython
@@ -9,6 +9,7 @@ from libc.stddef cimport size_t, ptrdiff_t
 ctypedef ptrdiff_t ssize_t
 from libc.stdlib cimport malloc, free
 from libc.string cimport strlen, strncmp
+from libcpp.vector cimport vector
 
 ctypedef enum H5S_sel_type:
     H5S_SEL_ERROR = -1,  #Error
@@ -32,7 +33,11 @@ cdef extern from "hdf5.h":
     cdef hid_t H5Pget_virtual_vspace(hid_t dcpl_id, size_t index) except <hid_t>-1
     cdef hid_t H5Pget_virtual_srcspace(hid_t dcpl_id, size_t index) except <hid_t>-1
 
-    cdef H5S_sel_type H5Sget_select_type(hid_t space_id) except <H5S_sel_type>-1
+    # TODO: this function actually returns an H5S_sel_type enum, but compilation fails
+    #       when that's specified and we have an "except" clause. This looks like a bug in Cython?
+    #       https://github.com/cython/cython/issues/6275
+    # cdef H5S_sel_type H5Sget_select_type(hid_t space_id) except <H5S_sel_type> -1
+    cdef int H5Sget_select_type(hid_t space_id) except <int>-1
 
     cdef int H5Sget_simple_extent_ndims(hid_t space_id) except <int> -1
     cdef htri_t H5Sget_regular_hyperslab(hid_t spaceid, hsize_t* start, hsize_t* stride, hsize_t* count, hsize_t* block) except <htri_t>-1
@@ -43,8 +48,6 @@ def spaceid_to_slice(space) -> Tuple:
 
     The resulting index is always a Tuple index.
     """
-
-    from h5py import h5s
 
     sel_type = space.get_select_type()
 
@@ -74,7 +77,7 @@ def hyperslab_to_slice(start, stride, count, block):
 
 
 cdef _spaceid_to_slice(space_id: hid_t):
-    sel_type: H5S_sel_type = H5Sget_select_type(space_id)
+    sel_type: H5S_sel_type = <H5S_sel_type> H5Sget_select_type(space_id)
 
     if sel_type == H5S_sel_type.H5S_SEL_ALL:
         return Tuple()
@@ -82,34 +85,30 @@ cdef _spaceid_to_slice(space_id: hid_t):
         slices: list = []
 
         rank: cython.int = H5Sget_simple_extent_ndims(space_id)
-        start_array: cython.pointer(hsize_t) = <hsize_t *> malloc(sizeof(hsize_t) * rank)
-        stride_array: cython.pointer(hsize_t) = <hsize_t *> malloc(sizeof(hsize_t) * rank)
-        count_array: cython.pointer(hsize_t) = <hsize_t *> malloc(sizeof(hsize_t) * rank)
-        block_array: cython.pointer(hsize_t) = <hsize_t *> malloc(sizeof(hsize_t) * rank)
-        try:
-            H5Sget_regular_hyperslab(space_id, start_array, stride_array,
-                                     count_array, block_array)
-            i: cython.int
-            start: hsize_t
-            end: hsize_t
-            stride: hsize_t
-            count: hsize_t
-            block: hsize_t
-            for i in range(rank):
-                start = start_array[i]
-                stride = stride_array[i]
-                count = count_array[i]
-                block = block_array[i]
-                if not (block == 1 or count == 1):
-                    raise NotImplementedError("Nontrivial blocks are not yet supported")
-                end = start + (stride * (count - 1) + 1) * block
-                stride = stride if block == 1 else 1
-                slices.append(Slice(start, end, stride))
-        finally:
-            free(start_array)
-            free(stride_array)
-            free(count_array)
-            free(block_array)
+        start_array: vector[hsize_t] = vector[hsize_t](rank)
+        stride_array: vector[hsize_t] = vector[hsize_t](rank)
+        count_array: vector[hsize_t] = vector[hsize_t](rank)
+        block_array: vector[hsize_t] = vector[hsize_t](rank)
+
+        H5Sget_regular_hyperslab(space_id, start_array.data(), stride_array.data(),
+                                 count_array.data(), block_array.data())
+        i: cython.int
+        start: hsize_t
+        end: hsize_t
+        stride: hsize_t
+        count: hsize_t
+        block: hsize_t
+        for i in range(rank):
+            start = start_array[i]
+            stride = stride_array[i]
+            count = count_array[i]
+            block = block_array[i]
+            if not (block == 1 or count == 1):
+                raise NotImplementedError("Nontrivial blocks are not yet supported")
+            end = start + (stride * (count - 1) + 1) * block
+            stride = stride if block == 1 else 1
+            slices.append(Slice(start, end, stride))
+
         return Tuple(*slices)
     elif sel_type == H5S_sel_type.H5S_SEL_NONE:
         return Tuple(
@@ -148,10 +147,14 @@ cpdef build_data_dict(dcpl, shape: tuple, chunks: tuple, raw_data_name: str):
 
             filename_buf_len: ssize_t = 2
             filename_buf: cython.p_char = <char *>malloc(filename_buf_len)
+            if not filename_buf:
+                raise MemoryError('could not allocate filename_buf')
 
             try:
                 dataset_buf_len: ssize_t = strlen(raw_data_str) + 1
                 dataset_buf: cython.p_char = <char *>malloc(dataset_buf_len)
+                if not dataset_buf:
+                    raise MemoryError('could not allocate dataset_buf')
 
                 try:
                     for j in range(virtual_count):

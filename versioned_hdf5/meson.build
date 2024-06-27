@@ -24,5 +24,6 @@ py.extension_module(
     install: true,
     subdir: 'versioned_hdf5',
     dependencies: slicetools_deps,
-    cython_args: ['--gdb'],
+    cython_args: ['--cplus'],
+    override_options : ['cython_language=cpp'],
 )
