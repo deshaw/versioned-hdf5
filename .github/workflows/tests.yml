@@ -20,10 +20,15 @@ jobs:
           set -xe
           sudo apt install -y hdf5-tools
 
-      - name: Install versioned-hdf5
+      - name: Install libhdf5-dev
         run: |
           set -xe
-          pip install .[test]
+          sudo apt install -y libhdf5-dev
+
+      - name: Install mpi-default-dev
+        run: |
+          set -xe
+          sudo apt install -y mpi-default-dev
 
       - name: Install target numpy version
         if: matrix.numpy-version != 'latest'
@@ -39,7 +44,17 @@ jobs:
           pip install git+https://github.com/h5py/h5py
           pip list
 
+      - name: Install versioned-hdf5
+        run: |
+          set -xe
+          pip install .
+
+      - name: Install versioned-hdf5 test packages
+        run: |
+          set -xe
+          pip install .[test]
+
       - name: Run Tests
         run: |
           set -xe
-          pytest -v .
+          pytest -v . --import-mode=importlib
