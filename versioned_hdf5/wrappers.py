@@ -1429,7 +1429,21 @@ class InMemoryDatasetID(h5d.DatasetID):
     def data_dict(self):
         if self._data_dict is None:
             dcpl = self.get_create_plist()
-            self._data_dict = build_data_dict(dcpl, self._shape, self.chunks, self.raw_data.name)
+
+            is_virtual: bool = dcpl.get_layout() == h5d.VIRTUAL
+
+            if not is_virtual:
+                # A dataset created with only a fillvalue will be nonvirtual,
+                # since create_virtual_dataset makes a nonvirtual dataset when
+                # there are no virtual sources.
+                self._data_dict = {}
+            # Same as dataset.get_virtual_sources
+            elif 0 in self.shape:
+                # Work around https://github.com/h5py/h5py/issues/1660
+                empty_idx = Tuple().expand(self.shape)
+                self._data_dict = {empty_idx: Slice()}
+            else:
+                self._data_dict = build_data_dict(dcpl, self.raw_data.name)
 
         return self._data_dict
 
