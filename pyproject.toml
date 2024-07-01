@@ -97,6 +97,7 @@ ignore = [
 dev = ["pre-commit>=3.6.0"]
 test = ["pytest", "pytest-env"]
 doc = ["sphinx", "sphinx-multiversion", "myst-parser"]
+bench = ["asv"]
 
 [tool.setuptools_scm]
 

@@ -21,15 +21,16 @@
     // Customizable commands for building, installing, and
     // uninstalling the project. See asv.conf.json documentation.
     //
-    "install_command": ["in-dir={env_dir} python {conf_dir}/benchmarks_install.py {commit} {env_dir} {build_dir}"],
+    "install_command": [
+      "in-dir={env_dir} python {conf_dir}/benchmarks_install.py {commit} {env_dir} {build_dir}"
+    ],
     // "uninstall_command": ["return-code=any python -mpip uninstall -y {project}"],
     "build_command": [
     ],
 
     // List of branches to benchmark. If not provided, defaults to "master"
     // (for git) or "default" (for mercurial).
-    "branches": ["master", "performance2", "performance3", "new-delete"], // for git
-    // "branches": ["default"],    // for mercurial
+    "branches": ["master"], // for git
 
     // The DVCS being used.  If not set, it will be automatically
     // determined from "repo" by looking at the protocol in the URL
@@ -42,7 +43,7 @@
     // If missing or the empty string, the tool will be automatically
     // determined by looking for tools on the PATH environment
     // variable.
-    "environment_type": "conda",
+    "environment_type": "virtualenv",
 
     // timeout in seconds for installing any dependencies in environment
     // defaults to 10 min
@@ -57,7 +58,7 @@
 
     // The list of conda channel names to be searched for benchmark
     // dependency packages in the specified order
-    // "conda_channels": ["conda-forge", "defaults"],
+    // "conda_channels": ["conda-forge"],
 
     // The matrix of dependencies to test.  Each key is the name of a
     // package (in PyPI) and the values are version numbers.  An empty
