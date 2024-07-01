@@ -1,0 +1,43 @@
+name: Benchmarks
+
+on: [workflow_call, workflow_dispatch]
+
+jobs:
+  run-benchmarks:
+    runs-on: "cirun-benchmark-runner--${{ github.run_id }}"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+
+      - name: Install dependencies
+        run: |
+          sudo apt update -y
+          sudo apt install libhdf5-dev mpi-default-dev -y
+
+      - name: Install versioned-hdf5
+        run: |
+          pip install '.[bench]'
+
+      # Compare the most recent commit with the previous one
+      - name: Run benchmarks
+        run: |
+          asv continuous HEAD^ HEAD
+
+      - name: Checkout benchmarks
+        run: |
+          git stash
+          git fetch origin benchmarks
+          git checkout benchmarks --
+          git stash pop
+
+      - name: Add and commit benchmarks
+        run: |
+          git add .asv/
+          git commit -n -m "Update benchmarks for commit ${{ github.event.pull_request.head.sha }}"
+          git push origin benchmarks
