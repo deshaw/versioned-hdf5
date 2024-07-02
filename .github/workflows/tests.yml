@@ -49,6 +49,11 @@ jobs:
           set -xe
           pip install .
 
+      - name: Print hdf5 configuration
+        run: |
+          set -xe
+          h5cc -showconfig
+
       - name: Install versioned-hdf5 test packages
         run: |
           set -xe
@@ -57,4 +62,4 @@ jobs:
       - name: Run Tests
         run: |
           set -xe
-          pytest -v . --import-mode=importlib
+          pytest -v .
