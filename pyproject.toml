@@ -106,3 +106,11 @@ profile = "black"
 
 [tool.pytest_env]
 ENABLE_CHUNK_REUSE_VALIDATION = 1
+
+[tool.pytest.ini_options]
+addopts = "--doctest-modules --ignore=analysis/ --import-mode=importlib"
+doctest_optionflags = "NORMALIZE_WHITESPACE"
+markers = [
+    "setup_args : kwargs for setup fixture.",
+    "slow: slow tests",
+]
