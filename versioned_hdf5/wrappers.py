@@ -64,7 +64,12 @@ class InMemoryGroup(Group):
         super().__init__(bind)
 
     def close(self):
+        """Mark self and any subgroups as committed."""
         self._committed = True
+        for name in self:
+            obj = self[name]
+            if isinstance(obj, InMemoryGroup):
+                obj.close()
 
     # Based on Group.__repr__
     def __repr__(self):
