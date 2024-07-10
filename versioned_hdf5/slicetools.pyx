@@ -1,7 +1,7 @@
 from functools import lru_cache
 
 from ndindex import Slice, Tuple
-from h5py import h5d, h5s
+from h5py import h5d, h5s, h5i
 from h5py._hl.base import phil
 
 import cython
@@ -12,11 +12,15 @@ from libc.string cimport strlen, strncmp
 from libcpp.vector cimport vector
 
 cdef extern from "hdf5.h":
-    # HDF5 types
+    # HDF5 types copied from h5py/api_types_hdf5.pxd
     ctypedef long int hid_t
+    ctypedef int hbool_t
     ctypedef int herr_t
     ctypedef int htri_t
     ctypedef long long hsize_t
+    ctypedef signed long long hssize_t
+    ctypedef signed long long haddr_t
+    ctypedef long int off_t
 
     # virtual Dataset functions
     cdef ssize_t H5Pget_virtual_dsetname(hid_t dcpl_id, size_t index, char *name, size_t size)
@@ -74,7 +78,7 @@ def hyperslab_to_slice(start, stride, count, block):
 cdef _spaceid_to_slice(space_id: hid_t):
     """
     Helper function to read the data for `space_id` selection and
-    convert it to a Tuple of slices. 
+    convert it to a Tuple of slices.
     """
     sel_type: H5S_sel_type = H5Sget_select_type(space_id)
 
@@ -124,13 +128,13 @@ cdef _spaceid_to_slice(space_id: hid_t):
 cpdef build_data_dict(dcpl, raw_data_name: str):
     """
     Function to build the "data_dict" of a versioned virtual dataset.
-    
+
     All virtual datasets created by versioned-hdf5 should have chunks in
     exactly one raw dataset `raw_data_name` in the same file. This function will
-    check that this is the case and return a dictionary mapping the `Tuple` of 
+    check that this is the case and return a dictionary mapping the `Tuple` of
     the chunk in the virtual dataset to a `Slice` in the raw dataset.
-    
-    :param dcpl: the dataset creation property list of the versioned dataset  
+
+    :param dcpl: the dataset creation property list of the versioned dataset
     :param raw_data_name: the name of the corresponding raw dataset
     :return: a dictionary mapping the `Tuple` of the virtual dataset chunk
         to a `Slice` in the raw dataset.
