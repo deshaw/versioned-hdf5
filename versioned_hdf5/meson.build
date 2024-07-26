@@ -11,10 +11,22 @@ py.install_sources(
     subdir: 'versioned_hdf5',
 )
 
-slicetools_deps = [
+compiled_deps = [
     dependency('hdf5'),
     dependency('mpi'),
 ]
+
+py.extension_module(
+    'hdf5util',
+    [
+        'hdf5util.pyx',
+    ],
+    install: true,
+    subdir: 'versioned_hdf5',
+    dependencies: compiled_deps,
+    cython_args: ['--cplus'],
+    override_options : ['cython_language=cpp'],
+)
 
 py.extension_module(
     'slicetools',
@@ -23,7 +35,7 @@ py.extension_module(
     ],
     install: true,
     subdir: 'versioned_hdf5',
-    dependencies: slicetools_deps,
+    dependencies: compiled_deps,
     cython_args: ['--cplus'],
     override_options : ['cython_language=cpp'],
 )
