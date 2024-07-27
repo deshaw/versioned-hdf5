@@ -17,18 +17,6 @@ compiled_deps = [
 ]
 
 py.extension_module(
-    'hdf5util',
-    [
-        'hdf5util.pyx',
-    ],
-    install: true,
-    subdir: 'versioned_hdf5',
-    dependencies: compiled_deps,
-    cython_args: ['--cplus'],
-    override_options : ['cython_language=cpp'],
-)
-
-py.extension_module(
     'slicetools',
     [
         'slicetools.pyx',

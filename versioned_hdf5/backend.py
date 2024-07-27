@@ -1,6 +1,7 @@
 import logging
 import os
-from typing import Dict, List, Optional
+import textwrap
+from typing import Dict, Iterator, Optional
 
 import numpy as np
 from h5py import Dataset, VirtualLayout, VirtualSource, h5s, h5z
@@ -154,15 +155,18 @@ def write_dataset(
 
     if (
         compression
-        and compression != ds.compression
+        and compression not in ds._filters
         or compression_opts
-        and compression_opts != ds.compression_opts
+        and compression_opts != ds._filters[compression]
     ):
+        available_filters = textwrap.indent(
+            "\n".join(str(filter) for filter in get_available_filters()), "  "
+        )
         raise ValueError(
-            "Compression options can only be specified for the first version of a dataset."
-            f"Dataset: {name}"
-            f"Current compression: {ds.compression}"
-            f"Compression options available: {get_available_compression_methods()}"
+            "Compression options can only be specified for the first version of a dataset.\n"
+            f"Dataset: {name}\n"
+            f"Current filters: {ds._filters}\n"
+            f"Available hdf5 compression types:\n{available_filters}"
         )
     if fillvalue is not None and fillvalue != ds.fillvalue:
         dtype = ds.dtype
@@ -518,17 +522,7 @@ def create_virtual_dataset(
     return virtual_data
 
 
-def get_available_compression_methods() -> List[int]:
-    """Get a list of the available compression filter ids.
-
-    Returns
-    -------
-    List[int]
-        Available compression filter ids
-    """
-    compression = []
-    for filter_id in range(h5z.FILTER_MAX):
-        if h5z.filter_avail(filter_id):
-            compression.append(filter_id)
-
-    return compression
+def get_available_filters() -> Iterator[int]:
+    for i in range(65536):
+        if h5z.filter_avail(i):
+            yield i
