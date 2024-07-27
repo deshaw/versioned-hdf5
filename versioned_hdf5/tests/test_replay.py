@@ -1053,6 +1053,7 @@ def test_delete_versions_speed(vfile):
     ],
 )
 def test_modify_metadata_compression_default_compression(vfile, obj, metadata_opts):
+    """Test that setting compression via modify_metadata works for default compression."""
     setup_vfile(vfile)
 
     f = vfile.f
@@ -1122,7 +1123,8 @@ def test_modify_metadata_compression_default_compression(vfile, obj, metadata_op
     ],
 )
 def test_modify_metadata_compression_nondefault_compression(vfile, obj, metadata_opts):
-    hdf5plugin = pytest.importorskip("hdf5plugin")
+    """Test that setting compression via modify_metadata works for nondefault compression."""
+    hdf5plugin = pytest.importorskip("hdf5plugin")  # noqa: F841
 
     setup_vfile(vfile)
 
@@ -1134,8 +1136,9 @@ def test_modify_metadata_compression_nondefault_compression(vfile, obj, metadata
             assert vfile[version][dataset].compression is None
             assert vfile[version][dataset].compression_opts is None
 
-        assert f["_version_data"][dataset]["raw_data"].compression is None
-        assert f["_version_data"][dataset]["raw_data"].compression_opts is None
+        raw_data = f["_version_data"][dataset]["raw_data"]
+        assert raw_data.compression is None
+        assert raw_data.compression_opts is None
 
     modify_metadata(f, obj, **metadata_opts)
     check_data(vfile)
@@ -1151,20 +1154,19 @@ def test_modify_metadata_compression_nondefault_compression(vfile, obj, metadata
                 assert vfile[version][dataset].compression is None
                 assert vfile[version][dataset].compression_opts is None
 
+        raw_data = f["_version_data"][dataset]["raw_data"]
         if dataset == obj:
-            assert f["_version_data"][dataset]["raw_data"].compression is None
-            assert f["_version_data"][dataset]["raw_data"].compression_opts is None
+            assert raw_data.compression is None
+            assert raw_data.compression_opts is None
 
             # Ignore the first four values; for blosc (id 32001) they are reserved
             assert (
-                f["_version_data"][dataset]["raw_data"]._filters[
-                    str(metadata_opts["compression"])
-                ][4:]
+                raw_data._filters[str(metadata_opts["compression"])][4:]
                 == metadata_opts["compression_opts"][4:]
             )
         else:
-            assert f["_version_data"][dataset]["raw_data"].compression is None
-            assert f["_version_data"][dataset]["raw_data"].compression_opts is None
+            assert raw_data.compression is None
+            assert raw_data.compression_opts is None
 
     # Make sure the tmp group group has been destroyed.
     assert set(f["_version_data"]) == {
