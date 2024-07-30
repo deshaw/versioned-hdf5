@@ -157,7 +157,7 @@ def write_dataset(
         compression
         and compression not in ds._filters
         or compression_opts
-        and compression_opts != ds._filters[compression]
+        and compression_opts != ds._filters[ds.compression]
     ):
         available_filters = textwrap.indent(
             "\n".join(str(filter) for filter in get_available_filters()), "  "
@@ -523,6 +523,15 @@ def create_virtual_dataset(
 
 
 def get_available_filters() -> Iterator[int]:
+    """Retrieve all of the registered h5py filters.
+
+    Returns
+    -------
+    Iterator[int]
+        Filter ID numbers; each filter has a dedicated ID - see
+        the docs for the particular filter being used for more information
+        about these
+    """
     for i in range(65536):
         if h5z.filter_avail(i):
             yield i

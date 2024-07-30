@@ -6,15 +6,15 @@ import pathlib
 import shutil
 from unittest import mock
 
-import hdf5plugin # to make compression 32001 available
 import h5py
 import numpy as np
 from h5py._hl.filters import guess_chunk
 from numpy.testing import assert_equal
+import pytest
 from pytest import mark, raises
 
 from ..api import VersionedHDF5File
-from ..backend import DATA_VERSION, DEFAULT_CHUNK_SIZE, _verify_new_chunk_reuse, get_available_compression_methods
+from ..backend import DATA_VERSION, DEFAULT_CHUNK_SIZE, _verify_new_chunk_reuse
 from ..replay import delete_versions
 from ..versions import TIMESTAMP_FMT, all_versions
 from ..wrappers import (
@@ -2866,8 +2866,25 @@ def test_verify_string_chunk_reuse_bytes_one_dimensional(tmp_path):
         )
 
 
-def test_other_compression(tmp_path):
+def test_other_compression_bad_value(tmp_path):
+    """Test that invalid compression types do not validate."""
+    hdf5plugin = pytest.importorskip('hdf5plugin')  # noqa: F841
+    path = tmp_path / "tmp.h5"
+    with h5py.File(path, 'w') as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version('r0') as sv, pytest.raises(ValueError, match="invalid"):
+            sv.create_dataset(
+                "values",
+                data=np.arange(10),
+                compression=-1,
+                compression_opts=(0, 0, 0, 0, 7, 1, 2),
+            )
+
+
+def test_other_compression_validates(tmp_path):
     """Test that other compression types validate correctly."""
+    hdf5plugin = pytest.importorskip('hdf5plugin')  # noqa: F841
+
     path = tmp_path / "tmp.h5"
     with h5py.File(path, 'w') as f:
         vf = VersionedHDF5File(f)
@@ -2875,17 +2892,16 @@ def test_other_compression(tmp_path):
             sv.create_dataset(
                 "values",
                 data=np.arange(10),
-                compression=32002,
+                compression=32001,
                 compression_opts=(0, 0, 0, 0, 7, 1, 2),
             )
 
     with h5py.File(path, 'r+') as f:
-        vf = VersionedHDF5File(f)
-        with vf.stage_version('r1') as sv:
-            del sv['values']
-            sv.create_dataset(
-                "values",
-                data=np.arange(20),
-                compression=32001,
-                compression_opts=(0, 0, 0, 0, 7, 1, 2),
-            )
+        assert f['_version_data/versions/r0/values'].compression is None
+        raw_data = f['_version_data/values/raw_data']
+        assert raw_data.compression is None
+        assert '32001' in raw_data._filters
+
+        # First four numbers are reserved for blosc compression;
+        # others are actual compression options
+        assert raw_data._filters['32001'][4:] == (7, 1, 2)
