@@ -96,7 +96,7 @@ ignore = [
 
 [project.optional-dependencies]
 dev = ["pre-commit>=3.6.0", 'cython', 'meson-python', 'setuptools-scm']
-test = ["pytest", "pytest-env", "hypothesis"]
+test = ["pytest", "pytest-env", "hypothesis", "packaging"]
 doc = ["sphinx", "sphinx-multiversion", "myst-parser"]
 
 [tool.setuptools_scm]
