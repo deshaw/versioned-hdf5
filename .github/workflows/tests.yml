@@ -54,10 +54,11 @@ jobs:
           set -xe
           h5cc -showconfig
 
-      - name: Install versioned-hdf5 test packages
+      - name: Install versioned-hdf5 test packages and extra h5py compression types
         run: |
           set -xe
           pip install .[test]
+          pip install hdf5plugin tables
 
       - name: Run Tests
         run: |
