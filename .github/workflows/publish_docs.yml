@@ -38,6 +38,7 @@ jobs:
 
       - name: Setup Graphviz
         run: |
+          sudo apt update -y
           sudo apt install graphviz libhdf5-dev mpi-default-dev -y
 
       - name: Install versioned-hdf5
