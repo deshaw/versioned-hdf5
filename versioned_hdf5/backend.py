@@ -1,9 +1,10 @@
 import logging
 import os
-from typing import Dict, Optional
+import textwrap
+from typing import Dict, Iterator, Optional
 
 import numpy as np
-from h5py import Dataset, VirtualLayout, VirtualSource, h5s
+from h5py import Dataset, VirtualLayout, VirtualSource, h5s, h5z
 from h5py._hl.filters import guess_chunk
 from ndindex import ChunkSize, Slice, Tuple, ndindex
 from numpy.testing import assert_array_equal
@@ -154,12 +155,18 @@ def write_dataset(
 
     if (
         compression
-        and compression != ds.compression
+        and compression not in ds._filters
         or compression_opts
-        and compression_opts != ds.compression_opts
+        and compression_opts != ds._filters[ds.compression]
     ):
+        available_filters = textwrap.indent(
+            "\n".join(str(filter) for filter in get_available_filters()), "  "
+        )
         raise ValueError(
-            "Compression options can only be specified for the first version of a dataset"
+            "Compression options can only be specified for the first version of a dataset.\n"
+            f"Dataset: {name}\n"
+            f"Current filters: {ds._filters}\n"
+            f"Available hdf5 compression types:\n{available_filters}"
         )
     if fillvalue is not None and fillvalue != ds.fillvalue:
         dtype = ds.dtype
@@ -513,3 +520,18 @@ def create_virtual_dataset(
     virtual_data.attrs["raw_data"] = raw_data.name
     virtual_data.attrs["chunks"] = raw_data.chunks
     return virtual_data
+
+
+def get_available_filters() -> Iterator[int]:
+    """Retrieve all of the registered h5py filters.
+
+    Returns
+    -------
+    Iterator[int]
+        Filter ID numbers; each filter has a dedicated ID - see
+        the docs for the particular filter being used for more information
+        about these
+    """
+    for i in range(65536):
+        if h5z.filter_avail(i):
+            yield i

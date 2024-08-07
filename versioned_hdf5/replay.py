@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gc
+import logging
 import posixpath
 from copy import deepcopy
 from typing import Any, Dict, Iterable, List, Optional, Union
@@ -34,6 +35,8 @@ from .wrappers import (
     InMemorySparseDataset,
     _groups,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def recreate_dataset(f, name, newf, callback=None):
@@ -88,6 +91,20 @@ def recreate_dataset(f, name, newf, callback=None):
             chunks = dataset.chunks
             compression = dataset.compression
             compression_opts = dataset.compression_opts
+
+            if compression is None and getattr(dataset, "_filters", None):
+                # If we're using nondefault compression, there's no way of knowing
+                # whether the first filter is a valid compression or some other
+                # kind of filter, so we issue a warning about assuming that it is
+                # the dataset's compression.
+                compression = list(dataset._filters)[0]
+                compression_opts = dataset._filters[compression]
+                logger.warning(
+                    "No default compression detected in this dataset. "
+                    f"Using first filter {compression} and options "
+                    f"{compression_opts} for compression."
+                )
+
             fillvalue = dataset.fillvalue
             attrs = dataset.attrs
             if first:
