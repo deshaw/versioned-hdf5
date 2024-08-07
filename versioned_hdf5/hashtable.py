@@ -57,12 +57,14 @@ class Hashtable(MutableMapping):
         self.hash_table_name = hash_table_name
 
         if hash_table_name in f["_version_data"][name]:
-            self._load_hashtable()
+            self.hash_table_dataset = f["_version_data"][name][hash_table_name]
+            self.hash_table, self._indices = self._load_hashtable(self.hash_table_dataset)
         else:
-            self._create_hashtable()
+            self.hash_table_dataset = self._create_hashtable()
+            self.hash_table = self.hash_table_dataset[:]
+            self._indices = {}
+
         self._largest_index = None
-        self.hash_table = f["_version_data"][name][hash_table_name][:]
-        self.hash_table_dataset = f["_version_data"][name][hash_table_name]
 
     @classmethod
     def from_versions_traverse(
@@ -189,18 +191,17 @@ class Hashtable(MutableMapping):
             compression="lzf",
         )
         hash_table.attrs["largest_index"] = 0
-        self._indices = {}
+        return hash_table
 
-    def _load_hashtable(self):
-        hash_table = self.f["_version_data"][self.name][self.hash_table_name]
-        largest_index = hash_table.attrs["largest_index"]
-        hash_table_arr = hash_table[:largest_index]
+    def _load_hashtable(self, hash_table_dataset):
+        largest_index = hash_table_dataset.attrs["largest_index"]
+        hash_table_arr = hash_table_dataset[:largest_index]
         hashes = bytes(hash_table_arr["hash"])
         hashes = [
             hashes[i * self.hash_size : (i + 1) * self.hash_size]
             for i in range(largest_index)
         ]
-        self._indices = {k: i for i, k in enumerate(hashes)}
+        return hash_table_arr, {k: i for i, k in enumerate(hashes)}
 
     def __getitem__(self, key):
         if isinstance(key, np.ndarray):
