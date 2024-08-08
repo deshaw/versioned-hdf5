@@ -1,3 +1,4 @@
+import importlib.metadata
 import pathlib
 import shutil
 import subprocess
@@ -6,6 +7,7 @@ from unittest import mock
 import h5py
 import numpy as np
 import pytest
+from packaging.version import Version
 
 from versioned_hdf5 import VersionedHDF5File
 from versioned_hdf5.hashtable import Hashtable
@@ -163,7 +165,7 @@ def test_modify_metadata_compression(vfile):
     assert set(f["_version_data"]["group"]) == {"test_data4"}
 
 
-def test_modify_metadata_compressio2(vfile):
+def test_modify_metadata_compression2(vfile):
     setup_vfile(vfile)
 
     f = vfile.f
@@ -1043,3 +1045,150 @@ def test_delete_versions_speed(vfile):
     # keeping has to go up 9 versions from it's current previous version, for
     # a total of 90 calls.
     assert mock_get_parent.call_count == 90
+
+
+@pytest.mark.parametrize(
+    ("obj", "metadata_opts"),
+    [
+        ("test_data2", {"compression": "gzip", "compression_opts": 3}),
+        ("group/test_data4", {"compression": "gzip", "compression_opts": 3}),
+    ],
+)
+def test_modify_metadata_compression_default_compression(vfile, obj, metadata_opts):
+    """Test that setting compression via modify_metadata works for default compression."""
+    setup_vfile(vfile)
+
+    f = vfile.f
+
+    # Check that the compression is unset for every dataset
+    for dataset in ["test_data", "test_data2", "group/test_data4"]:
+        for version in ["version1", "version2"]:
+            assert vfile[version][dataset].compression is None
+            assert vfile[version][dataset].compression_opts is None
+
+        assert f["_version_data"][dataset]["raw_data"].compression is None
+        assert f["_version_data"][dataset]["raw_data"].compression_opts is None
+
+    modify_metadata(f, obj, **metadata_opts)
+    check_data(vfile)
+
+    # Check that the compression is set for the group that had its metadata modified
+    for dataset in ["test_data", "test_data2", "group/test_data4"]:
+        for version in ["version1", "version2"]:
+            if dataset == obj:
+                assert (
+                    vfile[version][dataset].compression == metadata_opts["compression"]
+                )
+                assert (
+                    vfile[version][dataset].compression_opts
+                    == metadata_opts["compression_opts"]
+                )
+            else:
+                assert vfile[version][dataset].compression is None
+                assert vfile[version][dataset].compression_opts is None
+
+        if dataset == obj:
+            assert (
+                f["_version_data"][dataset]["raw_data"].compression
+                == metadata_opts["compression"]
+            )
+            assert (
+                f["_version_data"][dataset]["raw_data"].compression_opts
+                == metadata_opts["compression_opts"]
+            )
+        else:
+            assert f["_version_data"][dataset]["raw_data"].compression is None
+            assert f["_version_data"][dataset]["raw_data"].compression_opts is None
+
+    # Make sure the tmp group group has been destroyed.
+    assert set(f["_version_data"]) == {
+        "test_data",
+        "test_data2",
+        "test_data3",
+        "group",
+        "versions",
+    }
+    assert set(f["_version_data"]["group"]) == {"test_data4"}
+
+
+@pytest.mark.parametrize(
+    ("obj", "metadata_opts"),
+    [
+        (
+            "test_data2",
+            {"compression": 32001, "compression_opts": (0, 0, 0, 0, 7, 1, 2)},
+        ),
+        (
+            "group/test_data4",
+            {"compression": 32001, "compression_opts": (0, 0, 0, 0, 7, 1, 2)},
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    ("library"),
+    [
+        "hdf5plugin",
+        "tables",
+    ],
+)
+def test_modify_metadata_compression_nondefault_compression(
+    vfile, obj, metadata_opts, library
+):
+    """Test that setting compression via modify_metadata works for nondefault compression."""
+    if library == "tables" and Version(importlib.metadata.version("numpy")) >= Version(
+        "2"
+    ):
+        pytest.skip("Skipping test; pytables is incompatible with numpy>=2")
+    pytest.importorskip(library)
+
+    setup_vfile(vfile)
+
+    f = vfile.f
+
+    # Check that the compression is unset for every dataset
+    for dataset in ["test_data", "test_data2", "group/test_data4"]:
+        for version in ["version1", "version2"]:
+            assert vfile[version][dataset].compression is None
+            assert vfile[version][dataset].compression_opts is None
+
+        raw_data = f["_version_data"][dataset]["raw_data"]
+        assert raw_data.compression is None
+        assert raw_data.compression_opts is None
+
+    modify_metadata(f, obj, **metadata_opts)
+    check_data(vfile)
+
+    # Check that the compression is not set for the group that had its metadata modified;
+    # the compression of a virtual dataset does not get set from its parent
+    for dataset in ["test_data", "test_data2", "group/test_data4"]:
+        for version in ["version1", "version2"]:
+            if dataset == obj:
+                assert vfile[version][dataset].compression is None
+                assert vfile[version][dataset].compression_opts is None
+            else:
+                assert vfile[version][dataset].compression is None
+                assert vfile[version][dataset].compression_opts is None
+
+        raw_data = f["_version_data"][dataset]["raw_data"]
+        if dataset == obj:
+            assert raw_data.compression is None
+            assert raw_data.compression_opts is None
+
+            # Ignore the first four values; for blosc (id 32001) they are reserved
+            assert (
+                raw_data._filters[str(metadata_opts["compression"])][4:]
+                == metadata_opts["compression_opts"][4:]
+            )
+        else:
+            assert raw_data.compression is None
+            assert raw_data.compression_opts is None
+
+    # Make sure the tmp group group has been destroyed.
+    assert set(f["_version_data"]) == {
+        "test_data",
+        "test_data2",
+        "test_data3",
+        "group",
+        "versions",
+    }
+    assert set(f["_version_data"]["group"]) == {"test_data4"}
