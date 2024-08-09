@@ -152,6 +152,7 @@ def non_negative_step_slices(size):
     return st.builds(slice, start, stop, step)
 
 
+@pytest.mark.slow
 @given(st.data())
 @hypothesis.settings(database=None, max_examples=10_000, deadline=None)
 def test_as_subchunk_map(data):
@@ -163,6 +164,7 @@ def test_as_subchunk_map(data):
     _check_as_subchunk_map(chunks, idx, shape)
 
 
+@pytest.mark.slow
 @given(st.data())
 @hypothesis.settings(database=None, max_examples=10_000, deadline=None)
 def test_as_subchunk_map_fancy_idx(data):
@@ -183,6 +185,7 @@ def test_as_subchunk_map_fancy_idx(data):
     _check_as_subchunk_map(chunks, idx, shape)
 
 
+@pytest.mark.slow
 @given(st.data())
 @hypothesis.settings(database=None, max_examples=10_000, deadline=None)
 def test_as_subchunk_map_mask(data):
