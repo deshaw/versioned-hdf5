@@ -74,7 +74,7 @@ shape = "record"
 ```
 
 If we then create a version `version_2` based off `version_1`, and modify only
-data contained in CHUNK 2, that new data will be appended to the raw dataset,
+data contained in CHUNK 1, that new data will be appended to the raw dataset,
 and the resulting virtual dataset for `version_2` will look like this:
 
 ```{graphviz}
@@ -111,7 +111,7 @@ shape = "record"
 ```
 
 Since both versions 1 and 2 of `my_dataset` have identical data in chunks other than
-CHUNK 2, they both point to the exact same data in `raw_data`. Thus, the
+CHUNK 1, they both point to the exact same data in `raw_data`. Thus, the
 underlying HDF5 file only stores the data in version 1 of `my_dataset` once, and
 only the modified chunks from `version_2`'s `my_dataset` are stored on top of that.
 
@@ -223,7 +223,7 @@ datasets that should be committed to the new version when the
 
 ### h5py Wrappers
 
-One minor issue with the copy-on-write idea is that HDF5 does have a native
+One minor issue with the copy-on-write idea is that HDF5 does not have a native
 way to make virtual datasets read-only. If you modify a virtual dataset, it
 will also modify the dataset that it points to. In our design, this would
 modify all other versions of a dataset pointing to the same raw data chunks.
@@ -263,16 +263,16 @@ pointed to in the previous version, without needing to re-hash the data.
 One challenge with this design is that `InMemoryDataset` represents a single
 dataset that is broken up into chunks, which live in the raw dataset and may
 not be contiguous. The
-[ndindex](https://quansight.github.io/ndindex/index.html) library is used to
+[ndindex](https://quansight-labs.github.io/ndindex/) library is used to
 manage translation of indices on the dataset to and from the chunked data.
 ndindex is also used throughout versioned-hdf5 to store and manipulate slice
 and other index objects, as it is more convenient than using the raw index
 types. For example, in the backend, we need to store slices in a dictionary.
-The default Python `slice` object is not hashable, which makes this annoying
-to do. The ndindex index objects are all hashable. The ndindex library was
-initially created for versioned-hdf5, in order to make index manipulation
-possible as well as allowing code that passes indices around to become much
-cleaner.
+The default Python `slice` object is not hashable until Python 3.12, which
+makes this annoying to do. The ndindex index objects are all hashable.
+The ndindex library was initially created for versioned-hdf5, in order to make
+index manipulation possible as well as allowing code that passes indices around
+to become much cleaner.
 
 These wrapper objects all try to emulate the h5py API as closely as possible,
 so that the user can use them just as they would the real h5py objects. Any
