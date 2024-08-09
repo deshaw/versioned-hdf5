@@ -1,6 +1,26 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.8.0 (2024-08-09)
+
+### Major Changes
+
+- `slicetools` has been reimplemented in Cython, providing a significant speedup
+- Only sdist will be published from here on out due to the dependency on MPI.
+- Improved read/write performance for `InMemoryDataset`
+
+### Minor Changes
+- Force the master branch to be targeted when building docs
+- `__version__` dunder added back in
+- Update build workflows to test with `numpy==1.24` in addition to `numpy>=2`
+- Chunk reuse verification fixed for string dtype arrays
+- Cleaned up `pytest` configuration; added additional debugging output in test CI job
+- Fixed a bug where `InMemoryGroup` child groups were not closed when the parent
+  group is closed
+- Nondefault compression handling is now supported
+- Performance improvements to Hashtable initialization
+- Various refinements to the documentation
+
 ## 1.7.0 (2024-06-10)
 
 ### Major Changes
