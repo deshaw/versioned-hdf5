@@ -21,7 +21,15 @@ from h5py._hl import filters
 from h5py._hl.base import guess_dtype, phil, with_phil
 from h5py._hl.dataset import _LEGACY_GZIP_COMPRESSION_VALS
 from h5py._hl.selections import guess_shape
-from ndindex import ChunkSize, Slice, Tuple, ndindex, Integer, IntegerArray, BooleanArray
+from ndindex import (
+    BooleanArray,
+    ChunkSize,
+    Integer,
+    IntegerArray,
+    Slice,
+    Tuple,
+    ndindex,
+)
 
 from .backend import DEFAULT_CHUNK_SIZE
 from .slicetools import build_data_dict
@@ -567,14 +575,17 @@ def as_subchunk_map(chunk_size: ChunkSize, idx, shape: tuple):
         chunk_idxs: tuple
         if isinstance(i, Slice):
             if i.step <= 0:
-                raise NotImplementedError(f'Slice step must be positive not {i.step}')
+                raise NotImplementedError(f"Slice step must be positive not {i.step}")
 
             start: int = i.start
             stop: int = i.stop
             step: int = i.step
 
             if step > n:
-                chunk_idxs = tuple((start + k * step) // n for k in range((stop - start + step - 1) // step))
+                chunk_idxs = tuple(
+                    (start + k * step) // n
+                    for k in range((stop - start + step - 1) // step)
+                )
             else:
                 chunk_idxs = tuple(range(start // n, (stop + n - 1) // n))
         elif isinstance(i, IntegerArray):
@@ -582,13 +593,17 @@ def as_subchunk_map(chunk_size: ChunkSize, idx, shape: tuple):
             chunk_idxs = tuple(np.unique(i.array // n))
         elif isinstance(i, BooleanArray):
             if i.ndim != 1:
-                raise NotImplementedError('boolean mask index must be 1-dimensional')
+                raise NotImplementedError("boolean mask index must be 1-dimensional")
             if i.shape != (d,):
-                raise IndexError(f'boolean index did not match indexed array; dimension is {d}, '
-                                 f'but corresponding boolean dimension is {i.shape[0]}')
+                raise IndexError(
+                    f"boolean index did not match indexed array; dimension is {d}, "
+                    f"but corresponding boolean dimension is {i.shape[0]}"
+                )
 
             # pad i.array to be a multiple of n and group into chunks
-            mask = np.pad(i.array, (0, n - (d % n)), 'constant', constant_values=(False,))
+            mask = np.pad(
+                i.array, (0, n - (d % n)), "constant", constant_values=(False,)
+            )
             mask = mask.reshape((mask.shape[0] // n, n))
 
             # chunk_idxs for the chunks which are not empty
@@ -603,19 +618,34 @@ def as_subchunk_map(chunk_size: ChunkSize, idx, shape: tuple):
             raise NotImplementedError(f"index type {type(i)} not supported")
 
         # Compute chunk_slices for chunk_idxs
-        chunk_slices = tuple(Slice(chunk_idx * n, min((chunk_idx + 1) * n, d), 1) for chunk_idx in chunk_idxs)
+        chunk_slices = tuple(
+            Slice(chunk_idx * n, min((chunk_idx + 1) * n, d), 1)
+            for chunk_idx in chunk_idxs
+        )
 
         # Now compute the subindexes for each chunk_slice based on chunk_slice and i.
-        chunk_subindexes.append([(chunk_slice, chunk_slice.as_subindex(i).raw, i.as_subindex(chunk_slice).raw)
-                                 for chunk_slice in chunk_slices])
+        chunk_subindexes.append(
+            [
+                (
+                    chunk_slice,
+                    chunk_slice.as_subindex(i).raw,
+                    i.as_subindex(chunk_slice).raw,
+                )
+                for chunk_slice in chunk_slices
+            ]
+        )
 
     # Handle the remaining suffix axes on which we did not select, we still need to break
     # them up into chunks.
     for n, d in zip(suffix_chunk_size, suffix_shape):
         chunk_idxs = tuple(range((d + n - 1) // n))
-        chunk_slices = tuple(Slice(chunk_idx * n, min((chunk_idx + 1) * n, d), 1) for chunk_idx in chunk_idxs)
-        chunk_subindexes.append([(chunk_slice, chunk_slice.raw, ())
-                                 for chunk_slice in chunk_slices])
+        chunk_slices = tuple(
+            Slice(chunk_idx * n, min((chunk_idx + 1) * n, d), 1)
+            for chunk_idx in chunk_idxs
+        )
+        chunk_subindexes.append(
+            [(chunk_slice, chunk_slice.raw, ()) for chunk_slice in chunk_slices]
+        )
 
     # Now combine the chunk_slices and subindexes for each dimension into tuples
     # across all dimensions.
@@ -623,8 +653,11 @@ def as_subchunk_map(chunk_size: ChunkSize, idx, shape: tuple):
         chunk_slices, arr_subidxs, chunk_subidxs = zip(*p)
 
         # skip dimensions which were sliced away
-        arr_subidxs = tuple(arr_subidx for arr_subidx in arr_subidxs
-                            if not isinstance(arr_subidx, tuple) or arr_subidx != ())
+        arr_subidxs = tuple(
+            arr_subidx
+            for arr_subidx in arr_subidxs
+            if not isinstance(arr_subidx, tuple) or arr_subidx != ()
+        )
 
         # skip suffix dimensions
         chunk_subidxs = chunk_subidxs[:idx_len]
@@ -877,7 +910,9 @@ class InMemoryDataset(Dataset):
 
         arr = np.ndarray(idx.newshape(self.shape), new_dtype, order="C")
 
-        for chunk, arr_idx_raw, index_raw in as_subchunk_map(self.chunks, idx, self.shape):
+        for chunk, arr_idx_raw, index_raw in as_subchunk_map(
+            self.chunks, idx, self.shape
+        ):
             if chunk not in self.id.data_dict:
                 self.id.data_dict[chunk] = np.broadcast_to(
                     self.fillvalue, chunk.newshape(self.shape)
@@ -1345,7 +1380,9 @@ class InMemorySparseDataset(DatasetLike):
         newshape = idx.newshape(self.shape)
         arr = np.full(newshape, self.fillvalue, dtype=self.dtype)
 
-        for c, arr_idx_raw, chunk_idx_raw in as_subchunk_map(self.chunks, idx, self.shape):
+        for c, arr_idx_raw, chunk_idx_raw in as_subchunk_map(
+            self.chunks, idx, self.shape
+        ):
             if c not in self.data_dict:
                 fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
                 self.data_dict[c] = fill
@@ -1363,7 +1400,9 @@ class InMemorySparseDataset(DatasetLike):
 
         val = np.broadcast_to(value, idx.newshape(self.shape))
 
-        for c, val_idx_raw, chunk_idx_raw in as_subchunk_map(self.chunks, idx, self.shape):
+        for c, val_idx_raw, chunk_idx_raw in as_subchunk_map(
+            self.chunks, idx, self.shape
+        ):
             if c not in self.data_dict:
                 # Broadcasted arrays do not actually consume memory
                 fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
