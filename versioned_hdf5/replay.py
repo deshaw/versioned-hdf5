@@ -3,8 +3,10 @@ from __future__ import annotations
 import gc
 import logging
 import posixpath
+import sys
+from collections.abc import Iterable
 from copy import deepcopy
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Any
 
 import numpy as np
 from h5py import Dataset, File, Group, HLObject, VirtualLayout
@@ -37,6 +39,11 @@ from .wrappers import (
 )
 
 logger = logging.getLogger(__name__)
+
+if "sphinx-build" in sys.argv[0]:
+
+    class File:  # type: ignore[no-redef]
+        """Stub vs. incomplete h5py documentation"""
 
 
 def recreate_dataset(f, name, newf, callback=None):
@@ -196,7 +203,7 @@ def _recreate_raw_data(
     f: VersionedHDF5File | File,
     name: str,
     versions_to_delete: Iterable[str],
-) -> Optional[Dict[NDIndex, NDIndex]]:
+) -> dict[NDIndex, NDIndex] | None:
     """Create a new raw dataset without the chunks from versions_to_delete.
 
     Parameters
@@ -210,7 +217,7 @@ def _recreate_raw_data(
 
     Returns
     -------
-    Optional[Dict[NDIndex, NDIndex]]
+    dict[NDIndex, NDIndex] | None
         A mapping between old raw dataset chunks and the new raw dataset chunks
 
         If no chunks would be left, i.e., the dataset does not appear in any
@@ -516,7 +523,7 @@ def _delete_dataset(f: VersionedHDF5File, name: str, versions_to_delete: Iterabl
     _recreate_virtual_dataset(f, name, versions_to_keep, raw_data_chunks_map)
 
 
-def _walk(g: HLObject, prefix: str = "") -> List[str]:
+def _walk(g: HLObject, prefix: str = "") -> list[str]:
     """Traverse the object tree, returning all `raw_data` datasets.
 
     We use this instead of version_data.visit(delete_dataset) because
@@ -531,7 +538,7 @@ def _walk(g: HLObject, prefix: str = "") -> List[str]:
 
     Returns
     -------
-    List[str]
+    list[str]
         List of the names of `raw_data` datasets in g
     """
     datasets = []
@@ -547,7 +554,7 @@ def _walk(g: HLObject, prefix: str = "") -> List[str]:
 
 
 def delete_versions(
-    f: Union[VersionedHDF5File, File], versions_to_delete: Union[str, Iterable[str]]
+    f: VersionedHDF5File | File, versions_to_delete: str | Iterable[str]
 ):
     """Completely delete the given versions from a file
 
