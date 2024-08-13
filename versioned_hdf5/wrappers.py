@@ -12,12 +12,12 @@ import posixpath
 import textwrap
 import warnings
 from collections import defaultdict
+from typing import Iterable
 from weakref import WeakValueDictionary
 
 import numpy as np
-from h5py import Dataset, Datatype, Empty, Group
+from h5py import Dataset, Datatype, Empty, Group, h5a, h5d, h5g, h5i, h5p, h5r, h5s, h5t
 from h5py import __version__ as h5py_version
-from h5py import h5a, h5d, h5g, h5i, h5p, h5r, h5s, h5t
 from h5py._hl import filters
 from h5py._hl.base import guess_dtype, phil, with_phil
 from h5py._hl.dataset import _LEGACY_GZIP_COMPRESSION_VALS
@@ -204,7 +204,13 @@ class InMemoryGroup(Group):
         return group
 
     def create_dataset(
-        self, name, shape=None, dtype=None, data=None, fillvalue=None, **kwds
+        self,
+        name,
+        shape=None,
+        dtype=None,
+        data: np.ndarray | None = None,
+        fillvalue=None,
+        **kwds,
     ):
         self._check_committed()
         dirname, data_name = posixpath.split(name)
@@ -241,9 +247,12 @@ class InMemoryGroup(Group):
         if isinstance(chunks, int) and not isinstance(chunks, bool):
             chunks = (chunks,)
         if len(shape) != len(chunks):
-            raise ValueError("chunks shape must equal the array shape")
+            raise ValueError(
+                f"Dimensions of chunks ({chunks}) must equal the dimensions of the shape ({shape})"
+            )
         if len(shape) == 0:
-            raise NotImplementedError("Scalar datasets")
+            raise NotImplementedError("Scalar datasets are not implemented.")
+
         self.set_chunks(name, chunks)
         self.set_compression(name, kwds.get("compression"))
         self.set_compression_opts(name, kwds.get("compression_opts"))
@@ -371,28 +380,77 @@ class InMemoryGroup(Group):
     # TODO: override other relevant methods here
 
 
-# Based on h5py._hl.dataset.make_new_dset(), except it doesn't actually create
-# the dataset, it just canonicalizes the arguments. See the LICENSE file for
-# the h5py license.
 def _make_new_dset(
-    shape=None,
-    dtype=None,
-    data=None,
-    chunks=None,
-    compression=None,
-    shuffle=None,
-    fletcher32=None,
-    maxshape=None,
-    compression_opts=None,
-    fillvalue=None,
-    scaleoffset=None,
-    track_times=None,
-    external=None,
-    track_order=None,
-    dcpl=None,
-):
-    """Return a new low-level dataset identifier"""
+    shape: int | tuple[int, ...] | None = None,
+    dtype: np.dtype | None = None,
+    data: np.ndarray | None = None,
+    chunks: tuple[int, ...] | None = None,
+    compression: int | str | bool | None = None,
+    shuffle: bool | None = None,
+    fletcher32: bool | None = None,
+    maxshape: tuple[int, ...] | None = None,
+    compression_opts: int | tuple[int, ...] | None = None,
+    fillvalue: int | str | float | None = None,
+    scaleoffset: bool | int | None = None,
+    track_times: bool | None = None,
+    external: Iterable[tuple[str, int, int]] | None = None,
+    track_order: bool | None = None,
+    dcpl: h5p.PropDCID | None = None,
+) -> np.ndarray:
+    """Create a new low-level dataset identifier.
 
+    Based on h5py._hl.dataset.make_new_dset(), except it doesn't actually create
+    the dataset, it just canonicalizes the arguments. Additionally, this function
+    allows datasets which are smaller than the data in any dimension to be
+    instantiated, whereas the upstream h5py version does not.
+
+    See the LICENSE file for the h5py license.
+
+    Parameters
+    ----------
+    shuffle : bool | None
+        Whether to call dcpl.set_shuffle() on the underlying PropDCID
+    fletcher32 : bool | None
+        Whether to call dcpl.set_fletcher32(). Note that scale/offset following
+        fletcher32 in the filter chain will (almost?) always triggers a read
+        error, as most scale/offset settings are lossy. Since fletcher32 must
+        come first (see comment in h5py._hl.filters.fill_dcpl) combination of
+        fletcher32 and scale/offset is prohibited.
+    maxshape : tuple[int, ...] | None
+        Max shape of the dataste
+    compression_opts : int | tuple[int, ...] | None
+        Compression options passed to h5py._hl.filters.fill_dcpl
+    fillvalue : int | str | float | None
+        Value used to fill the parts of chunks that extend beyond the dataset
+    scaleoffset : bool | int | None
+        This must be an integer when it is not None or False, except for integral
+        data, for which scaleoffset == True is permissible (will use
+        SO_INT_MINBITS_DEFAULT)
+    track_times : bool |  None
+        Argument to pass to dcpl.set_obj_track_times(track_times)
+    shape : int | tuple[int, ...] | None
+        Shape of the dataset to create
+    dtype : np.dtype | None
+        Dtype of the dataset to create
+    data : np.ndarray | None
+        Dataset to store
+    chunks : tuple[int, ...] | None
+        Chunk size in each dimension
+    compression : int | str | bool | None
+        Compression to use for the dataset
+    external : Iterable[tuple[str, int, int]] | None
+        List of tuples to be passed to h5p.set_external
+    track_order : bool | None
+        If True, set tracking and indexing of creation order for object attributes;
+        otherwise, dcpl.set_attr_creation_order(0) is called
+    dcpl : h5p.PropDCID | None
+        Dataset Creation Property List to use; if unspecified, an new dcpl is created
+
+    Returns
+    -------
+    np.ndarray | None
+        Data used to create the dataset
+    """
     # Convert data to a C-contiguous ndarray
     if data is not None and not isinstance(data, Empty):
         # normalize strings -> np.dtype objects
@@ -414,7 +472,7 @@ def _make_new_dset(
     if shape is None:
         if data is None:
             if dtype is None:
-                raise TypeError("One of data, shape or dtype must be specified")
+                raise TypeError("One of data, shape or dtype must be specified.")
             data = Empty(dtype)
         shape = data.shape
     else:
@@ -423,7 +481,9 @@ def _make_new_dset(
             np.prod(shape, dtype=np.ulonglong)
             != np.prod(data.shape, dtype=np.ulonglong)
         ):
-            raise ValueError("Shape tuple is incompatible with data")
+            raise ValueError(
+                f"Shape tuple {shape} is incompatible with data shape {data.shape}"
+            )
 
     if isinstance(maxshape, int):
         maxshape = (maxshape,)
@@ -455,7 +515,21 @@ def _make_new_dset(
         any((compression, shuffle, fletcher32, maxshape, scaleoffset))
         and chunks is False
     ):
-        raise ValueError("Chunked format required for given storage options")
+        raise ValueError(
+            "Chunked format required for given storage options:\n"
+            + textwrap.indent(
+                "\n".join(
+                    [
+                        f"compression: {compression}",
+                        f"shuffle: {shuffle}",
+                        f"fletcher32: {fletcher32}",
+                        f"maxshape: {maxshape}",
+                        f"scaleoffset: {scaleoffset}",
+                    ]
+                ),
+                "  ",
+            )
+        )
 
     # Legacy
     if compression is True:
@@ -466,7 +540,17 @@ def _make_new_dset(
     # Legacy
     if compression in _LEGACY_GZIP_COMPRESSION_VALS:
         if compression_opts is not None:
-            raise TypeError("Conflict in compression options")
+            raise TypeError(
+                "Conflict in compression options; "
+                f"if compression is one of {_LEGACY_GZIP_COMPRESSION_VALS},"
+                f"compression_opts must be None.\n"
+                + textwrap.indent(
+                    "\n".join(
+                        f"compression: {compression}",
+                        f"compression_opts: {compression_opts}",
+                    )
+                )
+            )
         compression_opts = compression
         compression = "gzip"
     dcpl = filters.fill_dcpl(
@@ -502,7 +586,7 @@ def _make_new_dset(
         maxshape = tuple(m if m is not None else h5s.UNLIMITED for m in maxshape)
 
     if isinstance(data, Empty):
-        raise NotImplementedError("Empty datasets")
+        raise NotImplementedError("Empty datasets are not supported.")
     return data
 
 
