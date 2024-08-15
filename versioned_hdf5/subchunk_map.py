@@ -65,7 +65,7 @@ def _subindex_slice_chunk(
     s_step: Py_ssize_t,
     c_start: Py_ssize_t,
     c_stop: Py_ssize_t,
-    chunk_size: Py_ssize_t,
+    c_size: Py_ssize_t,
 ) -> slice:
     common: Py_ssize_t = s_start % s_step
 
@@ -77,7 +77,7 @@ def _subindex_slice_chunk(
 
     stop: Py_ssize_t = max(0, min(s_stop, c_stop) - c_start)
 
-    return Slice(start, stop, s_step).reduce(chunk_size).raw
+    return Slice(start, stop, s_step).reduce(c_size).raw
 
 
 def as_subchunk_map(
