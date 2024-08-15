@@ -77,7 +77,11 @@ def _subindex_slice_chunk(
 
     stop: Py_ssize_t = max(0, min(s_stop, c_stop) - c_start)
 
-    return Slice(start, stop, s_step).reduce(size).raw
+    return slice(
+        max(0, min(size, start)),
+        max(0, min(size, stop)),
+        s_step,
+    )
 
 
 def as_subchunk_map(
