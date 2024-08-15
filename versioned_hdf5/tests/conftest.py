@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import os
 import uuid
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import h5py
 from pytest import fixture
@@ -339,7 +341,7 @@ def _check_running_version(target):
 
 
 @fixture
-def setup_vfile(tmp_path: str) -> Callable[[Optional[str], Optional[str]], h5py.File]:
+def setup_vfile(tmp_path: str) -> Callable[[str | None, str | None], h5py.File]:
     """Fixture which provides a function that creates an hdf5 file, optionally with groups."""
 
     def _setup_vfile(file_name="file.hdf5", *, version_name=None):

@@ -5,10 +5,11 @@ Everything outside of this file is considered internal API and is subject to
 change.
 """
 
+from __future__ import annotations
+
 import datetime
 import logging
 from contextlib import contextmanager
-from typing import Dict, List, Tuple
 
 import h5py
 import ndindex
@@ -366,7 +367,7 @@ class VersionedHDF5File:
             del self.f[group.name]["hash_table"]
             Hashtable.from_versions_traverse(self.f, group.name)
 
-    def _find_data_groups(self, node: h5py.Group) -> List[h5py.Group]:
+    def _find_data_groups(self, node: h5py.Group) -> list[h5py.Group]:
         """Find all groups containing datasets that are descendents of the given node.
 
         Parameters
@@ -376,7 +377,7 @@ class VersionedHDF5File:
 
         Returns
         -------
-        List[h5py.Group]
+        list[h5py.Group]
             List of groups which hold versioned-hdf5 datasets. Each group should
             contain a h5py.Dataset named 'raw_data'.
         """
@@ -407,7 +408,7 @@ class VersionedHDF5File:
 
     def get_diff(
         self, name: str, version1: str, version2: str
-    ) -> Dict[Tuple[slice], Tuple[np.ndarray]]:
+    ) -> dict[tuple[slice, ...], tuple[np.ndarray, ...]]:
         """Compute the difference between two versions of a dataset.
 
         Parameters
@@ -421,7 +422,7 @@ class VersionedHDF5File:
 
         Returns
         -------
-        Dict[Tuple[slice], Tuple[np.ndarray]]
+        dict[tuple[slice, ...], tuple[np.ndarray, ...]]
             A dictionary where the keys are slices that changed from version1 to
             version2, the the values are tuples containing
 
@@ -458,7 +459,7 @@ class VersionedHDF5File:
         self,
         name: str,
         version: str,
-    ) -> Dict[ndindex.Tuple, ndindex.Tuple]:
+    ) -> dict[ndindex.Tuple, ndindex.Tuple]:
         """Get the Dict which maps virtual dataset sources to raw data slices.
 
         Parameters
@@ -470,7 +471,7 @@ class VersionedHDF5File:
 
         Returns
         -------
-        Dict[ndindex.Tuple, ndindex.Tuple]
+        dict[ndindex.Tuple, ndindex.Tuple]
             Mapping between the dataset's virtual slices and the slices of the
             underlying raw data
         """
@@ -487,9 +488,9 @@ class VersionedHDF5File:
         v1: str,
         v2: str,
         name: str,
-        sd1: Dict[ndindex.Tuple, ndindex.Tuple],
-        sd2: Dict[ndindex.Tuple, ndindex.Tuple],
-    ) -> Dict[ndindex.Tuple, Tuple[np.ndarray]]:
+        sd1: dict[ndindex.Tuple, ndindex.Tuple],
+        sd2: dict[ndindex.Tuple, ndindex.Tuple],
+    ) -> dict[ndindex.Tuple, tuple[np.ndarray, ...]]:
         """Compute the difference between two versions of a dataset.
 
         Parameters
@@ -500,14 +501,14 @@ class VersionedHDF5File:
             Version of a different dataset
         name : str
             Name of the dataset
-        sd1 : Dict[ndindex.Tuple, ndindex.Tuple]
+        sd1 : dict[ndindex.Tuple, ndindex.Tuple]
             Dict which maps virtual dataset slices to source (raw) dataset slices
-        sd2 : Dict[ndindex.Tuple, ndindex.Tuple]
+        sd2 : dict[ndindex.Tuple, ndindex.Tuple]
             Dict which maps virtual dataset slices to source (raw) dataset slices
 
         Returns
         -------
-        Dict[ndindex.Tuple, Tuple[np.ndarray]]:
+        dict[ndindex.Tuple, tuple[np.ndarray, ...]]:
             Dict of {changed_virtual_slice: (data_v1, data_v2)} which maps slices of the
             virtual datasets which were modified between the versions to a tuple
             containing the corresponding raw ndarray that was modified. The first
@@ -544,7 +545,7 @@ class VersionedHDF5File:
         return diff
 
     @property
-    def versions(self) -> List[str]:
+    def versions(self) -> list[str]:
         """Return the names of the version groups in the file.
 
         This should return the same as calling
@@ -552,7 +553,7 @@ class VersionedHDF5File:
 
         Returns
         -------
-        List[str]
+        list[str]
             The names of versions in the file; order is arbitrary
         """
         return [v for v in self._versions if "__first_version__" not in v]
