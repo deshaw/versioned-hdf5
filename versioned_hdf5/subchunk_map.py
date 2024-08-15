@@ -235,7 +235,8 @@ def as_subchunk_map(
             # count how many elements were selected in each chunk
             chunk_selected_counts = np.sum(mask, axis=1, dtype=np.intp)
 
-            # compute offsets based on selected counts which will be used to build the masks for each chunk
+            # compute offsets based on selected counts which will be used to build
+            # the masks for each chunk
             chunk_selected_offsets = np.zeros(
                 len(chunk_selected_counts) + 1, dtype=np.intp
             )
@@ -281,15 +282,15 @@ def as_subchunk_map(
 
         chunk_subindexes.append(chunk_subindexes_for_axis)
 
-    # Handle the remaining suffix axes on which we did not select, we still need to break
-    # them up into chunks.
+    # Handle the remaining suffix axes on which we did not select, we still need to
+    # break them up into chunks.
     for n, d in zip(suffix_chunk_size, suffix_shape):
-        chunk_slices = (
+        chunk_slices_gen = (
             Slice(chunk_idx * n, min((chunk_idx + 1) * n, d), 1)
             for chunk_idx in range((d + n - 1) // n)
         )
         chunk_subindexes.append(
-            [(chunk_slice, chunk_slice.raw, ()) for chunk_slice in chunk_slices]
+            [(chunk_slice, chunk_slice.raw, ()) for chunk_slice in chunk_slices_gen]
         )
 
     # Now combine the chunk_slices and subindexes for each dimension into tuples
