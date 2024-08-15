@@ -18,12 +18,18 @@ compiled_deps = [
 
 py.extension_module(
     'slicetools',
-    [
-        'slicetools.pyx',
-    ],
+    'slicetools.pyx',
     install: true,
     subdir: 'versioned_hdf5',
     dependencies: compiled_deps,
     cython_args: ['--cplus'],
     override_options : ['cython_language=cpp'],
+)
+
+py.extension_module(
+    'subchunk_map',
+    # FIXME This is a symlink. Meson support for pure-python Cython files?
+    'subchunk_map.pyx',
+    install: true,
+    subdir: 'versioned_hdf5',
 )

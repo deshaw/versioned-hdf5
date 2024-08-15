@@ -23,7 +23,8 @@ from h5py._hl.selections import guess_shape
 from ndindex import ChunkSize, Slice, Tuple, ndindex, Integer, IntegerArray, BooleanArray
 
 from .backend import DEFAULT_CHUNK_SIZE
-from .slicetools import as_subchunk_map, build_data_dict
+from .slicetools import build_data_dict
+from .subchunk_map import as_subchunk_map
 
 _groups = WeakValueDictionary({})
 
