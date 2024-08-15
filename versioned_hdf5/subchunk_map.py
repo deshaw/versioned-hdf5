@@ -16,8 +16,6 @@ from ndindex import (
 
 
 @cython.cfunc
-@cython.cdivision
-@cython.exceptval(check=False)
 def _ceiling(a: Py_ssize_t, b: Py_ssize_t) -> Py_ssize_t:
     """
     Returns ceil(a/b)
@@ -26,7 +24,6 @@ def _ceiling(a: Py_ssize_t, b: Py_ssize_t) -> Py_ssize_t:
 
 
 @cython.cfunc
-@cython.exceptval(check=False)
 def _smallest(x: Py_ssize_t, a: Py_ssize_t, m: Py_ssize_t) -> Py_ssize_t:
     """
     Find the smallest integer y >= x where y = a + k*m for whole k's
@@ -40,7 +37,6 @@ def _smallest(x: Py_ssize_t, a: Py_ssize_t, m: Py_ssize_t) -> Py_ssize_t:
 
 
 @cython.cfunc
-@cython.cdivision
 def _subindex_chunk_slice(
     c_start: Py_ssize_t,
     c_stop: Py_ssize_t,
@@ -63,7 +59,6 @@ def _subindex_chunk_slice(
 
 
 @cython.cfunc
-@cython.cdivision
 def _subindex_slice_chunk(
     s_start: Py_ssize_t,
     s_stop: Py_ssize_t,
