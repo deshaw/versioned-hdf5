@@ -58,7 +58,9 @@ class Hashtable(MutableMapping):
 
         if hash_table_name in f["_version_data"][name]:
             self.hash_table_dataset = f["_version_data"][name][hash_table_name]
-            self.hash_table, self._indices = self._load_hashtable(self.hash_table_dataset)
+            self.hash_table, self._indices = self._load_hashtable(
+                self.hash_table_dataset
+            )
         else:
             self.hash_table_dataset = self._create_hashtable()
             self.hash_table = self.hash_table_dataset[:]

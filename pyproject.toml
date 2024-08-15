@@ -90,7 +90,7 @@ ignore = [
     "W191", # Indentation contains tabs; unnecessary when running ruff-format
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "test_*.py" = ["ANN001"]
 
@@ -114,3 +114,18 @@ markers = [
     "setup_args : kwargs for setup fixture.",
     "slow: slow tests",
 ]
+
+[tool.mypy]
+allow_incomplete_defs = true  # FIXME
+allow_untyped_decorators = false
+allow_untyped_defs = true  # FIXME
+ignore_missing_imports = true
+no_implicit_optional = true
+show_error_codes = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = ["*.tests.*"]
+allow_untyped_defs = true

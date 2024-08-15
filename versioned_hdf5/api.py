@@ -4,6 +4,7 @@ Public API functions
 Everything outside of this file is considered internal API and is subject to
 change.
 """
+
 import datetime
 import logging
 from contextlib import contextmanager
@@ -111,9 +112,8 @@ class VersionedHDF5File:
                             "Ugprading data_version to %d, no action required.",
                             DATA_VERSION,
                         )
-                        self.f["_version_data"]["versions"].attrs[
-                            "data_version"
-                        ] = DATA_VERSION
+                        versions = self.f["_version_data"]["versions"]
+                        versions.attrs["data_version"] = DATA_VERSION
 
             elif self.data_version_identifier > DATA_VERSION:
                 raise ValueError(
@@ -152,6 +152,11 @@ class VersionedHDF5File:
         """
         return self._versions.attrs["current_version"]
 
+    @current_version.setter
+    def current_version(self, version_name):
+        set_current_version(self.f, version_name)
+        self._version_cache.clear()
+
     @property
     def data_version_identifier(self) -> str:
         """Return the data version identifier.
@@ -179,11 +184,6 @@ class VersionedHDF5File:
             Version value to write to the file.
         """
         self.f["_version_data/versions"].attrs["data_version"] = version
-
-    @current_version.setter
-    def current_version(self, version_name):
-        set_current_version(self.f, version_name)
-        self._version_cache.clear()
 
     def get_version_by_name(self, version):
         if version.startswith("/"):

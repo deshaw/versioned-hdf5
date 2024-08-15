@@ -20,7 +20,15 @@ from h5py._hl import filters
 from h5py._hl.base import guess_dtype, phil, with_phil
 from h5py._hl.dataset import _LEGACY_GZIP_COMPRESSION_VALS
 from h5py._hl.selections import guess_shape
-from ndindex import ChunkSize, Slice, Tuple, ndindex, Integer, IntegerArray, BooleanArray
+from ndindex import (
+    BooleanArray,
+    ChunkSize,
+    Integer,
+    IntegerArray,
+    Slice,
+    Tuple,
+    ndindex,
+)
 
 from .backend import DEFAULT_CHUNK_SIZE
 from .slicetools import build_data_dict
@@ -742,7 +750,9 @@ class InMemoryDataset(Dataset):
 
         arr = np.ndarray(idx.newshape(self.shape), new_dtype, order="C")
 
-        for chunk, arr_idx_raw, index_raw in as_subchunk_map(self.chunks, idx, self.shape):
+        for chunk, arr_idx_raw, index_raw in as_subchunk_map(
+            self.chunks, idx, self.shape
+        ):
             if chunk not in self.id.data_dict:
                 self.id.data_dict[chunk] = np.broadcast_to(
                     self.fillvalue, chunk.newshape(self.shape)
@@ -1210,7 +1220,9 @@ class InMemorySparseDataset(DatasetLike):
         newshape = idx.newshape(self.shape)
         arr = np.full(newshape, self.fillvalue, dtype=self.dtype)
 
-        for c, arr_idx_raw, chunk_idx_raw in as_subchunk_map(self.chunks, idx, self.shape):
+        for c, arr_idx_raw, chunk_idx_raw in as_subchunk_map(
+            self.chunks, idx, self.shape
+        ):
             if c not in self.data_dict:
                 fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
                 self.data_dict[c] = fill
@@ -1228,7 +1240,9 @@ class InMemorySparseDataset(DatasetLike):
 
         val = np.broadcast_to(value, idx.newshape(self.shape))
 
-        for c, val_idx_raw, chunk_idx_raw in as_subchunk_map(self.chunks, idx, self.shape):
+        for c, val_idx_raw, chunk_idx_raw in as_subchunk_map(
+            self.chunks, idx, self.shape
+        ):
             if c not in self.data_dict:
                 # Broadcasted arrays do not actually consume memory
                 fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
