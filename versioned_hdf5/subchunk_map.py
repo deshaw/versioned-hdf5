@@ -1,5 +1,5 @@
 import itertools
-import typing
+from typing import Iterable, Iterator
 
 import cython
 import numpy as np
@@ -86,7 +86,7 @@ def _subindex_slice_chunk(
 
 def as_subchunk_map(
     chunk_size: ChunkSize, idx, shape: tuple[int, ...]
-) -> typing.Iterator[
+) -> Iterator[
     tuple[
         tuple[Slice, ...],
         tuple[slice | np.ndarray | tuple[()], ...],
@@ -153,7 +153,7 @@ def as_subchunk_map(
     d: Py_ssize_t
     s: Py_ssize_t
     i: Slice | IntegerArray | BooleanArray | Integer
-    chunk_idxs: typing.Iterable[Py_ssize_t]
+    chunk_idxs: Iterable[Py_ssize_t]
     chunk_idx: Py_ssize_t
     chunk_start: Py_ssize_t
     chunk_stop: Py_ssize_t
