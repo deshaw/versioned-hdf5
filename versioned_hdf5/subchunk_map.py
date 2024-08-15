@@ -17,16 +17,14 @@ from ndindex import (
 
 @cython.cfunc
 def _ceiling(a: Py_ssize_t, b: Py_ssize_t) -> Py_ssize_t:
-    """
-    Returns ceil(a/b)
+    """Returns ceil(a/b)
     """
     return -(-a // b)
 
 
 @cython.cfunc
 def _smallest(x: Py_ssize_t, a: Py_ssize_t, m: Py_ssize_t) -> Py_ssize_t:
-    """
-    Find the smallest integer y >= x where y = a + k*m for whole k's
+    """Find the smallest integer y >= x where y = a + k*m for whole k's
     Assumes 0 <= a <= x and m >= 1.
 
     a                  x    y
@@ -99,8 +97,7 @@ def as_subchunk_map(
         tuple[slice | np.ndarray | tuple[()] | int, ...],
     ]
 ]:
-    """
-    Computes the chunk selection assignment. In particular, given a `chunk_size`
+    """Computes the chunk selection assignment. In particular, given a `chunk_size`
     it returns triple (chunk_slices, arr_subidxs, chunk_subidxs) such that for a
     chunked Dataset `ds` we can translate selections like
 
