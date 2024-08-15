@@ -58,3 +58,9 @@ repos:
       - id: rst-inline-touching-normal
       - id: python-no-log-warn
       - id: python-check-mock-methods
+
+  # - repo: https://github.com/MarcoGorelli/cython-lint
+  #   rev: v0.16.2
+  #   hooks:
+  #   - id: cython-lint
+  #   - id: double-quote-cython-strings
