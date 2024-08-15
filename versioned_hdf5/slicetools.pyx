@@ -1,15 +1,17 @@
 from functools import lru_cache
 
-from ndindex import Slice, Tuple
-from h5py import h5d, h5s, h5i
-from h5py._hl.base import phil
-
 import cython
-from libc.stddef cimport size_t, ptrdiff_t
+from h5py import h5d, h5i, h5s
+from h5py._hl.base import phil
+from ndindex import Slice, Tuple
+
+from libc.stddef cimport ptrdiff_t, size_t
+
 ctypedef ptrdiff_t ssize_t
-from libc.stdlib cimport malloc, free
+from libc.stdlib cimport free, malloc
 from libc.string cimport strlen, strncmp
 from libcpp.vector cimport vector
+
 
 cdef extern from "hdf5.h":
     # HDF5 types copied from h5py/api_types_hdf5.pxd

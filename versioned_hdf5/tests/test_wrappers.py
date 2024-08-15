@@ -2,17 +2,22 @@ import itertools
 from collections import defaultdict
 
 import h5py
+import hypothesis
 import ndindex
 import numpy as np
 import pytest
-import hypothesis
-from hypothesis import given, strategies as st
+from hypothesis import given
+from hypothesis import strategies as st
 from hypothesis.extra import numpy as stnp
 from numpy.testing import assert_equal
 
 from ..api import VersionedHDF5File
-from ..wrappers import (InMemoryArrayDataset, InMemoryGroup,
-                        InMemorySparseDataset, as_subchunk_map)
+from ..wrappers import (
+    InMemoryArrayDataset,
+    InMemoryGroup,
+    InMemorySparseDataset,
+    as_subchunk_map,
+)
 
 
 @pytest.fixture()
@@ -159,7 +164,12 @@ def test_as_subchunk_map(data):
     ndim = data.draw(st.integers(1, 4), label="ndim")
     shape = data.draw(st.tuples(*[st.integers(1, 100)] * ndim), label="shape")
     chunks = data.draw(st.tuples(*[st.integers(5, 20)] * ndim), label="chunks")
-    idx = ndindex.Tuple(*[data.draw(non_negative_step_slices(shape[dim]), label=f'idx{dim}') for dim in range(ndim)])
+    idx = ndindex.Tuple(
+        *[
+            data.draw(non_negative_step_slices(shape[dim]), label=f"idx{dim}")
+            for dim in range(ndim)
+        ]
+    )
 
     _check_as_subchunk_map(chunks, idx, shape)
 
@@ -172,15 +182,26 @@ def test_as_subchunk_map_fancy_idx(data):
     shape = data.draw(st.tuples(*[st.integers(1, 100)] * ndim), label="shape")
     chunks = data.draw(st.tuples(*[st.integers(5, 20)] * ndim), label="chunks")
     fancy_idx_axis = data.draw(st.integers(0, ndim - 1), label="fancy_idx_axis")
-    fancy_idx = data.draw(stnp.arrays(np.intp, st.integers(0, shape[fancy_idx_axis] - 1),
-                                      elements=st.integers(0, shape[fancy_idx_axis] - 1),
-                                      unique=True),
-                          label="fancy_idx")
+    fancy_idx = data.draw(
+        stnp.arrays(
+            np.intp,
+            st.integers(0, shape[fancy_idx_axis] - 1),
+            elements=st.integers(0, shape[fancy_idx_axis] - 1),
+            unique=True,
+        ),
+        label="fancy_idx",
+    )
     idx = ndindex.Tuple(
-        *[data.draw(non_negative_step_slices(shape[dim]), label=f'idx{dim}') for dim in range(fancy_idx_axis)],
+        *[
+            data.draw(non_negative_step_slices(shape[dim]), label=f"idx{dim}")
+            for dim in range(fancy_idx_axis)
+        ],
         fancy_idx,
-        *[data.draw(non_negative_step_slices(shape[dim]), label=f'idx{dim}') for dim in
-          range(fancy_idx_axis + 1, ndim)])
+        *[
+            data.draw(non_negative_step_slices(shape[dim]), label=f"idx{dim}")
+            for dim in range(fancy_idx_axis + 1, ndim)
+        ],
+    )
 
     _check_as_subchunk_map(chunks, idx, shape)
 
@@ -193,13 +214,21 @@ def test_as_subchunk_map_mask(data):
     shape = data.draw(st.tuples(*[st.integers(1, 100)] * ndim), label="shape")
     chunks = data.draw(st.tuples(*[st.integers(5, 20)] * ndim), label="chunks")
     mask_idx_axis = data.draw(st.integers(0, ndim - 1), label="mask_idx_axis")
-    mask_idx = data.draw(stnp.arrays(np.bool_, shape[mask_idx_axis],
-                                     elements=st.booleans()),
-                         label="mask_idx")
+    mask_idx = data.draw(
+        stnp.arrays(np.bool_, shape[mask_idx_axis], elements=st.booleans()),
+        label="mask_idx",
+    )
     idx = ndindex.Tuple(
-        *[data.draw(non_negative_step_slices(shape[dim]), label=f'idx{dim}') for dim in range(mask_idx_axis)],
+        *[
+            data.draw(non_negative_step_slices(shape[dim]), label=f"idx{dim}")
+            for dim in range(mask_idx_axis)
+        ],
         mask_idx,
-        *[data.draw(non_negative_step_slices(shape[dim]), label=f'idx{dim}') for dim in range(mask_idx_axis + 1, ndim)])
+        *[
+            data.draw(non_negative_step_slices(shape[dim]), label=f"idx{dim}")
+            for dim in range(mask_idx_axis + 1, ndim)
+        ],
+    )
 
     _check_as_subchunk_map(chunks, idx, shape)
 
@@ -248,7 +277,7 @@ def test_committed_propagation():
     """Check that InMemoryGroup propagates the '_committed' state to child instances."""
     name = "testname"
     test_data = np.ones((10,))
-    f = h5py.File('foo.h5', 'w')
+    f = h5py.File("foo.h5", "w")
     vfile = VersionedHDF5File(f)
 
     # Commit some data to nested groups
@@ -256,8 +285,8 @@ def test_committed_propagation():
         group.create_dataset(f"{name}/key", data=test_data)
         group.create_dataset(f"{name}/val", data=test_data)
 
-    assert vfile['version1']._committed
-    assert vfile['version1'][name]._committed
+    assert vfile["version1"]._committed
+    assert vfile["version1"][name]._committed
 
     with vfile.stage_version("version2") as group:
         key_ds = group[f"{name}/key"]
@@ -265,5 +294,5 @@ def test_committed_propagation():
         val_ds[0] = -1
         key_ds[0] = 0
 
-    assert vfile['version2']._committed
-    assert vfile['version2'][name]._committed
+    assert vfile["version2"]._committed
+    assert vfile["version2"][name]._committed
