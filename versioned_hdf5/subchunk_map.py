@@ -17,8 +17,7 @@ from ndindex import (
 
 @cython.cfunc
 def _ceiling(a: Py_ssize_t, b: Py_ssize_t) -> Py_ssize_t:
-    """Returns ceil(a/b)
-    """
+    """Returns ceil(a/b)"""
     return -(-a // b)
 
 

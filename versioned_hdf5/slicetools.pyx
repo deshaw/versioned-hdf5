@@ -1,7 +1,7 @@
 from functools import lru_cache
 
 import cython
-from h5py import h5s
+from h5py import h5d, h5i, h5s
 from h5py._hl.base import phil
 from ndindex import Slice, Tuple
 
@@ -31,18 +31,17 @@ cdef extern from "hdf5.h":
     cdef hid_t H5Pget_virtual_srcspace(hid_t dcpl_id, size_t index)
 
     ctypedef enum H5S_sel_type:
-        H5S_SEL_ERROR = -1,  # Error
-        H5S_SEL_NONE = 0,  # Nothing selected
-        H5S_SEL_POINTS = 1,  # Sequence of points selected
-        H5S_SEL_HYPERSLABS = 2,  # "New-style" hyperslab selection defined
-        H5S_SEL_ALL = 3,  # Entire extent selected
-        H5S_SEL_N = 4  # THIS MUST BE LAST
+        H5S_SEL_ERROR = -1,  #Error
+        H5S_SEL_NONE = 0,  #Nothing selected
+        H5S_SEL_POINTS = 1,  #Sequence of points selected
+        H5S_SEL_HYPERSLABS = 2,  #"New-style" hyperslab selection defined
+        H5S_SEL_ALL = 3,  #Entire extent selected
+        H5S_SEL_N = 4  #/*THIS MUST BE LAST
 
     cdef H5S_sel_type H5Sget_select_type(hid_t space_id) except H5S_sel_type.H5S_SEL_ERROR
 
     cdef int H5Sget_simple_extent_ndims(hid_t space_id)
     cdef htri_t H5Sget_regular_hyperslab(hid_t spaceid, hsize_t* start, hsize_t* stride, hsize_t* count, hsize_t* block)
-
 
 def spaceid_to_slice(space) -> Tuple:
     """
@@ -92,7 +91,7 @@ cdef _spaceid_to_slice(space_id: hid_t):
 
         rank: cython.int = H5Sget_simple_extent_ndims(space_id)
         if rank < 0:
-            raise ValueError("Cannot determine rank of selection.")
+            raise ValueError('Cannot determine rank of selection.')
         start_array: vector[hsize_t] = vector[hsize_t](rank)
         stride_array: vector[hsize_t] = vector[hsize_t](rank)
         count_array: vector[hsize_t] = vector[hsize_t](rank)
@@ -101,7 +100,7 @@ cdef _spaceid_to_slice(space_id: hid_t):
         ret: htri_t = H5Sget_regular_hyperslab(space_id, start_array.data(), stride_array.data(),
                                                count_array.data(), block_array.data())
         if ret < 0:
-            raise ValueError("Cannot determine hyperslab selection.")
+            raise ValueError('Cannot determine hyperslab selection.')
 
         i: cython.int
         start: hsize_t
@@ -150,39 +149,39 @@ cpdef build_data_dict(dcpl, raw_data_name: str):
         virtual_count: size_t = dcpl.get_virtual_count()
         j: size_t
 
-        raw_data_name_bytes: bytes = raw_data_name.encode("utf8")
+        raw_data_name_bytes: bytes = raw_data_name.encode('utf8')
         # this a reference to the internal buffer of raw_data_name, do not free!
         raw_data_str: cython.p_char = raw_data_name_bytes
 
         filename_buf_len: ssize_t = 2
         filename_buf: cython.p_char = <char *>malloc(filename_buf_len)
         if not filename_buf:
-            raise MemoryError("could not allocate filename_buf")
+            raise MemoryError('could not allocate filename_buf')
 
         try:
             dataset_buf_len: ssize_t = strlen(raw_data_str) + 1
             dataset_buf: cython.p_char = <char *>malloc(dataset_buf_len)
             if not dataset_buf:
-                raise MemoryError("could not allocate dataset_buf")
+                raise MemoryError('could not allocate dataset_buf')
 
             try:
                 for j in range(virtual_count):
                     if H5Pget_virtual_filename(dcpl_id, j, filename_buf, filename_buf_len) < 0:
-                        raise ValueError("Could not get virtual filename")
+                        raise ValueError('Could not get virtual filename')
                     if strncmp(filename_buf, ".", filename_buf_len) != 0:
                         raise ValueError('Virtual dataset filename mismatch, expected "."')
 
                     if H5Pget_virtual_dsetname(dcpl_id, j, dataset_buf, dataset_buf_len) < 0:
-                        raise ValueError("Could not get virtual dsetname")
+                        raise ValueError('Could not get virtual dsetname')
                     if strncmp(dataset_buf, raw_data_str, dataset_buf_len) != 0:
                         raise ValueError(f'Virtual dataset name mismatch, expected {raw_data_name}')
 
                     vspace_id: hid_t = H5Pget_virtual_vspace(dcpl_id, j)
                     if vspace_id == -1:
-                        raise ValueError("Could not get vspace_id")
+                        raise ValueError('Could not get vspace_id')
                     srcspace_id: hid_t = H5Pget_virtual_srcspace(dcpl_id, j)
                     if srcspace_id == -1:
-                        raise ValueError("Could not get srcspace_id")
+                        raise ValueError('Could not get srcspace_id')
 
                     vspace_slice_tuple = _spaceid_to_slice(vspace_id)
                     srcspace_slice_tuple = _spaceid_to_slice(srcspace_id)

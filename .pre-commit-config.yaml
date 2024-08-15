@@ -37,6 +37,7 @@ repos:
   #   rev: v1.11.1
   #   hooks:
   #     - id: mypy
+  #       args: ['--follow-imports=skip', '--ignore-missing-imports']
 
   - repo: https://github.com/pycqa/isort
     rev: 5.13.2
@@ -57,9 +58,3 @@ repos:
       - id: rst-inline-touching-normal
       - id: python-no-log-warn
       - id: python-check-mock-methods
-
-  # - repo: https://github.com/MarcoGorelli/cython-lint
-  #   rev: v0.16.2
-  #   hooks:
-  #   - id: cython-lint
-  #   - id: double-quote-cython-strings
