@@ -322,7 +322,7 @@ def _verify_new_chunk_reuse(
         assert_array_equal(to_be_reused, to_be_written)
     except AssertionError as e:
         raise ValueError(
-            f"Hash {data_hash} of existing data chunk {reused_chunk} "
+            f"Hash {data_hash!r} of existing data chunk {reused_chunk} "
             f"matches the hash of new data chunk {chunk_being_written}, "
             "but data does not."
         ) from e

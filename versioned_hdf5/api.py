@@ -153,6 +153,11 @@ class VersionedHDF5File:
         """
         return self._versions.attrs["current_version"]
 
+    @current_version.setter
+    def current_version(self, version_name):
+        set_current_version(self.f, version_name)
+        self._version_cache.clear()
+
     @property
     def data_version_identifier(self) -> str:
         """Return the data version identifier.
@@ -180,11 +185,6 @@ class VersionedHDF5File:
             Version value to write to the file.
         """
         self.f["_version_data/versions"].attrs["data_version"] = version
-
-    @current_version.setter
-    def current_version(self, version_name):
-        set_current_version(self.f, version_name)
-        self._version_cache.clear()
 
     def get_version_by_name(self, version):
         if version.startswith("/"):
