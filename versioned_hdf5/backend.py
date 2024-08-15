@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import logging
 import os
 import textwrap
-from typing import Dict, Iterator, Optional
+from collections.abc import Iterator
 
 import numpy as np
 from h5py import Dataset, VirtualLayout, VirtualSource, h5s, h5z
@@ -248,8 +250,8 @@ def _verify_new_chunk_reuse(
     data_hash: bytes,
     hashed_slice: Slice,
     chunk_being_written: np.ndarray,
-    slices_to_write: Optional[Dict[Slice, Tuple]] = None,
-    data_to_write: Optional[Dict[Slice, np.ndarray]] = None,
+    slices_to_write: dict[slice, tuple] | None = None,
+    data_to_write: dict[slice, np.ndarray] | None = None,
 ) -> None:
     """Check that the data from the hashed slice matches the data to be written.
 
@@ -275,11 +277,11 @@ def _verify_new_chunk_reuse(
         point to a slice in ``slices_to_write``)
     chunk_being_written : np.ndarray
         New data chunk to be written
-    slices_to_write : Optional[Dict[Slice, Tuple]]
+    slices_to_write : dict[slice, tuple] | None
         Dict of slices which will be written. Maps slices that will exist in the
         raw_data once the write is complete to slices of the dataset that is being
         written.
-    data_to_write : Optional[Dict[Slice, Tuple]]
+    data_to_write : dict[slice, tuple] | None
         Dict of arrays which will be written as chunks. Maps slices that will exist in
         the raw_data once the write is complete to chunks of the dataset that is being
         written. If ``data_to_write`` is specified, ``slices_to_write`` must be None.

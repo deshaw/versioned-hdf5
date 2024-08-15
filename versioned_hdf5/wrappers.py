@@ -5,12 +5,13 @@ Much of this code is modified from code in h5py. See the LICENSE file for the
 h5py license.
 """
 
+from __future__ import annotations
+
 import itertools
 import posixpath
 import textwrap
 import warnings
 from collections import defaultdict
-from typing import Optional, Union
 from weakref import WeakValueDictionary
 
 import numpy as np
@@ -831,9 +832,9 @@ class InMemoryDataset(Dataset):
     @with_phil
     def get_index(
         self,
-        args: Union[slice, Slice, Tuple, tuple, h5r.RegionReference],
-        new_dtype: Optional[str] = None,
-        can_read_direct: Optional[bool] = None,
+        args: slice | Slice | Tuple | tuple | h5r.RegionReference,
+        new_dtype: str | None = None,
+        can_read_direct: bool | None = None,
     ) -> np.ndarray:
         """Read a slice from the HDF5 dataset given by the index.
 
@@ -843,11 +844,11 @@ class InMemoryDataset(Dataset):
 
         Parameters
         ----------
-        args : Union[slice, Slice, Tuple, tuple, h5r.RegionReference]
+        args : slice | Slice | Tuple | tuple | h5r.RegionReference
             Index to read from the Dataset
-        new_dtype : Optional[str]
+        new_dtype : str | None
             Dtype of the returned array
-        can_read_direct : Optional[bool]
+        can_read_direct : bool | None
             True if we can read directly from the underlying hdf5 Dataset, False otherwise.
             This should be the value of the InMemoryDatasetID instance's ``can_read_direct``
             property for this Dataset.
@@ -933,7 +934,7 @@ class InMemoryDataset(Dataset):
     @with_phil
     def __getitem__(
         self,
-        args: Union[slice, Slice, Tuple, tuple, h5r.RegionReference],
+        args: slice | Slice | Tuple | tuple | h5r.RegionReference,
     ) -> np.ndarray:
         return self.get_index(args)
 
