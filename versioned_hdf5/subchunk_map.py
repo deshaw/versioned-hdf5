@@ -65,6 +65,7 @@ def _subindex_slice_chunk(
     s_step: Py_ssize_t,
     c_start: Py_ssize_t,
     c_stop: Py_ssize_t,
+    size: Py_ssize_t,
 ) -> slice:
     common: Py_ssize_t = s_start % s_step
 
@@ -76,7 +77,7 @@ def _subindex_slice_chunk(
 
     stop: Py_ssize_t = max(0, min(s_stop, c_stop) - c_start)
 
-    return slice(start, stop, s_step)
+    return Slice(start, stop, s_step).reduce(size).raw
 
 
 def as_subchunk_map(
@@ -186,14 +187,9 @@ def as_subchunk_map(
                         _subindex_chunk_slice(
                             chunk_start, chunk_stop, start, stop, step
                         ),
-                        Slice(
-                            _subindex_slice_chunk(
-                                start, stop, step, chunk_start, chunk_stop
-                            )
-                        )
-                        # Make chunk_slice canonical.
-                        .reduce(d)
-                        .raw,
+                        _subindex_slice_chunk(
+                            start, stop, step, chunk_start, chunk_stop, d
+                        ),
                     )
                 )
         elif isinstance(i, IntegerArray):
