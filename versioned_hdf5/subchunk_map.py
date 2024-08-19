@@ -18,8 +18,7 @@ from ndindex import (
 from numpy.typing import NDArray
 
 if TYPE_CHECKING:
-    # TODO import from typing (requires Python 3.10)
-    # TODO remove quotes (requires Python 3.10)
+    # TODO import from typing and remove quotes (requires Python 3.10)
     # TODO use type <name> = ... (requires Python 3.12)
     from typing_extensions import TypeAlias
 
