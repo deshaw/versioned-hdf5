@@ -35,24 +35,22 @@ def _smallest(x: Py_ssize_t, a: Py_ssize_t, m: Py_ssize_t) -> Py_ssize_t:
 
 @cython.cfunc
 def _subindex_chunk_slice(
+    s_start: Py_ssize_t,
+    s_stop: Py_ssize_t,
+    s_step: Py_ssize_t,
     c_start: Py_ssize_t,
     c_stop: Py_ssize_t,
-    i_start: Py_ssize_t,
-    i_stop: Py_ssize_t,
-    i_step: Py_ssize_t,
 ) -> slice:
-    common: Py_ssize_t = i_start % i_step
-
-    start: Py_ssize_t = max(c_start, i_start)
+    start: Py_ssize_t = max(c_start, s_start)
     # Get the smallest lcm multiple of common that is >= start
-    start = _smallest(start, common, i_step)
+    start = _smallest(start, s_start % s_step, s_step)
     # Finally, we need to shift start so that it is relative to index
-    start = (start - i_start) // i_step
+    start = (start - s_start) // s_step
 
-    stop: Py_ssize_t = min(c_stop, i_stop)
-    stop = _ceiling(stop - i_start, i_step) if stop > i_start else 0
+    stop: Py_ssize_t = min(c_stop, s_stop)
+    stop = _ceiling(stop - s_start, s_step) if stop > s_start else 0
 
-    return slice(start, stop, 1)
+    return slice(int(start), int(stop), 1)
 
 
 @cython.cfunc
@@ -63,11 +61,9 @@ def _subindex_slice_chunk(
     c_start: Py_ssize_t,
     c_stop: Py_ssize_t,
 ) -> slice:
-    common: Py_ssize_t = s_start % s_step
-
     start: Py_ssize_t = max(s_start, c_start)
     # Get the smallest step multiple of common that is >= start
-    start = _smallest(start, common, s_step)
+    start = _smallest(start, s_start % s_step, s_step)
     # Finally, we need to shift start so that it is relative to index
     start -= c_start
 
@@ -84,7 +80,7 @@ def _subindex_slice_chunk(
         stop -= (stop - start - 1) % step
         if stop - start == 1:
             step = 1  # Indexes 1 element
-    return slice(start, stop, step)
+    return slice(int(start), int(stop), int(step))
 
 
 def as_subchunk_map(
@@ -191,7 +187,7 @@ def as_subchunk_map(
                     (
                         Slice(chunk_start, chunk_stop, 1),
                         _subindex_chunk_slice(
-                            chunk_start, chunk_stop, start, stop, step
+                            start, stop, step, chunk_start, chunk_stop
                         ),
                         _subindex_slice_chunk(
                             start, stop, step, chunk_start, chunk_stop
