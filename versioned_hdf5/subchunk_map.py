@@ -96,7 +96,7 @@ def _subindex_slice_chunk(
 
 
 def as_subchunk_map(
-    chunk_size: ChunkSize, idx, shape: tuple[int, ...]
+    chunk_size: tuple[int, ...] | ChunkSize, idx, shape: tuple[int, ...]
 ) -> Iterator[tuple[tuple[Slice, ...], tuple[AnySlicer, ...], tuple[AnySlicer, ...]]]:
     """Computes the chunk selection assignment. In particular, given a `chunk_size`
     it returns triple (chunk_slices, arr_subidxs, chunk_subidxs) such that for a
@@ -124,7 +124,7 @@ def as_subchunk_map(
     :param shape: the shape of the Dataset
     :return: a generator of `(chunk, arr_idx_raw, index_raw)` tuples
     """
-    assert isinstance(chunk_size, ChunkSize)
+    assert isinstance(chunk_size, (tuple, ChunkSize))
     if isinstance(idx, Tuple):
         pass
     elif isinstance(idx, tuple):
