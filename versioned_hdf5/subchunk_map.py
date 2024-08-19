@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import itertools
-from typing import TYPE_CHECKING, Iterable, Iterator
+from typing import TYPE_CHECKING, Any, Iterable, Iterator
 
 import cython
 import numpy as np
@@ -53,6 +53,20 @@ def _subindex_chunk_slice(
     c_start: Py_ssize_t,
     c_stop: Py_ssize_t,
 ) -> slice:
+    """Given a slice(s_start, s_stop, s_step) indexing an axis of
+    a dataset, return the slice of the output array (on __getitem__)
+    or value parameter array (on __setitem__) along the
+    same axis that is targeted by the same slice after it's been
+    clipped to select only the data within the range [c_start, c_stop[
+
+    In other words:
+
+    a = _subindex_chunk_slice(s_start, s_stop, s_step, c_start, c_stop)
+    b = _subindex_slice_chunk(s_start, s_stop, s_step, c_start, c_stop)
+
+    __getitem__: out[a] = cache_chunk[b]
+    __setitem__: cache_chunk[b] = value[a]
+    """
     start: Py_ssize_t = max(c_start, s_start)
     # Get the smallest lcm multiple of common that is >= start
     start = _smallest(start, s_start % s_step, s_step)
@@ -73,6 +87,13 @@ def _subindex_slice_chunk(
     c_start: Py_ssize_t,
     c_stop: Py_ssize_t,
 ) -> slice:
+    """Given a slice(s_start, s_stop, s_step) indexing an axis of
+    a dataset, return a slice that's been clipped to select only
+    the data within the range [c_start, c_stop[ and shifted back
+    by s_start.
+
+    See examples on _subindex_chunk_slice
+    """
     start: Py_ssize_t = max(s_start, c_start)
     # Get the smallest step multiple of common that is >= start
     start = _smallest(start, s_start % s_step, s_step)
@@ -96,8 +117,16 @@ def _subindex_slice_chunk(
 
 
 def as_subchunk_map(
-    chunk_size: tuple[int, ...] | ChunkSize, idx, shape: tuple[int, ...]
-) -> Iterator[tuple[tuple[Slice, ...], tuple[AnySlicer, ...], tuple[AnySlicer, ...]]]:
+    chunk_size: tuple[int, ...] | ChunkSize,
+    idx: Any,
+    shape: tuple[int, ...],
+) -> Iterator[
+    tuple[
+        tuple[Slice, ...],
+        tuple[AnySlicer, ...],
+        tuple[AnySlicer, ...],
+    ]
+]:
     """Computes the chunk selection assignment. In particular, given a `chunk_size`
     it returns triple (chunk_slices, arr_subidxs, chunk_subidxs) such that for a
     chunked Dataset `ds` we can translate selections like
