@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import itertools
-from typing import Iterable, Iterator
+from typing import TYPE_CHECKING, Iterable, Iterator
 
 import cython
 import numpy as np
@@ -13,6 +15,17 @@ from ndindex import (
     Tuple,
     ndindex,
 )
+from numpy.typing import NDArray
+
+if TYPE_CHECKING:
+    # TODO import from typing (requires Python 3.10)
+    # TODO remove quotes (requires Python 3.10)
+    # TODO use type <name> = ... (requires Python 3.12)
+    from typing_extensions import TypeAlias
+
+    AnySlicer: TypeAlias = (
+        "slice | NDArray[np.intp] | NDArray[np.bool] | tuple[()] | Py_ssize_t"
+    )
 
 
 @cython.cfunc
@@ -85,13 +98,7 @@ def _subindex_slice_chunk(
 
 def as_subchunk_map(
     chunk_size: ChunkSize, idx, shape: tuple[int, ...]
-) -> Iterator[
-    tuple[
-        tuple[Slice, ...],
-        tuple[slice | np.ndarray | tuple[()], ...],
-        tuple[slice | np.ndarray | tuple[()] | int, ...],
-    ]
-]:
+) -> Iterator[tuple[tuple[Slice, ...], tuple[AnySlicer, ...], tuple[AnySlicer, ...]]]:
     """Computes the chunk selection assignment. In particular, given a `chunk_size`
     it returns triple (chunk_slices, arr_subidxs, chunk_subidxs) such that for a
     chunked Dataset `ds` we can translate selections like
