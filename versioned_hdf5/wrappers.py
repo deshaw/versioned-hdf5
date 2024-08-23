@@ -7,7 +7,6 @@ h5py license.
 
 from __future__ import annotations
 
-import itertools
 import posixpath
 import textwrap
 import warnings
@@ -34,6 +33,7 @@ from ndindex import (
 
 from .backend import DEFAULT_CHUNK_SIZE
 from .slicetools import build_data_dict
+from .subchunk_map import as_subchunk_map
 
 _groups = WeakValueDictionary({})
 
@@ -504,166 +504,6 @@ def _make_new_dset(
     if isinstance(data, Empty):
         raise NotImplementedError("Empty datasets")
     return data
-
-
-def as_subchunk_map(chunk_size: ChunkSize, idx, shape: tuple):
-    """
-    Computes the chunk selection assignment. In particular, given a `chunk_size`
-    it returns triple (chunk_slices, arr_subidxs, chunk_subidxs) such that for a
-    chunked Dataset `ds` we can translate selections like
-
-    >> ds[idx]
-
-    into selecting from the individual chunks of `ds` as
-
-    >> arr = np.ndarray(output_shape)
-    >> for chunk, arr_idx_raw, index_raw in as_subchunk_map(ds.chunk_size, idx, ds.shape):
-    ..     arr[arr_idx_raw] = ds.data_dict[chunk][index_raw]
-
-    Similarly, assignments like
-
-    >> ds[idx] = arr
-
-    can be translated into
-
-    >> for chunk, arr_idx_raw, index_raw in as_subchunk_map(ds.chunk_size, idx, ds.shape):
-    ..     ds.data_dict[chunk][index_raw] = arr[arr_idx_raw]
-
-    :param chunk_size: the `ChunkSize` of the Dataset
-    :param idx: the "index" to read from / write to the Dataset
-    :param shape: the shape of the Dataset
-    :return: a generator of `(chunk, arr_idx_raw, index_raw)` tuples
-    """
-    assert isinstance(chunk_size, ChunkSize)
-    if isinstance(idx, Tuple):
-        pass
-    elif isinstance(idx, tuple):
-        idx = Tuple(*idx)
-    else:
-        idx = Tuple(ndindex(idx))
-    assert isinstance(shape, tuple)
-
-    if any(dim < 0 for dim in shape):
-        raise ValueError("shape dimensions must be non-negative")
-
-    if len(shape) != len(chunk_size):
-        raise ValueError("chunks dimensions must equal the array dimensions")
-
-    if idx.isempty(shape):
-        # abort early for empty index
-        return
-
-    idx_len = len(idx.args)
-
-    prefix_chunk_size = chunk_size[:idx_len]
-    prefix_shape = shape[:idx_len]
-
-    suffix_chunk_size = chunk_size[idx_len:]
-    suffix_shape = shape[idx_len:]
-
-    chunk_subindexes = []
-
-    n: int
-    i: Slice | IntegerArray | Integer
-    s: int
-
-    # Process the prefix of the axes which idx selects on
-    for n, i, d in zip(prefix_chunk_size, idx.args, prefix_shape):
-        i = i.reduce((d,))
-
-        # Compute chunk_idxs, e.g., chunk_idxs == (2, 4) for chunk sizes (100, 1000)
-        # would correspond to chunk (slice(200, 300), slice(4000, 5000)).
-        chunk_idxs: tuple
-        if isinstance(i, Slice):
-            if i.step <= 0:
-                raise NotImplementedError(f"Slice step must be positive not {i.step}")
-
-            start: int = i.start
-            stop: int = i.stop
-            step: int = i.step
-
-            if step > n:
-                chunk_idxs = tuple(
-                    (start + k * step) // n
-                    for k in range((stop - start + step - 1) // step)
-                )
-            else:
-                chunk_idxs = tuple(range(start // n, (stop + n - 1) // n))
-        elif isinstance(i, IntegerArray):
-            assert i.ndim == 1
-            chunk_idxs = tuple(np.unique(i.array // n))
-        elif isinstance(i, BooleanArray):
-            if i.ndim != 1:
-                raise NotImplementedError("boolean mask index must be 1-dimensional")
-            if i.shape != (d,):
-                raise IndexError(
-                    f"boolean index did not match indexed array; dimension is {d}, "
-                    f"but corresponding boolean dimension is {i.shape[0]}"
-                )
-
-            # pad i.array to be a multiple of n and group into chunks
-            mask = np.pad(
-                i.array, (0, n - (d % n)), "constant", constant_values=(False,)
-            )
-            mask = mask.reshape((mask.shape[0] // n, n))
-
-            # chunk_idxs for the chunks which are not empty
-            chunk_idxs = np.flatnonzero(mask.any(axis=1))
-
-            # TODO: ndindex does not support slicing BooleanArray, once that's supported remove
-            #       the conversion to IntegerArray below
-            i = IntegerArray(np.flatnonzero(i.array))
-        elif isinstance(i, Integer):
-            chunk_idxs = (i.raw // n,)
-        else:
-            raise NotImplementedError(f"index type {type(i)} not supported")
-
-        # Compute chunk_slices for chunk_idxs
-        chunk_slices = tuple(
-            Slice(chunk_idx * n, min((chunk_idx + 1) * n, d), 1)
-            for chunk_idx in chunk_idxs
-        )
-
-        # Now compute the subindexes for each chunk_slice based on chunk_slice and i.
-        chunk_subindexes.append(
-            [
-                (
-                    chunk_slice,
-                    chunk_slice.as_subindex(i).raw,
-                    i.as_subindex(chunk_slice).raw,
-                )
-                for chunk_slice in chunk_slices
-            ]
-        )
-
-    # Handle the remaining suffix axes on which we did not select, we still need to break
-    # them up into chunks.
-    for n, d in zip(suffix_chunk_size, suffix_shape):
-        chunk_idxs = tuple(range((d + n - 1) // n))
-        chunk_slices = tuple(
-            Slice(chunk_idx * n, min((chunk_idx + 1) * n, d), 1)
-            for chunk_idx in chunk_idxs
-        )
-        chunk_subindexes.append(
-            [(chunk_slice, chunk_slice.raw, ()) for chunk_slice in chunk_slices]
-        )
-
-    # Now combine the chunk_slices and subindexes for each dimension into tuples
-    # across all dimensions.
-    for p in itertools.product(*chunk_subindexes):
-        chunk_slices, arr_subidxs, chunk_subidxs = zip(*p)
-
-        # skip dimensions which were sliced away
-        arr_subidxs = tuple(
-            arr_subidx
-            for arr_subidx in arr_subidxs
-            if not isinstance(arr_subidx, tuple) or arr_subidx != ()
-        )
-
-        # skip suffix dimensions
-        chunk_subidxs = chunk_subidxs[:idx_len]
-
-        yield Tuple(*chunk_slices), arr_subidxs, chunk_subidxs
 
 
 class InMemoryDataset(Dataset):
