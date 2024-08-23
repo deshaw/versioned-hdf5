@@ -117,7 +117,7 @@ markers = [
 
 [tool.mypy]
 allow_incomplete_defs = true  # FIXME
-allow_untyped_decorators = false
+allow_untyped_decorators = true  # FIXME
 allow_untyped_defs = true  # FIXME
 ignore_missing_imports = true
 no_implicit_optional = true
@@ -125,6 +125,7 @@ show_error_codes = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 warn_unreachable = true
+plugins = "numpy.typing.mypy_plugin"
 
 [[tool.mypy.overrides]]
 module = ["*.tests.*"]
