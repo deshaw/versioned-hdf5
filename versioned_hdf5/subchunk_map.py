@@ -17,6 +17,13 @@ from ndindex import (
 )
 from numpy.typing import NDArray
 
+# Temporary hack to work around pytest issue: if a pure-pyton Cython module is first
+# imported by `pytest .` and it contains doctests, it will be imported in pure python
+# instead of its compiled form. This fails in CI, as Cython is not a runtime dependency,
+# and regardless would cause a lot of type-checking normally performed by Cython to be
+# skipped so it is to be avoided.
+from . import hyperspace  # noqa: F401
+
 if TYPE_CHECKING:
     # TODO import from typing and remove quotes (requires Python 3.10)
     # TODO use type <name> = ... (requires Python 3.12)
