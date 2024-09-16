@@ -19,7 +19,6 @@ if cython.compiled:  # pragma: nocover
     from cython.cimports.cpython import array  # type: ignore
 
     @cython.ccall
-    @cython.inline
     def empty_view(n: Py_ssize_t) -> Py_ssize_t[:]:
         """Functionally the same, but faster, as
 
@@ -31,7 +30,6 @@ if cython.compiled:  # pragma: nocover
         return array.clone(_empty_tpl, n, zero=False)  # type: ignore[attr-defined]
 
     @cython.ccall
-    @cython.inline
     def view_from_tuple(t: tuple[int, ...]) -> Py_ssize_t[:]:
         """Functionally the same, but faster, as
 
@@ -326,7 +324,6 @@ def _hyperrectangles_between(
 
 
 @cython.cfunc
-@cython.inline
 def _one_before(shape: Py_ssize_t[:]) -> Py_ssize_t[:]:
     """Given an ND array 'a' of the given shape, return the coordinates of the point at
     a.flat[-1], without bounds check or wrap around.
@@ -348,7 +345,6 @@ def _one_before(shape: Py_ssize_t[:]) -> Py_ssize_t[:]:
 
 
 @cython.cfunc
-@cython.inline
 def _one_after(shape: Py_ssize_t[:]) -> Py_ssize_t[:]:
     """Given an ND array 'a' of the given shape, return the coordinates of the point at
     a.flat[a.size], without bounds check.
