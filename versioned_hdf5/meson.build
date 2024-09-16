@@ -51,6 +51,9 @@ cython_args = [
 
 py.extension_module(
     'hyperspace',
+    # FIXME This is a symlink. Can't find a way to convince Meson to compile
+    # with Cython pure-python .py files
+    # (read: https://cython.readthedocs.io/en/latest/src/tutorial/pure.html)
     'hyperspace.pyx',
     install: true,
     subdir: 'versioned_hdf5',
@@ -59,10 +62,8 @@ py.extension_module(
 
 py.extension_module(
     'subchunk_map',
-    # FIXME This is a symlink. Can't find a way to convince Meson to compile
-    # with Cython pure-python .py files
-    # (read: https://cython.readthedocs.io/en/latest/src/tutorial/pure.html)
     'subchunk_map.pyx',
     install: true,
     subdir: 'versioned_hdf5',
+    cython_args: cython_args,
 )
