@@ -394,7 +394,7 @@ class BooleanArrayMapper(IndexChunkMapper):
         chunk_start_idx: Py_ssize_t,
         chunk_stop_idx: Py_ssize_t,
         shift: bint,
-    ) -> tuple[NDArray[np.intp], NDArray[np.intp]]:
+    ) -> tuple[slice, NDArray[np.intp]]:
         start, stop = self._chunk_start_stop(chunk_start_idx, chunk_stop_idx)
 
         sub = np.flatnonzero(self.idx[start:stop])
@@ -409,18 +409,9 @@ class BooleanArrayMapper(IndexChunkMapper):
         n_select = 0
         for i in range(chunk_start_idx, chunk_stop_idx):
             n_select += counts[i]
-        n_after = offsets[len(offsets) - 1] - offsets[chunk_stop_idx]
 
         return (
-            # FIXME Why does the test fail if this is replaced with
-            #   slice(n_before, n_before + n_select, 1) ?
-            np.concatenate(
-                [
-                    np.zeros(n_before, dtype=bool),
-                    np.ones(n_select, dtype=bool),
-                    np.zeros(n_after, dtype=bool),
-                ]
-            ),
+            slice(n_before, n_before + n_select, 1),
             sub,
         )
 
