@@ -22,6 +22,10 @@ jobs:
 
       - name: Install versioned-hdf5
         run: |
+          export PYTHON_PATH=$(which python3)
+          export PYTHON_DIR=$(dirname $PYTHON_PATH)
+          export LD_LIBRARY_PATH=$PYTHON_DIR/../lib:$LD_LIBRARY_PATH
+          export PATH=$PYTHON_DIR:$PATH
           pip install '.[bench]'
 
       # Compare the most recent commit with the previous one
