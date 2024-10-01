@@ -8,8 +8,6 @@ from ndindex import Slice, Tuple
 from libc.stddef cimport ptrdiff_t, size_t
 
 ctypedef ptrdiff_t ssize_t
-from libc.stdlib cimport free, malloc
-from libc.string cimport strlen, strncmp
 from libcpp.vector cimport vector
 
 
@@ -25,12 +23,6 @@ cdef extern from "hdf5.h":
     ctypedef long int off_t
 
     # virtual Dataset functions
-    cdef ssize_t H5Pget_virtual_dsetname(
-        hid_t dcpl_id, size_t index, char *name, size_t size
-    )
-    cdef ssize_t H5Pget_virtual_filename(
-        hid_t dcpl_id, size_t index, char *name, size_t size
-    )
     cdef hid_t H5Pget_virtual_vspace(hid_t dcpl_id, size_t index)
     cdef hid_t H5Pget_virtual_srcspace(hid_t dcpl_id, size_t index)
 
@@ -149,9 +141,8 @@ cpdef build_data_dict(dcpl, raw_data_name: str):
     Function to build the "data_dict" of a versioned virtual dataset.
 
     All virtual datasets created by versioned-hdf5 should have chunks in
-    exactly one raw dataset `raw_data_name` in the same file. This function will
-    check that this is the case and return a dictionary mapping the `Tuple` of
-    the chunk in the virtual dataset to a `Slice` in the raw dataset.
+    exactly one raw dataset `raw_data_name` in the same file.
+    This function blindly assumes this is the case.
 
     :param dcpl: the dataset creation property list of the versioned dataset
     :param raw_data_name: the name of the corresponding raw dataset
@@ -162,60 +153,21 @@ cpdef build_data_dict(dcpl, raw_data_name: str):
 
     with phil:
         dcpl_id: hid_t = dcpl.id
-
         virtual_count: size_t = dcpl.get_virtual_count()
         j: size_t
 
-        raw_data_name_bytes: bytes = raw_data_name.encode("utf8")
-        # this a reference to the internal buffer of raw_data_name, do not free!
-        raw_data_str: cython.p_char = raw_data_name_bytes
+        for j in range(virtual_count):
+            vspace_id: hid_t = H5Pget_virtual_vspace(dcpl_id, j)
+            if vspace_id == -1:
+                raise ValueError("Could not get vspace_id")
+            srcspace_id: hid_t = H5Pget_virtual_srcspace(dcpl_id, j)
+            if srcspace_id == -1:
+                raise ValueError("Could not get srcspace_id")
 
-        filename_buf_len: ssize_t = 2
-        filename_buf: cython.p_char = <char *>malloc(filename_buf_len)
-        if not filename_buf:
-            raise MemoryError("could not allocate filename_buf")
-
-        try:
-            dataset_buf_len: ssize_t = strlen(raw_data_str) + 1
-            dataset_buf: cython.p_char = <char *>malloc(dataset_buf_len)
-            if not dataset_buf:
-                raise MemoryError("could not allocate dataset_buf")
-
-            try:
-                for j in range(virtual_count):
-                    if H5Pget_virtual_filename(
-                        dcpl_id, j, filename_buf, filename_buf_len
-                    ) < 0:
-                        raise ValueError("Could not get virtual filename")
-                    if strncmp(filename_buf, ".", filename_buf_len) != 0:
-                        raise ValueError(
-                            'Virtual dataset filename mismatch, expected "."'
-                        )
-
-                    if H5Pget_virtual_dsetname(
-                        dcpl_id, j, dataset_buf, dataset_buf_len
-                    ) < 0:
-                        raise ValueError("Could not get virtual dsetname")
-                    if strncmp(dataset_buf, raw_data_str, dataset_buf_len) != 0:
-                        raise ValueError(
-                            f"Virtual dataset name mismatch, expected {raw_data_name}"
-                        )
-
-                    vspace_id: hid_t = H5Pget_virtual_vspace(dcpl_id, j)
-                    if vspace_id == -1:
-                        raise ValueError("Could not get vspace_id")
-                    srcspace_id: hid_t = H5Pget_virtual_srcspace(dcpl_id, j)
-                    if srcspace_id == -1:
-                        raise ValueError("Could not get srcspace_id")
-
-                    vspace_slice_tuple = _spaceid_to_slice(vspace_id)
-                    srcspace_slice_tuple = _spaceid_to_slice(srcspace_id)
-                    # the slice into the raw_data (srcspace_slice_tuple) is only
-                    # on the first axis
-                    data_dict[vspace_slice_tuple] = srcspace_slice_tuple.args[0]
-            finally:
-                free(dataset_buf)
-        finally:
-            free(filename_buf)
+            vspace_slice_tuple = _spaceid_to_slice(vspace_id)
+            srcspace_slice_tuple = _spaceid_to_slice(srcspace_id)
+            # the slice into the raw_data (srcspace_slice_tuple) is only
+            # on the first axis
+            data_dict[vspace_slice_tuple] = srcspace_slice_tuple.args[0]
 
     return data_dict
