@@ -1,3 +1,4 @@
+import sys
 from functools import lru_cache
 
 import cython
@@ -5,11 +6,15 @@ from h5py import h5s
 from h5py._hl.base import phil
 from ndindex import Slice, Tuple
 
-from posix.stdio cimport fmemopen
-
 from libc.stddef cimport ptrdiff_t, size_t
 from libc.stdio cimport FILE, fclose
 from libcpp.vector cimport vector
+
+
+cdef FILE* fmemopen(void* buf, size_t size, const char* mode):
+    raise NotImplementedError("fmemopen is not available on Windows")
+if sys.platform != "win32":
+    from posix.stdio cimport fmemopen
 
 ctypedef ptrdiff_t ssize_t
 
@@ -183,6 +188,10 @@ cdef Exception HDF5Error():
 
     This function must be invoked only after a HDF5 function returned an error code.
     """
+    if sys.platform == "win32":
+        # No fmemopen available
+        return RuntimeError("HDF5 error")
+
     cdef char buf[20000]
     cdef FILE* stream = fmemopen(buf, sizeof(buf), "w")
     if stream == NULL:
@@ -190,5 +199,5 @@ cdef Exception HDF5Error():
     with phil:
         H5Eprint(H5E_DEFAULT, stream)
     fclose(stream)
-    msg = buf.decode("utf-8")
+    msg = buf.decode("utf-8", errors="replace")
     return RuntimeError(msg)
