@@ -6,32 +6,34 @@ jobs:
   run-benchmarks:
     runs-on: "cirun-benchmark-runner--${{ github.run_id }}"
     steps:
+      # Install git first; otherwise actions/checkout silently falls back
+      # to github REST API for downloading the repo
+      - name: Install dependencies
+        run: |
+          sudo apt update -y
+          sudo apt install git zlib1g-dev build-essential pkg-config -y
+
       - uses: actions/checkout@v4
         with:
           ref: master
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - name: Setup python with miniconda
+        uses: conda-incubator/setup-miniconda@v3
         with:
           python-version: 3.11
-
-      - name: Install dependencies
-        run: |
-          sudo apt update -y
-          sudo apt install libhdf5-dev mpi-default-dev -y
+          channels: conda-forge
 
       - name: Install versioned-hdf5
         run: |
-          export PYTHON_PATH=$(which python3)
-          export PYTHON_DIR=$(dirname $PYTHON_PATH)
-          export LD_LIBRARY_PATH=$PYTHON_DIR/../lib:$LD_LIBRARY_PATH
-          export PATH=$PYTHON_DIR:$PATH
-          pip install '.[bench]'
+          conda install -n test pip hdf5 openmpi -c conda-forge -y
+          conda run -n test pip install '.[bench]'
 
       # Compare the most recent commit with the previous one
       - name: Run benchmarks
         run: |
-          asv continuous HEAD^ HEAD
+          conda run -n test asv machine --yes
+          conda run -n test asv continuous HEAD^ HEAD
 
       - name: Checkout benchmarks
         run: |
