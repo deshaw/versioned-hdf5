@@ -18,8 +18,7 @@ Versioned HDF5 provides a versioned abstraction on top of `h5py <https://www.h5p
 Benchmarks
 ----------
 
-Benchmarks for Versioned HDF5 are published `here
-<https://deshaw.github.io/versioned-hdf5/benchmarks/index.html>`_.
+Benchmarks for Versioned HDF5 are published `here <./benchmarks/index.html>`_.
 
 Source
 ------

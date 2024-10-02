@@ -14,17 +14,21 @@ permissions:
   id-token: write
 
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+# Cancel in-progress deployment jobs so only the latest one succeeds.
 concurrency:
   group: "pages"
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
+  benchmarks:
+    uses: ./.github/workflows/benchmarks.yml
+
   build-and-deploy:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    needs: [benchmarks]
     steps:
       # Always checkout master branch, even if triggered by a tag.
       # Otherwise sphinx-multiversion does not pull the master branch.
@@ -43,7 +47,7 @@ jobs:
 
       - name: Install versioned-hdf5
         run: |
-          pip install .[doc]
+          pip install '.[doc,bench]'
 
       - name: Update git tags for sphinx-multiversion
         run: |
@@ -71,6 +75,19 @@ jobs:
                       <link rel='canonical' href='./master/index.html'>
                     </head>
                   </html>" >> docs/_build/html/index.html
+
+      - name: Checkout benchmarks
+        run: |
+          git fetch origin benchmarks
+          git checkout benchmarks -- .asv/
+
+      - name: Publish results
+        run: |
+          asv publish
+
+      - name: Move benchmarks to static pages
+        run: |
+          mv .asv/html docs/_build/html/benchmarks
 
       - name: Setup Pages
         uses: actions/configure-pages@v3

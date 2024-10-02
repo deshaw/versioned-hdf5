@@ -1,0 +1,49 @@
+name: Benchmarks
+
+on: [workflow_call, workflow_dispatch]
+
+jobs:
+  run-benchmarks:
+    runs-on: "cirun-benchmark-runner--${{ github.run_id }}"
+    steps:
+      # Install git first; otherwise actions/checkout silently falls back
+      # to github REST API for downloading the repo
+      - name: Install dependencies
+        run: |
+          sudo apt update -y
+          sudo apt install git zlib1g-dev build-essential pkg-config -y
+
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Setup python with miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: 3.11
+          channels: conda-forge
+
+      - name: Install versioned-hdf5
+        run: |
+          conda install -n test pip hdf5 openmpi -c conda-forge -y
+          conda run -n test pip install '.[bench]'
+
+      # Compare the most recent commit with the previous one
+      - name: Run benchmarks
+        run: |
+          conda run -n test asv machine --yes
+          conda run -n test asv continuous HEAD^ HEAD
+
+      - name: Checkout benchmarks
+        run: |
+          git stash
+          git fetch origin benchmarks
+          git checkout benchmarks --
+          git stash pop
+
+      - name: Add and commit benchmarks
+        run: |
+          git add .asv/
+          git commit -n -m "Update benchmarks for commit ${{ github.event.pull_request.head.sha }}"
+          git push origin benchmarks
