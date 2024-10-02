@@ -5,11 +5,13 @@ from h5py import h5s
 from h5py._hl.base import phil
 from ndindex import Slice, Tuple
 
-from libc.stddef cimport ptrdiff_t, size_t
+from posix.stdio cimport fmemopen
 
-ctypedef ptrdiff_t ssize_t
+from libc.stddef cimport ptrdiff_t, size_t
+from libc.stdio cimport FILE, fclose
 from libcpp.vector cimport vector
 
+ctypedef ptrdiff_t ssize_t
 
 cdef extern from "hdf5.h":
     # HDF5 types copied from h5py/api_types_hdf5.pxd
@@ -21,6 +23,9 @@ cdef extern from "hdf5.h":
     ctypedef signed long long hssize_t
     ctypedef signed long long haddr_t
     ctypedef long int off_t
+
+    cdef hid_t H5E_DEFAULT = 0
+    cdef herr_t H5Eprint(hid_t stack_id, FILE* stream) nogil
 
     # virtual Dataset functions
     cdef hid_t H5Pget_virtual_vspace(hid_t dcpl_id, size_t index)
@@ -109,7 +114,7 @@ cdef _spaceid_to_slice(space_id: hid_t):
             block_array.data(),
         )
         if ret < 0:
-            raise ValueError("Cannot determine hyperslab selection.")
+            raise HDF5Error()
 
         i: cython.int
         start: hsize_t
@@ -159,10 +164,10 @@ cpdef build_data_dict(dcpl, raw_data_name: str):
         for j in range(virtual_count):
             vspace_id: hid_t = H5Pget_virtual_vspace(dcpl_id, j)
             if vspace_id == -1:
-                raise ValueError("Could not get vspace_id")
+                raise HDF5Error()
             srcspace_id: hid_t = H5Pget_virtual_srcspace(dcpl_id, j)
             if srcspace_id == -1:
-                raise ValueError("Could not get srcspace_id")
+                raise HDF5Error()
 
             vspace_slice_tuple = _spaceid_to_slice(vspace_id)
             srcspace_slice_tuple = _spaceid_to_slice(srcspace_id)
@@ -171,3 +176,19 @@ cpdef build_data_dict(dcpl, raw_data_name: str):
             data_dict[vspace_slice_tuple] = srcspace_slice_tuple.args[0]
 
     return data_dict
+
+
+cdef Exception HDF5Error():
+    """Generate a RuntimeError with the HDF5 error message.
+
+    This function must be invoked only after a HDF5 function returned an error code.
+    """
+    cdef char buf[20000]
+    cdef FILE* stream = fmemopen(buf, sizeof(buf), "w")
+    if stream == NULL:
+        return MemoryError("fmemopen() failed")
+    with phil:
+        H5Eprint(H5E_DEFAULT, stream)
+    fclose(stream)
+    msg = buf.decode("utf-8")
+    return RuntimeError(msg)
