@@ -110,6 +110,8 @@ np_hsize_t = np.ulonglong
 np_hssize_t = np.longlong
 np_haddr_t = np.longlong
 
+NP_GE_200 = np.lib.NumpyVersion(np.__version__) >= "2.0.0"
+
 
 def spaceid_to_slice(space) -> Tuple:
     """
@@ -469,9 +471,11 @@ cdef np.ndarray _preproc_many_slices_idx(obj: ArrayLike, hsize_t ndim, bint fast
     either 1 or 2 dimensions, and that it's C-contiguous at least along the
     innermost dimension.
     """
-    # np.asarray with unsigned dtype raises if presented with a Python list containing
-    # negative numbers, but can quietly cause an integer underflow if arr is already a
-    # numpy array with signed dtype and negative numbers in it.
+    # np.asarray with unsigned dtype raises in numpy>=2 if presented with a Python list
+    # containing negative numbers, but can quietly cause an integer underflow if arr is
+    # already a numpy array with signed dtype and negative numbers in it.
+    if not NP_GE_200:
+        obj = np.asarray(obj)
     if isinstance(obj, np.ndarray) and obj.dtype.kind != "u" and (obj < 0).any():
         raise OverflowError("index out of bounds for uint64")
     cdef np.ndarray arr = np.asarray(obj, dtype=np_hsize_t)
