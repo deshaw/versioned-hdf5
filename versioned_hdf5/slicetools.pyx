@@ -474,6 +474,7 @@ cdef np.ndarray _preproc_many_slices_idx(obj: ArrayLike, hsize_t ndim, bint fast
     # np.asarray with unsigned dtype raises in numpy>=2 if presented with a Python list
     # containing negative numbers, but can quietly cause an integer underflow if arr is
     # already a numpy array with signed dtype and negative numbers in it.
+    # TODO https://github.com/numpy/numpy/issues/25396
     if not NP_GE_200:
         obj = np.asarray(obj)
     if isinstance(obj, np.ndarray) and obj.dtype.kind != "u" and (obj < 0).any():
