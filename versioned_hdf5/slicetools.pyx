@@ -303,9 +303,11 @@ cpdef void read_many_slices(
         The stride of the slices when writing to dst.
         Same format as src_start. If omitted, default to 1.
     fast: bool, optional
-        If True, use the hdf5 C API directly to read the data if possible.
+        If True, use the hdf5 C API directly to read the data if possible. This is when
+        src is a h5py dataset with a simple data type (see h5py.Dataset._fast_read_ok).
         If False, use pure Python numpy syntax to slice src and dst.
-        If omitted, determine automatically.
+        If omitted, determine automatically. It's recommended to omit this flag unless
+        you're running a unit test or benchmark.
 
     For example, if src and dst are 2D and strides are omitted or always 1,
     the areas of data to be copied will be::
@@ -383,11 +385,10 @@ cpdef void read_many_slices(
     if dst.size == 0 or not all(src.shape):
         return
 
-    cdef bint bfast
-    if fast is False:
-        bfast = False
-    else:
-        bfast = isinstance(src, h5py.Dataset) and src._fast_read_ok
+    cdef bint bfast = False
+    if fast is not False and isinstance(src, h5py.Dataset):
+        with phil:
+            bfast = src._fast_read_ok
         if fast and not bfast:
             raise ValueError("fast transfer is not possible with this source")
 
@@ -488,7 +489,7 @@ cdef np.ndarray _preproc_many_slices_idx(obj: ArrayLike, hsize_t ndim, bint fast
     # H5Sselect_hyperslab. So a view like a[:2] is OK, but a[::2] must be made
     # contiguous first. Note that, to save a bit of time, this deep-copy happens before
     # we broadcast 1D arrays to add rows.
-    if fast and arr.strides[-1] != sizeof(hsize_t):
+    if fast and arr.strides[arr.ndim - 1] != sizeof(hsize_t):
         return np.ascontiguousarray(arr)
     else:
         return arr
