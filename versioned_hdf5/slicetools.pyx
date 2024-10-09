@@ -386,9 +386,10 @@ cpdef void read_many_slices(
         return
 
     cdef bint bfast = False
-    if fast is not False and isinstance(src, h5py.Dataset):
-        with phil:
-            bfast = src._fast_read_ok
+    if fast is not False:
+        if isinstance(src, h5py.Dataset):
+            with phil:
+                bfast = src._fast_read_ok
         if fast and not bfast:
             raise ValueError("fast transfer is not possible with this source")
 
