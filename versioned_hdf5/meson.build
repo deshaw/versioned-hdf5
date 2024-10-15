@@ -55,18 +55,10 @@ cython_args = [
 # To generate HTML compilation reports:
 # (First double check that flags below match those above)
 #
-# cythonize -3 -a -X infer_types=True -X initializedcheck=False -X boundscheck=False -X wraparound=False -X cdivision=True versioned_hdf5/{hyperspace,subchunk_map}.py
+# cythonize -3 -a -X infer_types=True -X initializedcheck=False -X boundscheck=False -X wraparound=False -X cdivision=True versioned_hdf5/*.pyx
 #
 # Or uncomment the -a flag above and then run:
 # meson build && pushd build && meson compile && popd && firefox $(find build/ -name "*.html")
-
-py.extension_module(
-    'hyperspace',
-    'hyperspace.pyx',
-    install: true,
-    subdir: 'versioned_hdf5',
-    cython_args: cython_args,
-)
 
 py.extension_module(
     'subchunk_map',
