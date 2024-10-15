@@ -9,9 +9,10 @@ on:
 jobs:
   checks:
     name: pre-commit hooks
-    # runs-on: ubuntu-latest  # ubuntu-24.04 breaks pre-commit/action@v3.0.1
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.2.1
       - uses: actions/setup-python@v5.2.0
+        with:
+          python-version: '3.12' 
       - uses: pre-commit/action@v3.0.1
