@@ -214,27 +214,27 @@ cpdef build_data_dict(dcpl, raw_data_name: str):
         virtual_count: size_t = dcpl.get_virtual_count()
 
         for j in range(virtual_count):
+            vspace_id = H5Pget_virtual_vspace(dcpl_id, j)
+            if vspace_id == H5I_INVALID_HID:
+                raise HDF5Error()
             try:
-                srcspace_id = H5I_INVALID_HID
-                vspace_id = H5Pget_virtual_vspace(dcpl_id, j)
-                if vspace_id == H5I_INVALID_HID:
-                    raise HDF5Error()
-                srcspace_id = H5Pget_virtual_srcspace(dcpl_id, j)
-                if srcspace_id == H5I_INVALID_HID:
+                vspace_slice_tuple = _spaceid_to_slice(vspace_id)
+            finally:
+                if H5Sclose(vspace_id) < 0:
                     raise HDF5Error()
 
-                vspace_slice_tuple = _spaceid_to_slice(vspace_id)
+            srcspace_id = H5Pget_virtual_srcspace(dcpl_id, j)
+            if srcspace_id == H5I_INVALID_HID:
+                raise HDF5Error()
+            try:
                 srcspace_slice_tuple = _spaceid_to_slice(srcspace_id)
-                # the slice into the raw_data (srcspace_slice_tuple) is only
-                # on the first axis
-                data_dict[vspace_slice_tuple] = srcspace_slice_tuple.args[0]
             finally:
-                if vspace_id != H5I_INVALID_HID:
-                    if H5Sclose(vspace_id) < 0:
-                        raise HDF5Error()
-                if srcspace_id != H5I_INVALID_HID:
-                    if H5Sclose(srcspace_id) < 0:
-                        raise HDF5Error()
+                if H5Sclose(srcspace_id) < 0:
+                    raise HDF5Error()
+
+            # the slice into the raw_data (srcspace_slice_tuple) is only
+            # on the first axis
+            data_dict[vspace_slice_tuple] = srcspace_slice_tuple.args[0]
 
     return data_dict
 
