@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import itertools
-from typing import TYPE_CHECKING, Any, Iterable, Iterator
+from collections.abc import Iterable, Iterator
+from typing import TYPE_CHECKING, Any
 
 import cython
 import numpy as np
@@ -17,6 +18,8 @@ from ndindex import (
 )
 from numpy.typing import NDArray
 
+from .cytools import ceil_a_over_b, smallest_step_after
+
 if TYPE_CHECKING:
     # TODO import from typing and remove quotes (requires Python 3.10)
     # TODO use type <name> = ... (requires Python 3.12)
@@ -26,23 +29,11 @@ if TYPE_CHECKING:
         "slice | NDArray[np.intp] | NDArray[np.bool] | tuple[()] | Py_ssize_t"
     )
 
-
-@cython.cfunc
-def _ceiling(a: Py_ssize_t, b: Py_ssize_t) -> Py_ssize_t:
-    """Returns ceil(a/b)"""
-    return -(-a // b)
-
-
-@cython.cfunc
-def _smallest(x: Py_ssize_t, a: Py_ssize_t, m: Py_ssize_t) -> Py_ssize_t:
-    """Find the smallest integer y >= x where y = a + k*m for whole k's
-    Assumes 0 <= a <= x and m >= 1.
-
-    a                  x    y
-    | <-- m --> | <-- m --> |
-    """
-    n: Py_ssize_t = _ceiling(x - a, m)
-    return a + n * m
+if cython.compiled:  # pragma: nocover
+    from cython.cimports.versioned_hdf5.cytools import (  # type: ignore
+        ceil_a_over_b,
+        smallest_step_after,
+    )
 
 
 @cython.cfunc
@@ -69,12 +60,12 @@ def _subindex_chunk_slice(
     """
     start: Py_ssize_t = max(c_start, s_start)
     # Get the smallest lcm multiple of common that is >= start
-    start = _smallest(start, s_start % s_step, s_step)
+    start = smallest_step_after(start, s_start % s_step, s_step)
     # Finally, we need to shift start so that it is relative to index
     start = (start - s_start) // s_step
 
     stop: Py_ssize_t = min(c_stop, s_stop)
-    stop = _ceiling(stop - s_start, s_step) if stop > s_start else 0
+    stop = ceil_a_over_b(stop - s_start, s_step) if stop > s_start else 0
 
     return slice(int(start), int(stop), 1)
 
@@ -96,7 +87,7 @@ def _subindex_slice_chunk(
     """
     start: Py_ssize_t = max(s_start, c_start)
     # Get the smallest step multiple of common that is >= start
-    start = _smallest(start, s_start % s_step, s_step)
+    start = smallest_step_after(start, s_start % s_step, s_step)
     # Finally, we need to shift start so that it is relative to index
     start -= c_start
 

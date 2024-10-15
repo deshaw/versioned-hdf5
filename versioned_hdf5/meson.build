@@ -33,7 +33,6 @@ py.extension_module(
     subdir: 'versioned_hdf5',
     dependencies: compiled_deps,
     include_directories: [npy_include_path],
-    cython_args: ['--cplus'],
     override_options : ['cython_language=cpp'],
 )
 
@@ -61,11 +60,21 @@ cython_args = [
 # meson build && pushd build && meson compile && popd && firefox $(find build/ -name "*.html")
 
 py.extension_module(
-    'subchunk_map',
+    'cytools',
     # FIXME This is a symlink. Can't find a way to convince Meson to compile
     # with Cython pure-python .py files
     # (read: https://cython.readthedocs.io/en/latest/src/tutorial/pure.html)
+    'cytools.pyx',
+    install: true,
+    subdir: 'versioned_hdf5',
+    dependencies: compiled_deps,
+    cython_args: cython_args,
+)
+
+py.extension_module(
+    'subchunk_map',
     'subchunk_map.pyx',
     install: true,
     subdir: 'versioned_hdf5',
+    dependencies: compiled_deps,
 )

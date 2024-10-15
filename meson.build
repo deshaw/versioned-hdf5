@@ -9,6 +9,4 @@ project(
 py = import('python').find_installation(pure: false)
 cy = meson.get_compiler('cython')
 
-add_project_arguments('-std=c++11', language: 'cpp')
-
 subdir('versioned_hdf5')

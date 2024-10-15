@@ -8,7 +8,8 @@ from hypothesis import given
 from hypothesis import strategies as st
 from numpy.testing import assert_equal
 
-from ..slicetools import count2stop, read_many_slices, spaceid_to_slice, stop2count
+from ..cytools import count2stop
+from ..slicetools import read_many_slices, spaceid_to_slice
 
 max_examples = 10_000
 
@@ -44,26 +45,6 @@ def test_spaceid_to_slice(h5file):
                         print(start, count, stride, block)
                         raise
                     assert_equal(a[s.raw], a[sel], f"{(start, count, stride, block)}")
-
-
-def free_slices_st(size: int) -> Any:
-    """Hypothesis draw of a slice object to slice an array of up to size elements"""
-    start_st = st.integers(0, size)
-    stop_st = st.integers(0, size)
-    # only non-negative steps are allowed
-    step_st = st.integers(1, size)
-    return st.builds(slice, start_st, stop_st, step_st)
-
-
-@given(free_slices_st(5))
-def test_stop2count_count2stop(s):
-    count = stop2count(s.start, s.stop, s.step)
-    assert count == len(range(s.start, s.stop, s.step))
-
-    stop = count2stop(s.start, count, s.step)
-    # When count == 0 or when step>1, multiple stops yield the same count,
-    # so stop won't necessarily be equal to s.stop
-    assert count == len(range(s.start, stop, s.step))
 
 
 @st.composite

@@ -1,3 +1,4 @@
+# distutils: language=c++
 import sys
 from functools import lru_cache
 
@@ -18,6 +19,9 @@ from libc.stddef cimport ptrdiff_t, size_t
 from libc.stdio cimport FILE, fclose
 from libcpp.vector cimport vector
 
+from versioned_hdf5.cytools import np_hsize_t
+from versioned_hdf5.cytools cimport count2stop, hsize_t, stop2count
+
 
 cdef FILE* fmemopen(void* buf, size_t size, const char* mode):
     raise NotImplementedError("fmemopen is not available on Windows")
@@ -32,10 +36,6 @@ cdef extern from "hdf5.h":
     ctypedef int hbool_t
     ctypedef int herr_t
     ctypedef int htri_t
-    ctypedef long long hsize_t  # as per C99, uint64 or wider
-    ctypedef signed long long hssize_t  # as per C99, int64 or wider
-    ctypedef signed long long haddr_t
-    ctypedef long int off_t
 
     cdef herr_t H5Dread(
         hid_t dset_id,
@@ -104,11 +104,6 @@ cdef extern from "hdf5.h":
 
 
 np.import_array()
-
-# Numpy equivalents of Cython types
-np_hsize_t = np.ulonglong
-np_hssize_t = np.longlong
-np_haddr_t = np.longlong
 
 NP_GE_200 = np.lib.NumpyVersion(np.__version__) >= "2.0.0"
 
@@ -493,33 +488,6 @@ cdef np.ndarray _preproc_many_slices_idx(obj: ArrayLike, hsize_t ndim, bint fast
         return np.ascontiguousarray(arr)
     else:
         return arr
-
-
-@cython.cdivision(True)
-cpdef hsize_t stop2count(hsize_t start, hsize_t stop, hsize_t step) noexcept nogil:
-    """Given a start:stop:step slice or range, return the number of elements yielded.
-
-    This is functionally identical to::
-
-        len(range(start, stop, step))
-
-    Doesn't assume that stop >= start. Assumes that step >= 1.
-    """
-    # Note that hsize_t is unsigned so stop - start could underflow.
-    if stop <= start:
-        return 0
-    return (stop - start - 1) // step + 1
-
-
-cpdef hsize_t count2stop(hsize_t start, hsize_t count, hsize_t step) noexcept nogil:
-    """Inverse of stop2count.
-
-    When count == 0 or when step>1, multiple stops can yield the same count.
-    This function returns the smallest stop >= start.
-    """
-    if count == 0:
-        return start
-    return start + (count - 1) * step + 1
 
 
 @cython.boundscheck(False)
