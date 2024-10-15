@@ -1,0 +1,7 @@
+runners:
+  - name: "benchmark-runner"
+    cloud: "gcp"
+    instance_type: "n1-standard-8"
+    machine_image: "ubuntu-minimal-2404-noble-amd64-v20240910"
+    labels:
+      - "cirun-benchmark-runner"
