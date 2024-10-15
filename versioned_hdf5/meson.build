@@ -7,6 +7,7 @@ py.install_sources(
         'replay.py',
         'versions.py',
         'wrappers.py',
+        'data_dict.py',
     ],
     subdir: 'versioned_hdf5',
 )

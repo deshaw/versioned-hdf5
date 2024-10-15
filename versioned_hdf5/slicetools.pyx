@@ -1,3 +1,4 @@
+# cython: linetrace=True
 import sys
 from functools import lru_cache
 
@@ -113,7 +114,7 @@ np_haddr_t = np.longlong
 NP_GE_200 = np.lib.NumpyVersion(np.__version__) >= "2.0.0"
 
 
-def spaceid_to_slice(space) -> Tuple:
+def spaceid_to_slice(space: h5s.SpaceID) -> Tuple:
     """
     Convert an h5py spaceid object into an ndindex index
 
@@ -147,7 +148,7 @@ def hyperslab_to_slice(start, stride, count, block):
     return Slice(start, end, stride)
 
 
-cdef _spaceid_to_slice(space_id: hid_t):
+cpdef _spaceid_to_slice(space_id: hid_t):
     """
     Helper function to read the data for `space_id` selection and
     convert it to a Tuple of slices.
@@ -199,45 +200,10 @@ cdef _spaceid_to_slice(space_id: hid_t):
         return Tuple(
             Slice(0, 0),
         )
-    else:
+    elif sel_type == H5S_sel_type.H5S_SEL_POINTS:
         raise NotImplementedError("Point selections are not yet supported")
-
-
-cpdef build_data_dict(dcpl, raw_data_name: str):
-    """
-    Function to build the "data_dict" of a versioned virtual dataset.
-
-    All virtual datasets created by versioned-hdf5 should have chunks in
-    exactly one raw dataset `raw_data_name` in the same file.
-    This function blindly assumes this is the case.
-
-    :param dcpl: the dataset creation property list of the versioned dataset
-    :param raw_data_name: the name of the corresponding raw dataset
-    :return: a dictionary mapping the `Tuple` of the virtual dataset chunk
-        to a `Slice` in the raw dataset.
-    """
-    data_dict: dict = {}
-
-    with phil:
-        dcpl_id: hid_t = dcpl.id
-        virtual_count: size_t = dcpl.get_virtual_count()
-        j: size_t
-
-        for j in range(virtual_count):
-            vspace_id: hid_t = H5Pget_virtual_vspace(dcpl_id, j)
-            if vspace_id == -1:
-                raise HDF5Error()
-            srcspace_id: hid_t = H5Pget_virtual_srcspace(dcpl_id, j)
-            if srcspace_id == -1:
-                raise HDF5Error()
-
-            vspace_slice_tuple = _spaceid_to_slice(vspace_id)
-            srcspace_slice_tuple = _spaceid_to_slice(srcspace_id)
-            # the slice into the raw_data (srcspace_slice_tuple) is only
-            # on the first axis
-            data_dict[vspace_slice_tuple] = srcspace_slice_tuple.args[0]
-
-    return data_dict
+    else:
+        raise HDF5Error()
 
 
 cdef Exception HDF5Error():

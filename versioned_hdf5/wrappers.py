@@ -33,7 +33,9 @@ from ndindex import (
 )
 
 from .backend import DEFAULT_CHUNK_SIZE
-from .slicetools import build_data_dict
+
+# from .slicetools import build_data_dict
+from .data_dict import build_data_dict
 from .subchunk_map import as_subchunk_map
 
 _groups = WeakValueDictionary({})
