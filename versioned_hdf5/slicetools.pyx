@@ -131,9 +131,7 @@ def spaceid_to_slice(space) -> Tuple:
             slices.append(hyperslab_to_slice(start, stride, count, block))
         return Tuple(*slices)
     elif sel_type == h5s.SEL_NONE:
-        return Tuple(
-            Slice(0, 0),
-        )
+        return Tuple(Slice(0, 0))
     else:
         raise NotImplementedError("Point selections are not yet supported")
 
@@ -147,42 +145,36 @@ def hyperslab_to_slice(start, stride, count, block):
     return Slice(start, end, stride)
 
 
+@cython.infer_types(True)
 cdef _spaceid_to_slice(space_id: hid_t):
     """
     Helper function to read the data for `space_id` selection and
     convert it to a Tuple of slices.
     """
-    sel_type: H5S_sel_type = H5Sget_select_type(space_id)
+    sel_type = H5Sget_select_type(space_id)
 
     if sel_type == H5S_sel_type.H5S_SEL_ALL:
         return Tuple()
     elif sel_type == H5S_sel_type.H5S_SEL_HYPERSLABS:
-        slices: list = []
+        slices = []
 
-        rank: cython.int = H5Sget_simple_extent_ndims(space_id)
+        rank = H5Sget_simple_extent_ndims(space_id)
         if rank < 0:
-            raise ValueError("Cannot determine rank of selection.")
-        start_array: vector[hsize_t] = vector[hsize_t](rank)
-        stride_array: vector[hsize_t] = vector[hsize_t](rank)
-        count_array: vector[hsize_t] = vector[hsize_t](rank)
-        block_array: vector[hsize_t] = vector[hsize_t](rank)
+            raise HDF5Error()
+        start_array = vector[hsize_t](rank)
+        stride_array = vector[hsize_t](rank)
+        count_array = vector[hsize_t](rank)
+        block_array = vector[hsize_t](rank)
 
-        ret: htri_t = H5Sget_regular_hyperslab(
+        if H5Sget_regular_hyperslab(
             space_id,
             start_array.data(),
             stride_array.data(),
             count_array.data(),
             block_array.data(),
-        )
-        if ret < 0:
+        ) < 0:
             raise HDF5Error()
 
-        i: cython.int
-        start: hsize_t
-        end: hsize_t
-        stride: hsize_t
-        count: hsize_t
-        block: hsize_t
         for i in range(rank):
             start = start_array[i]
             stride = stride_array[i]
@@ -196,13 +188,12 @@ cdef _spaceid_to_slice(space_id: hid_t):
 
         return Tuple(*slices)
     elif sel_type == H5S_sel_type.H5S_SEL_NONE:
-        return Tuple(
-            Slice(0, 0),
-        )
+        return Tuple(Slice(0, 0))
     else:
         raise NotImplementedError("Point selections are not yet supported")
 
 
+@cython.infer_types(True)
 cpdef build_data_dict(dcpl, raw_data_name: str):
     """
     Function to build the "data_dict" of a versioned virtual dataset.
@@ -216,23 +207,31 @@ cpdef build_data_dict(dcpl, raw_data_name: str):
     :return: a dictionary mapping the `Tuple` of the virtual dataset chunk
         to a `Slice` in the raw dataset.
     """
-    data_dict: dict = {}
+    data_dict = {}
 
     with phil:
         dcpl_id: hid_t = dcpl.id
         virtual_count: size_t = dcpl.get_virtual_count()
-        j: size_t
 
         for j in range(virtual_count):
-            vspace_id: hid_t = H5Pget_virtual_vspace(dcpl_id, j)
-            if vspace_id == -1:
+            vspace_id = H5Pget_virtual_vspace(dcpl_id, j)
+            if vspace_id == H5I_INVALID_HID:
                 raise HDF5Error()
-            srcspace_id: hid_t = H5Pget_virtual_srcspace(dcpl_id, j)
-            if srcspace_id == -1:
-                raise HDF5Error()
+            try:
+                vspace_slice_tuple = _spaceid_to_slice(vspace_id)
+            finally:
+                if H5Sclose(vspace_id) < 0:
+                    raise HDF5Error()
 
-            vspace_slice_tuple = _spaceid_to_slice(vspace_id)
-            srcspace_slice_tuple = _spaceid_to_slice(srcspace_id)
+            srcspace_id = H5Pget_virtual_srcspace(dcpl_id, j)
+            if srcspace_id == H5I_INVALID_HID:
+                raise HDF5Error()
+            try:
+                srcspace_slice_tuple = _spaceid_to_slice(srcspace_id)
+            finally:
+                if H5Sclose(srcspace_id) < 0:
+                    raise HDF5Error()
+
             # the slice into the raw_data (srcspace_slice_tuple) is only
             # on the first axis
             data_dict[vspace_slice_tuple] = srcspace_slice_tuple.args[0]
@@ -600,48 +599,45 @@ cdef void _read_many_slices_fast (
             if mem_space_id == H5I_INVALID_HID:
                 raise HDF5Error()
 
-            for i in range(nslices):
-                for j in range(ndim):
-                    if count[i, j] == 0:
-                        break
-                else:
-                    # count > 0 along all axes
-                    err = H5Sselect_hyperslab(
-                        file_space_id,
-                        H5S_SELECT_SET,
-                        &src_start[i, 0],
-                        &src_stride[i, 0],
-                        &count[i, 0],
-                        NULL,
-                    )
-                    if err < 0:
-                        raise HDF5Error()
+            try:
+                for i in range(nslices):
+                    for j in range(ndim):
+                        if count[i, j] == 0:
+                            break
+                    else:
+                        # count > 0 along all axes
+                        if H5Sselect_hyperslab(
+                            file_space_id,
+                            H5S_SELECT_SET,
+                            &src_start[i, 0],
+                            &src_stride[i, 0],
+                            &count[i, 0],
+                            NULL,
+                        ) < 0:
+                            raise HDF5Error()
 
-                    err = H5Sselect_hyperslab(
-                        mem_space_id,
-                        H5S_SELECT_SET,
-                        &dst_start[i, 0],
-                        &dst_stride[i, 0],
-                        &count[i, 0],
-                        NULL,
-                    )
-                    if err < 0:
-                        raise HDF5Error()
+                        if H5Sselect_hyperslab(
+                            mem_space_id,
+                            H5S_SELECT_SET,
+                            &dst_start[i, 0],
+                            &dst_stride[i, 0],
+                            &count[i, 0],
+                            NULL,
+                        ) < 0:
+                            raise HDF5Error()
 
-                    err = H5Dread(
-                        dset_id,
-                        mem_type_id,
-                        mem_space_id,
-                        file_space_id,
-                        H5P_DEFAULT,
-                        dst.data,
-                    )
-                    if err < 0:
-                        raise HDF5Error()
-
-            err = H5Sclose(mem_space_id)
-            if err < 0:
-                raise HDF5Error()
+                        if H5Dread(
+                            dset_id,
+                            mem_type_id,
+                            mem_space_id,
+                            file_space_id,
+                            H5P_DEFAULT,
+                            dst.data,
+                        ) < 0:
+                            raise HDF5Error()
+            finally:
+                if H5Sclose(mem_space_id) < 0:
+                    raise HDF5Error()
 
 
 @cython.wraparound(False)
