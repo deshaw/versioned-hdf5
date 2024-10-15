@@ -250,8 +250,8 @@ def _verify_new_chunk_reuse(
     data_hash: bytes,
     hashed_slice: Slice,
     chunk_being_written: np.ndarray,
-    slices_to_write: dict[slice, tuple] | None = None,
-    data_to_write: dict[slice, np.ndarray] | None = None,
+    slices_to_write: dict[Slice, Tuple] | None = None,
+    data_to_write: dict[Slice, np.ndarray] | None = None,
 ) -> None:
     """Check that the data from the hashed slice matches the data to be written.
 

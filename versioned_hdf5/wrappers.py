@@ -209,7 +209,7 @@ class InMemoryGroup(Group):
         name,
         shape=None,
         dtype=None,
-        data: Optional[np.ndarray] = None,
+        data: np.ndarray | None = None,
         fillvalue=None,
         **kwds,
     ):
@@ -382,21 +382,21 @@ class InMemoryGroup(Group):
 
 
 def _make_new_dset(
-    shape: Optional[Union[int, tuple[int, ...]]] = None,
-    dtype: Optional[np.dtype] = None,
-    data: Optional[np.ndarray] = None,
-    chunks: Optional[tuple[int, ...]] = None,
-    compression: Optional[Union[int, str, bool]] = None,
-    shuffle: Optional[bool] = None,
-    fletcher32: Optional[bool] = None,
-    maxshape: Optional[tuple[int, ...]] = None,
-    compression_opts: Optional[Union[int, tuple[int, ...]]] = None,
-    fillvalue: Optional[Union[int, str, float]] = None,
-    scaleoffset: Optional[Union[bool, int]] = None,
-    track_times: Optional[bool] = None,
-    external: Optional[Iterable[tuple[str, int, int]]] = None,
-    track_order: Optional[bool] = None,
-    dcpl: Optional[h5p.PropDCID] = None,
+    shape: int | tuple[int, ...] | None = None,
+    dtype: np.dtype | None = None,
+    data: np.ndarray | None = None,
+    chunks: tuple[int, ...] | None = None,
+    compression: int | str | bool | None = None,
+    shuffle: bool | None = None,
+    fletcher32: bool | None = None,
+    maxshape: tuple[int, ...] | None = None,
+    compression_opts: int | tuple[int, ...] | None = None,
+    fillvalue: int | str | float | None = None,
+    scaleoffset: bool | int | None = None,
+    track_times: bool | None = None,
+    external: Iterable[tuple[str, int, int]] | None = None,
+    track_order: bool | None = None,
+    dcpl: h5p.PropDCID | None = None,
 ) -> np.ndarray:
     """Create a new low-level dataset identifier.
 

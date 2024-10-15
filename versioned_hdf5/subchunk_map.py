@@ -122,7 +122,7 @@ def as_subchunk_map(
     shape: tuple[int, ...],
 ) -> Iterator[
     tuple[
-        tuple[Slice, ...],
+        Tuple,
         tuple[AnySlicer, ...],
         tuple[AnySlicer, ...],
     ]
