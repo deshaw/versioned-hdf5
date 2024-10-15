@@ -166,14 +166,13 @@ cdef _spaceid_to_slice(space_id: hid_t):
         count_array = vector[hsize_t](rank)
         block_array = vector[hsize_t](rank)
 
-        ret = H5Sget_regular_hyperslab(
+        if H5Sget_regular_hyperslab(
             space_id,
             start_array.data(),
             stride_array.data(),
             count_array.data(),
             block_array.data(),
-        )
-        if ret < 0:
+        ) < 0:
             raise HDF5Error()
 
         for i in range(rank):
