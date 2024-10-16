@@ -54,7 +54,7 @@ class TimeDeleting:
             v = 1
             with h5py.File(filename, 'r+') as f:
                 vf = VersionedHDF5File(f)
-                for d in range(22):
+                for d in range(3):
                     with vf.stage_version(str(v)) as sv:
                         values_ds = sv['values']
                         values_ds.resize((values_ds.shape[0] + 1, values_ds.shape[1] + 5000))
