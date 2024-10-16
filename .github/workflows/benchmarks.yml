@@ -33,8 +33,7 @@ jobs:
       - name: Run benchmarks
         run: |
           conda run -n test asv machine --yes
-          # conda run -n test asv continuous HEAD^ HEAD
-          conda run -n test asv run HEAD
+          conda run -n test asv continuous HEAD^ HEAD
 
       - name: Checkout benchmarks
         run: |
