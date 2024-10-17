@@ -2,7 +2,7 @@
 *.hdf5
 
 # airspeed velocity (benchmarks)
-.asv/
+commits.txt
 
 *.lprof
 
