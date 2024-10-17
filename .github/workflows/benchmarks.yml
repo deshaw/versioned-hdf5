@@ -44,4 +44,4 @@ jobs:
         uses: EndBug/add-and-commit@v9
         with:
           add: .asv/
-          message: "Update benchmarks for commit ${{ github.event.pull_request.head.sha }}"
+          message: "Update benchmarks for commit ${{ github.sha }}"
