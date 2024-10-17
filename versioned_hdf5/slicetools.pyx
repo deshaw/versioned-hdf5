@@ -21,6 +21,7 @@ from libcpp.vector cimport vector
 
 from versioned_hdf5.cytools import np_hsize_t
 from versioned_hdf5.cytools cimport count2stop, hsize_t, stop2count
+from versioned_hdf5.tools import asarray
 
 
 cdef FILE* fmemopen(void* buf, size_t size, const char* mode):
@@ -425,7 +426,10 @@ cpdef void read_many_slices(
     cdef np.npy_intp[1] ndim_ptr = {ndim}
     cdef np.ndarray dst_shape = np.PyArray_SimpleNewFromData(
         1, ndim_ptr, np.NPY_INTP, <void*>dst.shape
-    ).astype(np_hsize_t)  # On 32 bit platforms, sizeof(hsize_t) == 8; sizeof(int) == 4
+    )
+    # On 32-bit platforms, sizeof(hsize_t) == 8; sizeof(npy_intp) == 4
+    # On 64-bit platforms, don't copy unnecessarily
+    dst_shape = asarray(dst_shape, np_hsize_t)
 
     clipped_count = _clip_count(
         src_shape,
@@ -473,9 +477,10 @@ cdef np.ndarray _preproc_many_slices_idx(obj: ArrayLike, hsize_t ndim, bint fast
     # TODO https://github.com/numpy/numpy/issues/25396
     if not NP_GE_200:
         obj = np.asarray(obj)
-    if isinstance(obj, np.ndarray) and obj.dtype.kind != "u" and (obj < 0).any():
+    if hasattr(obj, "dtype") and obj.dtype.kind != "u" and (obj < 0).any():
         raise OverflowError("index out of bounds for uint64")
-    cdef np.ndarray arr = np.asarray(obj, dtype=np_hsize_t)
+    # Don't copy when converting from np.intp to uint64 on 64-bit platforms
+    cdef np.ndarray arr = asarray(obj, np_hsize_t)
 
     if arr.ndim not in (1, 2):
         raise ValueError("Coordinates arrays must have 1 or 2 dimensions")
