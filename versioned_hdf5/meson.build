@@ -80,3 +80,12 @@ py.extension_module(
     dependencies: compiled_deps,
     cython_args: cython_args,
 )
+
+py.extension_module(
+    'staged_changes',
+    'staged_changes.pyx',
+    install: true,
+    subdir: 'versioned_hdf5',
+    dependencies: compiled_deps,
+    cython_args: cython_args,
+)
