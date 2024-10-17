@@ -5,6 +5,7 @@ py.install_sources(
         'backend.py',
         'hashtable.py',
         'replay.py',
+        'tools.py',
         'versions.py',
         'wrappers.py',
     ],
