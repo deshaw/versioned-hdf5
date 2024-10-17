@@ -9,7 +9,7 @@ cimport numpy as np
 
 import numpy as np
 from cython import void
-from h5py import h5p, h5s
+from h5py import h5s
 from h5py._hl.base import phil
 from h5py.h5t import py_create
 from ndindex import Slice, Tuple
@@ -108,36 +108,7 @@ np.import_array()
 NP_GE_200 = np.lib.NumpyVersion(np.__version__) >= "2.0.0"
 
 
-def build_data_dict(dcpl: h5p.PropDCID, raw_data_name: str):
-    """Build the data_dict of a versioned virtual dataset.
-
-    All virtual datasets created by versioned-hdf5 should have chunks in
-    exactly one raw dataset `raw_data_name` in the same file.
-    This function blindly assumes this is the case.
-
-    :param dcpl: the dataset creation property list of the versioned dataset
-    :param raw_data_name: the name of the corresponding raw dataset
-    :return: a dictionary mapping the `Tuple` of the virtual dataset chunk
-        to a `Slice` in the raw dataset.
-    """
-    data_dict: dict = {}
-
-    with phil:
-        for j in range(dcpl.get_virtual_count()):
-            vspace = dcpl.get_virtual_vspace(j)
-            srcspace = dcpl.get_virtual_srcspace(j)
-
-            vspace_slice_tuple = spaceid_to_slice(vspace)
-            srcspace_slice_tuple = spaceid_to_slice(srcspace)
-
-            # the slice into the raw_data (srcspace_slice_tuple) is only
-            # on the first axis
-            data_dict[vspace_slice_tuple] = srcspace_slice_tuple.args[0]
-
-    return data_dict
-
-
-def spaceid_to_slice(space: h5s.SpaceID) -> Tuple:
+def spaceid_to_slice(space) -> Tuple:
     """
     Convert an h5py spaceid object into an ndindex index
 
@@ -170,7 +141,7 @@ def hyperslab_to_slice(start, stride, count, block):
 
 
 @cython.infer_types(True)
-cpdef _spaceid_to_slice(space_id: hid_t):
+cdef _spaceid_to_slice(space_id: hid_t):
     """
     Helper function to read the data for `space_id` selection and
     convert it to a Tuple of slices.
@@ -217,50 +188,50 @@ cpdef _spaceid_to_slice(space_id: hid_t):
         raise NotImplementedError("Point selections are not yet supported")
 
 
-# @cython.infer_types(True)
-# cpdef build_data_dict(dcpl, raw_data_name: str):
-#     """
-#     Function to build the "data_dict" of a versioned virtual dataset.
-#
-#     All virtual datasets created by versioned-hdf5 should have chunks in
-#     exactly one raw dataset `raw_data_name` in the same file.
-#     This function blindly assumes this is the case.
-#
-#     :param dcpl: the dataset creation property list of the versioned dataset
-#     :param raw_data_name: the name of the corresponding raw dataset
-#     :return: a dictionary mapping the `Tuple` of the virtual dataset chunk
-#         to a `Slice` in the raw dataset.
-#     """
-#     data_dict = {}
-#
-#     with phil:
-#         dcpl_id: hid_t = dcpl.id
-#         virtual_count: size_t = dcpl.get_virtual_count()
-#
-#         for j in range(virtual_count):
-#             vspace_id = H5Pget_virtual_vspace(dcpl_id, j)
-#             if vspace_id == H5I_INVALID_HID:
-#                 raise HDF5Error()
-#             try:
-#                 vspace_slice_tuple = _spaceid_to_slice(vspace_id)
-#             finally:
-#                 if H5Sclose(vspace_id) < 0:
-#                     raise HDF5Error()
-#
-#             srcspace_id = H5Pget_virtual_srcspace(dcpl_id, j)
-#             if srcspace_id == H5I_INVALID_HID:
-#                 raise HDF5Error()
-#             try:
-#                 srcspace_slice_tuple = _spaceid_to_slice(srcspace_id)
-#             finally:
-#                 if H5Sclose(srcspace_id) < 0:
-#                     raise HDF5Error()
-#
-#             # the slice into the raw_data (srcspace_slice_tuple) is only
-#             # on the first axis
-#             data_dict[vspace_slice_tuple] = srcspace_slice_tuple.args[0]
-#
-#     return data_dict
+@cython.infer_types(True)
+cpdef build_data_dict(dcpl, raw_data_name: str):
+    """
+    Function to build the "data_dict" of a versioned virtual dataset.
+
+    All virtual datasets created by versioned-hdf5 should have chunks in
+    exactly one raw dataset `raw_data_name` in the same file.
+    This function blindly assumes this is the case.
+
+    :param dcpl: the dataset creation property list of the versioned dataset
+    :param raw_data_name: the name of the corresponding raw dataset
+    :return: a dictionary mapping the `Tuple` of the virtual dataset chunk
+        to a `Slice` in the raw dataset.
+    """
+    data_dict = {}
+
+    with phil:
+        dcpl_id: hid_t = dcpl.id
+        virtual_count: size_t = dcpl.get_virtual_count()
+
+        for j in range(virtual_count):
+            vspace_id = H5Pget_virtual_vspace(dcpl_id, j)
+            if vspace_id == H5I_INVALID_HID:
+                raise HDF5Error()
+            try:
+                vspace_slice_tuple = _spaceid_to_slice(vspace_id)
+            finally:
+                if H5Sclose(vspace_id) < 0:
+                    raise HDF5Error()
+
+            srcspace_id = H5Pget_virtual_srcspace(dcpl_id, j)
+            if srcspace_id == H5I_INVALID_HID:
+                raise HDF5Error()
+            try:
+                srcspace_slice_tuple = _spaceid_to_slice(srcspace_id)
+            finally:
+                if H5Sclose(srcspace_id) < 0:
+                    raise HDF5Error()
+
+            # the slice into the raw_data (srcspace_slice_tuple) is only
+            # on the first axis
+            data_dict[vspace_slice_tuple] = srcspace_slice_tuple.args[0]
+
+    return data_dict
 
 
 cdef Exception HDF5Error():
