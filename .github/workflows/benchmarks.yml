@@ -43,7 +43,7 @@ jobs:
           conda run -n test asv continuous HEAD^ HEAD || true;
 
       - name: Add and commit benchmarks
-        run: |
-          git add .asv/
-          git commit -n -m "Update benchmarks for commit ${{ github.event.pull_request.head.sha }}"
-          git push origin master
+        uses: EndBug/add-and-commit@v9
+        with:
+          add: 'src'
+          message: "Update benchmarks for commit ${{ github.event.pull_request.head.sha }}"
