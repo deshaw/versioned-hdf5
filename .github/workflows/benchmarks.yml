@@ -2,15 +2,13 @@ name: Benchmarks
 
 on: [workflow_call, workflow_dispatch]
 
-# Sets permissions of the GITHUB_TOKEN to allow writing back to `master`
-permissions:
-  contents: read
-  pages: write
-  id-token: write
 
 jobs:
   run-benchmarks:
     runs-on: "cirun-benchmark-runner--${{ github.run_id }}"
+    # Sets permissions of the GITHUB_TOKEN to allow writing back to `master`
+    permissions:
+      contents: write
     steps:
       # Install git first; otherwise actions/checkout silently falls back
       # to github REST API for downloading the repo
