@@ -2,6 +2,12 @@ name: Benchmarks
 
 on: [workflow_call, workflow_dispatch]
 
+# Sets permissions of the GITHUB_TOKEN to allow writing back to `master`
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   run-benchmarks:
     runs-on: "cirun-benchmark-runner--${{ github.run_id }}"
@@ -36,15 +42,8 @@ jobs:
           # Don't return exit code 1 if results are slower
           conda run -n test asv continuous HEAD^ HEAD || true;
 
-      - name: Checkout benchmarks
-        run: |
-          git stash
-          git fetch origin benchmarks
-          git checkout benchmarks --
-          git stash pop
-
       - name: Add and commit benchmarks
         run: |
           git add .asv/
           git commit -n -m "Update benchmarks for commit ${{ github.event.pull_request.head.sha }}"
-          git push origin benchmarks
+          git push origin master

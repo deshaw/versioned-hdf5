@@ -76,11 +76,6 @@ jobs:
                     </head>
                   </html>" >> docs/_build/html/index.html
 
-      - name: Checkout benchmarks
-        run: |
-          git fetch origin benchmarks
-          git checkout benchmarks -- .asv/
-
       - name: Publish results
         run: |
           asv publish
