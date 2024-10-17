@@ -11,7 +11,9 @@ import posixpath
 import textwrap
 import warnings
 from collections import defaultdict
-from typing import Iterable
+from collections.abc import Iterable
+from functools import cached_property
+from typing import Optional, Union
 from weakref import WeakValueDictionary
 
 import numpy as np
@@ -22,19 +24,11 @@ from h5py._hl import filters
 from h5py._hl.base import guess_dtype, phil, with_phil
 from h5py._hl.dataset import _LEGACY_GZIP_COMPRESSION_VALS
 from h5py._hl.selections import guess_shape
-from ndindex import (
-    BooleanArray,
-    ChunkSize,
-    Integer,
-    IntegerArray,
-    Slice,
-    Tuple,
-    ndindex,
-)
+from ndindex import ChunkSize, Slice, Tuple, ndindex
 
 from .backend import DEFAULT_CHUNK_SIZE
-from .slicetools import build_data_dict
-from .subchunk_map import as_subchunk_map
+from .slicetools import build_slab_indices_and_offsets
+from .staged_changes import StagedChangesArray
 
 _groups = WeakValueDictionary({})
 
@@ -605,8 +599,24 @@ class InMemoryDataset(Dataset):
         # gets deleted or closed.
         self.orig_bind = bind
         super().__init__(InMemoryDatasetID(bind.id), **kwargs)
+        self._init_kwargs = kwargs
         self._parent = parent
         self._attrs = dict(super().attrs)
+
+    @cached_property
+    def staged_changes(self) -> StagedChangesArray:
+        dcpl = self.id.get_create_plist()
+        slab_indices, slab_offsets = build_slab_indices_and_offsets(
+            dcpl, self.id.shape, self.id.chunks
+        )
+        return StagedChangesArray(
+            shape=self.id.shape,
+            chunk_size=self.id.chunks,
+            base_slabs=[self.id.raw_data],
+            slab_indices=slab_indices,
+            slab_offsets=slab_offsets,
+            fill_value=self.fillvalue,
+        )
 
     def __repr__(self):
         name = posixpath.basename(posixpath.normpath(self.name))
@@ -619,8 +629,8 @@ class InMemoryDataset(Dataset):
         )
 
     @property
-    def data_dict(self):
-        return self.id.data_dict
+    def data_dict(self) -> dict[Tuple, Slice | np.ndarray]:
+        return _staged_changes_to_data_dict(self.staged_changes)
 
     @property
     def compression(self):
@@ -652,25 +662,19 @@ class InMemoryDataset(Dataset):
         `casting` should be as in the numpy astype() method.
 
         """
-        if self.fillvalue is not None:
-            new_fillvalue = self.fillvalue.astype(dtype, casting=casting)
-        else:
-            new_fillvalue = None
-        new_data_dict = {}
-        for c, index in self.data_dict.copy().items():
-            if isinstance(index, Slice):
-                self[c.raw]
-                assert not isinstance(self.data_dict[c], Slice)
-            new_data_dict[c] = self.data_dict[c].astype(dtype, casting=casting)
-        new_dataset = InMemorySparseDataset.from_data_dict(
-            name,
-            new_data_dict,
-            shape=self.shape,
-            dtype=dtype,
+        fillvalue = super().fillvalue
+        init_kwargs = self._init_kwargs.copy()
+        if fillvalue is not None:
+            fillvalue = fillvalue.astype(dtype, casting=casting)
+            init_kwargs.setdefault("fillvalue", fillvalue)
+
+        new_dataset = InMemoryDataset(
+            bind=self.orig_bind,
             parent=parent,
-            chunks=self.chunks,
-            fillvalue=new_fillvalue,
+            **init_kwargs,
         )
+
+        new_dataset.staged_changes = self.staged_changes.astype(dtype, casting=casting)
         parent[name] = new_dataset
         return new_dataset
 
@@ -689,6 +693,14 @@ class InMemoryDataset(Dataset):
             elif "h5py_encoding" in self.dtype.metadata:
                 return self.dtype.type()
         return np.zeros((), dtype=self.dtype)[()]
+
+    @property
+    def shape(self):
+        return self.id.shape
+
+    @property
+    def size(self):
+        return int(np.prod(self.shape))
 
     @property
     def chunks(self):
@@ -732,34 +744,21 @@ class InMemoryDataset(Dataset):
         size = tuple(size)
         # === END CODE FROM h5py.Dataset.resize ===
 
-        old_shape = self.shape
-        data_dict = self.id.data_dict
-        can_read_direct = self.id.can_read_direct
-
-        old_shape_idx = Tuple(*[Slice(0, i) for i in old_shape])
-
-        new_data_dict = {}
-        # Read entire Dataset into in-memory array in one operation.
-        # Usually that's much faster than reading individual chunks.
-        old_data = self.get_index(old_shape_idx.raw, can_read_direct=can_read_direct)
-        # Now read chunks out of the array.
-        for chunk, _, index_raw in as_subchunk_map(old_shape_idx, size, self.chunks):
-            if chunk in data_dict:
-                new_data_dict[chunk] = data_dict[chunk]
-            else:
-                data = np.full(chunk.newshape(size), self.fillvalue, dtype=self.dtype)
-                data[index_raw] = old_data[chunk.raw]
-                new_data_dict[chunk] = data
-
-        self.id.data_dict = new_data_dict
+        self.staged_changes.resize(size)
         self.id.shape = size
 
     @with_phil
-    def get_index(
+    def __getitem__(
         self,
-        args: slice | Slice | Tuple | tuple | h5r.RegionReference,
-        new_dtype: str | None = None,
-        can_read_direct: bool | None = None,
+        args: (
+            str
+            | slice
+            | tuple
+            | list[int]
+            | list[bool]
+            | np.ndarray
+            | h5r.RegionReference
+        ),
     ) -> np.ndarray:
         """Read a slice from the HDF5 dataset given by the index.
 
@@ -769,17 +768,12 @@ class InMemoryDataset(Dataset):
 
         Parameters
         ----------
-        args : slice | Slice | Tuple | tuple | h5r.RegionReference
-            Index to read from the Dataset
-        new_dtype : str | None
-            Dtype of the returned array
-        can_read_direct : bool | None
-            True if we can read directly from the underlying hdf5 Dataset, False otherwise.
-            This should be the value of the InMemoryDatasetID instance's ``can_read_direct``
-            property for this Dataset.
+        args : any numpy one-dimensional or n-dimensional index | h5r.RegionReference
+            Index to read from the Dataset.
 
-            If None, ``self.id.can_read_direct`` is evaluated first to determine if data can
-            be read directly from the underlying dataset.
+            **Note:** more than one list/ndarray index will behave differently as numpy,
+            as it will be interpreted to pick the given indices independently on each
+            axis. Non-flat list/ndarray indices are not supported.
 
         Returns
         -------
@@ -797,15 +791,12 @@ class InMemoryDataset(Dataset):
             if len(names) == 1:
                 names = names[0]  # Read with simpler dtype of this field
             args = tuple(x for x in args if not isinstance(x, str))
-            return self.fields(names, _prior_dtype=new_dtype)[args]
-
-        if new_dtype is None:
-            new_dtype = self.dtype
-        mtype = h5t.py_create(new_dtype)
+            return self.fields(names)[args]
 
         # === Special-case region references ====
 
         if len(args) == 1 and isinstance(args[0], h5r.RegionReference):
+            mtype = h5t.py_create(self.dtype)
             obj = h5r.dereference(args[0], self.id)
             if obj != self.id:
                 raise ValueError("Region reference must point to this dataset")
@@ -814,8 +805,8 @@ class InMemoryDataset(Dataset):
             mshape = guess_shape(sid)
             if mshape is None:
                 # 0D with no data (NULL or deselected SCALAR)
-                return Empty(new_dtype)
-            out = np.empty(mshape, dtype=new_dtype)
+                return Empty(self.dtype)
+            out = np.empty(mshape, self.dtype)
             if out.size == 0:
                 return out
 
@@ -826,42 +817,7 @@ class InMemoryDataset(Dataset):
 
         # === END CODE FROM h5py.Dataset.__getitem__ ===
 
-        idx = ndindex(args).expand(self.shape)
-
-        if can_read_direct is None:
-            can_read_direct = self.id.can_read_direct
-
-        if can_read_direct:
-            return super().__getitem__(idx.raw)
-
-        arr = np.ndarray(idx.newshape(self.shape), new_dtype, order="C")
-
-        for chunk, arr_idx_raw, index_raw in as_subchunk_map(
-            idx, self.shape, self.chunks
-        ):
-            if chunk not in self.id.data_dict:
-                self.id.data_dict[chunk] = np.broadcast_to(
-                    self.fillvalue, chunk.newshape(self.shape)
-                )
-            elif isinstance(self.id.data_dict[chunk], Slice):
-                raw_idx = tuple(
-                    [self.id.data_dict[chunk].raw]
-                    + [slice(0, len(i)) for i in chunk.args[1:]]
-                )
-                self.id.data_dict[chunk] = self.id._read_chunk(raw_idx)
-
-            if self.id.data_dict[chunk].size != 0:
-                arr[arr_idx_raw] = self.id.data_dict[chunk][index_raw]
-
-        # Return arr as a scalar if it is shape () (matching h5py)
-        return arr[()]
-
-    @with_phil
-    def __getitem__(
-        self,
-        args: slice | Slice | Tuple | tuple | h5r.RegionReference,
-    ) -> np.ndarray:
-        return self.get_index(args)
+        return self.staged_changes[args]
 
     @with_phil
     def __setitem__(self, args, val):
@@ -982,27 +938,7 @@ class InMemoryDataset(Dataset):
             mtype = None
 
         # === END CODE FROM h5py.Dataset.__setitem__ ===
-
-        idx = ndindex(args).reduce(self.shape)
-
-        val = np.broadcast_to(val, idx.newshape(self.shape))
-
-        for c, val_idx_raw, index_raw in as_subchunk_map(idx, self.shape, self.chunks):
-            if c not in self.id.data_dict:
-                # Broadcasted arrays do not actually consume memory
-                fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
-                self.id.data_dict[c] = fill.astype(self.dtype)
-            elif isinstance(self.id.data_dict[c], Slice):
-                raw_idx = tuple(
-                    [self.id.data_dict[c].raw] + [slice(0, len(i)) for i in c.args[1:]]
-                )
-                self.id.data_dict[c] = self.id._read_chunk(raw_idx)
-
-            if self.id.data_dict[c].size != 0:
-                if not self.id.data_dict[c].flags.writeable:
-                    # self.id.data_dict[c] is a broadcasted array from above
-                    self.id.data_dict[c] = self.id.data_dict[c].copy()
-                self.id.data_dict[c][index_raw] = val[val_idx_raw]
+        self.staged_changes[args] = val
 
 
 class DatasetLike:
@@ -1220,11 +1156,16 @@ class InMemorySparseDataset(DatasetLike):
         self.chunks = ChunkSize(chunks)
         self.parent = parent
 
-        # This works like a mix between InMemoryArrayDataset and
-        # InMemoryDatasetID. Explicit array data is stored in a data_dict like
-        # with InMemoryDatasetID, but unlike it, missing data (which equals
-        # the fill value) is omitted.
-        self.data_dict = {}
+        self.staged_changes = StagedChangesArray.full(
+            shape=shape,
+            chunk_size=tuple(chunks),
+            dtype=dtype,
+            fill_value=self.fillvalue,
+        )
+
+    @property
+    def data_dict(self) -> dict[Tuple, Slice | np.ndarray]:
+        return _staged_changes_to_data_dict(self.staged_changes)
 
     def as_dtype(self, name, dtype, parent, casting="unsafe"):
         """
@@ -1238,39 +1179,18 @@ class InMemorySparseDataset(DatasetLike):
             new_fillvalue = self.fillvalue.astype(dtype, casting=casting)
         else:
             new_fillvalue = None
-        new_data_dict = {}
-        for c, index in self.data_dict.copy().items():
-            new_data_dict[c] = self.data_dict[c].astype(dtype, casting=casting)
 
-        return self.from_data_dict(
-            name,
-            new_data_dict,
+        out = type(self)(
+            name=name,
+            shape=(),
             dtype=dtype,
             parent=parent,
-            fillvalue=new_fillvalue,
             chunks=self.chunks,
-            shape=self.shape,
+            fillvalue=new_fillvalue,
         )
-
-    @classmethod
-    def from_data_dict(
-        cls, name, data_dict, *, shape, dtype, parent, chunks, fillvalue=None
-    ):
-        """
-        Create a InMemorySparseDataset from a data dict.
-
-        This does not do any consistency checks with the metadata provide.
-        """
-        dataset = cls(
-            name,
-            shape=shape,
-            dtype=dtype,
-            parent=parent,
-            chunks=chunks,
-            fillvalue=fillvalue,
-        )
-        dataset.data_dict = data_dict
-        return dataset
+        out.staged_changes = self.staged_changes.astype(dtype, casting=casting)
+        out.shape = self.shape
+        return out
 
     @classmethod
     def from_dataset(cls, dataset, parent=None):
@@ -1296,49 +1216,35 @@ class InMemorySparseDataset(DatasetLike):
             size[axis] = newlen
 
         size = tuple(size)
-        if len(size) > 1:
-            raise NotImplementedError("More than one dimension is not yet supported")
+        self.staged_changes.resize(size)
         self.shape = size
 
     def __getitem__(self, index):
-        idx = ndindex(index).reduce(self.shape)
-
-        newshape = idx.newshape(self.shape)
-        arr = np.full(newshape, self.fillvalue, dtype=self.dtype)
-
-        for c, arr_idx_raw, chunk_idx_raw in as_subchunk_map(
-            idx, self.shape, self.chunks
-        ):
-            if c not in self.data_dict:
-                fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
-                self.data_dict[c] = fill
-
-            if self.data_dict[c].size != 0:
-                arr[arr_idx_raw] = self.data_dict[c][chunk_idx_raw]
-
-        # Return arr as a scalar if it is shape () (matching h5py)
-        return arr[()]
+        return self.staged_changes[index]
 
     def __setitem__(self, index, value):
         self.parent._check_committed()
+        self.staged_changes[index] = value
 
-        idx = ndindex(index).reduce(self.shape)
 
-        val = np.broadcast_to(value, idx.newshape(self.shape))
+def _staged_changes_to_data_dict(
+    staged_changes: StagedChangesArray,
+) -> dict[Tuple, Slice | np.ndarray]:
+    """Transitional hack that converts a StagedChangsArray to a legacy data_dict.
 
-        for c, val_idx_raw, chunk_idx_raw in as_subchunk_map(
-            idx, self.shape, self.chunks
-        ):
-            if c not in self.data_dict:
-                # Broadcasted arrays do not actually consume memory
-                fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
-                self.data_dict[c] = fill
+    This was introduced when replacing the legacy system, which was wholly designed
+    around the data_dict, with StagedChangesArray and it allowed not to modify from the
+    get go all the code that is triggered upon commit.
 
-            if self.data_dict[c].size != 0:
-                if not self.data_dict[c].flags.writeable:
-                    # self.data_dict[c] is a broadcasted array from above
-                    self.data_dict[c] = self.data_dict[c].copy()
-                self.data_dict[c][chunk_idx_raw] = val[val_idx_raw]
+    We intend to clean this up eventually.
+    """
+    # InMemoryDataset has exactly one raw_data buffer underlying
+    # InMemorySparseDataset has none
+    assert staged_changes.n_base_slabs < 2
+    return {
+        Tuple(*k): Slice(v[0]) if isinstance(v, tuple) else v
+        for k, _, v in staged_changes.changes()
+    }
 
 
 class DatasetWrapper(DatasetLike):
@@ -1371,11 +1277,9 @@ class DatasetWrapper(DatasetLike):
 class InMemoryDatasetID(h5d.DatasetID):
     def __init__(self, _id):
         # super __init__ is handled by DatasetID.__cinit__ automatically
-        self._data_dict = None
         with phil:
             sid = self.get_space()
             self._shape = sid.get_simple_extent_dims()
-        self._reshaped = False
 
         attr = h5a.open(self, b"raw_data")
         htype = h5t.py_create(attr.dtype)
@@ -1395,51 +1299,6 @@ class InMemoryDatasetID(h5d.DatasetID):
         dcpl.get_fill_value(fillvalue_a)
         self.fillvalue = fillvalue_a[0]
 
-    @property
-    def data_dict(self):
-        if self._data_dict is None:
-            dcpl = self.get_create_plist()
-
-            is_virtual: bool = dcpl.get_layout() == h5d.VIRTUAL
-
-            if not is_virtual:
-                # A dataset created with only a fillvalue will be nonvirtual,
-                # since create_virtual_dataset makes a nonvirtual dataset when
-                # there are no virtual sources.
-                self._data_dict = {}
-            # Same as dataset.get_virtual_sources
-            elif 0 in self.shape:
-                # Work around https://github.com/h5py/h5py/issues/1660
-                empty_idx = Tuple().expand(self.shape)
-                self._data_dict = {empty_idx: Slice()}
-            else:
-                self._data_dict = build_data_dict(dcpl, self.raw_data.name)
-
-        return self._data_dict
-
-    @data_dict.setter
-    def data_dict(self, value):
-        self._data_dict = value
-
-    @property
-    def can_read_direct(self) -> bool:
-        """Check whether reading directly from the underlying dataset is okay.
-
-        Returns
-        -------
-        bool
-            If this is True, then h5py.Dataset.__getitem__ can be used, which may
-            be faster than InMemoryDataset.__getitem__. This will happen in
-            particular when reading a read-only dataset.
-        """
-        if self._data_dict is not None and any(
-            isinstance(i, np.ndarray) for i in self._data_dict.values()
-        ):
-            return False
-        if self._reshaped:
-            return False
-        return True
-
     def set_extent(self, shape):
         raise NotImplementedError("Resizing an InMemoryDataset other than via resize()")
 
@@ -1450,10 +1309,6 @@ class InMemoryDatasetID(h5d.DatasetID):
     @shape.setter
     def shape(self, size):
         self._shape = size
-        self._reshaped = True
-
-    def _read_chunk(self, chunk_idx):
-        return self.raw_data[chunk_idx]
 
     def write(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
         raise NotImplementedError(
