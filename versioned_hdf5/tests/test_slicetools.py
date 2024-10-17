@@ -8,8 +8,13 @@ from hypothesis import given
 from hypothesis import strategies as st
 from numpy.testing import assert_equal
 
+from .. import VersionedHDF5File
 from ..cytools import count2stop
-from ..slicetools import read_many_slices, spaceid_to_slice
+from ..slicetools import (
+    build_slab_indices_and_offsets,
+    read_many_slices,
+    spaceid_to_slice,
+)
 
 max_examples = 10_000
 
@@ -45,6 +50,96 @@ def test_spaceid_to_slice(h5file):
                         print(start, count, stride, block)
                         raise
                     assert_equal(a[s.raw], a[sel], f"{(start, count, stride, block)}")
+
+
+def test_build_slab_indices_and_offsets_dense(h5file):
+    chunks = (2, 3)
+    data = np.array(
+        [
+            [1, 2, 3, 4, 5],
+            [6, 7, 8, 9, 10],
+            [11, 12, 13, 14, 15],
+        ]
+    )
+    expect_raw_data = np.array(
+        [
+            # chunk (0, 0), offset 0
+            [1, 2, 3],
+            [6, 7, 8],
+            # chunk (0, 1), offset 2
+            [4, 5, 0],
+            [9, 10, 0],
+            # chunk (1, 0), offset 4
+            [11, 12, 13],
+            [0, 0, 0],
+            # chunk (1, 1), offset 6
+            [14, 15, 0],
+            [0, 0, 0],
+        ]
+    )
+    vf = VersionedHDF5File(h5file)
+    with vf.stage_version("r0") as sv:
+        sv.create_dataset("a", data=data, chunks=chunks)
+    virt_dset = h5file["_version_data/versions/r0/a"]
+    raw_data = h5file["_version_data/a/raw_data"]
+    np.testing.assert_array_equal(virt_dset[:], data, strict=True)
+    np.testing.assert_array_equal(raw_data[:], expect_raw_data, strict=True)
+
+    dcpl = virt_dset.id.get_create_plist()
+    indices, offsets = build_slab_indices_and_offsets(dcpl, data.shape, chunks)
+    np.testing.assert_array_equal(indices, [[1, 1], [1, 1]])
+    np.testing.assert_array_equal(offsets, [[0, 2], [4, 6]])
+
+
+def test_build_slab_indices_and_offsets_sparse(h5file):
+    chunks = (2, 3)
+    shape = (3, 5)
+    vf = VersionedHDF5File(h5file)
+    with vf.stage_version("r0") as sv:
+        sv.create_dataset(
+            "a", shape=shape, data=None, chunks=chunks, dtype=np.int64, fillvalue=123
+        )
+    virt_dset = h5file["_version_data/versions/r0/a"]
+    expect = np.full(shape, fill_value=123, dtype=np.int64)
+    np.testing.assert_array_equal(
+        virt_dset[:], np.full(shape, fill_value=123, dtype=np.int64), strict=True
+    )
+
+    dcpl = virt_dset.id.get_create_plist()
+    indices, offsets = build_slab_indices_and_offsets(dcpl, shape, chunks)
+    np.testing.assert_array_equal(indices, [[0, 0], [0, 0]])
+    np.testing.assert_array_equal(offsets, [[0, 0], [0, 0]])
+
+    # This test is recursive, as in order to create r1 on disk versioned_hdf5 is going
+    # to call build_slab_indices_and_offsets.
+    with vf.stage_version("r1") as sv:
+        dset = sv["a"]
+        dset[1, 3] = 456
+        dset[2, 0] = 789
+
+    virt_dset = h5file["_version_data/versions/r1/a"]
+    raw_data = h5file["_version_data/a/raw_data"]
+
+    expect[1, 3] = 456
+    expect[2, 0] = 789
+    np.testing.assert_array_equal(virt_dset[:], expect, strict=True)
+    expect_raw = np.array(
+        [
+            [123, 123, 123],
+            [456, 123, 123],
+            [789, 123, 123],
+            [123, 123, 123],
+            [123, 123, 123],  # FIXME Spurious extra chunk
+            [123, 123, 123],
+        ],
+        dtype=np.int64,
+    )
+    np.testing.assert_array_equal(raw_data[:], expect_raw, strict=True)
+
+    dcpl = virt_dset.id.get_create_plist()
+    indices, offsets = build_slab_indices_and_offsets(dcpl, shape, chunks)
+    np.testing.assert_array_equal(indices, [[0, 1], [1, 0]])
+    np.testing.assert_array_equal(offsets, [[0, 0], [2, 0]])
 
 
 @st.composite
