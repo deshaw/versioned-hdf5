@@ -253,12 +253,10 @@ cpdef tuple[np.ndarray, np.ndarray] build_slab_indices_and_offsets(
     :return: tuple of (slab_indices, slab_offsets) arrays, each with the same shape as
     the chunks in the virtual dataset.
     """
-    cdef hsize_t[NPY_MAXDIMS] h5_start
-    cdef hsize_t[NPY_MAXDIMS] h5_stride
-    cdef hsize_t[NPY_MAXDIMS] h5_count
-    cdef hsize_t[NPY_MAXDIMS] h5_block
     cdef hsize_t[NPY_MAXDIMS] chunk_size_arr
     cdef hsize_t[NPY_MAXDIMS] nchunks_arr
+    cdef hsize_t[NPY_MAXDIMS] h5_start
+    cdef hsize_t[NPY_MAXDIMS] scratch  # Dumping ground for unused outputs
 
     nchunks = []
     ndim = len(shape)
@@ -291,22 +289,23 @@ cpdef tuple[np.ndarray, np.ndarray] build_slab_indices_and_offsets(
         with nogil:
             # Iterate over all chunks except full ones
             for chunk_i in range(virtual_count):
-                # Calculate offset of the chunk, IN BYTES,
-                # relative to the start of the buffer of slab_indices and slab_offsets
+                # Calculate offset of the chunk, IN BYTES, relative to the start of the
+                # flattened buffer of slab_indices and slab_offsets
                 vspace_id = H5Pget_virtual_vspace(dcpl_id, chunk_i)
                 if vspace_id == H5I_INVALID_HID:
                     raise HDF5Error()
                 try:
                     vspace_type = H5Sget_select_type(vspace_id)
-                    assert vspace_type == H5S_sel_type.H5S_SEL_HYPERSLABS
+                    if vspace_type != H5S_sel_type.H5S_SEL_HYPERSLABS:
+                        raise ValueError(f"Unexpected {vspace_type=}")
 
                     # Get chunk index in the virtual dataset
                     if H5Sget_regular_hyperslab(
                         vspace_id,
                         h5_start,
-                        h5_stride,  # All 1
-                        h5_count,
-                        h5_block,  # Typically, but not always, all 1
+                        scratch,  # IGNORE - stride (always 1)
+                        scratch,  # IGNORE - count
+                        scratch,  # IGNORE - block (typically, but not always, 1)
                     ) < 0:
                         raise HDF5Error()
                 finally:
@@ -316,30 +315,29 @@ cpdef tuple[np.ndarray, np.ndarray] build_slab_indices_and_offsets(
                 indices_offset: ssize_t = 0
                 for j in range(ndim):
                     chunk_idx = h5_start[j] // chunk_size_arr[j]
+                    if h5_start[j] % chunk_size_arr[j] > 0:
+                        raise ValueError("Misaligned chunk")
+                    if chunk_idx >= nchunks_arr[j]:
+                        raise ValueError("chunk_idx too high")
                     indices_offset += chunk_idx * indices_strides[j]
 
-                    assert h5_start[j] % chunk_size_arr[j] == 0
-                    assert chunk_idx < nchunks_arr[j]
-                    assert h5_stride[j] == 1
-                    assert h5_count[j] > 0
-                    assert h5_block[j] > 0
-
                 # Calculate offset of the chunk, IN POINTS,
-                # relative to the start of raw_data on axis 0
+                # relative to the start of raw_data along axis 0
                 srcspace_id = H5Pget_virtual_srcspace(dcpl_id, chunk_i)
                 if srcspace_id == H5I_INVALID_HID:
                     raise HDF5Error()
                 try:
                     srcspace_type = H5Sget_select_type(srcspace_id)
-                    assert srcspace_type == H5S_sel_type.H5S_SEL_HYPERSLABS
+                    if srcspace_type != H5S_sel_type.H5S_SEL_HYPERSLABS:
+                        raise ValueError(f"Unexpected {srcspace_type=}")
 
                     # Get coordinates in raw_data
                     if H5Sget_regular_hyperslab(
                         srcspace_id,
-                        h5_start,  # Axis 0 = slab_offset; other axes = 0
-                        h5_stride,  # All 1
-                        h5_count,
-                        h5_block,  # Typically, but not always, all 1
+                        h5_start,  # Axis 0 = slab_offset; other axes = always 0
+                        scratch,   # IGNORE - stride (always 1)
+                        scratch,   # IGNORE - count
+                        scratch,   # IGNORE - block (typically, but not always, 1)
                     ) < 0:
                         raise HDF5Error()
                 finally:
@@ -347,15 +345,13 @@ cpdef tuple[np.ndarray, np.ndarray] build_slab_indices_and_offsets(
                         raise HDF5Error()
 
                 slab_offset = h5_start[0]
-                for j in range(ndim):
-                    assert j == 0 or h5_start[j] == 0
-                    assert h5_stride[j] == 1
-                    assert h5_count[j] > 0
-                    assert h5_block[j] > 0
 
                 # Write single point into slab_indices and slab_offsets
-                # NOTE: indices_offset is in bytes; slab_offset is in points
-                (<hsize_t*>(slab_indices_data + indices_offset))[0] = 1  # raw_data
+                # NOTE: indices_offset is in bytes on the flat buffer;
+                #       slab_offset is in points on the rows.
+                # slabs[0] = fill_value; slabs[1] = raw_data.
+                # See StagedChangesArray initialisation in wrappers.py.
+                (<hsize_t*>(slab_indices_data + indices_offset))[0] = 1
                 (<hsize_t*>(slab_offsets_data + indices_offset))[0] = slab_offset
 
     return slab_indices, slab_offsets
