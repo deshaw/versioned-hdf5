@@ -33,7 +33,7 @@ from ndindex import (
 )
 
 from .backend import DEFAULT_CHUNK_SIZE
-from .slicetools import build_data_dict, build_slab_indices_and_offsets
+from .slicetools import build_data_dict
 from .subchunk_map import as_subchunk_map
 
 _groups = WeakValueDictionary({})
@@ -1399,8 +1399,6 @@ class InMemoryDatasetID(h5d.DatasetID):
     def data_dict(self):
         if self._data_dict is None:
             dcpl = self.get_create_plist()
-
-            build_slab_indices_and_offsets(dcpl, self.shape, self.chunks)
 
             is_virtual: bool = dcpl.get_layout() == h5d.VIRTUAL
 
