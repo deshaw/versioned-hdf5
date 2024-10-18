@@ -274,6 +274,11 @@ The ndindex library was initially created for versioned-hdf5, in order to make
 index manipulation possible as well as allowing code that passes indices around
 to become much cleaner.
 
+`InMemoryDataset` is implemented as a fairly thin wrapper around
+`StagedChangesArray`, which is abstracted from h5py and holds all the modified
+chunks in memory, presenting them as a numpy-like array, until they are ready to
+be flushed to disk. For details, read [Staging changes in memory](staged_changes).
+
 These wrapper objects all try to emulate the h5py API as closely as possible,
 so that the user can use them just as they would the real h5py objects. Any
 discrepancy between h5py and versioned-hdf5 semantics should be considered a
