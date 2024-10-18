@@ -5,6 +5,7 @@ py.install_sources(
         'backend.py',
         'hashtable.py',
         'replay.py',
+        'tools.py',
         'versions.py',
         'wrappers.py',
     ],
@@ -77,4 +78,5 @@ py.extension_module(
     install: true,
     subdir: 'versioned_hdf5',
     dependencies: compiled_deps,
+    cython_args: cython_args,
 )
