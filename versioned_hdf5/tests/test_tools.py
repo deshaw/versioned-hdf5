@@ -1,8 +1,12 @@
+import hypothesis
 import numpy as np
 import numpy.ma as ma
+from hypothesis import given
+from hypothesis import strategies as st
+from hypothesis.extra import numpy as stnp
 from numpy.testing import assert_array_equal
 
-from ..tools import asarray
+from ..tools import asarray, ix_with_slices
 
 
 def test_asarray():
@@ -53,3 +57,50 @@ def test_asarray():
     assert type(b) is type(a)
     assert b.base is None
     assert_array_equal(b, a.astype("i4"), strict=True)
+
+
+@st.composite
+def ix_idx_st(draw, max_ndim: int = 4) -> tuple[tuple[int, ...], tuple]:
+    """Hypothesis draw of slice, integer array, and boolean array indices, with no
+    limitation on the number of fancy indices
+    """
+
+    def slices(size: int):
+        start = st.one_of(st.none(), st.integers(-size - 1, size + 1))
+        stop = st.one_of(st.none(), st.integers(-size - 1, size + 1))
+        step = st.one_of(
+            st.none(), st.integers(1, size + 1), st.integers(-size - 1, -1)
+        )
+        return st.builds(slice, start, stop, step)
+
+    def fancy(size: int):
+        return stnp.arrays(
+            np.intp,
+            shape=st.integers(0, size + 1),
+            elements=st.integers(-size, size - 1),
+            unique=False,
+        )
+
+    def mask(size: int):
+        return stnp.arrays(np.bool_, shape=size, elements=st.booleans())
+
+    shape_st = st.lists(st.integers(1, 10), min_size=1, max_size=max_ndim)
+    shape = tuple(draw(shape_st))
+
+    idx_st = st.tuples(
+        *(st.one_of(slices(size), fancy(size), mask(size)) for size in shape)
+    )
+    return shape, draw(idx_st)
+
+
+@given(ix_idx_st())
+@hypothesis.settings(max_examples=1000)
+def test_ix_with_slices(args):
+    shape, idx = args
+    a = np.arange(np.prod(shape)).reshape(shape)
+    expect = a
+    for axis, i in enumerate(idx):
+        expect = expect[(slice(None),) * axis + (i,)]
+
+    actual = a[ix_with_slices(*idx, shape=shape)]
+    assert_array_equal(actual, expect)
