@@ -21,10 +21,9 @@
     // Customizable commands for building, installing, and
     // uninstalling the project. See asv.conf.json documentation.
     //
-    "install_command": [
-      "in-dir={env_dir} python {conf_dir}/benchmarks_install.py {env_dir} {wheel_file} {commit}"
-      // "in-dir={env_dir} python {conf_dir}/benchmarks_install.py {commit} {env_dir} {build_dir}"
-    ],
+    // "install_command": [
+    //   "in-dir={env_dir} python {conf_dir}/benchmarks_install.py {commit} {env_dir} {build_dir}"
+    // ],
     // "uninstall_command": ["return-code=any python -mpip uninstall -y {project}"],
     "build_command": [
       "python -m pip install build",
