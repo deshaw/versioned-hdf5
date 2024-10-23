@@ -18,9 +18,6 @@ jobs:
           sudo apt install git zlib1g-dev build-essential pkg-config -y
 
       - uses: actions/checkout@v4
-        with:
-          ref: master
-          fetch-depth: 0
 
       - name: Setup python with miniconda
         uses: conda-incubator/setup-miniconda@v3
@@ -30,8 +27,14 @@ jobs:
 
       - name: Install versioned-hdf5
         run: |
-          conda install -n test pip hdf5 openmpi -c conda-forge -y
+          conda install -n test pip hdf5 openmpi h5py ndindex -c conda-forge -y
           conda run -n test pip install '.[bench]'
+
+      - name: Print hdf5 configuration
+        run: |
+          set -xe
+          conda run -n test python -c 'import utils; utils.debug_libhdf5_so()'
+          conda run -n test h5cc -showconfig
 
       # Compare the most recent commit with the previous one
       - name: Run benchmarks
