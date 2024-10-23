@@ -33,8 +33,6 @@ jobs:
       # Always checkout master branch, even if triggered by a tag.
       # Otherwise sphinx-multiversion does not pull the master branch.
       - uses: actions/checkout@v4
-        with:
-          ref: master
 
       - uses: actions/setup-python@v4
         with:
