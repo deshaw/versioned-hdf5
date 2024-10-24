@@ -8,7 +8,6 @@ import numpy as np
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
-from hypothesis.extra import numpy as stnp
 from numpy.testing import assert_array_equal
 
 from ..cytools import np_hsize_t
@@ -43,11 +42,10 @@ def basic_idx_st(draw, shape: tuple[int, ...]) -> Any:
             # FIXME we should push the scalar use case into non_negative_step_slices
             # However ndindex fails when mixing scalars and slices and array indices
             # https://github.com/Quansight-Labs/ndindex/issues/188
-            st.one_of(
-                non_negative_step_slices(size),
-                st.integers(-size, size - 1),
-            )
-            # Note: ... is not supported
+            # Note: ..., None, and np.newaxis are not supported
+            st.one_of(non_negative_step_slices(size), st.integers(-size, size - 1))
+            if size > 0
+            else non_negative_step_slices(size)
             for size in shape[:nidx]
         )
     )
@@ -56,17 +54,18 @@ def basic_idx_st(draw, shape: tuple[int, ...]) -> Any:
 
 @st.composite
 def fancy_idx_st(draw, shape: tuple[int, ...]) -> Any:
-    """A single axis is indexed by a NDArray[np.intp], whose elements can be negative,
-    non-unique, and not in order.
+    """A single axis is indexed by either
+
+    - a list[int] whose elements can be negative, non-unique, and not in order, or
+    - a list[bool]
+
     All other axes are indexed by slices.
     """
     fancy_idx_axis = draw(st.integers(0, len(shape) - 1))
     size = shape[fancy_idx_axis]
-    fancy_idx = stnp.arrays(
-        np.intp,
-        shape=st.integers(0, size * 2),
-        elements=st.integers(-size, size - 1),
-        unique=False,
+    fancy_idx = st.one_of(
+        st.lists(st.integers(-size, max(0, size - 1)), max_size=size * 2),
+        st.lists(st.booleans(), min_size=size, max_size=size),
     )
     idx_st = st.tuples(
         *[non_negative_step_slices(shape[dim]) for dim in range(fancy_idx_axis)],
@@ -80,49 +79,35 @@ def fancy_idx_st(draw, shape: tuple[int, ...]) -> Any:
 
 
 @st.composite
-def mask_idx_st(draw, shape: tuple[int, ...]) -> Any:
-    """A single axis is indexed by a NDArray[np.bool], whereas all other axes
-    may be indexed by slices.
-    """
-    ndim = len(shape)
-    mask_idx_axis = draw(st.integers(0, ndim - 1))
-    mask_idx = stnp.arrays(np.bool_, shape[mask_idx_axis], elements=st.booleans())
-    idx_st = st.tuples(
-        *[non_negative_step_slices(shape[dim]) for dim in range(mask_idx_axis)],
-        mask_idx,
-        *[
-            non_negative_step_slices(shape[dim])
-            for dim in range(mask_idx_axis + 1, ndim)
-        ],
-    )
-    return draw(idx_st)
-
-
-@st.composite
-def idx_chunks_shape_st(
-    draw, max_ndim: int = 4
-) -> tuple[Any, tuple[int, ...], tuple[int, ...]]:
-    shape_st = st.lists(st.integers(1, 20), min_size=1, max_size=max_ndim)
+def shape_chunks_st(
+    draw, max_ndim: int = 4, min_size: int = 1, max_size: int = 20
+) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    shape_st = st.lists(st.integers(min_size, max_size), min_size=1, max_size=max_ndim)
     shape = tuple(draw(shape_st))
 
     chunks_st = st.tuples(*[st.integers(1, s + 1) for s in shape])
     chunks = draw(chunks_st)
+    return shape, chunks
 
-    idx_st = st.one_of(
-        basic_idx_st(shape),
-        fancy_idx_st(shape),
-        mask_idx_st(shape),
-    )
-    idx = draw(idx_st)
 
-    return idx, chunks, shape
+def idx_st(shape: tuple[int, ...]) -> Any:
+    return st.one_of(basic_idx_st(shape), fancy_idx_st(shape))
+
+
+@st.composite
+def idx_shape_chunks_st(
+    draw, max_ndim: int = 4
+) -> tuple[Any, tuple[int, ...], tuple[int, ...]]:
+    shape, chunks = draw(shape_chunks_st(max_ndim))
+    idx = draw(idx_st(shape))
+    return idx, shape, chunks
 
 
 @pytest.mark.slow
-@given(idx_chunks_shape_st())
+@given(idx_shape_chunks_st())
 @hypothesis.settings(max_examples=max_examples, deadline=None)
 def test_as_subchunk_map(args):
-    idx, chunks, shape = args
+    idx, shape, chunks = args
 
     source = np.arange(1, np.prod(shape) + 1, dtype=np.int32).reshape(shape)
     expect = source[idx]
@@ -147,11 +132,11 @@ def test_as_subchunk_map(args):
 
 
 @pytest.mark.slow
-@given(idx_chunks_shape_st(max_ndim=1))
+@given(idx_shape_chunks_st(max_ndim=1))
 @hypothesis.settings(max_examples=max_examples, deadline=None)
 def test_chunks_indexer(args):
     """Test IndexChunkMapper.chunks_indexer and IndexChunkMapper.whole_chunks_indexer"""
-    idx, chunks, shape = args
+    idx, shape, chunks = args
     _, mappers = index_chunk_mappers(idx, shape, chunks)
     if not mappers:
         return  # Early exit for empty index
@@ -196,10 +181,10 @@ def test_chunks_indexer(args):
 
 
 @pytest.mark.slow
-@given(idx_chunks_shape_st(max_ndim=1))
+@given(idx_shape_chunks_st(max_ndim=1))
 @hypothesis.settings(max_examples=max_examples, deadline=None)
 def test_read_many_slices_param(args):
-    idx, chunks, shape = args
+    idx, shape, chunks = args
     _, mappers = index_chunk_mappers(idx, shape, chunks)
     if not mappers:
         return  # Early exit for empty index
@@ -276,11 +261,10 @@ def test_read_many_slices_param(args):
 
 
 @pytest.mark.slow
-@given(idx_chunks_shape_st())
+@given(idx_shape_chunks_st())
 @hypothesis.settings(max_examples=max_examples, deadline=None)
 def test_read_many_slices_param_nd(args):
-    idx, chunks, shape = args
-
+    idx, shape, chunks = args
     _, mappers = index_chunk_mappers(idx, shape, chunks)
     if not mappers:
         return  # Early exit for empty index
