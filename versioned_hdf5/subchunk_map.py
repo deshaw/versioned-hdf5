@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 import cython
 import numpy as np
-from cython import bint
+from cython import bint, ssize_t
 from ndindex import ChunkSize, Slice, Tuple, ndindex
 from ndindex.ellipsis import ellipsis
 from numpy.typing import NDArray
@@ -130,6 +130,108 @@ class IndexChunkMapper:
 
     @cython.ccall
     @abc.abstractmethod
+    def read_many_slices_params(
+        self,
+    ) -> tuple[NDArray[np_hsize_t], NDArray[np_hsize_t] | None]:
+        """Return the parameters for read_many_slices() for all chunks of the selection.
+
+        Returns
+        -------
+        Tuple of two 2D arrays, (slices, chunk_to_slices), or (slices, None).
+        The presence of chunk_to_slices changes between basic and fancy indexes.
+
+        **Basic indexing**
+
+        For basic indexing and in simple secial cases of fancy indexes, there is a
+        1:1 correlation between selected chunks and slices to tranfer. In this
+
+        len(slices) == len(self.chunk_indices).
+        chunk_to_slices is None
+
+        Each row represents a slice to transfer the data for the matching chunk on
+        chunk_indices.
+
+        To retrieve the absolute chunk index and the slice for the i-th chunk of the
+        selection:
+
+        >> chunk_idx = mapper.chunk_indices[i]
+        >> slices, _ = mapper.read_many_slices_params()
+        >> slice_i = slices[i, :]
+
+
+        **Fancy indexing**
+
+        Each chunk is transferred by 1 or more slices (1:N).
+
+        len(slices) > len(self.chunk_indices)
+        len(chunk_to_slices) == len(self.chunk_indices) + 1
+
+        chunk_to_slices is a 1D array with as many points as chunk_indices plus one,
+        with each point representing the start of the slices view for that chunk. The
+        slices for a chunk end where the slices for the next chunk begin.
+
+        The first and last point are there just for convenience; this is always true:
+            chunk_to_slices[0] == 0
+            chunk_to_slices[-1] == len(slices)
+
+        To retrieve the absolute chunk index and the slices for the i-th chunk of the
+        selection:
+
+        >> chunk_idx = mapper.chunk_indices[i]
+        >> slices, chunk_to_slices = mapper.read_many_slices_params()
+        >> slices_i = slices[chunk_to_slices[i]:chunk_to_slices[i+1]]
+
+        Note: in any n-dimensional index there is always at most one fancy index.
+
+
+        **The slices array**
+
+        The slices array features one row per slice and exactly five columns:
+
+        chunk_sub_start
+            The start of the slice, relative to the first point of the chunk
+        value_sub_start
+            The start of the slice, relative to the whole __getitem__ return value or
+            the whole __setitem__ value parameter. 0 for scalar indices.
+        count
+            The number of points selected by the slice
+        chunk_sub_stride
+            How many points to skip within the chunks between each selected point,
+            a.k.a. step
+        value_sub_stride
+            How many points to skip within the __getitem__ return value or the
+            __setitem__ value parameter between each selected point.
+            This is always 1 except for the case of out-of-order fancy indexes.
+
+        See the enum subchunk_map.pxd::ReadManySlicesColumn.
+
+        The mapping from the columns of the slices view to the parameters of
+        read_many_slices() is as follows:
+
+        __getitem__ (from slab to output value)
+            src_start  = chunk_sub_start + (slab_offset if axis==0 else 0)
+            dst_start  = value_sub_start
+            count      = count
+            src_stride = chunk_sub_stride
+            dst_stride = value_sub_stride
+
+        __setitem__ (from input value to slab)
+            src_start  = value_sub_start
+            dst_start  = chunk_sub_start + (slab_offset if axis==0 else 0)
+            count      = count
+            src_stride = value_sub_stride
+            dst_stride = chunk_sub_stride
+
+        slab-to-slab transfer
+            src_start  = chunk_sub_start + (src_slab_offset if axis==0 else 0)
+            dst_start  = chunk_sub_start + (dst_slab_offset if axis==0 else 0)
+            count      = count
+            src_stride = chunk_sub_stride
+            dst_stride = chunk_sub_stride
+        """
+
+    @cython.ccall
+    @abc.abstractmethod
     def chunks_indexer(self):  # -> slice | NDArray[np_hsize_t]:
         """Return a numpy basic or advanced index, to be applied along the matching axis
         to an array with one point per chunk, that returns all chunks involved in the
@@ -183,7 +285,53 @@ class IndexChunkMapper:
 
 
 @cython.cclass
-class SliceMapper(IndexChunkMapper):
+class BasicChunkMapper(IndexChunkMapper):
+    """Abstract IndexChunkMapper for numpy basic indexing (slices and integers)"""
+
+    @cython.ccall
+    def read_many_slices_params(self) -> tuple[NDArray[np_hsize_t], None]:
+        n_sel_chunks = len(self.chunk_indices)
+        slices = np.empty((n_sel_chunks, 5), dtype=np_hsize_t)
+        slices_v: hsize_t[:, :] = slices
+
+        with cython.nogil:
+            for idxidx in range(n_sel_chunks):
+                chunk_idx = self.chunk_indices[idxidx]
+                (
+                    chunk_sub_start,
+                    value_sub_start,
+                    count,
+                    chunk_sub_stride,
+                ) = self._read_many_slices_param(chunk_idx)
+                # For reference, see subchunk_map.pxd::ReadManySlicesColumn
+                slices_v[idxidx, 0] = chunk_sub_start
+                slices_v[idxidx, 1] = value_sub_start
+                slices_v[idxidx, 2] = count
+                slices_v[idxidx, 3] = chunk_sub_stride
+                slices_v[idxidx, 4] = 1  # value_sub_stride
+
+        return slices, None
+
+    @cython.cfunc
+    @cython.nogil
+    @cython.exceptval(check=False)
+    @abc.abstractmethod
+    def _read_many_slices_param(
+        self,
+        chunk_idx: hsize_t,
+    ) -> tuple[hsize_t, hsize_t, hsize_t, hsize_t]:
+        """Return the parameters to read_many_slices() for a single chunk.
+
+        Returns tuple of:
+        - chunk_sub_start
+        - value_sub_start
+        - count
+        - chunk_sub_stride
+        """
+
+
+@cython.cclass
+class SliceMapper(BasicChunkMapper):
     """IndexChunkMapper for slices"""
 
     start: hsize_t = cython.declare("hsize_t", visibility="readonly")
@@ -240,6 +388,32 @@ class SliceMapper(IndexChunkMapper):
             slice(chunk_sub_start, chunk_sub_stop, sel_step),
         )
 
+    @cython.cfunc
+    @cython.nogil
+    @cython.exceptval(check=False)
+    def _read_many_slices_param(
+        self,
+        chunk_idx: hsize_t,
+    ) -> tuple[hsize_t, hsize_t, hsize_t, hsize_t]:
+        chunk_start, chunk_stop = self._chunk_start_stop(chunk_idx)
+        sel_start = self.start
+        sel_stop = self.stop
+        sel_step = self.step
+
+        abs_start = max(chunk_start, sel_start)
+        # Get the smallest lcm multiple of common that is >= start
+        abs_start = smallest_step_after(abs_start, sel_start % sel_step, sel_step)
+
+        # shift start so that it is relative to index
+        value_sub_start = (abs_start - sel_start) // sel_step
+        value_sub_stop = ceil_a_over_b(min(chunk_stop, sel_stop) - sel_start, sel_step)
+
+        count = value_sub_stop - value_sub_start
+        chunk_sub_start = abs_start - chunk_start
+        chunk_sub_stride = sel_step
+
+        return chunk_sub_start, value_sub_start, count, chunk_sub_stride
+
     @cython.ccall
     def chunks_indexer(self):  # -> slice | NDArray[np_hsize_t]:
         indices = self.chunk_indices
@@ -281,7 +455,7 @@ class SliceMapper(IndexChunkMapper):
 
 
 @cython.cclass
-class IntegerMapper(IndexChunkMapper):
+class IntegerMapper(BasicChunkMapper):
     """IndexChunkMapper for scalar integer indices"""
 
     idx: hsize_t = cython.declare("hsize_t", visibility="readonly")
@@ -297,6 +471,21 @@ class IntegerMapper(IndexChunkMapper):
         chunk_start, chunk_stop = self._chunk_start_stop(chunk_idx)
         chunk_sub_idx = self.idx - chunk_start
         return Slice(chunk_start, chunk_stop, 1), DROP_AXIS, chunk_sub_idx
+
+    @cython.cfunc
+    @cython.nogil
+    @cython.exceptval(check=False)
+    def _read_many_slices_param(
+        self,
+        chunk_idx: hsize_t,
+    ) -> tuple[hsize_t, hsize_t, hsize_t, hsize_t]:
+        chunk_start = chunk_idx * self.chunk_size
+        return (
+            self.idx - chunk_start,  # chunk_sub_start
+            0,  # value_sub_start
+            1,  # count
+            1,  # chunk_sub_stride
+        )
 
     @cython.ccall
     def chunks_indexer(self):
@@ -377,6 +566,91 @@ class IntegerArrayMapper(IndexChunkMapper):
             _maybe_array_idx_to_slice(self.idx[mask] - chunk_start),
         )
 
+    @cython.ccall
+    def read_many_slices_params(
+        self,
+    ) -> tuple[NDArray[np_hsize_t], NDArray[np_hsize_t] | None]:
+        n_sel_chunks = len(self.chunk_indices)
+        max_rows = len(self.idx)
+
+        slices = np.empty((max_rows, 5), dtype=np_hsize_t)
+        slices_v: hsize_t[:, :] = slices
+
+        assert max_rows >= n_sel_chunks
+        if max_rows > n_sel_chunks:
+            chunks_to_slices = np.empty(n_sel_chunks + 1, dtype=np_hsize_t)
+            chunk_to_slices_v: hsize_t[:] = chunks_to_slices
+        else:
+            # Because we know we are selecting at least one point per chunk of
+            # chunk_indices, then if there are exactly as many chunks as there are
+            # points we know that each point falls in a separate chunk and there will be
+            # exactly one slice(idx[i], idx[i] + 1, 1) per chunk, so there is no need
+            # for the 1:N mapping table chunk_to_slices.
+            chunks_to_slices = None
+
+        if self.is_ascending:
+            starts_stops = np.empty((n_sel_chunks, 2), dtype=np_hsize_t)
+            starts_stops_v: hsize_t[:, :] = starts_stops
+            for chunk_idxidx in range(n_sel_chunks):
+                chunk_idx = self.chunk_indices[chunk_idxidx]
+                chunk_start, chunk_stop = self._chunk_start_stop(chunk_idx)
+                starts_stops_v[chunk_idxidx, 0] = chunk_start
+                starts_stops_v[chunk_idxidx, 1] = chunk_stop
+
+            # This should be faster than calling searchsorted n_sel_chunks times
+            # TODO test performance and consider rewriting this in cython, with the
+            # extra assumption that starts_stops is sorted,  which allows reducing
+            # big-O complexity from O(n*logn) to O(n).
+            starts_stops_idxidx: ssize_t[:, :] = np.searchsorted(self.idx, starts_stops)
+            idx_v: hsize_t[:] = self.idx
+            value_full_idx_v: hsize_t[:] = np.arange(max_rows, dtype=np_hsize_t)
+
+        value_sub_idx: hsize_t[:]
+        chunk_sub_idx: hsize_t[:]
+
+        slices_cursor = 0
+        for chunk_idxidx in range(n_sel_chunks):
+            chunk_idx = self.chunk_indices[chunk_idxidx]
+            chunk_start, chunk_stop = self._chunk_start_stop(chunk_idx)
+
+            if self.is_ascending:
+                # O(n), plus O(n ~ n*logn) for the searchsorted above
+                start_idx = starts_stops_idxidx[chunk_idxidx, 0]
+                stop_idx = starts_stops_idxidx[chunk_idxidx, 1]
+                value_sub_idx = value_full_idx_v[start_idx:stop_idx]
+                chunk_sub_idx = idx_v[start_idx:stop_idx]
+            # TODO optimize monotonic descending
+            else:
+                # O(n^2)
+                mask = (chunk_start <= self.idx) & (self.idx < chunk_stop)
+                # Don't copy when converting from np.intp to uint64 on 64-bit platforms
+                value_sub_idx = asarray(np.flatnonzero(mask), np_hsize_t)
+                chunk_sub_idx = self.idx[value_sub_idx]
+
+            if max_rows > n_sel_chunks:
+                chunk_to_slices_v[chunk_idxidx] = slices_cursor
+
+            next_slices_cursor = _fancy_idx_to_slices(
+                value_sub_idx, chunk_sub_idx, slices_v, slices_cursor
+            )
+            for i in range(slices_cursor, next_slices_cursor):
+                slices_v[i, 0] -= chunk_start
+            slices_cursor = next_slices_cursor
+
+        if max_rows > n_sel_chunks:
+            if slices_cursor == n_sel_chunks:
+                # e.g. idx=[0, 2, 3], chunk_size=2, dset_size=4
+                chunks_to_slices = None
+            else:
+                chunk_to_slices_v[n_sel_chunks] = slices_cursor
+            # This is a view that wastes some memory. No point calling realloc() as this
+            # object is volatile and will be dereferenced at the end of the current
+            # __getitem__ / __setitem__ call.
+            slices = slices[:slices_cursor]
+        else:
+            assert slices_cursor == n_sel_chunks
+        return slices, chunks_to_slices
+
     @cython.cfunc
     def _chunk_sizes_in_chunk_indices(self):  # -> NDArray[np_hsize_t] | int:
         """Return the number of points taken from each chunk within self.chunk_indices.
@@ -405,6 +679,97 @@ class IntegerArrayMapper(IndexChunkMapper):
         idx_unique = np.unique(self.idx)
         _, counts = np.unique(idx_unique // self.chunk_size, return_counts=True)
         return _maybe_array_idx_to_slice(counts == self._chunk_sizes_in_chunk_indices())
+
+
+@cython.cfunc
+@cython.nogil
+@cython.exceptval(check=False)
+def _fancy_idx_to_slices(
+    value_sub_idx: hsize_t[:],
+    chunk_sub_idx: hsize_t[:],
+    slices: hsize_t[:, :],
+    cursor: hsize_t,
+) -> hsize_t:
+    """Break down a one-dimensional integer array into a (greedy) minimal list of
+    slices. Populate input of read_many_slices().
+
+    Parameters
+    ----------
+    value_sub_idx:
+        integer array index selecting the __getitem__ output value or __setitem__
+        parameter value for the chunk
+    chunk_sub_idx:
+        integer array index selecting the points within the chunk
+    slices:
+        Return value of IndexChunkMapper._init_many_slices_params()
+    cursor:
+        Current row of slices
+
+    Returns
+    -------
+    Next row of slices
+    """
+    npoints = len(value_sub_idx)
+
+    i = 0
+    while i < npoints:
+        value_sub_start = value_sub_idx[i]
+        chunk_sub_start = chunk_sub_idx[i]
+        count = 1
+        value_sub_stride = 1  # This is 1 for monotonically increasing indices
+        chunk_sub_stride = 1
+
+        while True:
+            if i == npoints - 1:
+                break
+
+            v0 = value_sub_idx[i]
+            v1 = value_sub_idx[i + 1]
+            c0 = chunk_sub_idx[i]
+            c1 = chunk_sub_idx[i + 1]
+
+            if v1 <= v0 or c1 <= c0:
+                break  # step < 1
+
+            if count == 1:
+                # Recognize a stride pattern
+                value_sub_stride = v1 - v0
+                chunk_sub_stride = c1 - c0
+
+                # Handle special case where having stride>1 now would break
+                # a contiguous block with stride=1 immediately afterwards
+                if i < npoints - 2:
+                    v2 = value_sub_idx[i + 2]
+                    if value_sub_stride > 1 and v2 == v1 + 1:
+                        value_sub_stride = 1
+                        chunk_sub_stride = 1
+                        break
+
+                    c2 = chunk_sub_idx[i + 2]
+                    if chunk_sub_stride > 1 and c2 == c1 + 1:
+                        value_sub_stride = 1
+                        chunk_sub_stride = 1
+                        break
+
+            else:
+                if v1 - v0 != value_sub_stride:
+                    break
+                if c1 - c0 != chunk_sub_stride:
+                    break
+
+            count += 1
+            i += 1
+        i += 1
+
+        # For reference, see subchunk_map.pxd::ReadManySlicesColumn
+        slices[cursor, 0] = chunk_sub_start
+        slices[cursor, 1] = value_sub_start
+        slices[cursor, 2] = count
+        slices[cursor, 3] = chunk_sub_stride
+        slices[cursor, 4] = value_sub_stride
+        cursor += 1
+
+    return cursor
 
 
 def index_chunk_mappers(
@@ -536,6 +901,254 @@ def _maybe_array_idx_to_slice(idx: Any):  # -> NDArray[np_hsize_t] | slice:
             return slice(int(start), int(stop), int(step))
 
     return idx
+
+
+class TransferType(enum.Enum):
+    getitem = 0
+    setitem = 1
+    slab_to_slab = 2
+
+
+@cython.ccall
+def read_many_slices_params_nd(
+    transfer_type: TransferType,
+    mappers: list[IndexChunkMapper],
+    chunk_idxidx: hsize_t[:, :],
+    src_slab_offsets: hsize_t[:],
+    dst_slab_offsets: hsize_t[:],
+) -> hsize_t[:, :, :]:
+    """Assemble the parameters for read_many_slices() for a multi-dimensional index
+    for a specific transfer type between two arrays.
+
+    Parameters
+    ----------
+    transfer_type:
+        The type of transfer to perform:
+
+        TransferType.getitem
+            The src array of read_many_slices() is an individual slab
+            The dst array is the return value of __getitem__
+            src_slab_offsets must have as many rows as chunk_idxidx
+        TransferType.setitem
+            The src array is the value parameter of __setitem__
+            The dst array is an individual slab
+            dst_slab_offsets must have as many rows as chunk_idxidx
+        TransferType.slab_to_slab
+            Both src and dst arrays are slabs
+
+    mappers:
+        List of IndexChunkMapper objects, one per axis of the index, as returned by
+        index_chunk_mappers()
+    chunk_idxidx:
+        2D array of shape (nchunks, ndim) where each row represents a chunk to be
+        transferred and point contains the index of IndexChunkMapper.chunk_indices for
+        the axis matching the column. In other words,
+
+            mappers[j].chunk_indices[chunk_idxidx[i, j]] * mappers[j].chunk_size
+
+        is the address along axis j of the top-left corner in the virtual array
+        of the i-th chunk to be transferred.
+
+    src_slab_offsets:
+        1D array of shape (nchunks, ) with the offset of the slab along axis 0, to be
+        added to addresses relative to the start of the chunk in the src slab.
+        Ignored when transfer_type==TransferType.setitem.
+    dst_slab_offsets:
+        1D array of shape (nchunks, ) with the offset of the slab along axis 0, to be
+        added to addresses relative to the start of the chunk in the dst slab.
+        Ignored when transfer_type==TransferType.getitem.
+
+    Returns
+    -------
+    3D array of indices of shape (nslices, 5, ndim), ready to be passed to
+    read_many_slices().
+
+    There is one row per slice.
+    In absence of fancy indexing, this is the same as the number of chunks.
+
+    Axis 1 contains exactly 5 columns:
+
+    - src_start
+    - dst_start
+    - count
+    - src_stride
+    - dst_stride
+
+    See slicetools.pyx::read_many_slices() for documentation on these parameters.
+    See subchunk_map.pxd::ReadManySlicesNDColumn for reference on the column indices.
+
+    The final column represents the axis. Note how axis must be last, and thus
+    internally C-contiguous, in order to allow read_many_slices() to use the index as-is
+    without any further processing.
+    """
+    # Hack around lack of cython enums in pure python mode
+    transfer_type_int: cython.int = transfer_type.value
+    TRANSFER_TYPE_GETITEM: cython.int = TransferType.getitem.value
+    TRANSFER_TYPE_SETITEM: cython.int = TransferType.setitem.value
+
+    nchunks = chunk_idxidx.shape[0]
+    ndim = chunk_idxidx.shape[1]
+
+    # Store the slices in a C array (in the stack) of views (in the heap).
+    # In order to keep the reference counter of the views, which are Python objects,
+    # above zero for the duration of the function, we also need to reference them from a
+    # Python object.
+    slices_refs = []
+    # Can't define module-level constants in pure-python mode
+    # https://github.com/numpy/numpy/blob/b0a52b76c2bebe5c237722589d13bf02affa9c43/numpy/core/include/numpy/ndarraytypes.h#L30
+    # NPY_MAXDIMS = 32
+    slices: hsize_t[:, :][32]  # type: ignore
+    if not cython.compiled:
+        slices = [None] * ndim
+
+    # Generate the slices along each axis and calculate the flattened number of slices
+    # to return. This is trivial in absence of a fancy index as there is a 1:1
+    # relationship between chunks and slices.
+    nslices: ssize_t = nchunks
+    fancy_axis = -1
+    for j in range(ndim):
+        mapper: IndexChunkMapper = mappers[j]
+        slices_j: hsize_t[:, :]
+        slices_j, c2s = mapper.read_many_slices_params()
+        slices[j] = slices_j
+        slices_refs.append(slices_j)
+
+        assert slices_j.shape[1] == 5
+        if c2s is None:
+            # Basic index, or fancy index that could be coerced into 1 slice per chunk
+            assert slices_j.shape[0] == len(mapper.chunk_indices)
+        else:
+            # There is a fancy index on this axis. Note that fancy indices can return
+            # c2s=None and effectively declass themselves to basic indices for the
+            # purpose of this algorithm when they can be represented as exactly one
+            # slice per chunk; e.g. idx=[0, 2, 3], chunk_size=2, dset_size=4.
+
+            assert fancy_axis == -1  # There can be at most one fancy index
+            fancy_axis = j
+            chunks_to_slices: hsize_t[:] = c2s
+            assert len(chunks_to_slices) == len(mapper.chunk_indices) + 1
+
+            # Recalculate nslices
+            nslices = 0
+            for i in range(nchunks):
+                k = chunk_idxidx[i, j]
+                if not cython.compiled:
+                    k = int(k)  # uint64_t + int -> float64
+                fancy_count = chunks_to_slices[k + 1] - chunks_to_slices[k]
+                if not cython.compiled:
+                    fancy_count = int(fancy_count)  # uint64_t + int -> float64
+                nslices += fancy_count
+
+    # Allocate memory for return value
+    ndslices: hsize_t[:, :, :] = np.empty((nslices, 5, ndim), dtype=np_hsize_t)
+
+    # Perform pseudo-cartesian product of mapper.read_many_slices_params()[0]
+    # for each axis. Unlike a true cartesian product, chunk_idxidx can skip chunks.
+    #
+    # A helpful legend to this seven-counters monstruosity,
+    # with many apologies to the reader:
+    #
+    # i: row of chunks; the flat i-th chunk caught not only by the intersection of
+    #    mappers[*].chunk_indices, but also by the per-chunk mask on slab_indices.
+    # j: axis; column of chunks
+    # k: the index on mappers[j].chunk_indices.
+    #    mappers[j].chunk_indices[k] * chunk_size[j] is the address of the
+    #    top-left corner of the chunk along axis j in the virtual dataset
+    #
+    # Additional counters only for when there's a fancy index, which causes a 1:N
+    # relationship between chunks and slices:
+    # fancy_k:   like k, but always pinned to the fancy index regardless of the
+    #            current axis
+    # fancy_cur: the current slice along the fancy index, within the current chunk k
+    # outs:      the n-th n-dimensional slice to process with read_many_slices;
+    #            cursor on axis 0 of the return value
+    # inps:      the n-th 1-dimensional slice on slices[j].
+    #            When j == fancy_axis, this equals to fans; on all other axes, this is a
+    #            repetition of k for as many slices there are in the fancy index for the
+    #            current chunk.
+    with cython.nogil:
+        for j in range(ndim):
+            slices_j = slices[j]
+            # For the mapping, refer to docstring of
+            # IndexChunkMapper.read_many_slices_params()
+            # For column indices, refer to subchunk_map.pxd::ReadManySlicesColumn
+            if transfer_type_int == TRANSFER_TYPE_GETITEM:
+                src_start = slices_j[:, 0]  # chunk_sub_start
+                dst_start = slices_j[:, 1]  # value_sub_start
+                count = slices_j[:, 2]  # count
+                src_stride = slices_j[:, 3]  # chunk_sub_stride
+                dst_stride = slices_j[:, 4]  # value_sub_stride
+                add_src_offset: bint = j == 0
+                add_dst_offset: bint = False
+
+            elif transfer_type_int == TRANSFER_TYPE_SETITEM:
+                src_start = slices_j[:, 1]  # value_sub_start
+                dst_start = slices_j[:, 0]  # chunk_sub_start
+                count = slices_j[:, 2]  # count
+                src_stride = slices_j[:, 4]  # value_sub_stride
+                dst_stride = slices_j[:, 3]  # chunk_sub_stride
+                add_src_offset = False
+                add_dst_offset = j == 0
+
+            else:  # slab-to-slab
+                src_start = slices_j[:, 0]  # chunk_sub_start
+                dst_start = slices_j[:, 0]  # chunk_sub_start
+                count = slices_j[:, 2]  # count
+                src_stride = slices_j[:, 3]  # chunk_sub_stride
+                dst_stride = slices_j[:, 3]  # chunk_sub_stride
+                add_src_offset = j == 0
+                add_dst_offset = j == 0
+
+            assert not add_src_offset or len(src_slab_offsets) == nchunks
+            assert not add_dst_offset or len(dst_slab_offsets) == nchunks
+
+            if fancy_axis == -1:
+                # 1 chunk : 1 slice
+                for i in range(nchunks):
+                    k = chunk_idxidx[i, j]
+                    src_offset = src_slab_offsets[i] if add_src_offset else 0
+                    dst_offset = dst_slab_offsets[i] if add_dst_offset else 0
+
+                    # For reference, see subchunk_map.pxd::ReadManySlicesNDColumn
+                    ndslices[i, 0, j] = src_start[k] + src_offset
+                    ndslices[i, 1, j] = dst_start[k] + dst_offset
+                    ndslices[i, 2, j] = count[k]
+                    ndslices[i, 3, j] = src_stride[k]
+                    ndslices[i, 4, j] = dst_stride[k]
+
+            else:
+                # 1 chunk : n slices for the fancy index
+                # 1 chunk : 1 slice on other axes, which must be replicated
+                # to match the fancy index
+                outs: ssize_t = 0
+                for i in range(nchunks):
+                    if j != fancy_axis:
+                        k = chunk_idxidx[i, j]
+                    src_offset = src_slab_offsets[i] if add_src_offset else 0
+                    dst_offset = dst_slab_offsets[i] if add_dst_offset else 0
+
+                    fancy_k = chunk_idxidx[i, fancy_axis]
+                    if not cython.compiled:
+                        fancy_k = int(fancy_k)  # uint64_t + int -> float64
+                    fancy_start = chunks_to_slices[fancy_k]
+                    fancy_stop = chunks_to_slices[fancy_k + 1]
+                    if not cython.compiled:
+                        fancy_start = int(fancy_start)
+                        fancy_stop = int(fancy_stop)
+
+                    for fancy_cur in range(fancy_start, fancy_stop):
+                        inps = fancy_cur if j == fancy_axis else k
+                        # For reference, see subchunk_map.pxd::ReadManySlicesNDColumn
+                        ndslices[outs, 0, j] = src_start[inps] + src_offset
+                        ndslices[outs, 1, j] = dst_start[inps] + dst_offset
+                        ndslices[outs, 2, j] = count[inps]
+                        ndslices[outs, 3, j] = src_stride[inps]
+                        ndslices[outs, 4, j] = dst_stride[inps]
+                        outs += 1
+
+                assert outs == nslices
+
+    return ndslices
 
 
 def as_subchunk_map(
