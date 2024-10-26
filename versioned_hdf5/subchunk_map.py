@@ -200,28 +200,6 @@ class IntegerMapper(IndexChunkMapper):
 
 
 @cython.cclass
-class EverythingMapper(IndexChunkMapper):
-    """Select all points along an axis [:].
-
-    This is functionally identical to SliceMapper(slice(None), chunk_size, dset_size),
-    special-cased here for simplicity and speed.
-    """
-
-    def __init__(self, dset_size: hsize_t, chunk_size: hsize_t):
-        n_chunks = ceil_a_over_b(dset_size, chunk_size)
-        super().__init__(np.arange(n_chunks, dtype=np_hsize_t), dset_size, chunk_size)
-
-    @cython.ccall
-    def chunk_submap(self, chunk_idx: hsize_t) -> tuple[Slice, slice, slice]:
-        chunk_start, chunk_stop = self._chunk_start_stop(chunk_idx)
-        return (
-            Slice(chunk_start, chunk_stop, 1),
-            slice(chunk_start, chunk_stop, 1),
-            slice(0, chunk_stop - chunk_start, 1),
-        )
-
-
-@cython.cclass
 class IntegerArrayMapper(IndexChunkMapper):
     """IndexChunkMapper for one-dimensional fancy integer array indices.
     This is also used for boolean indices (preprocessed with np.flatnonzero()).
@@ -302,7 +280,7 @@ def index_chunk_mappers(
     # Handle the remaining suffix axes on which we did not select, we still need to
     # break them up into chunks.
     for d, n in zip(shape[idx_len:], chunk_size[idx_len:]):
-        mappers.append(EverythingMapper(d, n))
+        mappers.append(SliceMapper(slice(0, d, 1), d, n))
 
     return idx, mappers
 
@@ -322,10 +300,7 @@ def _index_to_mapper(idx, dset_size: hsize_t, chunk_size: hsize_t) -> IndexChunk
         return IntegerArrayMapper(idx, dset_size, chunk_size)
 
     if isinstance(idx, slice):
-        if idx == slice(0, dset_size, 1):
-            return EverythingMapper(dset_size, chunk_size)
-        else:
-            return SliceMapper(idx, dset_size, chunk_size)
+        return SliceMapper(idx, dset_size, chunk_size)
 
     raise NotImplementedError(f"index type {type(idx)} not supported")
 
