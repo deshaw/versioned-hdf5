@@ -128,4 +128,5 @@ versioned_hdf5/*.html
 versioned_hdf5/*.so
 # These are temporary copies created by meson.build
 versioned_hdf5/cytools.pyx
+versioned_hdf5/staged_changes.pyx
 versioned_hdf5/subchunk_map.pyx
