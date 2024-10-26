@@ -88,7 +88,7 @@ def mask_idx_st(draw, shape: tuple[int, ...]) -> Any:
 
 
 @st.composite
-def idx_chunks_shape_st(
+def idx_shape_chunks_st(
     draw, max_ndim: int = 4
 ) -> tuple[Any, tuple[int, ...], tuple[int, ...]]:
     shape_st = st.lists(st.integers(1, 20), min_size=1, max_size=max_ndim)
@@ -104,14 +104,14 @@ def idx_chunks_shape_st(
     )
     idx = draw(idx_st)
 
-    return idx, chunks, shape
+    return idx, shape, chunks
 
 
 @pytest.mark.slow
-@given(idx_chunks_shape_st())
+@given(idx_shape_chunks_st())
 @hypothesis.settings(max_examples=max_examples, deadline=None)
 def test_as_subchunk_map(args):
-    idx, chunks, shape = args
+    idx, shape, chunks = args
 
     source = np.arange(1, np.prod(shape) + 1, dtype=np.int32).reshape(shape)
     expect = source[idx]
