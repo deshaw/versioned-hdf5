@@ -16,10 +16,10 @@ max_examples = 10_000
 
 
 def non_negative_step_slices(size: int):
-    start = st.one_of(st.integers(-size - 1, size + 1), st.none())
-    stop = st.one_of(st.integers(-size - 1, size + 1), st.none())
+    start = st.one_of(st.none(), st.integers(-size - 1, size + 1))
+    stop = st.one_of(st.none(), st.integers(-size - 1, size + 1))
     # only non-negative steps (or None) are allowed
-    step = st.one_of(st.integers(1, size + 1), st.none())
+    step = st.one_of(st.none(), st.integers(1, size + 1))
     return st.builds(slice, start, stop, step)
 
 
@@ -117,7 +117,7 @@ def test_as_subchunk_map(args):
     expect = source[idx]
     actual = np.zeros_like(expect)
 
-    for chunk_idx, arr_subidx, chunk_subidx in as_subchunk_map(chunks, idx, shape):
+    for chunk_idx, value_sub_idx, chunk_sub_idx in as_subchunk_map(idx, shape, chunks):
         chunk_idx = chunk_idx.raw
 
         # Test that chunk_idx selects whole chunks
@@ -129,7 +129,7 @@ def test_as_subchunk_map(args):
             assert i.stop == min(i.start + c, d)
             assert i.step == 1
 
-        assert not actual[arr_subidx].any(), "overlapping arr_subidx"
-        actual[arr_subidx] = source[chunk_idx][chunk_subidx]
+        assert not actual[value_sub_idx].any(), "overlapping value_sub_idx"
+        actual[value_sub_idx] = source[chunk_idx][chunk_sub_idx]
 
     assert_array_equal(actual, expect)
