@@ -743,7 +743,7 @@ class InMemoryDataset(Dataset):
         # Usually that's much faster than reading individual chunks.
         old_data = self.get_index(old_shape_idx.raw, can_read_direct=can_read_direct)
         # Now read chunks out of the array.
-        for chunk, _, index_raw in as_subchunk_map(self.chunks, old_shape_idx, size):
+        for chunk, _, index_raw in as_subchunk_map(old_shape_idx, size, self.chunks):
             if chunk in data_dict:
                 new_data_dict[chunk] = data_dict[chunk]
             else:
@@ -837,7 +837,7 @@ class InMemoryDataset(Dataset):
         arr = np.ndarray(idx.newshape(self.shape), new_dtype, order="C")
 
         for chunk, arr_idx_raw, index_raw in as_subchunk_map(
-            self.chunks, idx, self.shape
+            idx, self.shape, self.chunks
         ):
             if chunk not in self.id.data_dict:
                 self.id.data_dict[chunk] = np.broadcast_to(
@@ -987,7 +987,7 @@ class InMemoryDataset(Dataset):
 
         val = np.broadcast_to(val, idx.newshape(self.shape))
 
-        for c, val_idx_raw, index_raw in as_subchunk_map(self.chunks, idx, self.shape):
+        for c, val_idx_raw, index_raw in as_subchunk_map(idx, self.shape, self.chunks):
             if c not in self.id.data_dict:
                 # Broadcasted arrays do not actually consume memory
                 fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
@@ -1307,7 +1307,7 @@ class InMemorySparseDataset(DatasetLike):
         arr = np.full(newshape, self.fillvalue, dtype=self.dtype)
 
         for c, arr_idx_raw, chunk_idx_raw in as_subchunk_map(
-            self.chunks, idx, self.shape
+            idx, self.shape, self.chunks
         ):
             if c not in self.data_dict:
                 fill = np.broadcast_to(self.fillvalue, c.newshape(self.shape))
@@ -1327,7 +1327,7 @@ class InMemorySparseDataset(DatasetLike):
         val = np.broadcast_to(value, idx.newshape(self.shape))
 
         for c, val_idx_raw, chunk_idx_raw in as_subchunk_map(
-            self.chunks, idx, self.shape
+            idx, self.shape, self.chunks
         ):
             if c not in self.data_dict:
                 # Broadcasted arrays do not actually consume memory

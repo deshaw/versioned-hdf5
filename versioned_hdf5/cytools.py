@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import cython
-from cython import Py_ssize_t
 
 if cython.compiled:  # pragma: nocover
     # This is repeated here from the header in order to silence mypy, which now treats
@@ -47,15 +46,14 @@ def count2stop(start: hsize_t, count: hsize_t, step: hsize_t) -> hsize_t:
 @cython.ccall
 @cython.nogil
 @cython.exceptval(check=False)
-def ceil_a_over_b(a: Py_ssize_t, b: Py_ssize_t) -> Py_ssize_t:
+def ceil_a_over_b(a: hsize_t, b: hsize_t) -> hsize_t:
     """Returns ceil(a/b). Assumes a >= 0 and b > 0.
 
     Note
     ----
-    This module is compiled with the cython.cdivision flag. This causes behaviour to
-    change if a and b have opposite signs and you try debugging the module in pure
-    python, without compiling it. This function blindly assumes that a and b are always
-    the same sign.
+    This module is compiled with the cython.cdivision flag and the data type is
+    unsigned. This causes behaviour to change if one accidentally passes negative a or b
+    when running in pure python mode.
     """
     return a // b + (a % b > 0)
 
@@ -63,7 +61,7 @@ def ceil_a_over_b(a: Py_ssize_t, b: Py_ssize_t) -> Py_ssize_t:
 @cython.ccall
 @cython.nogil
 @cython.exceptval(check=False)
-def smallest_step_after(x: Py_ssize_t, a: Py_ssize_t, m: Py_ssize_t) -> Py_ssize_t:
+def smallest_step_after(x: hsize_t, a: hsize_t, m: hsize_t) -> hsize_t:
     """Find the smallest integer y >= x where y = a + k*m for whole k's
     Assumes 0 <= a <= x and m >= 1.
 

@@ -1,7 +1,6 @@
 # This file allows cimport'ing the functions and types declared below from other
 # Cython modules
 
-from cython cimport Py_ssize_t
 from libc.stdint cimport uint64_t
 
 # Centralized definition of hsize_t, in accordance with libhd5:
@@ -32,7 +31,5 @@ cdef extern from "hdf5.h":
 
 cpdef hsize_t stop2count(hsize_t start, hsize_t stop, hsize_t step) noexcept nogil
 cpdef hsize_t count2stop(hsize_t start, hsize_t count, hsize_t step) noexcept nogil
-cpdef Py_ssize_t ceil_a_over_b(Py_ssize_t a, Py_ssize_t b) noexcept nogil
-cpdef Py_ssize_t smallest_step_after(
-    Py_ssize_t x, Py_ssize_t a, Py_ssize_t m
-) noexcept nogil
+cpdef hsize_t ceil_a_over_b(hsize_t a, hsize_t b) noexcept nogil
+cpdef hsize_t smallest_step_after(hsize_t x, hsize_t a, hsize_t m) noexcept nogil
