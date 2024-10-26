@@ -10,7 +10,7 @@ from hypothesis import strategies as st
 from hypothesis.extra import numpy as stnp
 from numpy.testing import assert_array_equal
 
-from ..subchunk_map import as_subchunk_map
+from ..subchunk_map import SliceMapper, as_subchunk_map, index_chunk_mappers
 
 max_examples = 10_000
 
@@ -133,3 +133,42 @@ def test_as_subchunk_map(args):
         actual[value_sub_idx] = source[chunk_idx][chunk_sub_idx]
 
     assert_array_equal(actual, expect)
+
+
+def test_simplify_indices():
+    """Test that a fancy index that can be redefined globally as a slice results in a
+    SliceMapper
+    """
+    _, (mapper,) = index_chunk_mappers([True, True, False, False], (4,), (2,))
+    assert isinstance(mapper, SliceMapper)
+    assert mapper.start == 0
+    assert mapper.stop == 2
+    assert mapper.step == 1
+
+    _, (mapper,) = index_chunk_mappers([False, True, False, True], (4,), (2,))
+    assert isinstance(mapper, SliceMapper)
+    assert mapper.start == 1
+    assert mapper.stop == 4
+    assert mapper.step == 2
+
+
+def test_chunk_submap_simplifies_indices():
+    """Test that, when a fancy index can't be globally simplified to a slice,
+    as_subchunk_map still attemps to simplify the individual chunk subindices.
+    """
+    _, (mapper,) = index_chunk_mappers(
+        [True, False, True, False]  # chunk 0
+        + [True, True, False, False]  # chunk 1
+        + [True, False, True, True],  # chunk 2
+        (12,),
+        (4,),
+    )
+    _, value_sub_idx, chunk_sub_idx = mapper.chunk_submap(0)
+    assert value_sub_idx == slice(0, 2, 1)
+    assert chunk_sub_idx == slice(0, 3, 2)
+    _, value_sub_idx, chunk_sub_idx = mapper.chunk_submap(1)
+    assert value_sub_idx == slice(2, 4, 1)
+    assert chunk_sub_idx == slice(0, 2, 1)
+    _, value_sub_idx, chunk_sub_idx = mapper.chunk_submap(2)
+    assert value_sub_idx == slice(4, 7, 1)
+    assert_array_equal(chunk_sub_idx, [0, 2, 3])  # Can't be simplified
