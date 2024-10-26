@@ -129,7 +129,9 @@ def test_build_slab_indices_and_offsets_sparse(h5file):
             [456, 123, 123],
             [789, 123, 123],
             [123, 123, 123],
-            [123, 123, 123],  # FIXME Spurious extra chunk
+            # FIXME Spurious extra chunk. Discussion:
+            # https://github.com/deshaw/versioned-hdf5/pull/385#discussion_r1817313138
+            [123, 123, 123],
             [123, 123, 123],
         ],
         dtype=np.int64,
