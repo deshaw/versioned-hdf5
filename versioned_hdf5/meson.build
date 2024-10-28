@@ -34,7 +34,6 @@ py.extension_module(
     subdir: 'versioned_hdf5',
     dependencies: compiled_deps,
     include_directories: [npy_include_path],
-    override_options : ['cython_language=cpp'],
 )
 
 cython_args = [
