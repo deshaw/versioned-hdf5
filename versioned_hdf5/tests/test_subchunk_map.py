@@ -13,7 +13,6 @@ from numpy.testing import assert_array_equal
 from ..cytools import np_hsize_t
 from ..slicetools import read_many_slices
 from ..subchunk_map import (
-    DROP_AXIS,
     EntireChunksMapper,
     SliceMapper,
     TransferType,
@@ -208,13 +207,10 @@ def test_chunks_indexer(args):
         return  # Early exit for empty index
     assert len(shape) == len(chunks) == len(mappers) == 1
     dset_size = shape[0]
+    chunk_size = chunks[0]
     mapper = mappers[0]
     assert mapper.dset_size == shape[0]
     assert mapper.chunk_size == chunks[0]
-
-    source = np.arange(1, dset_size + 1)
-    expect = source[idx]
-    actual = np.zeros_like(expect)
 
     all_chunks = np.arange(mapper.n_chunks)
     sel_chunks = all_chunks[mapper.chunks_indexer()]
@@ -227,23 +223,37 @@ def test_chunks_indexer(args):
     # Test that whole_chunks is a subset of sel_chunks
     assert np.setdiff1d(whole_chunks, sel_chunks, assume_unique=True).size == 0
 
-    for i in sel_chunks:
-        source_idx, value_sub_idx, chunk_sub_idx = mapper.chunk_submap(i)
-        chunk = source[source_idx.raw]
+    # Test correctness of chunks_indexer() and whole_chunks_idxidx()
+    src = np.arange(1, dset_size + 1)
+    dst = np.zeros_like(src)
+    slices, chunk_to_slices = mapper.read_many_slices_params()
 
-        if value_sub_idx is DROP_AXIS:
-            value_sub_idx = ()
-        actual[value_sub_idx] = chunk[chunk_sub_idx]
+    slice_offsets = np.arange(0, dset_size, chunk_size, dtype=np_hsize_t)
+    slice_offsets = slice_offsets[mapper.chunk_indices]
+    if chunk_to_slices is not None:
+        slice_offsets = np.repeat(slice_offsets, np.diff(chunk_to_slices).astype(int))
+    slices[:, 0] += slice_offsets
 
-        coverage = np.zeros_like(chunk)
-        coverage[chunk_sub_idx] = 1
-        assert coverage.any(), "chunk selected by chunk_indexer() is not covered"
-        if i in whole_chunks:
-            assert coverage.all(), "whole chunk is partially covered"
-        else:
-            assert not coverage.all(), "partial chunk is wholly covered"
+    read_many_slices(
+        src=src,
+        dst=dst,
+        src_start=slices[:, 0:1],  # chunk_sub_start
+        dst_start=slices[:, 0:1],  # chunk_sub_start
+        count=slices[:, 2:3],  # count
+        src_stride=slices[:, 3:4],  # chunk_sub_stride
+        dst_stride=slices[:, 3:4],  # chunk_sub_stride
+    )
 
-    assert_array_equal(actual, expect)
+    actual_sel_chunks = []
+    actual_whole_chunks = []
+    for chunk_idx in all_chunks:
+        dst_chunk = dst[(start := chunk_idx * chunk_size) : start + chunk_size]
+        if dst_chunk.any():
+            actual_sel_chunks.append(chunk_idx)
+        if dst_chunk.all():
+            actual_whole_chunks.append(chunk_idx)
+    assert_array_equal(actual_sel_chunks, sel_chunks)
+    assert_array_equal(actual_whole_chunks, whole_chunks)
 
 
 @pytest.mark.slow
