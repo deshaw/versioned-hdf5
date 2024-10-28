@@ -46,15 +46,22 @@ def scalar_indices_st(size: int):
 
 @st.composite
 def basic_idx_st(draw, shape: tuple[int, ...]):
-    """Hypothesis draw of slice and integer indexes"""
-    nidx = draw(st.integers(0, len(shape)))
+    """Hypothesis draw of slice and integer indexes, with potential ellipsis"""
+    nidx_before = draw(st.integers(0, len(shape)))
+    ellipsis = draw(st.one_of(st.just(()), st.just((Ellipsis,))))
+    nidx_after = draw(st.integers(0, len(shape) - nidx_before)) if ellipsis else 0
+    shape2 = shape[:nidx_before] + (shape[-nidx_after:] if nidx_after else ())
+    assert 0 <= len(shape2) <= len(shape)
+
     idx_st = st.tuples(
         *(
             st.one_of(non_negative_step_slices_st(size), scalar_indices_st(size))
-            for size in shape[:nidx]
-        )
+            for size in shape2
+        ),
     )
-    return draw(idx_st)
+    idx = draw(idx_st)
+    idx = idx[:nidx_before] + ellipsis + idx[nidx_before:]
+    return idx
 
 
 @st.composite
@@ -64,22 +71,33 @@ def fancy_idx_st(draw, shape: tuple[int, ...]) -> Any:
     - a list[int] whose elements can be negative, non-unique, and not in order, or
     - a list[bool]
 
-    All other axes are indexed by slices.
+    All other axes are indexed by slices. There may be ellipsis.
 
-    Interleaving scalars and slices and array indices is not supported:
+    Note that interleaving scalars and slices and array indices is not supported:
     https://github.com/Quansight-Labs/ndindex/issues/188
     """
-    fancy_idx_axis = draw(st.integers(0, len(shape) - 1))
-    nidx = draw(st.integers(fancy_idx_axis + 1, len(shape)))
+    ellipsis = draw(st.one_of(st.just(()), st.just((Ellipsis,))))
+    if ellipsis:
+        nidx_before = draw(st.integers(0, len(shape)))
+        nidx_after = draw(
+            st.integers(0 if nidx_before else 1, len(shape) - nidx_before)
+        )
+    else:
+        nidx_before = draw(st.integers(1, len(shape)))
+        nidx_after = 0
+    shape2 = shape[:nidx_before] + (shape[-nidx_after:] if nidx_after else ())
+    assert 1 <= len(shape2) <= len(shape)
+
+    fancy_idx_axis = draw(st.integers(0, len(shape2) - 1))
+
     idx_st = st.tuples(
-        *[non_negative_step_slices_st(shape[dim]) for dim in range(fancy_idx_axis)],
-        array_indices_st(shape[fancy_idx_axis]),
-        *[
-            non_negative_step_slices_st(shape[dim])
-            for dim in range(fancy_idx_axis + 1, nidx)
-        ],
+        *(non_negative_step_slices_st(size) for size in shape2[:fancy_idx_axis]),
+        array_indices_st(shape2[fancy_idx_axis]),
+        *(non_negative_step_slices_st(size) for size in shape2[fancy_idx_axis + 1 :]),
     )
-    return draw(idx_st)
+    idx = draw(idx_st)
+    idx = idx[:nidx_before] + ellipsis + idx[nidx_before:]
+    return idx
 
 
 @st.composite
@@ -553,8 +571,6 @@ def test_invalid_indices():
         index_chunk_mappers(None, (4,), (2,))
     with pytest.raises(NotImplementedError, match="newaxis"):
         index_chunk_mappers(np.newaxis, (4,), (2,))
-    with pytest.raises(NotImplementedError, match="Ellipsis"):
-        index_chunk_mappers((..., 0), (4, 4), (2, 2))
 
     # Fancy indices are tentatively simplified to slices. However, it would be a
     # mistake to simplify [[0, 1], [0, 1]] to [:2, :2]!

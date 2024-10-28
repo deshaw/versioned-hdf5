@@ -13,7 +13,6 @@ import cython
 import numpy as np
 from cython import bint, ssize_t
 from ndindex import ChunkSize, Slice, Tuple, ndindex
-from ndindex.ellipsis import ellipsis
 from numpy.typing import NDArray
 
 from .cytools import (
@@ -854,7 +853,12 @@ def index_chunk_mappers(
         # abort early for empty index
         return idx, []
 
-    idx_len = len(idx.args)
+    # - Expand index shorter than the shape to the full size of the shape
+    # - Expand ellipsis
+    # - Convert None args in slices to integers
+    # - Raise if there are points out of bounds
+    # - Broadcast arrays (we'll need to undo this one later)
+    idx = idx.expand(shape)
 
     d: hsize_t
     n: hsize_t
@@ -862,26 +866,26 @@ def index_chunk_mappers(
     mappers = []
 
     # Process the prefix of the axes which idx selects on
-    for i, d, n in zip(idx.args, shape[:idx_len], chunk_size[:idx_len]):
-        if isinstance(i, ellipsis):  # ndindex wrapper for Ellipsis; reduces erratically
-            raise NotImplementedError("Ellipsis not supported")
-
-        i = i.reduce((d,)).raw
-
+    for i, d, n in zip(idx.raw, shape, chunk_size):
         # _index_to_mapper tentatively simplifies fancy indices to slices.
         # However, it would be a mistake to simplify [[0, 1], [0, 1]] to [:2, :2]!
         if isinstance(i, np.ndarray):
-            fancy_count += 1
-            if fancy_count > 1:
-                raise NotImplementedError("Multiple fancy indices")
+            # When there are list indices, Tuple.expand() broadcasts scalar indices.
+            # Revert them back to scalars so that we may support e.g. (0, [0, 1]).
+            if (
+                i.base is not None
+                and isinstance(i.base, np.ndarray)
+                and i.base.ndim == 0
+                and i.dtype.kind in "iu"
+            ):
+                i = i.base.item()
+            else:
+                fancy_count += 1
+                if fancy_count > 1:
+                    raise NotImplementedError("Multiple fancy indices")
 
         mapper = _index_to_mapper(i, d, n)
         mappers.append(mapper)
-
-    # Handle the remaining suffix axes on which we did not select, we still need to
-    # break them up into chunks.
-    for d, n in zip(shape[idx_len:], chunk_size[idx_len:]):
-        mappers.append(SliceMapper(slice(0, d, 1), d, n))
 
     return idx, mappers
 
