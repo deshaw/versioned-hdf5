@@ -1,9 +1,0 @@
-{
-    "arch": "x86_64",
-    "cpu": "Intel(R) Xeon(R) CPU @ 2.30GHz",
-    "machine": "cirun-peytondmurray--versioned-hdf5-ffd0030",
-    "num_cpu": "8",
-    "os": "Linux 6.8.0-1014-gcp",
-    "ram": "30799060",
-    "version": 1
-}
