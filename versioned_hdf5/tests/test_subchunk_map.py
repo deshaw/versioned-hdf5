@@ -9,7 +9,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from numpy.testing import assert_array_equal
 
-from ..subchunk_map import as_subchunk_map
+from ..subchunk_map import as_subchunk_map, index_chunk_mappers
 
 max_examples = 10_000
 
@@ -122,3 +122,52 @@ def test_as_subchunk_map(args):
         actual[value_sub_idx] = source[chunk_idx][chunk_sub_idx]
 
     assert_array_equal(actual, expect)
+
+
+def test_invalid_indices():
+    with pytest.raises(IndexError, match="too many indices"):
+        index_chunk_mappers((0, 0), (4,), (2,))
+    with pytest.raises(IndexError, match="out of bounds"):
+        index_chunk_mappers((4,), (4,), (2,))
+    with pytest.raises(IndexError, match="out of bounds"):
+        index_chunk_mappers((-5,), (4,), (2,))
+    with pytest.raises(IndexError, match="out of bounds"):
+        index_chunk_mappers(([4],), (4,), (2,))
+    with pytest.raises(IndexError, match="out of bounds"):
+        index_chunk_mappers(([-5],), (4,), (2,))
+    with pytest.raises(IndexError, match="boolean index did not match indexed array"):
+        index_chunk_mappers(([True] * 3,), (4,), (2,))
+    with pytest.raises(IndexError, match="boolean index did not match indexed array"):
+        index_chunk_mappers(([True] * 5,), (4,), (2,))
+
+    with pytest.raises(IndexError, match="valid indices"):
+        index_chunk_mappers("foo", (4,), (2,))
+    with pytest.raises(ValueError, match="step"):
+        index_chunk_mappers(slice(None, None, 0), (4,), (2,))
+
+    with pytest.raises(NotImplementedError, match="step"):
+        index_chunk_mappers(slice(None, None, -1), (4,), (2,))
+    with pytest.raises(NotImplementedError, match="None"):
+        index_chunk_mappers(None, (4,), (2,))
+    with pytest.raises(NotImplementedError, match="newaxis"):
+        index_chunk_mappers(np.newaxis, (4,), (2,))
+    with pytest.raises(NotImplementedError, match="Ellipsis"):
+        index_chunk_mappers((..., 0), (4, 4), (2, 2))
+
+    # Fancy indices are tentatively simplified to slices. However, it would be a
+    # mistake to simplify [[0, 1], [0, 1]] to [:2, :2]!
+    with pytest.raises(NotImplementedError, match="Multiple fancy indices"):
+        index_chunk_mappers(([0, 1], [0, 1]), (4, 4), (2, 2))
+    with pytest.raises(NotImplementedError, match="Multiple fancy indices"):
+        index_chunk_mappers(([True, True], [True, True]), (2, 2), (2, 2))
+    with pytest.raises(NotImplementedError, match="Multiple fancy indices"):
+        index_chunk_mappers(([True, True], [0, 1]), (2, 2), (2, 2))
+    with pytest.raises(NotImplementedError, match="1-dimensional"):
+        index_chunk_mappers([[0, 1], [1, 0]], (4,), (2,))
+
+    with pytest.raises(ValueError, match="chunk sizes"):
+        index_chunk_mappers((), (4,), (0,))
+    with pytest.raises(ValueError, match="shape"):
+        index_chunk_mappers((), (-1,), (2,))
+    with pytest.raises(ValueError, match="chunks"):
+        index_chunk_mappers((), (4,), (2, 2))
