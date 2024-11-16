@@ -43,7 +43,7 @@ class Hashtable(MutableMapping):
     # This is done here because putting @lru_cache() on the class breaks the
     # classmethods. Warning: This does not normalize kwargs, so it is possible
     # to have multiple hashtable instances for the same hashtable.
-    @lru_cache()
+    @lru_cache()  # type: ignore
     def __new__(cls, *args, **kwargs):
         obj = super().__new__(cls)
         return obj
@@ -85,7 +85,7 @@ class Hashtable(MutableMapping):
         """
         name = name.removeprefix("/_version_data/")
 
-        for version, version_group in f["_version_data"]["versions"].items():
+        for version_group in f["_version_data"]["versions"].values():
             if name in version_group:
                 dataset = version_group[name]
                 with Hashtable(f, name) as hashtable:
@@ -124,22 +124,25 @@ class Hashtable(MutableMapping):
         # Object dtype arrays store the ids of the elements, which may or may not be
         # reused, making it unsuitable for hashing. Instead, we need to make a combined
         # hash with the value of each element.
-        if data.dtype == "object":
-            hash_value = self.hash_function()
+        hash_value = self.hash_function()  # type: ignore
+        if data.dtype == object:
             for value in data.flat:
                 if isinstance(value, str):
-                    # default to utf-8 encoding since it's a superset of ascii (the only other
-                    # valid encoding supported in h5py)
+                    # default to utf-8 encoding since it's a superset of ascii (the only
+                    # other valid encoding supported in h5py)
                     value = value.encode("utf-8")
-                # hash the length of value ('n' is ssize_t, which matches the internal type for lengths)
-                hash_value.update(struct.pack("n", len(value)))
+                # hash the length of value ('Q' is unsigned long long, which is 64 bit
+                # on all of today's architectures)
+                # Use little-endian byte order (e.g. x86, ARM) for consistency
+                # everywhere, even on big-endian architectures (e.g. PowerPC).
+                hash_value.update(struct.pack("<Q", len(value)))
+                # Hash the buffer of bytes, bytearray, memoryview, etc.
                 hash_value.update(value)
-            hash_value.update(bytes(str(data.shape), "utf-8"))
-            return hash_value.digest()
         else:
-            return self.hash_function(
-                data.data.tobytes() + bytes(str(data.shape), "ascii")
-            ).digest()
+            hash_value.update(np.ascontiguousarray(data))
+
+        hash_value.update(str(data.shape).encode("ascii"))
+        return hash_value.digest()
 
     @property
     def largest_index(self):

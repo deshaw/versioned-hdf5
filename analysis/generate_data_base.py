@@ -1,4 +1,4 @@
-from __future__ import (absolute_import, division, print_function, with_statement)
+from __future__ import absolute_import, division, print_function, with_statement
 
 import abc
 import random
@@ -35,15 +35,16 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
     # models
     RECENCTNESS_POWERLAW_SHAPE = 20.0
 
-    def test_mostly_appends_sparse(self,
-                                   num_transactions=250,
-                                   filename="test_mostly_appends_sparse",
-                                   chunk_size=None,
-                                   compression=None,
-                                   versions=True,
-                                   print_transactions=False,
-                                   deterministic=False):
-
+    def test_mostly_appends_sparse(
+        self,
+        num_transactions=250,
+        filename="test_mostly_appends_sparse",
+        chunk_size=None,
+        compression=None,
+        versions=True,
+        print_transactions=False,
+        deterministic=False,
+    ):
         num_rows_initial = 1000
         num_rows_per_append = 1000
 
@@ -60,40 +61,68 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
         num_deletes = 10
         num_changes = 10
 
-        times = self._write_transactions_sparse(filename, chunk_size, compression, versions,
-                                                print_transactions, num_rows_initial,
-                                                num_transactions, num_rows_per_append,
-                                                pct_changes, num_changes,
-                                                pct_deletes, num_deletes,
-                                                pct_inserts, num_inserts)
+        times = self._write_transactions_sparse(
+            filename,
+            chunk_size,
+            compression,
+            versions,
+            print_transactions,
+            num_rows_initial,
+            num_transactions,
+            num_rows_per_append,
+            pct_changes,
+            num_changes,
+            pct_deletes,
+            num_deletes,
+            pct_inserts,
+            num_inserts,
+        )
         return times
 
     @classmethod
     @abc.abstractmethod
-    def _write_transactions_sparse(cls, name, chunk_size, compression, versions,
-                                   print_transactions, 
-                                   num_rows_initial, num_transactions,
-                                   num_rows_per_append,
-                                   pct_changes, num_changes,
-                                   pct_deletes, num_deletes,
-                                   pct_inserts, num_inserts):
+    def _write_transactions_sparse(
+        cls,
+        name,
+        chunk_size,
+        compression,
+        versions,
+        print_transactions,
+        num_rows_initial,
+        num_transactions,
+        num_rows_per_append,
+        pct_changes,
+        num_changes,
+        pct_deletes,
+        num_deletes,
+        pct_inserts,
+        num_inserts,
+    ):
         pass
 
     @classmethod
     def _get_rand_fn(cls, dtype):
-        if dtype == np.dtype('int64'):
+        if dtype == np.dtype("int64"):
             return lambda size=None: np.random.randint(0, int(1e6), size=size)
-        elif dtype == np.dtype('float64'):
+        elif dtype == np.dtype("float64"):
             return np.random.rand
         else:
-            raise ValueError('implement other dtypes')
+            raise ValueError("implement other dtypes")
 
     @classmethod
-    def _modify_dss_sparse(cls, key0_ds, key1_ds, val_ds, num_rows_per_append,
-                           pct_changes, num_changes,
-                           pct_deletes, num_deletes,
-                           pct_inserts, num_inserts):
-
+    def _modify_dss_sparse(
+        cls,
+        key0_ds,
+        key1_ds,
+        val_ds,
+        num_rows_per_append,
+        pct_changes,
+        num_changes,
+        pct_deletes,
+        num_deletes,
+        pct_inserts,
+        num_inserts,
+    ):
         ns = set([len(ds) for ds in [key0_ds, key1_ds, val_ds]])
         assert len(ns) == 1
         n = next(iter(ns))
@@ -107,8 +136,10 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
         # delete rows
         if random.randrange(0, 100) <= pct_deletes:
             r_num_dels = max(int(np.random.randn() + num_deletes), 1)
-            pdf = scipy.stats.powerlaw.rvs(TestDatasetPerformanceBase.RECENCTNESS_POWERLAW_SHAPE, size=r_num_dels)
-            rs = np.unique((pdf * n).astype('int64'))
+            pdf = scipy.stats.powerlaw.rvs(
+                TestDatasetPerformanceBase.RECENCTNESS_POWERLAW_SHAPE, size=r_num_dels
+            )
+            rs = np.unique((pdf * n).astype("int64"))
             minr = min(rs)
             n -= len(rs)
             for ds in [key0_ds, key1_ds, val_ds]:
@@ -119,8 +150,11 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
         # insert rows
         if random.randrange(0, 100) <= pct_inserts:
             rand_num_inss = max(int(np.random.randn() + num_inserts), 1)
-            pdf = scipy.stats.powerlaw.rvs(TestDatasetPerformanceBase.RECENCTNESS_POWERLAW_SHAPE, size=rand_num_inss)
-            rs = np.unique((pdf * n).astype('int64'))
+            pdf = scipy.stats.powerlaw.rvs(
+                TestDatasetPerformanceBase.RECENCTNESS_POWERLAW_SHAPE,
+                size=rand_num_inss,
+            )
+            rs = np.unique((pdf * n).astype("int64"))
             minr = min(rs)
             n += len(rs)
             for ds in [key0_ds, key1_ds, val_ds]:
@@ -138,15 +172,16 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
                 ds.resize((n,))
                 ds[-rand_num_apps:] = rand_fn(rand_num_apps)
 
-    def test_large_fraction_changes_sparse(self,
-                                           num_transactions=250,
-                                           filename="test_large_fraction_changes_sparse",
-                                           chunk_size=None,
-                                           compression=None,
-                                           versions=True,
-                                           print_transactions=False,
-                                           deterministic=False):
-
+    def test_large_fraction_changes_sparse(
+        self,
+        num_transactions=250,
+        filename="test_large_fraction_changes_sparse",
+        chunk_size=None,
+        compression=None,
+        versions=True,
+        print_transactions=False,
+        deterministic=False,
+    ):
         num_rows_initial = 5000
         num_rows_per_append = 10
 
@@ -163,28 +198,34 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
         num_deletes = 10
         num_changes = 1000
 
-        times = self._write_transactions_sparse(filename,
-                                                chunk_size,
-                                                compression,
-                                                versions,
-                                                print_transactions,
-                                                num_rows_initial,
-                                                num_transactions,
-                                                num_rows_per_append,
-                                                pct_changes, num_changes,
-                                                pct_deletes, num_deletes,
-                                                pct_inserts, num_inserts)
+        times = self._write_transactions_sparse(
+            filename,
+            chunk_size,
+            compression,
+            versions,
+            print_transactions,
+            num_rows_initial,
+            num_transactions,
+            num_rows_per_append,
+            pct_changes,
+            num_changes,
+            pct_deletes,
+            num_deletes,
+            pct_inserts,
+            num_inserts,
+        )
         return times
 
-    def test_small_fraction_changes_sparse(self,
-                                           num_transactions=250,
-                                           filename="test_small_fraction_changes_sparse",
-                                           chunk_size=None,
-                                           compression=None,
-                                           versions=True,
-                                           print_transactions=False,
-                                           deterministic=False):
-
+    def test_small_fraction_changes_sparse(
+        self,
+        num_transactions=250,
+        filename="test_small_fraction_changes_sparse",
+        chunk_size=None,
+        compression=None,
+        versions=True,
+        print_transactions=False,
+        deterministic=False,
+    ):
         num_rows_initial = 5000
         num_rows_per_append = 10
 
@@ -201,61 +242,73 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
         num_deletes = 10
         num_changes = 10
 
-        times = self._write_transactions_sparse(filename,
-                                                chunk_size,
-                                                compression,
-                                                versions,
-                                                print_transactions,
-                                                num_rows_initial,
-                                                num_transactions,
-                                                num_rows_per_append,
-                                                pct_changes, num_changes,
-                                                pct_deletes, num_deletes,
-                                                pct_inserts, num_inserts)
+        times = self._write_transactions_sparse(
+            filename,
+            chunk_size,
+            compression,
+            versions,
+            print_transactions,
+            num_rows_initial,
+            num_transactions,
+            num_rows_per_append,
+            pct_changes,
+            num_changes,
+            pct_deletes,
+            num_deletes,
+            pct_inserts,
+            num_inserts,
+        )
         return times
 
-    def test_large_fraction_constant_sparse(self,
-                                            num_transactions=250,
-                                            filename="test_large_fraction_constant_sparse",
-                                            chunk_size=None,
-                                            compression=None,
-                                            versions=True,
-                                            print_transactions=False,
-                                            deterministic=False):
-
+    def test_large_fraction_constant_sparse(
+        self,
+        num_transactions=250,
+        filename="test_large_fraction_constant_sparse",
+        chunk_size=None,
+        compression=None,
+        versions=True,
+        print_transactions=False,
+        deterministic=False,
+    ):
         num_rows_initial = 5000
         num_rows_per_append = 0  # triggers the constant size test (FIXME)
 
         pct_inserts = 0
         pct_deletes = 0
         pct_changes = 0
-        
+
         num_inserts = 10
         num_deletes = 10
         num_changes = 1000
 
-        times = self._write_transactions_sparse(filename,
-                                                chunk_size,
-                                                compression,
-                                                versions,
-                                                print_transactions,
-                                                num_rows_initial,
-                                                num_transactions,
-                                                num_rows_per_append,
-                                                pct_changes, num_changes,
-                                                pct_deletes, num_deletes,
-                                                pct_inserts, num_inserts)
+        times = self._write_transactions_sparse(
+            filename,
+            chunk_size,
+            compression,
+            versions,
+            print_transactions,
+            num_rows_initial,
+            num_transactions,
+            num_rows_per_append,
+            pct_changes,
+            num_changes,
+            pct_deletes,
+            num_deletes,
+            pct_inserts,
+            num_inserts,
+        )
         return times
 
-    def test_mostly_appends_dense(self,
-                                  num_transactions=250,
-                                  filename="test_mostly_appends_dense",
-                                  chunk_size=None,
-                                  compression=None,
-                                  versions=True,
-                                  print_transactions=False,
-                                  deterministic=False):
-
+    def test_mostly_appends_dense(
+        self,
+        num_transactions=250,
+        filename="test_mostly_appends_dense",
+        chunk_size=None,
+        compression=None,
+        versions=True,
+        print_transactions=False,
+        deterministic=False,
+    ):
         num_rows_initial_0 = 30
         num_rows_initial_1 = 30
         num_rows_per_append_0 = 1
@@ -275,40 +328,67 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
         num_deletes_1 = 1
         num_changes = 10
 
-        times = self._write_transactions_dense(filename,
-                                               chunk_size,
-                                               compression,
-                                               versions,
-                                               print_transactions,
-                                               num_rows_initial_0, num_rows_initial_1,
-                                               num_transactions,
-                                               num_rows_per_append_0,
-                                               pct_changes, num_changes,
-                                               pct_deletes, num_deletes_0, num_deletes_1,
-                                               pct_inserts, num_inserts_0, num_inserts_1)
+        times = self._write_transactions_dense(
+            filename,
+            chunk_size,
+            compression,
+            versions,
+            print_transactions,
+            num_rows_initial_0,
+            num_rows_initial_1,
+            num_transactions,
+            num_rows_per_append_0,
+            pct_changes,
+            num_changes,
+            pct_deletes,
+            num_deletes_0,
+            num_deletes_1,
+            pct_inserts,
+            num_inserts_0,
+            num_inserts_1,
+        )
         return times
 
     @classmethod
     @abc.abstractmethod
-    def _write_transactions_dense(cls, name,
-                                  chunk_size,
-                                  compression,
-                                  versions,
-                                  print_transactions,
-                                  num_rows_initial_0, num_rows_initial_1,
-                                  num_transactions,
-                                  num_rows_per_append_0,
-                                  pct_changes, num_changes,
-                                  pct_deletes, num_deletes_0, num_deletes_1,
-                                  pct_inserts, num_inserts_0, num_inserts_1):
+    def _write_transactions_dense(
+        cls,
+        name,
+        chunk_size,
+        compression,
+        versions,
+        print_transactions,
+        num_rows_initial_0,
+        num_rows_initial_1,
+        num_transactions,
+        num_rows_per_append_0,
+        pct_changes,
+        num_changes,
+        pct_deletes,
+        num_deletes_0,
+        num_deletes_1,
+        pct_inserts,
+        num_inserts_0,
+        num_inserts_1,
+    ):
         pass
 
     @classmethod
-    def _modify_dss_dense(cls, key0_ds, key1_ds, val_ds,
-                          num_rows_per_append_0,
-                          pct_changes, num_changes,
-                          pct_deletes, num_deletes_0, num_deletes_1,
-                          pct_inserts, num_inserts_0, num_inserts_1):
+    def _modify_dss_dense(
+        cls,
+        key0_ds,
+        key1_ds,
+        val_ds,
+        num_rows_per_append_0,
+        pct_changes,
+        num_changes,
+        pct_deletes,
+        num_deletes_0,
+        num_deletes_1,
+        pct_inserts,
+        num_inserts_0,
+        num_inserts_1,
+    ):
         n_key0 = len(key0_ds)
         n_key1 = len(key1_ds)
         val_shape = val_ds.shape
@@ -325,8 +405,10 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
 
             # 1. delete from key0 and associated vals
             r_num_dels_0 = max(int(np.random.randn() + num_deletes_0), 1)
-            pdf = scipy.stats.powerlaw.rvs(TestDatasetPerformanceBase.RECENCTNESS_POWERLAW_SHAPE, size=r_num_dels_0)
-            rs_0 = np.unique((pdf * n_key0).astype('int64'))
+            pdf = scipy.stats.powerlaw.rvs(
+                TestDatasetPerformanceBase.RECENCTNESS_POWERLAW_SHAPE, size=r_num_dels_0
+            )
+            rs_0 = np.unique((pdf * n_key0).astype("int64"))
             minr_0 = min(rs_0)
 
             n_key0 -= len(rs_0)
@@ -343,8 +425,10 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
 
             # 2. delete from key1 and associated vals
             r_num_dels_1 = max(int(np.random.randn() + num_deletes_1), 1)
-            pdf = scipy.stats.powerlaw.rvs(TestDatasetPerformanceBase.RECENCTNESS_POWERLAW_SHAPE, size=r_num_dels_1)
-            rs_1 = np.unique((pdf * n_key1).astype('int64'))
+            pdf = scipy.stats.powerlaw.rvs(
+                TestDatasetPerformanceBase.RECENCTNESS_POWERLAW_SHAPE, size=r_num_dels_1
+            )
+            rs_1 = np.unique((pdf * n_key1).astype("int64"))
             minr_1 = min(rs_1)
 
             n_key1 -= len(rs_1)
@@ -364,12 +448,17 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
 
             # 1. insert into key0 and associated vals
             rand_num_inss_0 = max(int(np.random.randn() + num_inserts_0), 1)
-            pdf = scipy.stats.powerlaw.rvs(TestDatasetPerformanceBase.RECENCTNESS_POWERLAW_SHAPE, size=rand_num_inss_0)
-            rs_0 = np.unique((pdf * n_key0).astype('int64'))
+            pdf = scipy.stats.powerlaw.rvs(
+                TestDatasetPerformanceBase.RECENCTNESS_POWERLAW_SHAPE,
+                size=rand_num_inss_0,
+            )
+            rs_0 = np.unique((pdf * n_key0).astype("int64"))
             minr_0 = min(rs_0)
 
             arr_key0 = key0_ds[minr_0:]
-            arr_key0 = np.insert(arr_key0, rs_0 - minr_0, np.random.randint(0, int(1e6), size=len(rs_0)))
+            arr_key0 = np.insert(
+                arr_key0, rs_0 - minr_0, np.random.randint(0, int(1e6), size=len(rs_0))
+            )
             n_key0 += len(rs_0)
             key0_ds.resize((n_key0,))
             key0_ds[minr_0:] = arr_key0
@@ -377,17 +466,24 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
             arr_val = val_ds[minr_0:, :]
             val_shape = (val_shape[0] + len(rs_0), val_shape[1])
             val_ds.resize(val_shape)
-            arr_val = np.insert(arr_val, rs_0 - minr_0, np.random.rand(len(rs_0), n_key1), axis=0)
+            arr_val = np.insert(
+                arr_val, rs_0 - minr_0, np.random.rand(len(rs_0), n_key1), axis=0
+            )
             val_ds[minr_0:, :] = arr_val
 
             # 2. insert into key1 and associated vals
             rand_num_inss_1 = max(int(np.random.randn() + num_inserts_1), 1)
-            pdf = scipy.stats.powerlaw.rvs(TestDatasetPerformanceBase.RECENCTNESS_POWERLAW_SHAPE, size=rand_num_inss_1)
-            rs_1 = np.unique((pdf * n_key1).astype('int64'))
+            pdf = scipy.stats.powerlaw.rvs(
+                TestDatasetPerformanceBase.RECENCTNESS_POWERLAW_SHAPE,
+                size=rand_num_inss_1,
+            )
+            rs_1 = np.unique((pdf * n_key1).astype("int64"))
             minr_1 = min(rs_1)
 
             arr_key1 = key1_ds[minr_1:]
-            arr_key1 = np.insert(arr_key1, rs_1 - minr_1, np.random.randint(0, int(1e6), size=len(rs_1)))
+            arr_key1 = np.insert(
+                arr_key1, rs_1 - minr_1, np.random.randint(0, int(1e6), size=len(rs_1))
+            )
             n_key1 += len(rs_1)
             key1_ds.resize((n_key1,))
             key1_ds[minr_1:] = arr_key1
@@ -395,7 +491,9 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
             arr_val = val_ds[:, minr_1:]
             val_shape = (val_shape[0], val_shape[1] + len(rs_1))
             val_ds.resize(val_shape)
-            arr_val = np.insert(arr_val, rs_1 - minr_1, np.random.rand(n_key0, len(rs_1)), axis=1)
+            arr_val = np.insert(
+                arr_val, rs_1 - minr_1, np.random.rand(n_key0, len(rs_1)), axis=1
+            )
             val_ds[:, minr_1:] = arr_val
         # append
         rand_num_apps_0 = int(np.random.randn() + num_rows_per_append_0)
@@ -403,7 +501,9 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
             # append to key0 and associated vals
             n_key0 += rand_num_apps_0
             key0_ds.resize((n_key0,))
-            key0_ds[-rand_num_apps_0:] = np.random.randint(0, int(1e6), size=rand_num_apps_0)
+            key0_ds[-rand_num_apps_0:] = np.random.randint(
+                0, int(1e6), size=rand_num_apps_0
+            )
 
             val_shape = (n_key0, n_key1)
             val_ds.resize(val_shape)

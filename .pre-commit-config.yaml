@@ -1,13 +1,7 @@
 exclude: |
   (?x)^(
-    analysis/|
-    benchmarks/|
-    test_data/|
-    utils/|
+    analysis/.*\.json|
     github_deploy_key_deshaw_versioned_hdf5.enc|
-    _versioneer.py|
-    benchmarks_install.py|
-    versioned_hdf5/_version.py|
     .asv/
   )
 repos:

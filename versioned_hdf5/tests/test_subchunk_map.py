@@ -7,7 +7,6 @@ import numpy as np
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
-from hypothesis.extra import numpy as stnp
 from numpy.testing import assert_array_equal
 
 from ..subchunk_map import SliceMapper, as_subchunk_map, index_chunk_mappers
@@ -15,7 +14,7 @@ from ..subchunk_map import SliceMapper, as_subchunk_map, index_chunk_mappers
 max_examples = 10_000
 
 
-def non_negative_step_slices(size: int):
+def non_negative_step_slices_st(size: int):
     start = st.one_of(st.none(), st.integers(-size - 1, size + 1))
     stop = st.one_of(st.none(), st.integers(-size - 1, size + 1))
     # only non-negative steps (or None) are allowed
@@ -23,20 +22,24 @@ def non_negative_step_slices(size: int):
     return st.builds(slice, start, stop, step)
 
 
+def array_indices_st(size: int):
+    return st.one_of(
+        st.lists(st.integers(-size, max(0, size - 1)), max_size=size * 2),
+        st.lists(st.booleans(), min_size=size, max_size=size),
+    )
+
+
+def scalar_indices_st(size: int):
+    return st.integers(-size, size - 1) if size > 0 else st.nothing()
+
+
 @st.composite
-def basic_idx_st(draw, shape: tuple[int, ...]) -> Any:
+def basic_idx_st(draw, shape: tuple[int, ...]):
     """Hypothesis draw of slice and integer indexes"""
     nidx = draw(st.integers(0, len(shape)))
     idx_st = st.tuples(
         *(
-            # FIXME we should push the scalar use case into non_negative_step_slices
-            # However ndindex fails when mixing scalars and slices and array indices
-            # https://github.com/Quansight-Labs/ndindex/issues/188
-            st.one_of(
-                non_negative_step_slices(size),
-                st.integers(-size, size - 1),
-            )
-            # Note: ... is not supported
+            st.one_of(non_negative_step_slices_st(size), scalar_indices_st(size))
             for size in shape[:nidx]
         )
     )
@@ -45,65 +48,51 @@ def basic_idx_st(draw, shape: tuple[int, ...]) -> Any:
 
 @st.composite
 def fancy_idx_st(draw, shape: tuple[int, ...]) -> Any:
-    """A single axis is indexed by a NDArray[np.intp], whose elements can be negative,
-    non-unique, and not in order.
+    """A single axis is indexed by either
+
+    - a list[int] whose elements can be negative, non-unique, and not in order, or
+    - a list[bool]
+
     All other axes are indexed by slices.
+
+    Interleaving scalars and slices and array indices is not supported:
+    https://github.com/Quansight-Labs/ndindex/issues/188
     """
     fancy_idx_axis = draw(st.integers(0, len(shape) - 1))
-    size = shape[fancy_idx_axis]
-    fancy_idx = stnp.arrays(
-        np.intp,
-        shape=st.integers(0, size * 2),
-        elements=st.integers(-size, size - 1),
-        unique=False,
-    )
+    nidx = draw(st.integers(fancy_idx_axis + 1, len(shape)))
     idx_st = st.tuples(
-        *[non_negative_step_slices(shape[dim]) for dim in range(fancy_idx_axis)],
-        fancy_idx,
+        *[non_negative_step_slices_st(shape[dim]) for dim in range(fancy_idx_axis)],
+        array_indices_st(shape[fancy_idx_axis]),
         *[
-            non_negative_step_slices(shape[dim])
-            for dim in range(fancy_idx_axis + 1, len(shape))
+            non_negative_step_slices_st(shape[dim])
+            for dim in range(fancy_idx_axis + 1, nidx)
         ],
     )
     return draw(idx_st)
 
 
 @st.composite
-def mask_idx_st(draw, shape: tuple[int, ...]) -> Any:
-    """A single axis is indexed by a NDArray[np.bool], whereas all other axes
-    may be indexed by slices.
-    """
-    ndim = len(shape)
-    mask_idx_axis = draw(st.integers(0, ndim - 1))
-    mask_idx = stnp.arrays(np.bool_, shape[mask_idx_axis], elements=st.booleans())
-    idx_st = st.tuples(
-        *[non_negative_step_slices(shape[dim]) for dim in range(mask_idx_axis)],
-        mask_idx,
-        *[
-            non_negative_step_slices(shape[dim])
-            for dim in range(mask_idx_axis + 1, ndim)
-        ],
-    )
-    return draw(idx_st)
+def shape_chunks_st(
+    draw, max_ndim: int = 4, min_size: int = 1, max_size: int = 20
+) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    shape_st = st.lists(st.integers(min_size, max_size), min_size=1, max_size=max_ndim)
+    shape = tuple(draw(shape_st))
+
+    chunks_st = st.tuples(*[st.integers(1, s + 1) for s in shape])
+    chunks = draw(chunks_st)
+    return shape, chunks
+
+
+def idx_st(shape: tuple[int, ...]) -> Any:
+    return st.one_of(basic_idx_st(shape), fancy_idx_st(shape))
 
 
 @st.composite
 def idx_shape_chunks_st(
     draw, max_ndim: int = 4
 ) -> tuple[Any, tuple[int, ...], tuple[int, ...]]:
-    shape_st = st.lists(st.integers(1, 20), min_size=1, max_size=max_ndim)
-    shape = tuple(draw(shape_st))
-
-    chunks_st = st.tuples(*[st.integers(1, s + 1) for s in shape])
-    chunks = draw(chunks_st)
-
-    idx_st = st.one_of(
-        basic_idx_st(shape),
-        fancy_idx_st(shape),
-        mask_idx_st(shape),
-    )
-    idx = draw(idx_st)
-
+    shape, chunks = draw(shape_chunks_st(max_ndim))
+    idx = draw(idx_st(shape))
     return idx, shape, chunks
 
 
@@ -172,3 +161,52 @@ def test_chunk_submap_simplifies_indices():
     _, value_sub_idx, chunk_sub_idx = mapper.chunk_submap(2)
     assert value_sub_idx == slice(4, 7, 1)
     assert_array_equal(chunk_sub_idx, [0, 2, 3])  # Can't be simplified
+    
+
+def test_invalid_indices():
+    with pytest.raises(IndexError, match="too many indices"):
+        index_chunk_mappers((0, 0), (4,), (2,))
+    with pytest.raises(IndexError, match="out of bounds"):
+        index_chunk_mappers((4,), (4,), (2,))
+    with pytest.raises(IndexError, match="out of bounds"):
+        index_chunk_mappers((-5,), (4,), (2,))
+    with pytest.raises(IndexError, match="out of bounds"):
+        index_chunk_mappers(([4],), (4,), (2,))
+    with pytest.raises(IndexError, match="out of bounds"):
+        index_chunk_mappers(([-5],), (4,), (2,))
+    with pytest.raises(IndexError, match="boolean index did not match indexed array"):
+        index_chunk_mappers(([True] * 3,), (4,), (2,))
+    with pytest.raises(IndexError, match="boolean index did not match indexed array"):
+        index_chunk_mappers(([True] * 5,), (4,), (2,))
+
+    with pytest.raises(IndexError, match="valid indices"):
+        index_chunk_mappers("foo", (4,), (2,))
+    with pytest.raises(ValueError, match="step"):
+        index_chunk_mappers(slice(None, None, 0), (4,), (2,))
+
+    with pytest.raises(NotImplementedError, match="step"):
+        index_chunk_mappers(slice(None, None, -1), (4,), (2,))
+    with pytest.raises(NotImplementedError, match="None"):
+        index_chunk_mappers(None, (4,), (2,))
+    with pytest.raises(NotImplementedError, match="newaxis"):
+        index_chunk_mappers(np.newaxis, (4,), (2,))
+    with pytest.raises(NotImplementedError, match="Ellipsis"):
+        index_chunk_mappers((..., 0), (4, 4), (2, 2))
+
+    # Fancy indices are tentatively simplified to slices. However, it would be a
+    # mistake to simplify [[0, 1], [0, 1]] to [:2, :2]!
+    with pytest.raises(NotImplementedError, match="Multiple fancy indices"):
+        index_chunk_mappers(([0, 1], [0, 1]), (4, 4), (2, 2))
+    with pytest.raises(NotImplementedError, match="Multiple fancy indices"):
+        index_chunk_mappers(([True, True], [True, True]), (2, 2), (2, 2))
+    with pytest.raises(NotImplementedError, match="Multiple fancy indices"):
+        index_chunk_mappers(([True, True], [0, 1]), (2, 2), (2, 2))
+    with pytest.raises(NotImplementedError, match="1-dimensional"):
+        index_chunk_mappers([[0, 1], [1, 0]], (4,), (2,))
+
+    with pytest.raises(ValueError, match="chunk sizes"):
+        index_chunk_mappers((), (4,), (0,))
+    with pytest.raises(ValueError, match="shape"):
+        index_chunk_mappers((), (-1,), (2,))
+    with pytest.raises(ValueError, match="chunks"):
+        index_chunk_mappers((), (4,), (2, 2))
