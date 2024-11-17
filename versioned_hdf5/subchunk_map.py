@@ -13,6 +13,7 @@ import cython
 import numpy as np
 from cython import bint
 from ndindex import ChunkSize, Slice, Tuple, ndindex
+from ndindex.ellipsis import ellipsis
 from numpy.typing import NDArray
 
 from .cytools import (
@@ -195,12 +196,12 @@ class SliceMapper(IndexChunkMapper):
         dset_size: hsize_t,
         chunk_size: hsize_t,
     ):
+        if idx.step <= 0:
+            raise NotImplementedError("Slice step must be positive")
+
         self.start = idx.start
         self.stop = idx.stop
         self.step = idx.step
-
-        if self.step <= 0:
-            raise NotImplementedError(f"Slice step must be positive not {self.step}")
 
         if self.step > chunk_size:
             n = (self.stop - self.start + self.step - 1) // self.step
@@ -444,12 +445,25 @@ def index_chunk_mappers(
 
     d: hsize_t
     n: hsize_t
+    fancy_count = 0
     mappers = []
 
     # Process the prefix of the axes which idx selects on
     for i, d, n in zip(idx.args, shape[:idx_len], chunk_size[:idx_len]):
-        i = i.reduce((d,))
-        mappers.append(_index_to_mapper(i.raw, d, n))
+        if isinstance(i, ellipsis):  # ndindex wrapper for Ellipsis; reduces erratically
+            raise NotImplementedError("Ellipsis not supported")
+
+        i = i.reduce((d,)).raw
+
+        # _index_to_mapper tentatively simplifies fancy indices to slices.
+        # However, it would be a mistake to simplify [[0, 1], [0, 1]] to [:2, :2]!
+        if isinstance(i, np.ndarray):
+            fancy_count += 1
+            if fancy_count > 1:
+                raise NotImplementedError("Multiple fancy indices")
+
+        mapper = _index_to_mapper(i, d, n)
+        mappers.append(mapper)
 
     # Handle the remaining suffix axes on which we did not select, we still need to
     # break them up into chunks.
@@ -475,7 +489,53 @@ def _index_to_mapper(idx, dset_size: hsize_t, chunk_size: hsize_t) -> IndexChunk
     if isinstance(idx, slice):
         return SliceMapper(idx, dset_size, chunk_size)
 
-    raise NotImplementedError(f"index type {type(idx)} not supported")
+    if idx is None:
+        raise NotImplementedError(f"None/np.newaxis not supported")
+
+    # Unreachable: ndindex preprocessing should have caught this
+    raise TypeError(f"Bad index {idx} of type {type(idx)}")  # pragma: nocover
+
+
+@cython.cfunc
+def _maybe_array_idx_to_slice(idx: Any):  # -> NDArray[np_hsize_t] | slice:
+    """Attempt to convert an integer or boolean array index to a slice"""
+    # boolean array indices can be trivially expressed as an integer array
+    if idx.dtype == bool:
+        idx = np.flatnonzero(idx)
+
+    # Don't copy when converting from np.intp to uint64 on 64-bit platforms
+    idx = asarray(idx, np_hsize_t)
+
+    if not idx.flags.writeable:
+        # Cython doesn't support read-only views in pure Python mode,
+        # so we're forced to copy to prevent a crash in the next line.
+        idx = idx.copy()
+
+    idx_v: hsize_t[:] = idx
+    idx_len = len(idx_v)
+    if idx_len == 0:
+        return slice(0, 0, 1)
+
+    start = idx_v[0]
+    if idx_len == 1:
+        return slice(int(start), int(start + 1), 1)
+    if idx_v[1] <= start:  # step <1
+        return idx
+    stop = idx_v[idx_len - 1] + 1
+    step = idx_v[1] - start
+    if idx_len == 2:
+        return slice(int(start), int(stop), int(step))
+
+    if stop2count(start, stop, step) == idx_len:
+        j = start + step + step
+        for i in range(2, idx_len):
+            if idx_v[i] != j:
+                break
+            j += step
+        else:
+            return slice(int(start), int(stop), int(step))
+
+    return idx
 
 
 @cython.cfunc
