@@ -11,7 +11,6 @@ from numpy.testing import assert_array_equal
 
 from ..subchunk_map import DROP_AXIS, SliceMapper, as_subchunk_map, index_chunk_mappers
 
-
 max_examples = 10_000
 
 

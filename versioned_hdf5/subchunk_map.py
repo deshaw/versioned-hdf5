@@ -538,48 +538,6 @@ def _maybe_array_idx_to_slice(idx: Any):  # -> NDArray[np_hsize_t] | slice:
     return idx
 
 
-@cython.cfunc
-def _maybe_array_idx_to_slice(idx: Any):  # -> NDArray[np_hsize_t] | slice:
-    """Attempt to convert an integer or boolean array index to a slice"""
-    # boolean array indices can be trivially expressed as an integer array
-    if idx.dtype == bool:
-        idx = np.flatnonzero(idx)
-
-    # Don't copy when converting from np.intp to uint64 on 64-bit platforms
-    idx = asarray(idx, np_hsize_t)
-
-    if not idx.flags.writeable:
-        # Cython doesn't support read-only views in pure Python mode,
-        # so we're forced to copy to prevent a crash in the next line.
-        idx = idx.copy()
-
-    idx_v: hsize_t[:] = idx
-    idx_len = len(idx_v)
-    if idx_len == 0:
-        return slice(0, 0, 1)
-
-    start = idx_v[0]
-    if idx_len == 1:
-        return slice(int(start), int(start + 1), 1)
-    if idx_v[1] <= start:  # step <1
-        return idx
-    stop = idx_v[idx_len - 1] + 1
-    step = idx_v[1] - start
-    if idx_len == 2:
-        return slice(int(start), int(stop), int(step))
-
-    if stop2count(start, stop, step) == idx_len:
-        j = start + step + step
-        for i in range(2, idx_len):
-            if idx_v[i] != j:
-                break
-            j += step
-        else:
-            return slice(int(start), int(stop), int(step))
-
-    return idx
-
-
 def as_subchunk_map(
     idx: Any,
     shape: tuple[int, ...],
