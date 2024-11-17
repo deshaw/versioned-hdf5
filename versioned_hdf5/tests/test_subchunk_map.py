@@ -161,7 +161,7 @@ def test_chunk_submap_simplifies_indices():
     _, value_sub_idx, chunk_sub_idx = mapper.chunk_submap(2)
     assert value_sub_idx == slice(4, 7, 1)
     assert_array_equal(chunk_sub_idx, [0, 2, 3])  # Can't be simplified
-    
+
 
 def test_invalid_indices():
     with pytest.raises(IndexError, match="too many indices"):
