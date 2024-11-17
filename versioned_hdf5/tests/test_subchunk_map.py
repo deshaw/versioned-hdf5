@@ -9,7 +9,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from numpy.testing import assert_array_equal
 
-from ..subchunk_map import SliceMapper, as_subchunk_map, index_chunk_mappers
+from ..subchunk_map import DROP_AXIS, SliceMapper, as_subchunk_map, index_chunk_mappers
 
 max_examples = 10_000
 
@@ -124,6 +124,69 @@ def test_as_subchunk_map(args):
     assert_array_equal(actual, expect)
 
 
+def test_mapper_attributes():
+    _, (mapper,) = index_chunk_mappers(slice(5), (6,), (3,))
+    assert mapper.dset_size == 6
+    assert mapper.chunk_size == 3
+    assert mapper.n_chunks == 2
+    assert mapper.last_chunk_size == 3
+
+    _, (mapper,) = index_chunk_mappers((), (5,), (3,))
+    assert mapper.dset_size == 5
+    assert mapper.chunk_size == 3
+    assert mapper.n_chunks == 2
+    assert mapper.last_chunk_size == 2
+
+
+@pytest.mark.slow
+@given(idx_shape_chunks_st(max_ndim=1))
+@hypothesis.settings(max_examples=max_examples, deadline=None)
+def test_chunks_indexer(args):
+    """Test IndexChunkMapper.chunks_indexer and IndexChunkMapper.whole_chunks_idxidx"""
+    idx, shape, chunks = args
+    _, mappers = index_chunk_mappers(idx, shape, chunks)
+    if not mappers:
+        return  # Early exit for empty index
+    assert len(shape) == len(chunks) == len(mappers) == 1
+    dset_size = shape[0]
+    mapper = mappers[0]
+    assert mapper.dset_size == shape[0]
+    assert mapper.chunk_size == chunks[0]
+
+    source = np.arange(1, dset_size + 1)
+    expect = source[idx]
+    actual = np.zeros_like(expect)
+
+    all_chunks = np.arange(mapper.n_chunks)
+    sel_chunks = all_chunks[mapper.chunks_indexer()]
+    whole_chunks = sel_chunks[mapper.whole_chunks_idxidx()]
+
+    # Test that the slices of chunks are strictly monotonic ascending
+    assert_array_equal(sel_chunks, np.unique(sel_chunks))
+    assert_array_equal(whole_chunks, np.unique(whole_chunks))
+
+    # Test that whole_chunks is a subset of sel_chunks
+    assert np.setdiff1d(whole_chunks, sel_chunks, assume_unique=True).size == 0
+
+    for i in sel_chunks:
+        source_idx, value_sub_idx, chunk_sub_idx = mapper.chunk_submap(i)
+        chunk = source[source_idx.raw]
+
+        if value_sub_idx is DROP_AXIS:
+            value_sub_idx = ()
+        actual[value_sub_idx] = chunk[chunk_sub_idx]
+
+        coverage = np.zeros_like(chunk)
+        coverage[chunk_sub_idx] = 1
+        assert coverage.any(), "chunk selected by chunk_indexer() is not covered"
+        if i in whole_chunks:
+            assert coverage.all(), "whole chunk is partially covered"
+        else:
+            assert not coverage.all(), "partial chunk is wholly covered"
+
+    assert_array_equal(actual, expect)
+
+
 def test_simplify_indices():
     """Test that a fancy index that can be redefined globally as a slice results in a
     SliceMapper
@@ -161,6 +224,35 @@ def test_chunk_submap_simplifies_indices():
     _, value_sub_idx, chunk_sub_idx = mapper.chunk_submap(2)
     assert value_sub_idx == slice(4, 7, 1)
     assert_array_equal(chunk_sub_idx, [0, 2, 3])  # Can't be simplified
+
+
+def test_chunks_indexer_simplifies_indices():
+    """Test that chunks_indexer() and whole_chunks_indexer() return a slice if possible"""
+    _, (mapper,) = index_chunk_mappers(slice(None, None, 3), (10,), (2,))
+    assert_array_equal(mapper.chunks_indexer(), [0, 1, 3, 4])
+
+    _, (mapper,) = index_chunk_mappers(slice(None, None, 4), (10,), (2,))
+    assert mapper.chunks_indexer() == slice(0, 5, 2)
+
+    _, (mapper,) = index_chunk_mappers(
+        [True, False, True, True, False, False], (6,), (2,)
+    )
+    assert mapper.chunks_indexer() == slice(0, 2, 1)
+    assert mapper.whole_chunks_idxidx() == slice(1, 2, 1)
+
+    _, (mapper,) = index_chunk_mappers(
+        [True, False, True, True, False, False, True, True, True, True], (10,), (2,)
+    )
+    assert_array_equal(mapper.chunks_indexer(), [0, 1, 3, 4])
+    assert_array_equal(mapper.whole_chunks_idxidx(), slice(1, 4, 1))
+
+    _, (mapper,) = index_chunk_mappers(
+        [True, False, False, True, True, False],
+        (6,),
+        (2,),
+    )
+    assert mapper.chunks_indexer() == slice(0, 3, 1)
+    assert mapper.whole_chunks_idxidx() == slice(0, 0, 1)
 
 
 def test_invalid_indices():
