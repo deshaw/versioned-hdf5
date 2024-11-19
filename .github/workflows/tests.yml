@@ -17,32 +17,24 @@ jobs:
 
       - name: Install native dependencies
         run: |
-          set -xe
           sudo apt update -y
           sudo apt install -y hdf5-tools libhdf5-dev mpi-default-dev
 
       - name: Install target numpy version
         if: matrix.numpy-version != 'latest'
         run: |
-          set -xe
           pip install numpy~=${{ matrix.numpy-version }}
           pip list
 
       - name: Install development h5py version
         if: matrix.h5py-version == 'dev'
-        run: |
-          set -xe
-          pip install git+https://github.com/h5py/h5py
-          pip list
+        run: pip install git+https://github.com/h5py/h5py
 
       - name: Install versioned-hdf5
-        run: |
-          set -xe
-          pip install .
+        run: pip install .
 
       - name: Install versioned-hdf5 test packages and extra h5py compression types
         run: |
-          set -xe
           pip install .[test]
           pip install hdf5plugin tables
 
@@ -51,11 +43,8 @@ jobs:
 
       - name: Print hdf5 configuration
         run: |
-          set -xe
           python -c 'import utils; utils.debug_libhdf5_so()'
           h5cc -showconfig
 
       - name: Run Tests
-        run: |
-          set -xe
-          pytest -v .
+        run: pytest -v .
