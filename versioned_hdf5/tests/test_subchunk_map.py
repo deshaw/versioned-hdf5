@@ -260,10 +260,6 @@ def test_read_many_slices_param(args):
 
     actual_view = actual[None] if actual.shape == () else actual
 
-    # print("=" * 80)
-    # print(f"{idx=} {chunks=} {shape=} {slab_offsets=}")
-    # print(slices)
-
     read_many_slices(
         src=slab,
         dst=actual_view,
@@ -338,13 +334,6 @@ def test_read_many_slices_param_nd(args):
         src_stride=getitem_slices_nd[:, 3, :],
         dst_stride=getitem_slices_nd[:, 4, :],
     )
-
-    # print("=" * 80)
-    # print(f"{idx=} {chunks=} {shape=} {slab_offsets=}")
-    # print("slab=\n", slab)
-    # print(f"slices_nd=\n{np.asarray(getitem_slices_nd)}")
-    # print("expect=\n", expect)
-    # print("dst=\n", getitem_dst)
 
     assert_array_equal(getitem_dst, expect)
 

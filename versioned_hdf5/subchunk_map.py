@@ -142,7 +142,7 @@ class IndexChunkMapper:
 
         **Basic indexing**
 
-        For basic indexing and in simple secial cases of fancy indexes, there is a
+        For basic indexing and in simple special cases of fancy indexes, there is a
         1:1 correlation between selected chunks and slices to tranfer. In this
 
         len(slices) == len(self.chunk_indices).
@@ -576,17 +576,19 @@ class IntegerArrayMapper(IndexChunkMapper):
         slices = np.empty((max_rows, 5), dtype=np_hsize_t)
         slices_v: hsize_t[:, :] = slices
 
-        assert max_rows >= n_sel_chunks
-        if max_rows > n_sel_chunks:
-            chunks_to_slices = np.empty(n_sel_chunks + 1, dtype=np_hsize_t)
-            chunk_to_slices_v: hsize_t[:] = chunks_to_slices
-        else:
+        # Each selected chunk containst at least one point by construction
+        assert n_sel_chunks <= max_rows
+        if n_sel_chunks == max_rows:
             # Because we know we are selecting at least one point per chunk of
             # chunk_indices, then if there are exactly as many chunks as there are
             # points we know that each point falls in a separate chunk and there will be
             # exactly one slice(idx[i], idx[i] + 1, 1) per chunk, so there is no need
             # for the 1:N mapping table chunk_to_slices.
             chunks_to_slices = None
+        else:
+            # At least one chunk contains more than one point
+            chunks_to_slices = np.empty(n_sel_chunks + 1, dtype=np_hsize_t)
+            chunk_to_slices_v: hsize_t[:] = chunks_to_slices
 
         if self.is_ascending:
             starts_stops = np.empty((n_sel_chunks, 2), dtype=np_hsize_t)
