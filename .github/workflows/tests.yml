@@ -10,7 +10,7 @@ jobs:
         numpy-version: ['latest', '1.24.4']
       fail-fast: false
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
@@ -40,16 +40,20 @@ jobs:
           set -xe
           pip install .
 
-      - name: Print hdf5 configuration
-        run: |
-          set -xe
-          h5cc -showconfig
-
       - name: Install versioned-hdf5 test packages and extra h5py compression types
         run: |
           set -xe
           pip install .[test]
           pip install hdf5plugin tables
+
+      - name: Dump pip environment
+        run: pip list
+
+      - name: Print hdf5 configuration
+        run: |
+          set -xe
+          python -c 'import utils; utils.debug_libhdf5_so()'
+          h5cc -showconfig
 
       - name: Run Tests
         run: |
