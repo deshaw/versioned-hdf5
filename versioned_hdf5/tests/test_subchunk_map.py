@@ -434,7 +434,6 @@ def test_entire_chunks_mapper(args):
     )
 
     # Test read_many_slices_params()
-    entire_mapper = EntireChunksMapper(orig_mapper)
     entire_slices, entire_chunks_to_slices = entire_mapper.read_many_slices_params()
     assert entire_chunks_to_slices is None
 
