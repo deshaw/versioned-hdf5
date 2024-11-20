@@ -14,6 +14,7 @@ from ..cytools import np_hsize_t
 from ..slicetools import read_many_slices
 from ..subchunk_map import (
     DROP_AXIS,
+    EntireChunksMapper,
     SliceMapper,
     TransferType,
     as_subchunk_map,
@@ -407,6 +408,54 @@ def test_read_many_slices_param_nd(args):
         dst_stride=getitem_slices_nd3[:, 4, :],
     )
     assert_array_equal(getitem_dst3, expect)
+
+
+@pytest.mark.slow
+@given(idx_shape_chunks_st(max_ndim=1))
+@hypothesis.settings(max_examples=max_examples, deadline=None)
+def test_entire_chunks_mapper(args):
+    idx, shape, chunks = args
+    _, mappers = index_chunk_mappers(idx, shape, chunks)
+    if not mappers:
+        return  # Early exit for empty index
+    assert len(shape) == len(chunks) == len(mappers) == 1
+    chunk_size = chunks[0]
+    orig_mapper = mappers[0]
+    entire_mapper = EntireChunksMapper(orig_mapper)
+
+    # Test chunks_indexer() and whole_chunks_idxidx()
+    all_chunks = np.arange(orig_mapper.n_chunks)
+    sel_chunks = all_chunks[orig_mapper.chunks_indexer()]
+    np.testing.assert_array_equal(
+        all_chunks[entire_mapper.chunks_indexer()], sel_chunks
+    )
+    np.testing.assert_array_equal(
+        sel_chunks[entire_mapper.whole_chunks_idxidx()], sel_chunks
+    )
+
+    # Test read_many_slices_params()
+    entire_slices, entire_chunks_to_slices = entire_mapper.read_many_slices_params()
+    assert entire_chunks_to_slices is None
+
+    n_sel_chunks = len(orig_mapper.chunk_indices)
+    expect_count = np.full(n_sel_chunks, chunk_size, dtype=np_hsize_t)
+    if orig_mapper.chunk_indices[-1] == orig_mapper.n_chunks - 1:
+        expect_count[-1] = orig_mapper.last_chunk_size
+
+    assert_array_equal(
+        entire_slices,
+        np.stack(
+            [
+                np.zeros(n_sel_chunks, dtype=np_hsize_t),  # src_start,
+                np.asarray(orig_mapper.chunk_indices) * chunk_size,  # dst_start,
+                expect_count,  # count
+                np.ones(n_sel_chunks, dtype=np_hsize_t),  # src_stride,
+                np.ones(n_sel_chunks, dtype=np_hsize_t),  # dst_stride,
+            ],
+            axis=1,
+        ),
+        strict=True,
+    )
 
 
 def test_simplify_indices():

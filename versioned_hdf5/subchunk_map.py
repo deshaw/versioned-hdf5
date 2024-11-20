@@ -515,6 +515,52 @@ class IntegerMapper(BasicChunkMapper):
 
 
 @cython.cclass
+class EntireChunksMapper(BasicChunkMapper):
+    """Special mapper that selects all points on the chunks selected by another mapper.
+
+    This is used to load the entire chunk for the purpose of caching when the
+    actual selection may only target part of it.
+    """
+
+    _chunks_indexer: slice | NDArray[np.intp]
+
+    def __init__(self, other: IndexChunkMapper):
+        self._chunks_indexer = other.chunks_indexer()
+        super().__init__(other.chunk_indices, other.dset_size, other.chunk_size)
+
+    @cython.ccall
+    def chunk_submap(
+        self, chunk_idx: hsize_t
+    ) -> tuple[Slice, AnySlicer | DropAxis, AnySlicer]:
+        raise NotImplementedError(  # pragma: nocover
+            "not used in legacy as_subchunk_map"
+        )
+
+    @cython.cfunc
+    @cython.nogil
+    @cython.exceptval(check=False)
+    def _read_many_slices_param(
+        self, chunk_idx: hsize_t
+    ) -> tuple[hsize_t, hsize_t, hsize_t, hsize_t]:
+        chunk_start, chunk_stop = self._chunk_start_stop(chunk_idx)
+
+        return (
+            0,  # chunk_sub_start
+            chunk_start,  # value_sub_start
+            chunk_stop - chunk_start,  # count
+            1,  # chunk_sub_stride
+        )
+
+    @cython.ccall
+    def chunks_indexer(self):
+        return self._chunks_indexer
+
+    @cython.ccall
+    def whole_chunks_idxidx(self):
+        return slice(0, len(self.chunk_indices), 1)
+
+
+@cython.cclass
 class IntegerArrayMapper(IndexChunkMapper):
     """IndexChunkMapper for one-dimensional fancy integer array indices.
     This is also used for boolean indices (preprocessed with np.flatnonzero()).
