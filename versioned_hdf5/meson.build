@@ -55,16 +55,17 @@ cython_args = [
 # To generate HTML compilation reports:
 # (First double check that flags below match those above)
 #
-# cythonize -3 -a -X infer_types=True -X initializedcheck=False -X boundscheck=False -X wraparound=False -X cdivision=True versioned_hdf5/*.pyx
+# cythonize -3 -a -X infer_types=True -X initializedcheck=False -X boundscheck=False -X wraparound=False -X cdivision=True versioned_hdf5/{slicetools.pyx,cytools.py,subchunk_map.py}
 #
 # Or uncomment the -a flag above and then run:
 # meson build && pushd build && meson compile && popd && firefox $(find build/ -name "*.html")
+# (you'll need to install all build dependencies first).
 
+# Hack to convince Meson to compile pure-python .py files with Cython
+# (read: https://cython.readthedocs.io/en/latest/src/tutorial/pure.html)
+run_command('cp', 'cytools.py', 'cytools.pyx')
 py.extension_module(
     'cytools',
-    # FIXME This is a symlink. Can't find a way to convince Meson to compile
-    # with Cython pure-python .py files
-    # (read: https://cython.readthedocs.io/en/latest/src/tutorial/pure.html)
     'cytools.pyx',
     install: true,
     subdir: 'versioned_hdf5',
@@ -72,6 +73,7 @@ py.extension_module(
     cython_args: cython_args,
 )
 
+run_command('cp', 'subchunk_map.py', 'subchunk_map.pyx')
 py.extension_module(
     'subchunk_map',
     'subchunk_map.pyx',
