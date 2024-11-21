@@ -1,6 +1,24 @@
 Versioned HDF5 Change Log
 =========================
 
+## 1.8.1 (2024-11-21)
+
+### Major Changes
+
+- Integer array and boolean array indices are transparently converted to slices when
+  possible, either globally or locally to each chunk.
+  This can result in major speedups.
+- Monotonic ascending integer array indices have been sped up from O(n^2) to O(n*logn)
+  (where n is the number of chunks along the indexed axis).
+
+### Minor Changes
+
+- `as_subchunk_map` has been reimplemented in Cython, providing a speedup
+- Improved the exceptions raised by `create_dataset`
+- Fixed a libhdf5 resource leak in `build_data_dict`;
+  the function has also been sped up.
+- Slightly sped up hashing algorithm
+
 ## 1.8.0 (2024-08-09)
 
 ### Major Changes
@@ -10,6 +28,7 @@ Versioned HDF5 Change Log
 - Improved read/write performance for `InMemoryDataset`
 
 ### Minor Changes
+
 - Force the master branch to be targeted when building docs
 - `__version__` dunder added back in
 - Update build workflows to test with `numpy==1.24` in addition to `numpy>=2`
