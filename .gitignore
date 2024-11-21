@@ -28,6 +28,7 @@ parts/
 sdist/
 var/
 wheels/
+wheelhouse/
 *.egg-info/
 .installed.cfg
 *.egg
@@ -125,3 +126,6 @@ versioned_hdf5/*.c
 versioned_hdf5/*.cpp
 versioned_hdf5/*.html
 versioned_hdf5/*.so
+# These are temporary copies created by meson.build
+versioned_hdf5/cytools.pyx
+versioned_hdf5/subchunk_map.pyx
