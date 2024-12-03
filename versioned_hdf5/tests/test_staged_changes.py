@@ -89,7 +89,7 @@ def test_staged_array(args):
     assert arr.slabs[0].shape == chunks
     assert arr.itemsize == 4
     assert arr.size == np.prod(shape)
-    assert arr.nbytes == np.prod(shape) * 4
+    assert arr.nbytes == np.prod(shape) * 4  # dtype=uint32
     assert arr.shape == shape
     assert len(arr) == shape[0]
     assert arr.ndim == len(shape)
