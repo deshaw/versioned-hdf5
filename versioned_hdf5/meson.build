@@ -55,7 +55,7 @@ cython_args = [
 # To generate HTML compilation reports:
 # (First double check that flags below match those above)
 #
-# cythonize -3 -a -X infer_types=True -X initializedcheck=False -X boundscheck=False -X wraparound=False -X cdivision=True versioned_hdf5/{slicetools.pyx,cytools.py,subchunk_map.py}
+# cythonize -3 -a -X infer_types=True -X initializedcheck=False -X boundscheck=False -X wraparound=False -X cdivision=True versioned_hdf5/{slicetools.pyx,cytools.py,subchunk_map.py,staged_changes.py}
 #
 # Or uncomment the -a flag above and then run:
 # meson build && pushd build && meson compile && popd && firefox $(find build/ -name "*.html")
@@ -77,6 +77,16 @@ run_command('cp', 'subchunk_map.py', 'subchunk_map.pyx')
 py.extension_module(
     'subchunk_map',
     'subchunk_map.pyx',
+    install: true,
+    subdir: 'versioned_hdf5',
+    dependencies: compiled_deps,
+    cython_args: cython_args,
+)
+
+run_command('cp', 'staged_changes.py', 'staged_changes.pyx')
+py.extension_module(
+    'staged_changes',
+    'staged_changes.pyx',
     install: true,
     subdir: 'versioned_hdf5',
     dependencies: compiled_deps,
