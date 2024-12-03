@@ -398,6 +398,8 @@ def test_big_O_performance():
         # In the 10 chunks use case, it's almost certainly reused memory.
         _ = arr[0, -3:]
 
+        # Don't use wall time. The hypervisor on CI hosts can occasionally
+        # steal the CPU for multiple seconds away from the VM.
         t0 = time.thread_time()
         # Let's access the end, just in case there's something that
         # performs a full scan which stops when the selection ends.
