@@ -130,7 +130,7 @@ def commit_version(
         shape = None
         if isinstance(data, InMemoryDataset):
             shape = data.shape
-            if data.id._data_dict is None:
+            if not data.staged_changes.has_changes:
                 # The virtual dataset was not changed from the previous
                 # version. Just copy it to the new version directly.
                 assert data.name.startswith(prev_version.name + "/")
@@ -142,7 +142,7 @@ def commit_version(
                 for k, v in data.attrs.items():
                     data_copy.attrs[k] = v
                 continue
-            data = data.id._data_dict
+            data = data.data_dict
         if isinstance(data, dict):
             if chunks[name] is not None:
                 raise NotImplementedError("Specifying chunk size with dict data")

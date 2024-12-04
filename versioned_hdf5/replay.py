@@ -5,7 +5,6 @@ import logging
 import posixpath
 import sys
 from collections.abc import Iterable
-from copy import deepcopy
 from typing import Any
 
 import numpy as np
@@ -130,10 +129,7 @@ def recreate_dataset(f, name, newf, callback=None):
             # hash table has the raw data in the same locations, even if the
             # data is unchanged).
             if isinstance(dataset, (InMemoryDataset, InMemorySparseDataset)):
-                for c, index in dataset.data_dict.copy().items():
-                    if isinstance(index, Slice):
-                        dataset[c.raw]
-                        assert not isinstance(dataset.data_dict[c], Slice)
+                dataset.staged_changes.load()
                 slices = write_dataset_chunks(newf, name, dataset.data_dict)
             else:
                 slices = write_dataset(newf, name, dataset)
@@ -669,7 +665,7 @@ def modify_metadata(
             new_dataset = InMemoryArrayDataset(
                 name, dataset[()], tmp_parent, fillvalue=_fillvalue, chunks=_chunks
             )
-            if _fillvalue:
+            if _fillvalue is not None:
                 new_dataset[new_dataset == dataset.fillvalue] = _fillvalue
         elif isinstance(dataset, InMemorySparseDataset):
             new_dataset = InMemorySparseDataset(
@@ -680,10 +676,10 @@ def modify_metadata(
                 chunks=_chunks,
                 fillvalue=_fillvalue,
             )
-            new_dataset.data_dict = deepcopy(dataset.data_dict)
-            if _fillvalue:
-                for a in new_dataset.data_dict.values():
-                    a[a == dataset.fillvalue] = _fillvalue
+            if _fillvalue is not None:
+                new_dataset.staged_changes = dataset.staged_changes.refill(_fillvalue)
+            else:
+                new_dataset.staged_changes = dataset.staged_changes.copy()
         else:
             raise NotImplementedError(type(dataset))
 
