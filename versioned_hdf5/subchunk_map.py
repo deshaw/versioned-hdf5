@@ -13,7 +13,6 @@ import cython
 import numpy as np
 from cython import bint, ssize_t
 from ndindex import ChunkSize, Slice, Tuple, ndindex
-from ndindex.ellipsis import ellipsis
 from numpy.typing import NDArray
 
 from .cytools import (
@@ -850,11 +849,24 @@ def index_chunk_mappers(
     if len(shape) != len(chunk_size):
         raise ValueError("chunks dimensions must equal the array dimensions")
 
+    # Raise if index is longer than the shape
     if idx.isempty(shape):
         # abort early for empty index
         return idx, []
 
     idx_len = len(idx.args)
+
+    # Expand ellipsis.
+    # We could achieve this with idx.expand(shape), but it would also broadcast scalar
+    # indices to fancy indices (e.g. [0, [0]]), which we don't want to do as we don't
+    # support multiple fancy indices.
+    if (el_idx := idx.ellipsis_index) < idx_len:
+        idx = Tuple(
+            *idx.args[:el_idx],
+            *([slice(None)] * (len(shape) - idx_len + 1)),
+            *idx.args[el_idx + 1 :],
+        )
+        idx_len = len(shape)
 
     d: hsize_t
     n: hsize_t
@@ -863,9 +875,6 @@ def index_chunk_mappers(
 
     # Process the prefix of the axes which idx selects on
     for i, d, n in zip(idx.args, shape[:idx_len], chunk_size[:idx_len]):
-        if isinstance(i, ellipsis):  # ndindex wrapper for Ellipsis; reduces erratically
-            raise NotImplementedError("Ellipsis not supported")
-
         i = i.reduce((d,)).raw
 
         # _index_to_mapper tentatively simplifies fancy indices to slices.
