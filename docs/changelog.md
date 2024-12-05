@@ -1,7 +1,38 @@
 Versioned HDF5 Change Log
 =========================
 
-## 1.8.1 (2024-11-21)
+## 2.0.0 (2024-12-05)
+
+### Major Changes
+
+- `stage_dataset` has been reimplemented from scratch. The new engine is
+  expected to be much faster in most cases. [Read more here](staged_changes).
+- `__getitem__` on staged datasets used to never cache data when reading from
+  unmodified datasets (before the first call to `__setitem__` or `resize()`) and
+  used to cache the whole loaded area on modified datasets (where the user had
+  previously changed a single point anywhere within the same staged version).
+
+  This has now been changed to always use the libhdf5 cache. As such cache is very
+  small by default, users on slow disk backends may observe a slowdown in
+  read-update-write use cases that don't overwrite whole chunks, e.g. `ds[::2] += 1`.
+  They should experiment with sizing the libhdf5 cache so that it's larger than the
+  work area, e.g.:
+
+  ```python
+  with h5py.File(path, "r+", rdcc_nbytes=2**30, rdcc_nslots=100_000) as f:
+      vf = VersionedHDF5File(f)
+      with vf.stage_version("r123") as sv:
+          sv["some_ds"][::2] += 1
+  ```
+
+  (this recommendation applies to plain h5py datasets too).
+
+  Note that this change exclusively impacts `stage_dataset`; `current_version`,
+  `get_version_by_name`, and `get_version_by_timestamp` are not impacted and
+  continue not to cache anything regardless of libhdf5 cache size.
+- Added support for Ellipsis (...) in indexing.
+
+## 1.8.2 (2024-11-21)
 
 ### Major Changes
 

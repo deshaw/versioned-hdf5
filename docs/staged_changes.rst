@@ -101,7 +101,7 @@ The destination array (always an actual ``numpy.ndarray``) can be either:
 Plans
 -----
 To encapsulate the complex decision-making logic of the ``StagedChangesArray`` methods,
-the actual methods of the class are designed as a fairly dumb wrappers which
+the actual methods of the class are designed as fairly dumb wrappers which
 
 1. create a ``*Plan`` class with all the information needed to execute the operation
    (``GetItemPlan`` for ``__getitem__()``, ``SetItemPlan`` for ``__setitem__()``, etc.);
@@ -176,8 +176,8 @@ All plans share a similar workflow:
 5. Sort by ``slab_indices`` and partition along them. This is to break the rest of the
    algorithm into separate calls to ``read_many_slices()``, one per pair of source and
    destination slabs. Note that a transfer operation is always from N slabs to 1 slab
-   or to the ``__getitem__`` return value, of from 1 slab or the ``__setitem__`` value
-   parameter to N slabs, and that ``slab_indices`` can mean either source or destination
+   or to the ``__getitem__`` return value, or from 1 slab or the ``__setitem__`` value
+   parameter to N slabs, and that the slab index can mean either source or destination
    depending on context.
 
 6. For each *(chunk index, slab index, slab offset)* triplet from the above lists, query
@@ -185,7 +185,7 @@ All plans share a similar workflow:
    n-dimensional index of points that was originally provided by the user to a local
    index that only impacts the chunk. For each axis, this will return:
 
-   - exactly one 1-dimensional slice pair, in case of basic indices (scalars of slices);
+   - exactly one 1-dimensional slice pair, in case of basic indices (scalars or slices);
    - one or more 1-dimensional slice pairs, in case of advanced indices (arrays of
      indices or arrays of bools).
 
@@ -216,7 +216,7 @@ and then transfers from each slab into it.
 **There is no cache on read**: calling the same index twice will result in two separate
 reads to the base slabs, which typically translates to two calls to
 ``h5py.Dataset.__getitem__`` and two disk accesses. However, note that the HDF5 C
-library does perform *some* caching of its own.
+library features its own caching, configurable via ``rdcc_nbytes`` and ``rdcc_nslots``.
 
 For this reason, this method never modifies the state of the ``StagedChangesArray``.
 
@@ -274,8 +274,10 @@ The ``SetItemPlan`` thus runs the general algorithm twice:
 1. With a mask that picks the chunks that lie either on full of base slabs, intersected
    with the mask of partially selected chunks. These chunks are moved to the staged
    slabs.
-2. Without any mask, as now all chunks lie on staged slabs. These chunks are copied from
-   the ``__setitem__`` value parameter.
+2. Without any mask, as now all chunks either lie on staged slabs or are wholly selected
+   by the update; in the latter case ``__setitem__`` creates a new slab with ``numpy.empty``
+   and appends it to ``StagedChangesArray.slabs``.
+   The updated surfaces are then copied from the ``__setitem__`` value parameter.
 
 
 ``resize()`` algorithm
