@@ -5,23 +5,15 @@ from __future__ import annotations
 
 import abc
 import enum
-import itertools
-from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
 import cython
 import numpy as np
 from cython import bint, ssize_t
-from ndindex import ChunkSize, Slice, Tuple, ndindex
+from ndindex import ChunkSize, Tuple, ndindex
 from numpy.typing import NDArray
 
-from .cytools import (
-    ceil_a_over_b,
-    count2stop,
-    np_hsize_t,
-    smallest_step_after,
-    stop2count,
-)
+from .cytools import ceil_a_over_b, np_hsize_t, smallest_step_after, stop2count
 from .tools import asarray
 
 if TYPE_CHECKING:  # pragma: nocover
@@ -46,15 +38,6 @@ if cython.compiled:  # pragma: nocover
         ceil_a_over_b,
         smallest_step_after,
     )
-
-
-class DropAxis(enum.Enum):
-    _drop_axis = 0
-
-
-# Returned instead of an AnySlicer. Signals that the axis should be removed when
-# aggregated into an AnySlicerND.
-DROP_AXIS = DropAxis._drop_axis
 
 
 # This is an abstract class, which should inherit from abc.ABC
@@ -103,29 +86,6 @@ class IndexChunkMapper:
         start = chunk_idx * self.chunk_size
         stop = min(start + self.chunk_size, self.dset_size)
         return start, stop
-
-    @cython.ccall
-    @abc.abstractmethod
-    def chunk_submap(
-        self, chunk_idx: hsize_t
-    ) -> tuple[Slice, AnySlicer | DropAxis, AnySlicer]:
-        """Given a chunk index, return a tuple of
-
-        data_dict key
-            key of the data_dict (see build_data_dict())
-        value_subidx
-            the slicer selecting the points within the sliced array
-            (the return value for __getitem__, the value parameter for __setitem__)
-        chunk_subidx
-            the slicer selecting the points within the input chunks.
-
-        In other words, in the simplified one-dimensional case:
-
-            _, value_subidx, chunk_subidx = mapper.chunk_submap(i)
-            chunk_view = base_arr[chunk_idx * chunk_size:(chunk_idx + 1) * chunk_size]
-            return_value[value_subidx] = chunk_view[chunk_subidx]  # __getitem__
-            chunk_view[chunk_subidx] = value_param[value_subidx]  # __setitem__
-        """
 
     @cython.ccall
     @abc.abstractmethod
@@ -362,31 +322,6 @@ class SliceMapper(BasicChunkMapper):
 
         super().__init__(chunk_indices, dset_size, chunk_size)
 
-    @cython.ccall
-    def chunk_submap(self, chunk_idx: hsize_t) -> tuple[Slice, slice, slice]:
-        chunk_start, chunk_stop = self._chunk_start_stop(chunk_idx)
-        sel_start = self.start
-        sel_stop = self.stop
-        sel_step = self.step
-
-        abs_start = max(chunk_start, sel_start)
-        # Get the smallest lcm multiple of common that is >= start
-        abs_start = smallest_step_after(abs_start, sel_start % sel_step, sel_step)
-
-        # shift start so that it is relative to index
-        value_sub_start = (abs_start - sel_start) // sel_step
-        value_sub_stop = ceil_a_over_b(min(chunk_stop, sel_stop) - sel_start, sel_step)
-
-        chunk_sub_start = abs_start - chunk_start
-        count = value_sub_stop - value_sub_start
-        chunk_sub_stop = count2stop(chunk_sub_start, count, sel_step)
-
-        return (
-            Slice(chunk_start, chunk_stop, 1),
-            slice(value_sub_start, value_sub_stop, 1),
-            slice(chunk_sub_start, chunk_sub_stop, sel_step),
-        )
-
     @cython.cfunc
     @cython.nogil
     @cython.exceptval(check=False)
@@ -465,12 +400,6 @@ class IntegerMapper(BasicChunkMapper):
         chunk_indices = np.array([idx // chunk_size], dtype=np_hsize_t)
         super().__init__(chunk_indices, dset_size, chunk_size)
 
-    @cython.ccall
-    def chunk_submap(self, chunk_idx: hsize_t) -> tuple[Slice, DropAxis, int]:
-        chunk_start, chunk_stop = self._chunk_start_stop(chunk_idx)
-        chunk_sub_idx = self.idx - chunk_start
-        return Slice(chunk_start, chunk_stop, 1), DROP_AXIS, chunk_sub_idx
-
     @cython.cfunc
     @cython.nogil
     @cython.exceptval(check=False)
@@ -527,14 +456,6 @@ class EntireChunksMapper(BasicChunkMapper):
         self._chunks_indexer = other.chunks_indexer()
         super().__init__(other.chunk_indices, other.dset_size, other.chunk_size)
 
-    @cython.ccall
-    def chunk_submap(
-        self, chunk_idx: hsize_t
-    ) -> tuple[Slice, AnySlicer | DropAxis, AnySlicer]:
-        raise NotImplementedError(  # pragma: nocover
-            "not used in legacy as_subchunk_map"
-        )
-
     @cython.cfunc
     @cython.nogil
     @cython.exceptval(check=False)
@@ -588,28 +509,6 @@ class IntegerArrayMapper(IndexChunkMapper):
 
         chunk_indices = np.unique(idx // chunk_size)
         super().__init__(chunk_indices, dset_size, chunk_size)
-
-    @cython.ccall
-    def chunk_submap(
-        self, chunk_idx: hsize_t
-    ) -> tuple[Slice, NDArray[np_hsize_t] | slice, NDArray[np_hsize_t] | slice]:
-        chunk_start, chunk_stop = self._chunk_start_stop(chunk_idx)
-
-        if self.is_ascending:
-            # O(n*logn)
-            start_idx, stop_idx = np.searchsorted(self.idx, [chunk_start, chunk_stop])
-            mask = slice(int(start_idx), int(stop_idx), 1)
-        # TODO optimize monotonic descending
-        else:
-            # O(n^2)
-            mask = (chunk_start <= self.idx) & (self.idx < chunk_stop)
-            mask = _maybe_array_idx_to_slice(mask)
-
-        return (
-            Slice(chunk_start, chunk_stop, 1),
-            mask,
-            _maybe_array_idx_to_slice(self.idx[mask] - chunk_start),
-        )
 
     @cython.ccall
     def read_many_slices_params(
@@ -1206,72 +1105,3 @@ def read_many_slices_params_nd(
                 assert outs == nslices
 
     return ndslices
-
-
-def as_subchunk_map(
-    idx: Any,
-    shape: tuple[int, ...],
-    chunk_size: tuple[int, ...] | ChunkSize,
-) -> Iterator[
-    tuple[
-        Tuple,
-        AnySlicerND,
-        AnySlicerND,
-    ]
-]:
-    """Computes the chunk selection assignment. In particular, given a `chunk_size`
-    it returns triple (chunk_idx, value_sub_idx, chunk_sub_idx) such that for a
-    chunked Dataset `ds` we can translate selections like
-
-    >> value = ds[idx]
-
-    into selecting from the individual chunks of `ds` as
-
-    >> value = np.empty(output_shape)
-    >> for chunk_idx, value_sub_idx, chunk_sub_idx in as_subchunk_map(
-    ..     idx, ds.shape, ds.chunk_size
-    .. ):
-    ..     value[value_sub_idx] = ds.data_dict[chunk_idx][chunk_sub_idx]
-
-    Similarly, assignments like
-
-    >> ds[idx] = value
-
-    can be translated into
-
-    >> for chunk_idx, value_sub_idx, chunk_sub_idx in as_subchunk_map(
-    ..     idx, ds.shape, ds.chunk_size
-    .. ):
-    ..     ds.data_dict[chunk_idx][chunk_sub_idx] = value[value_sub_idx]
-
-    :param idx: the "index" to read from / write to the Dataset
-    :param shape: the shape of the Dataset
-    :param chunk_size: the `ChunkSize` of the Dataset
-    :return: a generator of `(chunk_idx, value_sub_idx, chunk_sub_idx)` tuples
-    """
-    idx, mappers = index_chunk_mappers(idx, shape, chunk_size)
-    if not mappers:
-        return
-    idx_len = len(idx.args)
-
-    mapper: IndexChunkMapper  # noqa: F842
-    chunk_subindexes = [
-        [mapper.chunk_submap(chunk_idx) for chunk_idx in mapper.chunk_indices]
-        for mapper in mappers
-    ]
-
-    # Now combine the chunk_slices and subindexes for each dimension into tuples
-    # across all dimensions.
-    for p in itertools.product(*chunk_subindexes):
-        chunk_slices, value_subidxs, chunk_subidxs = zip(*p)
-
-        # skip dimensions which were sliced away
-        value_subidxs = tuple(
-            value_subidx
-            for value_subidx in value_subidxs
-            if value_subidx is not DROP_AXIS
-        )
-        # skip suffix dimensions
-        chunk_subidxs = chunk_subidxs[:idx_len]
-
-        yield Tuple(*chunk_slices), value_subidxs, chunk_subidxs

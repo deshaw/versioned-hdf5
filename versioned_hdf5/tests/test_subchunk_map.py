@@ -13,11 +13,9 @@ from numpy.testing import assert_array_equal
 from ..cytools import np_hsize_t
 from ..slicetools import read_many_slices
 from ..subchunk_map import (
-    DROP_AXIS,
     EntireChunksMapper,
     SliceMapper,
     TransferType,
-    as_subchunk_map,
     index_chunk_mappers,
     read_many_slices_params_nd,
 )
@@ -155,34 +153,6 @@ def idx_shape_chunks_st(
     return idx, shape, chunks
 
 
-@pytest.mark.slow
-@given(idx_shape_chunks_st())
-@hypothesis.settings(max_examples=max_examples, deadline=None)
-def test_as_subchunk_map(args):
-    idx, shape, chunks = args
-
-    source = np.arange(1, np.prod(shape) + 1, dtype=np.int32).reshape(shape)
-    expect = source[idx]
-    actual = np.zeros_like(expect)
-
-    for chunk_idx, value_sub_idx, chunk_sub_idx in as_subchunk_map(idx, shape, chunks):
-        chunk_idx = chunk_idx.raw
-
-        # Test that chunk_idx selects whole chunks
-        assert isinstance(chunk_idx, tuple)
-        assert len(chunk_idx) == len(chunks)
-        for i, c, d in zip(chunk_idx, chunks, shape):
-            assert isinstance(i, slice)
-            assert i.start % c == 0
-            assert i.stop == min(i.start + c, d)
-            assert i.step == 1
-
-        assert not actual[value_sub_idx].any(), "overlapping value_sub_idx"
-        actual[value_sub_idx] = source[chunk_idx][chunk_sub_idx]
-
-    assert_array_equal(actual, expect)
-
-
 def test_mapper_attributes():
     _, (mapper,) = index_chunk_mappers(slice(5), (6,), (3,))
     assert mapper.dset_size == 6
@@ -208,13 +178,10 @@ def test_chunks_indexer(args):
         return  # Early exit for empty index
     assert len(shape) == len(chunks) == len(mappers) == 1
     dset_size = shape[0]
+    chunk_size = chunks[0]
     mapper = mappers[0]
     assert mapper.dset_size == shape[0]
     assert mapper.chunk_size == chunks[0]
-
-    source = np.arange(1, dset_size + 1)
-    expect = source[idx]
-    actual = np.zeros_like(expect)
 
     all_chunks = np.arange(mapper.n_chunks)
     sel_chunks = all_chunks[mapper.chunks_indexer()]
@@ -227,23 +194,37 @@ def test_chunks_indexer(args):
     # Test that whole_chunks is a subset of sel_chunks
     assert np.setdiff1d(whole_chunks, sel_chunks, assume_unique=True).size == 0
 
-    for i in sel_chunks:
-        source_idx, value_sub_idx, chunk_sub_idx = mapper.chunk_submap(i)
-        chunk = source[source_idx.raw]
+    # Test correctness of chunks_indexer() and whole_chunks_idxidx()
+    src = np.arange(1, dset_size + 1)
+    dst = np.zeros_like(src)
+    slices, chunk_to_slices = mapper.read_many_slices_params()
 
-        if value_sub_idx is DROP_AXIS:
-            value_sub_idx = ()
-        actual[value_sub_idx] = chunk[chunk_sub_idx]
+    slice_offsets = np.arange(0, dset_size, chunk_size, dtype=np_hsize_t)
+    slice_offsets = slice_offsets[mapper.chunk_indices]
+    if chunk_to_slices is not None:
+        slice_offsets = np.repeat(slice_offsets, np.diff(chunk_to_slices).astype(int))
+    slices[:, 0] += slice_offsets
 
-        coverage = np.zeros_like(chunk)
-        coverage[chunk_sub_idx] = 1
-        assert coverage.any(), "chunk selected by chunk_indexer() is not covered"
-        if i in whole_chunks:
-            assert coverage.all(), "whole chunk is partially covered"
-        else:
-            assert not coverage.all(), "partial chunk is wholly covered"
+    read_many_slices(
+        src=src,
+        dst=dst,
+        src_start=slices[:, 0:1],  # chunk_sub_start
+        dst_start=slices[:, 0:1],  # chunk_sub_start
+        count=slices[:, 2:3],  # count
+        src_stride=slices[:, 3:4],  # chunk_sub_stride
+        dst_stride=slices[:, 3:4],  # chunk_sub_stride
+    )
 
-    assert_array_equal(actual, expect)
+    actual_sel_chunks = []
+    actual_whole_chunks = []
+    for chunk_idx in all_chunks:
+        dst_chunk = dst[(start := chunk_idx * chunk_size) : start + chunk_size]
+        if dst_chunk.any():
+            actual_sel_chunks.append(chunk_idx)
+        if dst_chunk.all():
+            actual_whole_chunks.append(chunk_idx)
+    assert_array_equal(actual_sel_chunks, sel_chunks)
+    assert_array_equal(actual_whole_chunks, whole_chunks)
 
 
 @pytest.mark.slow
@@ -521,28 +502,6 @@ def test_simplify_indices():
     assert mapper.start == 1
     assert mapper.stop == 4
     assert mapper.step == 2
-
-
-def test_chunk_submap_simplifies_indices():
-    """Test that, when a fancy index can't be globally simplified to a slice,
-    as_subchunk_map still attemps to simplify the individual chunk subindices.
-    """
-    _, (mapper,) = index_chunk_mappers(
-        [True, False, True, False]  # chunk 0
-        + [True, True, False, False]  # chunk 1
-        + [True, False, True, True],  # chunk 2
-        (12,),
-        (4,),
-    )
-    _, value_sub_idx, chunk_sub_idx = mapper.chunk_submap(0)
-    assert value_sub_idx == slice(0, 2, 1)
-    assert chunk_sub_idx == slice(0, 3, 2)
-    _, value_sub_idx, chunk_sub_idx = mapper.chunk_submap(1)
-    assert value_sub_idx == slice(2, 4, 1)
-    assert chunk_sub_idx == slice(0, 2, 1)
-    _, value_sub_idx, chunk_sub_idx = mapper.chunk_submap(2)
-    assert value_sub_idx == slice(4, 7, 1)
-    assert_array_equal(chunk_sub_idx, [0, 2, 3])  # Can't be simplified
 
 
 def test_chunks_indexer_simplifies_indices():
