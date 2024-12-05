@@ -45,16 +45,40 @@ def scalar_indices_st(size: int):
 
 
 @st.composite
-def basic_idx_st(draw, shape: tuple[int, ...]):
-    """Hypothesis draw of slice and integer indexes"""
-    nidx = draw(st.integers(0, len(shape)))
+def basic_idx_st(
+    draw,
+    shape: tuple[int, ...],
+    allow_ellipsis: bool = True,
+    allow_scalar: bool = True,
+    allow_shorter: bool = True,
+):
+    """Hypothesis draw of slice and integer indexes, with potential ellipsis"""
+    has_ellipsis = draw(st.booleans()) if allow_ellipsis else False
+
+    if has_ellipsis:
+        nidx_before = draw(st.integers(0, len(shape)))
+        nidx_after = draw(st.integers(0, len(shape) - nidx_before))
+    elif allow_shorter:
+        nidx_before = draw(st.integers(0, len(shape)))
+        nidx_after = 0
+    else:
+        nidx_before = len(shape)
+        nidx_after = 0
+
+    shape2 = shape[:nidx_before] + (shape[-nidx_after:] if nidx_after else ())
+    assert 0 <= len(shape2) <= len(shape)
+
     idx_st = st.tuples(
         *(
             st.one_of(non_negative_step_slices_st(size), scalar_indices_st(size))
-            for size in shape[:nidx]
-        )
+            if allow_scalar
+            else non_negative_step_slices_st(size)
+            for size in shape2
+        ),
     )
-    return draw(idx_st)
+    idx = draw(idx_st)
+    idx = idx[:nidx_before] + ((...,) if has_ellipsis else ()) + idx[nidx_before:]
+    return idx
 
 
 @st.composite
@@ -64,22 +88,46 @@ def fancy_idx_st(draw, shape: tuple[int, ...]) -> Any:
     - a list[int] whose elements can be negative, non-unique, and not in order, or
     - a list[bool]
 
-    All other axes are indexed by slices.
-
-    Interleaving scalars and slices and array indices is not supported:
-    https://github.com/Quansight-Labs/ndindex/issues/188
+    All other axes are indexed by slices, scalars, or ellipsis.
     """
     fancy_idx_axis = draw(st.integers(0, len(shape) - 1))
-    nidx = draw(st.integers(fancy_idx_axis + 1, len(shape)))
+
+    # You can't have slices or ellipsis between scalar and fancy indices
+    # https://github.com/Quansight-Labs/ndindex/issues/188
+    scalar_before_fancy_start = draw(st.integers(0, fancy_idx_axis))
+    scalar_after_fancy_stop = draw(st.integers(fancy_idx_axis + 1, len(shape)))
+
     idx_st = st.tuples(
-        *[non_negative_step_slices_st(shape[dim]) for dim in range(fancy_idx_axis)],
+        *(
+            scalar_indices_st(size)
+            for size in shape[scalar_before_fancy_start:fancy_idx_axis]
+        ),
         array_indices_st(shape[fancy_idx_axis]),
-        *[
-            non_negative_step_slices_st(shape[dim])
-            for dim in range(fancy_idx_axis + 1, nidx)
-        ],
+        *(
+            scalar_indices_st(size)
+            for size in shape[fancy_idx_axis + 1 : scalar_after_fancy_stop]
+        ),
     )
-    return draw(idx_st)
+    idx_center = draw(idx_st)
+
+    # Pad on the left and right with slices and/or ellipsis
+    idx_left = draw(
+        basic_idx_st(
+            shape[:scalar_before_fancy_start],
+            allow_ellipsis=scalar_before_fancy_start > 0,
+            allow_scalar=False,
+            allow_shorter=False,
+        )
+    )
+    idx_right = draw(
+        basic_idx_st(
+            shape[scalar_after_fancy_stop:],
+            allow_ellipsis=Ellipsis not in idx_left,
+            allow_scalar=False,
+            allow_shorter=Ellipsis not in idx_left,
+        )
+    )
+    return idx_left + idx_center + idx_right
 
 
 @st.composite
@@ -529,6 +577,8 @@ def test_chunks_indexer_simplifies_indices():
 def test_invalid_indices():
     with pytest.raises(IndexError, match="too many indices"):
         index_chunk_mappers((0, 0), (4,), (2,))
+    with pytest.raises(IndexError, match="too many indices"):
+        index_chunk_mappers((0, ..., 0), (4,), (2,))
     with pytest.raises(IndexError, match="out of bounds"):
         index_chunk_mappers((4,), (4,), (2,))
     with pytest.raises(IndexError, match="out of bounds"):
@@ -553,8 +603,6 @@ def test_invalid_indices():
         index_chunk_mappers(None, (4,), (2,))
     with pytest.raises(NotImplementedError, match="newaxis"):
         index_chunk_mappers(np.newaxis, (4,), (2,))
-    with pytest.raises(NotImplementedError, match="Ellipsis"):
-        index_chunk_mappers((..., 0), (4, 4), (2, 2))
 
     # Fancy indices are tentatively simplified to slices. However, it would be a
     # mistake to simplify [[0, 1], [0, 1]] to [:2, :2]!
