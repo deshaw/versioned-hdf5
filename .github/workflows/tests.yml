@@ -5,9 +5,24 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.9', '3.10', '3.11']
-        h5py-version: ['dev']
-        numpy-version: ['latest', '1.24.4']
+        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
+        numpy-version: ['latest']
+        ndindex-version: ['latest']
+        h5py-version: ['latest']
+        include:
+        - python-version: '3.9'
+          numpy-version: '1.24.4'
+          ndindex-version: '1.5.1'
+          h5py-version: '3.8.0'
+        - python-version: '3.11'  # numpy 1.24.4 has wheels up to Python 3.11
+          numpy-version: '1.24.4'
+          ndindex-version: 'latest'
+          h5py-version: 'latest'
+        - python-version: '3.13'
+          numpy-version: 'latest'
+          ndindex-version: 'latest'
+          h5py-version: 'dev'
+
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
@@ -22,9 +37,23 @@ jobs:
 
       - name: Install target numpy version
         if: matrix.numpy-version != 'latest'
+        run: pip install numpy~=${{ matrix.numpy-version }}
+
+      - name: Install target ndindex version
+        if: matrix.ndindex-version != 'latest'
+        run: pip install ndindex~=${{ matrix.ndindex-version }}
+
+      - name: Install latest h5py version
+        if: matrix.h5py-version == 'latest'
         run: |
-          pip install numpy~=${{ matrix.numpy-version }}
-          pip list
+          # Build against system-wide libhdf5
+          pip install h5py --no-binary :all:
+
+      - name: Install target h5py version
+        if: matrix.h5py-version != 'latest' && matrix.h5py-version != 'dev'
+        run: |
+          # Build against system-wide libhdf5
+          pip install h5py~=${{ matrix.h5py-version }} --no-binary :all:
 
       - name: Install development h5py version
         if: matrix.h5py-version == 'dev'

@@ -12,7 +12,7 @@ from h5py import Dataset, File, Group, HLObject, VirtualLayout
 from h5py import __version__ as h5py_version
 from h5py import h5s
 from h5py._hl.selections import select
-from h5py._hl.vds import VDSmap
+from h5py._selector import Selector
 from h5py.h5i import get_name
 from ndindex import ChunkSize, Slice, Tuple
 from ndindex.ndindex import NDIndex
@@ -338,6 +338,9 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
     are placed alongside the existing ones. Otherwise the existing virtual
     datasets are replaced.
 
+    See Also
+    --------
+    create_virtual_dataset
     """
     raw_data = f["_version_data"][name]["raw_data"]
 
@@ -347,25 +350,20 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
 
         group = f["_version_data/versions"][version_name]
         dataset = group[name]
-
-        # See the comments in create_virtual_dataset
         layout = VirtualLayout(dataset.shape, dtype=dataset.dtype)
-        layout_has_sources = hasattr(layout, "sources")
-
-        if not layout_has_sources:
-            from h5py import _selector
-
-            layout._src_filenames.add(b".")
-            space = h5s.create_simple(dataset.shape)
-            selector = _selector.Selector(space)
 
         # If a dataset has no data except for the fillvalue, it will not be virtual
         if dataset.is_virtual:
+            layout._src_filenames.add(b".")
+            space = h5s.create_simple(dataset.shape)
+            selector = Selector(space)
+            raw_data_shape = raw_data.shape
+            raw_data_name = raw_data.name.encode("utf-8")
+
             virtual_sources = dataset.virtual_sources()
             for vmap in virtual_sources:
-                vspace, fname, dset_name, src_space = vmap
-                fname = fname.encode("utf-8")
-                assert fname == b".", fname
+                vspace, fname, _, src_space = vmap
+                assert fname == "."
 
                 vslice = spaceid_to_slice(vspace)
                 src_slice = spaceid_to_slice(src_space)
@@ -373,21 +371,11 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
                     raise ValueError(
                         f"Could not find the chunk for {vslice} ({src_slice} in the old raw dataset) for {name!r} in {version_name!r}"
                     )
+
                 new_src_slice = raw_data_chunks_map[src_slice]
-
-                if not layout_has_sources:
-                    key = new_src_slice.raw
-                    vs_sel = select(raw_data.shape, key, dataset=None)
-
-                    sel = selector.make_selection(vslice.raw)
-                    layout.dcpl.set_virtual(
-                        sel.id, b".", raw_data.name.encode("utf-8"), vs_sel.id
-                    )
-                else:
-                    vs_sel = select(raw_data.shape, new_src_slice.raw, None)
-                    layout_sel = select(dataset.shape, vslice.raw, None)
-                    new_vmap = VDSmap(layout_sel.id, fname, dset_name, vs_sel.id)
-                    layout.sources.append(new_vmap)
+                vs_sel = select(raw_data_shape, new_src_slice.raw, dataset=None)
+                sel = selector.make_selection(vslice.raw)
+                layout.dcpl.set_virtual(sel.id, b".", raw_data_name, vs_sel.id)
 
         head, tail = posixpath.split(name)
         tmp_name = "_tmp_" + tail
@@ -743,16 +731,12 @@ def swap(old, new):
                     vspace, fname, dset_name, src_space = vmap
                     assert dset_name.startswith(name1)
                     dset_name = _replace_prefix(dset_name, name1, name2)
-                    fname = fname.encode("utf-8")
-                    new_vmap = VDSmap(vspace, fname, dset_name, src_space)
-                    # h5py 3.3 changed the VirtualLayout code. See
-                    # https://github.com/h5py/h5py/pull/1905.
-                    if hasattr(layout, "sources"):
-                        layout.sources.append(new_vmap)
-                    else:
-                        layout.dcpl.set_virtual(
-                            vspace, fname, dset_name.encode("utf-8"), src_space
-                        )
+                    layout.dcpl.set_virtual(
+                        vspace,
+                        fname.encode("utf-8"),
+                        dset_name.encode("utf-8"),
+                        src_space,
+                    )
                 return layout
 
             old_layout = _new_vds_layout(oldd, old.name, new.name)

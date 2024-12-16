@@ -15,15 +15,15 @@ authors = [
 ]
 description = "Versioned HDF5 provides a versioned abstraction on top of h5py"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "numpy",
-    "h5py",
+    "numpy>=1.24.4",
+    "h5py>=3.8.0",
     "ndindex>=1.5.1",
 ]
 urls = { Homepage = "https://github.com/deshaw/versioned-hdf5" }
