@@ -5,7 +5,6 @@ import logging
 import os
 import pathlib
 import shutil
-from unittest import mock
 
 import h5py
 import numpy as np
@@ -16,14 +15,13 @@ from packaging.version import Version
 from pytest import mark, raises
 
 from ..api import VersionedHDF5File
-from ..backend import DATA_VERSION, DEFAULT_CHUNK_SIZE, _verify_new_chunk_reuse
+from ..backend import DATA_VERSION, DEFAULT_CHUNK_SIZE
 from ..replay import delete_versions
 from ..versions import TIMESTAMP_FMT, all_versions
 from ..wrappers import (
     DatasetWrapper,
     InMemoryArrayDataset,
     InMemoryDataset,
-    InMemoryDatasetID,
     InMemoryGroup,
     InMemorySparseDataset,
 )
@@ -1528,56 +1526,49 @@ def test_InMemoryArrayDataset_chunks(vfile):
         assert data_group["g/bar"].compression_opts == 3
 
 
-def test_string_dtypes(setup_vfile):
+@pytest.mark.parametrize(
+    "dt",
+    [
+        h5py.string_dtype("utf-8"),
+        h5py.string_dtype("ascii"),
+        h5py.string_dtype("utf-8", length=20),
+        h5py.string_dtype("ascii", length=20),
+    ],
+)
+def test_string_dtypes(setup_vfile, dt):
     # Make sure the fillvalue logic works correctly for custom h5py string
     # dtypes.
+    data = np.full(10, b"hello world", dtype=dt)
 
-    # h5py 3 changed variable-length UTF-8 strings to be read in as bytes
-    # instead of str. See
-    # https://docs.h5py.org/en/stable/whatsnew/3.0.html#breaking-changes-deprecations
-    h5py_str_type = bytes if h5py.__version__.startswith("3") else str
+    with setup_vfile() as f:
+        file = VersionedHDF5File(f)
+        with file.stage_version("0") as sv:
+            sv.create_dataset("name", shape=(10,), dtype=dt, data=data)
+            assert isinstance(sv["name"], InMemoryArrayDataset)
+            sv["name"].resize((11,))
 
-    for typ, dt in [
-        (h5py_str_type, h5py.string_dtype("utf-8")),
-        (bytes, h5py.string_dtype("ascii")),
-        # h5py uses bytes here
-        (bytes, h5py.string_dtype("utf-8", length=20)),
-        (bytes, h5py.string_dtype("ascii", length=20)),
-    ]:
-        if typ == str:
-            data = np.full(10, "hello world", dtype=dt)
-        else:
-            data = np.full(10, b"hello world", dtype=dt)
+        assert file["0"]["name"].dtype == dt
+        assert_equal(file["0"]["name"][:10], data)
+        assert file["0"]["name"][10] == b"", dt.metadata
 
-        with setup_vfile() as f:
-            file = VersionedHDF5File(f)
-            with file.stage_version("0") as sv:
-                sv.create_dataset("name", shape=(10,), dtype=dt, data=data)
-                assert isinstance(sv["name"], InMemoryArrayDataset)
-                sv["name"].resize((11,))
+        with file.stage_version("1") as sv:
+            assert isinstance(sv["name"], DatasetWrapper)
+            assert isinstance(sv["name"].dataset, InMemoryDataset)
+            sv["name"].resize((12,))
 
-            assert file["0"]["name"].dtype == dt
-            assert_equal(file["0"]["name"][:10], data)
-            assert file["0"]["name"][10] == typ(), dt.metadata
+        assert file["1"]["name"].dtype == dt
+        assert_equal(file["1"]["name"][:10], data, str(dt.metadata))
+        assert file["1"]["name"][10] == b"", dt.metadata
+        assert file["1"]["name"][11] == b"", dt.metadata
 
-            with file.stage_version("1") as sv:
-                assert isinstance(sv["name"], DatasetWrapper)
-                assert isinstance(sv["name"].dataset, InMemoryDataset)
-                sv["name"].resize((12,))
-
-            assert file["1"]["name"].dtype == dt
-            assert_equal(file["1"]["name"][:10], data, str(dt.metadata))
-            assert file["1"]["name"][10] == typ(), dt.metadata
-            assert file["1"]["name"][11] == typ(), dt.metadata
-
-            # Make sure we are matching the pure h5py behavior
-            f.create_dataset(
-                "name", shape=(10,), dtype=dt, data=data, chunks=(10,), maxshape=(None,)
-            )
-            f["name"].resize((11,))
-            assert f["name"].dtype == dt
-            assert_equal(f["name"][:10], data)
-            assert f["name"][10] == typ(), dt.metadata
+        # Make sure we are matching the pure h5py behavior
+        f.create_dataset(
+            "name", shape=(10,), dtype=dt, data=data, chunks=(10,), maxshape=(None,)
+        )
+        f["name"].resize((11,))
+        assert f["name"].dtype == dt
+        assert_equal(f["name"][:10], data)
+        assert f["name"][10] == b"", dt.metadata
 
 
 def test_empty(vfile):
@@ -1951,15 +1942,6 @@ def test_mask_reading(tmp_path):
         assert_equal(b, [1, 2])
 
 
-# This fails prior to h5py 3.3 because read-only files return the virtual
-# dataset directly, but h5py <3.3 does not support mask indices on virtual
-# datasets.
-@mark.xfail(
-    h5py.__version__[0] == "2"
-    or h5py.__version__[0] == "3"
-    and int(h5py.__version__[2]) < 3,
-    reason="h5py 2 does not support masks on virtual datasets",
-)
 def test_mask_reading_read_only(tmp_path):
     # Reading a virtual dataset with a mask does not work in HDF5, so make
     # sure it still works for versioned datasets.

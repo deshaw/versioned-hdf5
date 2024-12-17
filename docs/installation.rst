@@ -12,7 +12,8 @@ Dependencies
 
 Currently, Versioned HDF5 has the following runtime dependencies:
 
-- ``python>=3.6``
 - ``numpy``
 - ``h5py``
 - ``ndindex``
+
+Refer to ``pyproject.toml`` for minimum supported versions.

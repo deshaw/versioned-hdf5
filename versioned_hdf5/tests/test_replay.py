@@ -914,8 +914,6 @@ def test_delete_versions_current_version(vfile):
 
 
 def test_variable_length_strings(vfile):
-    # Warning: this test will segfault with h5py 3.7.0
-    # (https://github.com/h5py/h5py/pull/2111 fixes it)
     with vfile.stage_version("r0") as sv:
         g = sv.create_group("data")
         dt = h5py.string_dtype(encoding="ascii")

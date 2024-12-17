@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import datetime
 import logging
 import os
 import textwrap
 from collections.abc import Iterator
 
 import numpy as np
-from h5py import Dataset, VirtualLayout, VirtualSource, h5s, h5z
+from h5py import Dataset, VirtualLayout, h5s, h5z
 from h5py._hl.filters import guess_chunk
+from h5py._hl.selections import select
+from h5py._selector import Selector
 from ndindex import ChunkSize, Slice, Tuple, ndindex
 from numpy.testing import assert_array_equal
 
@@ -32,8 +35,6 @@ def get_chunks(shape, dtype, chunk_size):
 
 
 def initialize(f):
-    import datetime
-
     from .versions import TIMESTAMP_FMT
 
     version_data = f.create_group("_version_data")
@@ -438,70 +439,45 @@ def write_dataset_chunks(f, name, data_dict):
 def create_virtual_dataset(
     f, version_name, name, shape, slices, attrs=None, fillvalue=None
 ):
-    from h5py._hl.selections import select
-    from h5py._hl.vds import VDSmap
+    """Create a new virtual dataset by stitching the chunks of the
+    raw dataset together, as indicated by the slices dict.
 
+    See Also
+    --------
+    _recreate_virtual_dataset
+    """
     raw_data = f["_version_data"][name]["raw_data"]
     raw_data_shape = raw_data.shape
-    slices = {c: s.reduce() for c, s in slices.items()}
+    raw_data_name = raw_data.name.encode("utf-8")
 
     if len(raw_data) == 0:
         layout = VirtualLayout(shape=(0,), dtype=raw_data.dtype)
     else:
+        layout = VirtualLayout(shape, dtype=raw_data.dtype)
+        layout._src_filenames.add(b".")
+        space = h5s.create_simple(shape)
+        selector = Selector(space)
+
         # Chunks in the raw dataset are expanded along the first dimension only.
         # Since the chunks are pointed to by virtual datasets, it doesn't make
         # sense to expand the chunks in the raw dataset along multiple dimensions
         # (the true layout of the chunks in the raw dataset is irrelevant).
-        for c, s in slices.items():
-            if len(c.args[0]) != len(s):
-                raise ValueError(f"Inconsistent slices dictionary ({c.args[0]}, {s})")
-
-        # h5py 3.3 changed the VirtualLayout code so that it no longer uses
-        # sources. See https://github.com/h5py/h5py/pull/1905.
-        layout = VirtualLayout(shape, dtype=raw_data.dtype)
-        layout_has_sources = hasattr(layout, "sources")
-        if not layout_has_sources:
-            from h5py import _selector
-
-            layout._src_filenames.add(b".")
-            space = h5s.create_simple(shape)
-            selector = _selector.Selector(space)
-
-        for c, s in slices.items():
+        for c, s0 in slices.items():
+            if len(c.args[0]) != len(s0):
+                raise ValueError(f"Inconsistent slices dictionary ({c.args[0]}, {s0})")
             if c.isempty():
                 continue
-            # idx = Tuple(s, *Tuple(*[slice(0, i) for i in shape[1:]]).as_subindex(Tuple(*c.args[1:])).args)
-            S = [Slice(0, len(c.args[i])) for i in range(1, len(shape))]
-            idx = Tuple(s, *S)
-            # assert c.newshape(shape) == vs[idx.raw].shape, (c, shape, s)
 
-            # This is equivalent to
-            #
-            # layout[c.raw] = vs[idx.raw]
-            #
-            # but faster because vs[idx.raw] does a deepcopy(vs), which is
-            # slow. We need different versions for h5py 2 and 3 because the
-            # virtual sources code was rewritten.
-            if not layout_has_sources:
-                key = idx.raw
-                vs_sel = select(raw_data.shape, key, dataset=None)
+            s = (s0.reduce().raw, *(slice(0, len(ci), 1) for ci in c.args[1:]))
 
-                sel = selector.make_selection(c.raw)
-                layout.dcpl.set_virtual(
-                    sel.id, b".", raw_data.name.encode("utf-8"), vs_sel.id
-                )
+            # This is equivalent to `layout[c] = vs[s]`,
+            # but faster because vs[s] deep-copies vs, which is slow.
+            vs_sel = select(raw_data_shape, s, dataset=None)
+            sel = selector.make_selection(c.raw)
+            layout.dcpl.set_virtual(sel.id, b".", raw_data_name, vs_sel.id)
 
-            else:
-                vs_sel = select(raw_data_shape, idx.raw, None)
-                layout_sel = select(shape, c.raw, None)
-                layout.sources.append(
-                    VDSmap(layout_sel.id, ".", raw_data.name, vs_sel.id)
-                )
-
-    dtype = raw_data.dtype
-    if dtype.metadata and (
-        "vlen" in dtype.metadata or "h5py_encoding" in dtype.metadata
-    ):
+    dtype_meta = raw_data.dtype.metadata
+    if dtype_meta and ("vlen" in dtype_meta or "h5py_encoding" in dtype_meta):
         # Variable length string dtype
         # (https://h5py.readthedocs.io/en/2.10.0/strings.html). Setting the
         # fillvalue in this case doesn't work
