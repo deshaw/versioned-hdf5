@@ -14,8 +14,8 @@ jobs:
           numpy-version: '1.24.4'
           ndindex-version: '1.5.1'
           h5py-version: '3.8.0'
-        - python-version: '3.11'  # numpy 1.24.4 has wheels up to Python 3.11
-          numpy-version: '1.24.4'
+        - python-version: '3.12'  # numpy 1.26 has wheels up to Python 3.12
+          numpy-version: '1.26'
           ndindex-version: 'latest'
           h5py-version: 'latest'
         - python-version: '3.13'
