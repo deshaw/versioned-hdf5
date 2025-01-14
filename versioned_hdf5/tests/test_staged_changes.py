@@ -281,21 +281,45 @@ def test_load():
 
 
 def test_shrinking_dereferences_slabs():
+    """Test that shrinking a StagedChangesArray dereferences the slabs that are no
+    longer referenced by any chunks.
+    """
     arr = StagedChangesArray.from_array([[1, 2, 3, 4, 5, 6, 7]], (1, 2), fill_value=42)
     arr[0, -1] = 8
     arr.resize((1, 10))
     assert_array_equal(arr.slab_indices, [[1, 2, 3, 5, 0]])
     assert_array_equal(arr, [[1, 2, 3, 4, 5, 6, 8, 42, 42, 42]])
-    arr.resize((1, 3))
+
+    arr.resize((1, 4))
     assert_array_equal(arr.slab_indices, [[1, 2]])
     assert arr.slabs[3:] == [None, None, None]
-    assert_array_equal(arr, [[1, 2, 3]])
+    assert_array_equal(arr, [[1, 2, 3, 4]])
 
     arr.resize((0, 0))
     assert_array_equal(arr.slab_indices, np.empty((0, 0)))
     # The base slab is never dereferenced
     assert_array_equal(arr.slabs[0], [[42, 42]])
     assert arr.slabs[1:] == [None, None, None, None, None]
+
+
+@pytest.mark.parametrize("starting_size", (6, 5))
+def test_shrinking_does_not_reuse_partial_chunks(starting_size):
+    """Test that if a partial chunk is created or resized when shrinking, and that
+    chunk was on a base slab, it is loaded into memory to avoid different keys in the
+    hash table from pointing to the same data.
+
+    See Also
+    --------
+    https://github.com/deshaw/versioned-hdf5/issues/411
+    test_replay.py::test_delete_versions_after_shrinking
+    """
+    arr = StagedChangesArray.from_array(
+        np.arange(starting_size), chunk_size=(3,), fill_value=4
+    )
+    assert_array_equal(arr.slab_indices, [1, 1])
+    arr.resize((4,))
+    assert_array_equal(arr.slab_indices, [1, 2])
+    assert_array_equal(arr, [0, 1, 2, 3])
 
 
 def test_copy():

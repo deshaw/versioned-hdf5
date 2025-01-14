@@ -7,6 +7,7 @@ from unittest import mock
 import h5py
 import numpy as np
 import pytest
+from ndindex import Slice
 from packaging.version import Version
 
 from versioned_hdf5 import VersionedHDF5File
@@ -913,7 +914,7 @@ def test_delete_versions_current_version(vfile):
     np.testing.assert_equal(vfile[cv]["bar"][:], np.arange(17))
 
 
-def test_variable_length_strings(vfile):
+def test_delete_variable_length_strings(vfile):
     with vfile.stage_version("r0") as sv:
         g = sv.create_group("data")
         dt = h5py.string_dtype(encoding="ascii")
@@ -1043,6 +1044,48 @@ def test_delete_versions_speed(vfile):
     # keeping has to go up 9 versions from it's current previous version, for
     # a total of 90 calls.
     assert mock_get_parent.call_count == 90
+
+
+def test_delete_versions_after_shrinking(vfile):
+    """Test that if you shrink a dataset so that an edge chunk contains the same data of
+    the previous edge chunk on disk, but trimmed to the new size, then you end up with a
+    full copy of the edge chunk and you can safely delete the previous, larger version
+    of it.
+
+    See Also
+    --------
+    https://github.com/deshaw/versioned-hdf5/issues/411
+    test_staged_changes.py::test_shrinking_does_not_reuse_partial_chunks
+    """
+    with vfile.stage_version("r1") as sv:
+        sv.create_dataset("values", data=np.arange(26), chunks=(10,))
+    with vfile.stage_version("r2") as sv:
+        sv["values"].resize((17,))
+
+    ht_before = Hashtable(vfile.f, "values").inverse()
+    assert ht_before.keys() == {
+        Slice(0, 10, 1),  # r1
+        Slice(10, 20, 1),  # r1
+        Slice(20, 26, 1),  # r1
+        # Shrinking the r1[10:20] chunk triggered a deep copy of the remaining [10:17],
+        # and now it has its own hash key and a non-overlapping slice, even if the
+        # shared area is identical.
+        Slice(30, 37, 1),  # r2
+    }
+    assert (ht_before[Slice(10, 20, 1)] != Slice(30, 37, 1)).any()
+    raw_data = vfile.f["_version_data/values/raw_data"][:]
+    np.testing.assert_equal(raw_data[30:37], raw_data[10:17])
+
+    delete_versions(vfile, ["r1"])
+    np.testing.assert_equal(vfile["r2"]["values"], np.arange(17))
+
+    ht_after = Hashtable(vfile.f, "values").inverse()
+    assert ht_after.keys() == {
+        Slice(0, 10, 1),  # Same as before delete
+        Slice(10, 17, 1),  # Was Slice(30, 37, 1)
+    }
+    np.testing.assert_equal(ht_after[Slice(0, 10, 1)], ht_before[Slice(0, 10, 1)])
+    np.testing.assert_equal(ht_after[Slice(10, 17, 1)], ht_before[Slice(30, 37, 1)])
 
 
 @pytest.mark.parametrize(
