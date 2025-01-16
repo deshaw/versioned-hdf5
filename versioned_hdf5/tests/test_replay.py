@@ -5,8 +5,11 @@ import subprocess
 from unittest import mock
 
 import h5py
+import hypothesis
 import numpy as np
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 from ndindex import Slice
 from packaging.version import Version
 
@@ -1055,7 +1058,8 @@ def test_delete_versions_after_shrinking(vfile):
     See Also
     --------
     https://github.com/deshaw/versioned-hdf5/issues/411
-    test_staged_changes.py::test_shrinking_does_not_reuse_partial_chunks
+    test_delete_versions_after_updates
+    test_staged_changes::test_shrinking_does_not_reuse_partial_chunks
     """
     with vfile.stage_version("r1") as sv:
         sv.create_dataset("values", data=np.arange(26), chunks=(10,))
@@ -1086,6 +1090,57 @@ def test_delete_versions_after_shrinking(vfile):
     }
     np.testing.assert_equal(ht_after[Slice(0, 10, 1)], ht_before[Slice(0, 10, 1)])
     np.testing.assert_equal(ht_after[Slice(10, 17, 1)], ht_before[Slice(30, 37, 1)])
+
+
+@hypothesis.settings(
+    max_examples=20,
+    # h5file is not reset between hypothesis examples
+    suppress_health_check=[hypothesis.HealthCheck.function_scoped_fixture],
+)
+@given(delete_order=st.permutations(["r0", "r1", "r2", "r3", "r4", "r5"]))
+def test_delete_versions_after_updates(vfile, delete_order):
+    """Delete versions after various types of changes to each versions
+
+    See Also
+    --------
+    https://github.com/deshaw/versioned-hdf5/issues/411
+    test_delete_versions_after_shrinking
+    test_staged_changes::test_shrinking_does_not_reuse_partial_chunks
+    """
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("values", data=np.arange(26), chunks=(10,))
+
+    # Resize without updating. The resized chunk is a full copy of the original.
+    with vfile.stage_version("r1") as sv:
+        sv["values"].resize((17,))
+
+    # Just update
+    with vfile.stage_version("r2") as sv:
+        sv["values"][:16] += 1
+
+    # Resize after updating the chunk being resized. The resized chunk is brand new.
+    with vfile.stage_version("r3") as sv:
+        sv["values"][:14] += 1
+        sv["values"].resize((15,))
+
+    # Resize after updating an unrelated chunk. The resized chunk is brand new.
+    with vfile.stage_version("r4") as sv:
+        sv["values"][:5] += 1
+        sv["values"].resize((14,))
+
+    # Resize after completely wiping the previous contents.
+    # Doesn't use StagedChangesArray.
+    with vfile.stage_version("r5") as sv:
+        sv["values"][:] += 1
+        sv["values"].resize((12,))
+
+    expect = {f"r{i}": vfile[f"r{i}"]["values"][:] for i in range(6)}
+
+    for v in delete_order:
+        delete_versions(vfile, v)
+        del expect[v]
+        for v2, expect_v2 in expect.items():
+            np.testing.assert_equal(vfile[v2]["values"], expect_v2)
 
 
 @pytest.mark.parametrize(

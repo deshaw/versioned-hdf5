@@ -311,7 +311,8 @@ def test_shrinking_does_not_reuse_partial_chunks(starting_size):
     See Also
     --------
     https://github.com/deshaw/versioned-hdf5/issues/411
-    test_replay.py::test_delete_versions_after_shrinking
+    test_replay::test_delete_versions_after_shrinking
+    test_replay::test_delete_versions_after_updates
     """
     arr = StagedChangesArray.from_array(
         np.arange(starting_size), chunk_size=(3,), fill_value=4
