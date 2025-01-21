@@ -1292,10 +1292,12 @@ class ResizePlan(MutatingPlan):
         if old_shape == new_shape:
             return
 
-        # Shrinking along an axis can't alter chunks on the slabs.
-        # However, it can reduce the amount of chunks impacted by enlarges on other
-        # axes, so it should be done first.
-        # It can also causes slabs to drop.
+        # Shrinking along an axis can't alter chunks on the slabs; however, partial edge
+        # chunks should be loaded into memory to avoid ending up with partially
+        # overlapping chunks on disk, e.g. [10:19] vs. [10:17].
+        # It can also reduce the amount of chunks impacted if we are also enlarging
+        # along other axes, so it should be done first.
+        # Finally, it can cause slabs to drop.
         shrunk_shape = tuple(min(o, n) for o, n in zip(old_shape, new_shape))
         if shrunk_shape != old_shape:
             chunks_slice = tuple(
@@ -1305,6 +1307,28 @@ class ResizePlan(MutatingPlan):
             # edge chunks without reducing the number of chunks.
             self.slab_indices = self.slab_indices[chunks_slice]
             self.slab_offsets = self.slab_offsets[chunks_slice]
+
+            # Load partial edge chunks into memory to avoid ending up with partially
+            # overlapping chunks on disk, e.g. [10:19] vs. [10:17].
+            load_edge_axes = [
+                axis
+                for axis, (old_size, shrunk_size, c) in enumerate(
+                    zip(old_shape, shrunk_shape, chunk_size)
+                )
+                if old_size > shrunk_size and shrunk_size % c != 0
+            ]
+            if n_base_slabs > 0 and load_edge_axes:
+                self.slab_indices = self.slab_indices.copy()
+                self.slab_offsets = self.slab_offsets.copy()
+                for axis in load_edge_axes:
+                    self._shrink_along_axis(
+                        new_shape=new_shape,
+                        chunk_size=chunk_size,
+                        axis=axis,
+                        n_slabs=n_slabs + len(self.append_slabs),
+                        n_base_slabs=n_base_slabs,
+                    )
+
         chunks_dropped = self.slab_indices.size < slab_indices.size
 
         if shrunk_shape != new_shape:
@@ -1323,18 +1347,18 @@ class ResizePlan(MutatingPlan):
                 self.slab_offsets = np.pad(self.slab_offsets, pad_width)
 
             # No need to transfer anything if there are only full chunks
-            if n_slabs > 1:
+            if n_slabs + len(self.append_slabs) > 1:
                 prev_shape = shrunk_shape
                 for axis in range(len(new_shape)):
                     next_shape = new_shape[: axis + 1] + prev_shape[axis + 1 :]
                     if next_shape != prev_shape:
                         self._enlarge_along_axis(
-                            prev_shape,
-                            next_shape,
-                            chunk_size,
-                            axis,
-                            n_slabs + len(self.append_slabs),
-                            n_base_slabs,
+                            old_shape=prev_shape,
+                            new_shape=next_shape,
+                            chunk_size=chunk_size,
+                            axis=axis,
+                            n_slabs=n_slabs + len(self.append_slabs),
+                            n_base_slabs=n_base_slabs,
                         )
                         prev_shape = next_shape
 
@@ -1354,6 +1378,34 @@ class ResizePlan(MutatingPlan):
             ).tolist()
 
     @cython.cfunc
+    def _shrink_along_axis(
+        self,
+        new_shape: tuple[int, ...],
+        chunk_size: tuple[int, ...],
+        axis: ssize_t,
+        n_slabs: int,
+        n_base_slabs: int,
+    ):
+        """Shrink along a single axis.
+
+        Load partial edge chunks into memory to avoid ending up with partially
+        overlapping chunks on disk, e.g. [10:19] vs. [10:17].
+        """
+        new_size = new_shape[axis]
+        new_floor_size = new_size - new_size % chunk_size[axis]
+        assert new_floor_size < new_size
+
+        self._load_edge_chunks_along_axis(
+            shape=new_shape,
+            chunk_size=chunk_size,
+            axis=axis,
+            floor_size=new_floor_size,
+            size=new_size,
+            n_slabs=n_slabs,
+            n_base_slabs=n_base_slabs,
+        )
+
+    @cython.cfunc
     def _enlarge_along_axis(
         self,
         old_shape: tuple[int, ...],
@@ -1366,7 +1418,7 @@ class ResizePlan(MutatingPlan):
         """Enlarge along a single axis"""
         old_size = old_shape[axis]
 
-        # Old size, rounded down or up to the nearest chunk
+        # Old size, rounded down to the nearest chunk
         old_floor_size = old_size - old_size % chunk_size[axis]
         if old_floor_size == old_size:
             return  # Everything we're doing is adding extra empty chunks
@@ -1382,32 +1434,15 @@ class ResizePlan(MutatingPlan):
         #    This includes chunks we just transferred in the previous step)
 
         # Step 1
-        if n_base_slabs > 0:
-            idx = (slice(None),) * axis + (slice(old_floor_size, old_size),)
-            _, mappers = index_chunk_mappers(idx, new_shape, chunk_size)
-            if not mappers:
-                return  # Resizing from size 0
-
-            chunks = _chunks_in_selection(
-                self.slab_indices,
-                self.slab_offsets,
-                mappers,
-                filter=lambda slab_idx: (0 < slab_idx) & (slab_idx <= n_base_slabs),
-                idxidx=True,
-            )
-            nchunks = chunks.shape[0]
-            if nchunks > 0:
-                self.append_slabs.append((nchunks * chunk_size[0],) + chunk_size[1:])
-                self.transfers.extend(
-                    _make_transfer_plans(
-                        mappers,
-                        chunks,
-                        src_slab_idx="chunks",
-                        dst_slab_idx=n_slabs,
-                        slab_indices=self.slab_indices,  # Modified in place
-                        slab_offsets=self.slab_offsets,  # Modified in place
-                    )
-                )
+        self._load_edge_chunks_along_axis(
+            shape=new_shape,
+            chunk_size=chunk_size,
+            axis=axis,
+            floor_size=old_floor_size,
+            size=old_size,
+            n_slabs=n_slabs,
+            n_base_slabs=n_base_slabs,
+        )
 
         # Step 2
         idx = (slice(None),) * axis + (slice(old_size, new_size),)
@@ -1433,6 +1468,47 @@ class ResizePlan(MutatingPlan):
                     chunks,
                     src_slab_idx=0,
                     dst_slab_idx="chunks",
+                )
+            )
+
+    @cython.cfunc
+    def _load_edge_chunks_along_axis(
+        self,
+        shape: tuple[int, ...],
+        chunk_size: tuple[int, ...],
+        axis: int,
+        floor_size: int,
+        size: int,  # Not necessarily shape[axis]
+        n_slabs: int,
+        n_base_slabs: int,
+    ):
+        """Load the edge chunks along an axis from the base slabs into a new slab"""
+        if n_base_slabs == 0:
+            return
+
+        idx = (slice(None),) * axis + (slice(floor_size, size),)
+        _, mappers = index_chunk_mappers(idx, shape, chunk_size)
+        if not mappers:
+            return  # Resizing to size 0
+
+        chunks = _chunks_in_selection(
+            self.slab_indices,
+            self.slab_offsets,
+            mappers,
+            filter=lambda slab_idx: (0 < slab_idx) & (slab_idx <= n_base_slabs),
+            idxidx=True,
+        )
+        nchunks = chunks.shape[0]
+        if nchunks > 0:
+            self.append_slabs.append((nchunks * chunk_size[0],) + chunk_size[1:])
+            self.transfers.extend(
+                _make_transfer_plans(
+                    mappers,
+                    chunks,
+                    src_slab_idx="chunks",
+                    dst_slab_idx=n_slabs,
+                    slab_indices=self.slab_indices,  # Modified in place
+                    slab_offsets=self.slab_offsets,  # Modified in place
                 )
             )
 
