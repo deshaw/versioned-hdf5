@@ -1,6 +1,13 @@
 Versioned HDF5 Change Log
 =========================
 
+## 2.0.1 (2025-01-22)
+
+### Minor Changes
+
+- Fixed regression, introduced in v2.0.0, which would cause the chunk hash map to become
+  corrupted when calling `resize()` to shrink a dataset followed by `delete_versions()`.
+
 ## 2.0.0 (2024-12-05)
 
 ### Major Changes
