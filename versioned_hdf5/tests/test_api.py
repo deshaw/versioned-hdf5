@@ -671,7 +671,9 @@ def test_resize_int_types_shrink(tmp_path):
     with h5py.File(tmp_path / "data.h5", "w") as f:
         vfile = VersionedHDF5File(f)
         with vfile.stage_version("r0") as sv:
-            sv.create_dataset("values", data=np.arange(17), maxshape=(None,), chunks=(3,))
+            sv.create_dataset(
+                "values", data=np.arange(17), maxshape=(None,), chunks=(3,)
+            )
     # Test shrinking:
     with h5py.File(tmp_path / "data.h5", "r+") as f:
         vfile = VersionedHDF5File(f)
@@ -680,12 +682,15 @@ def test_resize_int_types_shrink(tmp_path):
             new_size = old_size - 4
             sv["values"].resize((new_size,))
 
+
 def test_resize_int_types_grow(tmp_path):
     # Test that resizing with numpy int types works
     with h5py.File(tmp_path / "data.h5", "w") as f:
         vfile = VersionedHDF5File(f)
         with vfile.stage_version("r0") as sv:
-            sv.create_dataset("values", data=np.arange(17), maxshape=(None,), chunks=(3,))
+            sv.create_dataset(
+                "values", data=np.arange(17), maxshape=(None,), chunks=(3,)
+            )
     # Test growing repeatedly:
     with h5py.File(tmp_path / "data.h5", "r+") as f:
         vfile = VersionedHDF5File(f)
@@ -693,11 +698,12 @@ def test_resize_int_types_grow(tmp_path):
             old_size = sv["values"].size
             new_size = old_size + 7
             sv["values"].resize((new_size,))
-            sv['values'][old_size:new_size] = np.arange(new_size - old_size)
+            sv["values"][old_size:new_size] = np.arange(new_size - old_size)
             old_size = sv["values"].size
             new_size = old_size + 7
             sv["values"].resize((new_size,))
-            sv['values'][old_size:new_size] = np.arange(new_size - old_size)
+            sv["values"][old_size:new_size] = np.arange(new_size - old_size)
+
 
 def test_getitem(vfile):
     data = np.arange(2 * DEFAULT_CHUNK_SIZE)

@@ -1423,7 +1423,9 @@ class ResizePlan(MutatingPlan):
         if old_floor_size == old_size:
             return  # Everything we're doing is adding extra empty chunks
 
-        new_size: int = min(int(new_shape[axis]), old_floor_size + int(chunk_size[axis]))
+        new_size: int = min(
+            int(new_shape[axis]), old_floor_size + int(chunk_size[axis])
+        )
 
         # Two steps:
         # 1. Find edge chunks on base slabs that were partial and became full, or
