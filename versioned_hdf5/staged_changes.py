@@ -1391,8 +1391,8 @@ class ResizePlan(MutatingPlan):
         Load partial edge chunks into memory to avoid ending up with partially
         overlapping chunks on disk, e.g. [10:19] vs. [10:17].
         """
-        new_size = new_shape[axis]
-        new_floor_size = new_size - new_size % chunk_size[axis]
+        new_size: int = int(new_shape[axis])
+        new_floor_size: int = new_size - new_size % int(chunk_size[axis])
         assert new_floor_size < new_size
 
         self._load_edge_chunks_along_axis(
@@ -1416,14 +1416,14 @@ class ResizePlan(MutatingPlan):
         n_base_slabs: int,
     ):
         """Enlarge along a single axis"""
-        old_size = old_shape[axis]
+        old_size: int = int(old_shape[axis])
 
         # Old size, rounded down to the nearest chunk
-        old_floor_size = old_size - old_size % chunk_size[axis]
+        old_floor_size: int = old_size - old_size % int(chunk_size[axis])
         if old_floor_size == old_size:
             return  # Everything we're doing is adding extra empty chunks
 
-        new_size = min(new_shape[axis], old_floor_size + chunk_size[axis])
+        new_size: int = min(int(new_shape[axis]), old_floor_size + int(chunk_size[axis]))
 
         # Two steps:
         # 1. Find edge chunks on base slabs that were partial and became full, or
@@ -1476,7 +1476,7 @@ class ResizePlan(MutatingPlan):
         self,
         shape: tuple[int, ...],
         chunk_size: tuple[int, ...],
-        axis: int,
+        axis: ssize_t,
         floor_size: int,
         size: int,  # Not necessarily shape[axis]
         n_slabs: int,
