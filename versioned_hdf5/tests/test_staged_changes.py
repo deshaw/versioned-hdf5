@@ -730,3 +730,59 @@ def test_invalid_parameters():
     if NP_GE_200:
         with pytest.raises(ValueError):
             np.asarray(a, copy=False)
+
+
+def assert_tuple_of_ints(x: object) -> None:
+    assert isinstance(x, tuple)
+    for i in x:
+        assert isinstance(i, int)
+
+
+def test_numpy_ints_constructors():
+    """Test when input parameters are numpy.int types instead of plain python ints"""
+    # Test from_array
+    arr = StagedChangesArray.from_array(np.arange(10), chunk_size=(np.int8(5),))
+    assert_tuple_of_ints(arr.chunk_size)
+
+    # Test __init__
+    arr = StagedChangesArray(
+        shape=(np.int32(10),),
+        chunk_size=(np.int8(5),),
+        base_slabs=[],
+        slab_indices=np.zeros(2, dtype=np.int8),
+        slab_offsets=np.zeros(2, dtype=np.int16),
+    )
+    assert_tuple_of_ints(arr.shape)
+    assert_tuple_of_ints(arr.chunk_size)
+    assert arr.slab_indices.dtype == np.uint64
+    assert arr.slab_offsets.dtype == np.uint64
+
+    # Test full
+    arr = StagedChangesArray.full(
+        shape=(np.int32(10),),
+        chunk_size=(np.int8(5),),
+    )
+    assert_tuple_of_ints(arr.shape)
+    assert_tuple_of_ints(arr.chunk_size)
+
+
+def test_numpy_ints_methods():
+    """Test when input parameters are numpy.int types instead of plain python ints"""
+    arr = StagedChangesArray.from_array(
+        np.arange(10),
+        (5,),
+    )
+    arr[np.int64(7)] = np.int8(42)  # __setitem__
+    arr[np.int64(8) : np.int64(9)] = [np.int8(43)]  # __setitem__
+    assert arr[np.int64(7)] == 42  # __getitem__
+    assert_array_equal(arr[np.int64(7) : np.int64(9)], [42, 43])
+
+    # Test resize()
+    arr.resize((np.int64(9),))  # Shrink staged chunk
+    arr.resize((np.int64(10),))  # Enlarge staged chunk
+    arr.resize((np.int64(12),))  # New empty chunk
+    arr.resize((np.int64(11),))  # Shrink empty chunk
+    arr.resize((np.int64(13),))  # Enlarge empty chunk
+    assert_array_equal(arr, np.array([0, 1, 2, 3, 4, 5, 6, 42, 43, 0, 0, 0, 0]))
+    arr.resize((np.int64(4),))  # Shrink base chunk
+    assert_array_equal(arr, np.array([0, 1, 2, 3]))
