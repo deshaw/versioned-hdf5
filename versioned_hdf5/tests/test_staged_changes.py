@@ -768,10 +768,7 @@ def test_numpy_ints_constructors():
 
 def test_numpy_ints_methods():
     """Test when input parameters are numpy.int types instead of plain python ints"""
-    arr = StagedChangesArray.from_array(
-        np.arange(10),
-        (5,),
-    )
+    arr = StagedChangesArray.from_array(np.arange(10), (5,))
     arr[np.int64(7)] = np.int8(42)  # __setitem__
     arr[np.int64(8) : np.int64(9)] = [np.int8(43)]  # __setitem__
     assert arr[np.int64(7)] == 42  # __getitem__
