@@ -1,6 +1,14 @@
 Versioned HDF5 Change Log
 =========================
 
+## 2.0.2 (2025-01-23)
+
+### Minor Changes
+
+- Fixed regression which would cause a crash when invoking `resize()` with a tuple of
+  `numpy.int64` as argument instead of a tuple of ints, e.g. such as one constructed
+  from `h5py.Dataset.size`.
+
 ## 2.0.1 (2025-01-22)
 
 ### Minor Changes
