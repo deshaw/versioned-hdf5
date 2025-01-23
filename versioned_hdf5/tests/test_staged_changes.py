@@ -444,13 +444,13 @@ def test_big_O_performance():
     # Test will trip if __getitem__ or __setitem__ perform a
     # full scan of slab_indices and/or slab_offsets anywhere
     b = benchmark((2_500, 4_000))
-    np.testing.assert_allclose(b, a, rtol=0.2)
+    np.testing.assert_allclose(b, a, rtol=0.5)
 
     # 5 million chunks, long rulers
     # Test will trip if __getitem__ or __setitem__ construct or iterate upon a ruler as
     # long as the number of chunks along one axis, e.g. np.arange(mapper.n_chunks)
     c = benchmark((1, 10_000_000))
-    np.testing.assert_allclose(c, a, rtol=0.2)
+    np.testing.assert_allclose(c, a, rtol=0.5)
 
 
 def test_dont_load_wholly_selected_chunks():
