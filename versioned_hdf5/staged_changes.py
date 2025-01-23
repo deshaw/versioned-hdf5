@@ -1317,17 +1317,10 @@ class ResizePlan(MutatingPlan):
 
             # Load partial edge chunks into memory to avoid ending up with partially
             # overlapping chunks on disk, e.g. [10:19] vs. [10:17].
-            load_edge_axes = [
-                axis
-                for axis, (old_size, shrunk_size, c) in enumerate(
-                    zip(old_shape, shrunk_shape, chunk_size)
-                )
-                if old_size > shrunk_size and shrunk_size % c != 0
-            ]
-            if n_base_slabs > 0 and load_edge_axes:
-                self.slab_indices = self.slab_indices.copy()
-                self.slab_offsets = self.slab_offsets.copy()
-                for axis in load_edge_axes:
+            for axis, (old_size, shrunk_size, c) in enumerate(
+                zip(old_shape, shrunk_shape, chunk_size)
+            ):
+                if old_size > shrunk_size and shrunk_size % c != 0:
                     self._shrink_along_axis(
                         new_shape=new_shape,
                         chunk_size=chunk_size,
