@@ -41,7 +41,7 @@ extensions = [
 ]
 
 # sphinx-multiversion configuration
-smv_tag_whitelist = r"^[0-9].[0-9].*$"
+smv_tag_whitelist = r"^v?[0-9].[0-9].*$"
 smv_branch_whitelist = "master"
 smv_remote_whitelist = None
 smv_released_pattern = r"^tags/.*$"
