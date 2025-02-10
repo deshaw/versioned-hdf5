@@ -3,6 +3,7 @@ name: Release Python Bindings to PyPI
 on:
   release:
     types: [published]
+  pull_request:
   workflow_dispatch:
     inputs:
       test_pypi:
@@ -12,26 +13,33 @@ on:
 
 jobs:
   build-sdist:
-    name: Build package
+    name: Build sdist
     runs-on: ubuntu-latest
     steps:
       - name: 💻 Checkout the repo
         uses: actions/checkout@v4
 
       - name: 🐍 Set up Python
-        uses: actions/setup-python@v4
+        uses: conda-incubator/setup-miniconda@v3
         with:
-          python-version: '3.11'
+          miniconda-version: "latest"
+          activate-environment: build-vhdf
+          environment-file: environment.yml
+          conda-remove-defaults: true
 
-      - name: Install native dependencies
+      - name: Manually sest env variables to allow conda deps to be discoverable
+        shell: bash -l {0}
         run: |
-          set -xe
-          sudo apt update -y
-          sudo apt install -y hdf5-tools libhdf5-dev mpi-default-dev
+          CONDA_PREFIX=$(conda info --base)/envs/build-vhdf
+          echo "CONDA_PREFIX=$CONDA_PREFIX" >> $GITHUB_ENV
+          echo "$CONDA_PREFIX/bin" >> $GITHUB_PATH
+          echo "CPATH=$CONDA_PREFIX/include:$CPATH" >> $GITHUB_ENV
+          echo "LIBRARY_PATH=$CONDA_PREFIX/lib:$LIBRARY_PATH" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
       - name: 🚀 Install build dependencies
         run: |
-          python -m pip install build twine
+          pip install build twine
 
       - name: 📦 Build the sdist and wheel
         run: |
@@ -48,8 +56,119 @@ jobs:
           name: wheels-sdist
           path: ./wheelhouse/*.tar.gz
 
+  build-wheels:
+    name: 'Wheels: ${{ matrix.os }} ${{ matrix.arch }} ${{ matrix.python-version }}'
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
+        include:
+          - os: ubuntu-latest
+            arch: x86_64
+          - os: windows-latest
+            arch: AMD64
+          - os: macos-latest
+            arch: arm64
+
+    steps:
+    - name: Check out the repo
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # get the non-merge commit for PRs
+
+    # Don't use conda to build pip wheels
+    # (it's going to be messy when you import the packages outside of conda)
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    # MacOS environment setup
+    # libz and libhdf5 require MacOS>=14.0
+    - name: Install openmpi; update env variables on macos
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install open-mpi
+        echo "PKG_CONFIG_PATH=$(brew --prefix)/lib/pkgconfig:$(brew --prefix)/opt/open-mpi/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+        echo "LIBRARY_PATH=$(brew --prefix)/lib:$LIBRARY_PATH" >> $GITHUB_ENV
+        echo "CPATH=$(brew --prefix)/include:$CPATH" >> $GITHUB_ENV
+        echo "CPATH=$(python -c 'import sysconfig; print(sysconfig.get_path("include"))'):$CPATH" >> $GITHUB_ENV
+        echo "MACOSX_DEPLOYMENT_TARGET=14.0" >> $GITHUB_ENV
+    - name: Run cibw_before_all_macos
+      if: matrix.os == 'macos-latest'
+      run: |
+        bash ./ci/cibw_before_all_macos.sh "${{ github.workspace }}"
+
+    # Windows environment setup
+    - name: Set up nuget
+      if: matrix.os == 'windows-latest'
+      uses: nuget/setup-nuget@v2
+    - name: Run cibw_before_all_windows
+      if: matrix.os == 'windows-latest'
+      run: |
+        bash ./ci/cibw_before_all_windows.sh "${{ github.workspace }}"
+    - name: Print environment info
+      id: envdata
+      if: matrix.os == 'windows-latest'
+      shell: bash
+      run: |
+        echo $PATH
+        echo $PKG_CONFIG_PATH
+
+        # Inject MSMPI and zlib library paths into github context so we can pass
+        # it to meson; replace any backslashes with forward slashes
+        echo "MSMPI_PATH=$(echo $MSMPI_ROOT | sed 's/\\/\//g')/Lib/x64" >> $GITHUB_OUTPUT
+        echo "ZLIB_PATH=$(echo $ZLIB_ROOT | sed 's/\\/\//g')/lib_release" >> $GITHUB_OUTPUT
+
+    # - name: Setup tmate session
+    #   if: matrix.os == 'windows-latest'
+    #   uses: mxschmitt/action-tmate@v3
+
+    # Build the wheels
+    - name: Triage the build
+      run: bash ./ci/triage_build.sh "${{ matrix.arch }}" "${{ github.event.pull_request.head.sha || github.sha }}" "${{ matrix.python-version }}"
+    - name: Run cibuildwheel
+      uses: pypa/cibuildwheel@v2.22.0
+      env:
+        # Note that tool.cibuildwheel "skip" in pyproject.toml also limits what gets built
+        CIBW_ARCHS: ${{ matrix.arch }}
+        CIBW_BUILD: ${{ env.CIBW_BUILD }}
+        CIBW_SKIP: ${{ env.CIBW_SKIP }}
+        CIBW_BEFORE_BUILD: ${{ env.CIBW_BEFORE_BUILD }}
+        CIBW_BUILD_FRONTEND: ${{ env.CIBW_BUILD_FRONTEND }}
+        CIBW_PRERELEASE_PYTHONS: ${{ env.CIBW_PRERELEASE_PYTHONS }}
+        CIBW_BEFORE_TEST: ${{ env.CIBW_BEFORE_TEST }}
+        CIBW_BEFORE_BUILD_LINUX: yum install -y openmpi openmpi-devel zlib-devel; rpm -ql openmpi-devel
+        CIBW_ENVIRONMENT_LINUX: PATH=/usr/lib64/openmpi/bin:$PATH # Make sure mpicc is on PATH
+        CIBW_ENVIRONMENT_MACOS: CPATH=$HDF5_DIR/include:$CPATH
+        CIBW_ENVIRONMENT_WINDOWS: >
+          CPATH="$HDF5_DIR/include;$MSMPI_ROOT/Include;$MSMPI_ROOT/Include/x64;$CPATH"
+          LIBRARY_PATH="$HDF5_DIR/lib;$MSMPI_ROOT/Lib/x64;$LIBRARY_PATH"
+          PATH="$PKGCONFBIN;$PATH"
+
+        # Must use paths relative to the source root here: meson rejects absolute paths
+        CIBW_CONFIG_SETTINGS_WINDOWS: >
+          setup-args="--vsenv"
+          setup-args="-Dmsmpi_libs=['${{ steps.envdata.outputs.MSMPI_PATH }}']"
+          setup-args="-Dzlib_libs=['${{ steps.envdata.outputs.ZLIB_PATH }}']"
+
+
+    - name: Bundle the hdf5 dlls into the wheels on windows
+      if: runner.os == 'Windows'
+      run: python ./ci/bundle_hdf5_whl.py wheelhouse
+
+    - name: Upload wheels
+      uses: actions/upload-artifact@v4
+      with:
+        name: wheels-${{ matrix.os }}-${{ matrix.python-version }}
+        path: ./wheelhouse/*.whl
+
   publish:
     name: Publish Python packages on PyPI
+    if: (github.event_name == 'release' && startsWith(github.ref, 'refs/tags')) || (github.event_name == 'workflow_dispatch')
     needs: [build-sdist]
     runs-on: ubuntu-latest
     environment:
@@ -61,7 +180,6 @@ jobs:
       - name: Retrieve wheels and sdist
         uses: actions/download-artifact@v4
         with:
-          pattern: wheels-*
           merge-multiple: true
           path: wheels/
 

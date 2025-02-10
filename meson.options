@@ -1,0 +1,12 @@
+option(
+  'zlib_libs',
+  type: 'array',
+  value: [],
+  description: 'Paths to the zlib lib directories for windows builds',
+)
+option(
+  'msmpi_libs',
+  type: 'array',
+  value: [],
+  description: 'Path to the msmpi lib directories for windows builds',
+)
