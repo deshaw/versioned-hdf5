@@ -22,9 +22,32 @@ npy_include_path = run_command(
     check: true
 ).stdout().strip()
 
+
+hdf5_dep = dependency('hdf5')
+mpi_dep = dependency('mpi', required: false)
+
+# In conda, this is installed as "ompi.pc"
+if not mpi_dep.found()
+  message('Could not find `mpi` with pkg-config; using pkg-config to look for `ompi`...')
+  mpi_dep = dependency('ompi', required: false)
+endif
+
+# if pkg-config doesn't find mpi (.pc file not generated?), try declaring dependency with mpicc
+if not mpi_dep.found()
+    message('Could not find `ompi` with pkg-config; manually setting the include and link args with mpicc output...')
+
+    mpicc_cflags = run_command('mpicc', '--showme:compile').stdout().strip().split()
+    mpicc_ldflags = run_command('mpicc', '--showme:link').stdout().strip().split()
+
+    mpi_dep = declare_dependency(
+        link_args : mpicc_ldflags,
+        include_directories : mpicc_cflags,
+    )
+endif
+
 compiled_deps = [
-    dependency('hdf5'),
-    dependency('mpi'),
+  mpi_dep,
+  hdf5_dep,
 ]
 
 py.extension_module(
