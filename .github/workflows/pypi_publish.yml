@@ -31,6 +31,8 @@ jobs:
         shell: bash -l {0}
         run: |
           CONDA_PREFIX=$(conda info --base)/envs/build-vhdf
+          echo "CONDA_PREFIX=$CONDA_PREFIX" >> $GITHUB_ENV
+          echo "$CONDA_PREFIX/bin" >> $GITHUB_PATH
           echo "CPATH=$CONDA_PREFIX/include:$CPATH" >> $GITHUB_ENV
           echo "LIBRARY_PATH=$CONDA_PREFIX/lib:$LIBRARY_PATH" >> $GITHUB_ENV
           echo "LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
@@ -90,12 +92,17 @@ jobs:
       run: |
         brew install open-mpi
         echo "PKG_CONFIG_PATH=$(brew --prefix)/lib/pkgconfig:$(brew --prefix)/opt/open-mpi/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-        echo "LIBRARY_PATH=$(brew --prefix)/lib:$LIBRARY_PATH" >> $GITHUB_ENV
         echo "CPATH=$(brew --prefix)/include:$CPATH" >> $GITHUB_ENV
-    - name: Run cibw_before_all_macos
-      if: runner.os == 'macOS'
+        echo "LIBRARY_PATH=$(brew --prefix)/lib:$LIBRARY_PATH" >> $GITHUB_ENV
+
+    - name: Set python include path on macos
+      if: matrix.os == 'macos-latest'
       run: |
-        echo "CPATH=$(python -c 'import sysconfig; print(sysconfig.get_path("include"))'):$CPATH" >> $GITHUB_ENV
+          echo "CPATH=$(python -c 'import sysconfig; print(sysconfig.get_path("include"))'):$CPATH" >> $GITHUB_ENV
+
+    - name: Run cibw_before_all_macos
+      if: matrix.os == 'macos-latest'
+      run: |
         bash ./ci/cibw_before_all_macos.sh "${{ github.workspace }}"
 
     # Windows environment setup
@@ -103,10 +110,10 @@ jobs:
       if: matrix.os == 'windows-latest'
       uses: mpi4py/setup-mpi@v1
     - name: Set up nuget
-      if: runner.os == 'Windows'
+      if: matrix.os == 'windows-latest'
       uses: nuget/setup-nuget@v2
     - name: Run cibw_before_all_windows
-      if: runner.os == 'Windows'
+      if: matrix.os == 'windows-latest'
       run: bash ./ci/cibw_before_all_windows.sh "${{ github.workspace }}"
 
     # Build the wheels
