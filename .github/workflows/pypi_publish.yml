@@ -27,16 +27,6 @@ jobs:
           environment-file: environment.yml
           conda-remove-defaults: true
 
-      - name: Manually sest env variables to allow conda deps to be discoverable
-        shell: bash -l {0}
-        run: |
-          CONDA_PREFIX=$(conda info --base)/envs/build-vhdf
-          echo "CONDA_PREFIX=$CONDA_PREFIX" >> $GITHUB_ENV
-          echo "$CONDA_PREFIX/bin" >> $GITHUB_PATH
-          echo "CPATH=$CONDA_PREFIX/include:$CPATH" >> $GITHUB_ENV
-          echo "LIBRARY_PATH=$CONDA_PREFIX/lib:$LIBRARY_PATH" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-
       - name: 🚀 Install build dependencies
         run: |
           pip install build twine
@@ -63,13 +53,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: ['3.12']
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
         include:
           - os: ubuntu-latest
             arch: x86_64
-          # - os: windows-latest
-          #   arch: AMD64
+          - os: windows-latest
+            arch: AMD64
           - os: macos-latest
             arch: arm64
 
@@ -79,56 +69,41 @@ jobs:
       with:
         fetch-depth: 0  # get the non-merge commit for PRs
 
-    # Install openmpi on macos
-    - name: Install openmpi and hdf5 on macos
+    # Don't use conda to build pip wheels
+    # (it's going to be messy when you import the packages outside of conda)
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    # MacOS environment setup
+    - name: Install openmpi on macos
       if: matrix.os == 'macos-latest'
       run: |
         brew install open-mpi
         echo "PKG_CONFIG_PATH=$(brew --prefix)/lib/pkgconfig:$(brew --prefix)/opt/open-mpi/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-        echo "CPATH=$(brew --prefix)/include:$CPATH" >> $GITHUB_ENV
         echo "LIBRARY_PATH=$(brew --prefix)/lib:$LIBRARY_PATH" >> $GITHUB_ENV
-
-    # Set up python on ubuntu (build runs in containers, so can't use conda)
-    # Can't use conda on macos, the binaries it installs are invalid according
-    # to meson: "executables created by cpp compiler are not runnable"
-    - name: 🐍 Set up Python
-      if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
-      uses: actions/setup-python@v5
-
-    - name: Set python include path on macos
-      if: matrix.os == 'macos-latest'
-      run: |
-          echo "CPATH=$(python -c 'import sysconfig; print(sysconfig.get_path("include"))'):$CPATH" >> $GITHUB_ENV
-
-    # Use environment-windows.yml because windows only has msmpi, not openmpi
-    - name: 🐍 Set up Python
-      if: matrix.os == 'windows-latest'
-      uses: conda-incubator/setup-miniconda@v3
-      with:
-        miniconda-version: "latest"
-        activate-environment: build-vhdf
-        environment-file: environment-windows.yml
-        conda-remove-defaults: true
-
-    # Windows HDF5
-    - uses: nuget/setup-nuget@v2
-      if: runner.os == 'Windows'
-    - uses: actions/setup-python@v5
-      if: runner.os == 'Windows'
-      with:
-        python-version: ${{ matrix.python-version }}
-    - run: bash ./ci/cibw_before_all_windows.sh "${{ github.workspace }}"
-      if: runner.os == 'Windows'
-
-    # macOS HDF5
+        echo "CPATH=$(brew --prefix)/include:$CPATH" >> $GITHUB_ENV
+        echo "CPATH=$(python -c 'import sysconfig; print(sysconfig.get_path("include"))'):$CPATH" >> $GITHUB_ENV
     - run: bash ./ci/cibw_before_all_macos.sh "${{ github.workspace }}"
       if: runner.os == 'macOS'
 
-    # Triage build
-    - run: bash ./ci/triage_build.sh "${{ matrix.arch }}" "${{ github.event.pull_request.head.sha || github.sha }}" "${{ matrix.python-version }}"
+    # Windows environment setup
+    - name: Install msmpi on windows
+      if: matrix.os == 'windows-latest'
+      uses: mpi4py/setup-mpi@v1
+    - name: Set up nuget
+      if: runner.os == 'Windows'
+      uses: nuget/setup-nuget@v2
+    - name: Run cibw_before_all_windows
+      if: runner.os == 'Windows'
+      run: bash ./ci/cibw_before_all_windows.sh "${{ github.workspace }}"
 
-    # Now actually build the wheels
-    - uses: pypa/cibuildwheel@v2.22.0
+    # Build the wheels
+    - name: Triage the build
+      run: bash ./ci/triage_build.sh "${{ matrix.arch }}" "${{ github.event.pull_request.head.sha || github.sha }}" "${{ matrix.python-version }}"
+    - name: Run cibuildwheel
+      uses: pypa/cibuildwheel@v2.22.0
       env:
         # Note that tool.cibuildwheel "skip" in pyproject.toml also limits what gets built
         CIBW_ARCHS: ${{ matrix.arch }}
@@ -142,8 +117,9 @@ jobs:
         CIBW_ENVIRONMENT_LINUX: PATH=/usr/lib64/openmpi/bin:$PATH # Make sure mpicc is on PATH
         CIBW_ENVIRONMENT_MACOS: CPATH=$HDF5_DIR/include:$CPATH
 
-    - run: python ./ci/bundle_hdf5_whl.py wheelhouse
+    - name: Bundle the hdf5 dlls into the wheels on windows
       if: runner.os == 'Windows'
+      run: python ./ci/bundle_hdf5_whl.py wheelhouse
 
     - name: Upload wheels
       uses: actions/upload-artifact@v4
