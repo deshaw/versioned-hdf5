@@ -27,6 +27,14 @@ jobs:
           environment-file: environment.yml
           conda-remove-defaults: true
 
+      - name: Manually sest env variables to allow conda deps to be discoverable
+        shell: bash -l {0}
+        run: |
+          CONDA_PREFIX=$(conda info --base)/envs/build-vhdf
+          echo "CPATH=$CONDA_PREFIX/include:$CPATH" >> $GITHUB_ENV
+          echo "LIBRARY_PATH=$CONDA_PREFIX/lib:$LIBRARY_PATH" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
       - name: 🚀 Install build dependencies
         run: |
           pip install build twine
@@ -84,9 +92,11 @@ jobs:
         echo "PKG_CONFIG_PATH=$(brew --prefix)/lib/pkgconfig:$(brew --prefix)/opt/open-mpi/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
         echo "LIBRARY_PATH=$(brew --prefix)/lib:$LIBRARY_PATH" >> $GITHUB_ENV
         echo "CPATH=$(brew --prefix)/include:$CPATH" >> $GITHUB_ENV
-        echo "CPATH=$(python -c 'import sysconfig; print(sysconfig.get_path("include"))'):$CPATH" >> $GITHUB_ENV
-    - run: bash ./ci/cibw_before_all_macos.sh "${{ github.workspace }}"
+    - name: Run cibw_before_all_macos
       if: runner.os == 'macOS'
+      run: |
+        echo "CPATH=$(python -c 'import sysconfig; print(sysconfig.get_path("include"))'):$CPATH" >> $GITHUB_ENV
+        bash ./ci/cibw_before_all_macos.sh "${{ github.workspace }}"
 
     # Windows environment setup
     - name: Install msmpi on windows
