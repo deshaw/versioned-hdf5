@@ -9,12 +9,13 @@ fi
 PROJECT_PATH="$1"
 
 # nuget
-nuget install zlib-msvc-x64 -ExcludeVersion -OutputDirectory "$PROJECT_PATH"
+nuget install MSMPISDK zlib-msvc-x64 -ExcludeVersion -OutputDirectory "$PROJECT_PATH"
 EXTRA_PATH="$PROJECT_PATH\zlib-msvc-x64\build\native\bin_release"
 export PATH="$PATH:$EXTRA_PATH"
 export CL="/I$PROJECT_PATH\zlib-msvc-x64\build\native\include"
 export LINK="/LIBPATH:$PROJECT_PATH\zlib-msvc-x64\build\native\lib_release"
 export ZLIB_ROOT="$PROJECT_PATH\zlib-msvc-x64\build\native"
+export MSMPI_ROOT="$PROJECT_PATH\MSMPISDK\build\native"
 
 # HDF5
 export HDF5_VERSION="1.14.6"
@@ -31,4 +32,5 @@ if [[ "$GITHUB_ENV" != "" ]] ; then
     echo "LINK=$LINK" | tee -a $GITHUB_ENV
     echo "ZLIB_ROOT=$ZLIB_ROOT" | tee -a $GITHUB_ENV
     echo "HDF5_DIR=$HDF5_DIR" | tee -a $GITHUB_ENV
+    echo "MSMPI_ROOT=$MSMPI_ROOT" | tee -a $GITHUB_ENV
 fi
