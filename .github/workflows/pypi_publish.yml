@@ -111,6 +111,10 @@ jobs:
       if: matrix.os == 'windows-latest'
       run: bash ./ci/cibw_before_all_windows.sh "${{ github.workspace }}"
 
+    - name: Setup tmate session
+      if: matrix.os == 'windows-latest'
+      uses: mxschmitt/action-tmate@v3
+
     # Build the wheels
     - name: Triage the build
       run: bash ./ci/triage_build.sh "${{ matrix.arch }}" "${{ github.event.pull_request.head.sha || github.sha }}" "${{ matrix.python-version }}"
