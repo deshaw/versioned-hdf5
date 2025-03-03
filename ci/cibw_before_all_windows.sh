@@ -9,7 +9,8 @@ fi
 PROJECT_PATH="$1"
 
 # nuget
-nuget install MSMPISDK zlib-msvc-x64 -ExcludeVersion -OutputDirectory "$PROJECT_PATH"
+nuget install zlib-msvc-x64 -ExcludeVersion -OutputDirectory "$PROJECT_PATH"
+nuget install MSMPISDK -ExcludeVersion -OutputDirectory "$PROJECT_PATH"
 EXTRA_PATH="$PROJECT_PATH\zlib-msvc-x64\build\native\bin_release"
 export PATH="$PATH:$EXTRA_PATH"
 export CL="/I$PROJECT_PATH\zlib-msvc-x64\build\native\include"
