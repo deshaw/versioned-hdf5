@@ -22,7 +22,6 @@ npy_include_path = run_command(
     check: true
 ).stdout().strip()
 
-
 hdf5_dep = dependency('hdf5')
 mpi_dep = dependency('mpi', required: false)
 

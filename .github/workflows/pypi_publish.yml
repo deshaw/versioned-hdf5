@@ -104,9 +104,22 @@ jobs:
         bash ./ci/cibw_before_all_macos.sh "${{ github.workspace }}"
 
     # Windows environment setup
-    - name: Install msmpi on windows
+    - name: Install hdf5 and msmpi on windows
       if: matrix.os == 'windows-latest'
-      uses: mpi4py/setup-mpi@v1
+      shell: powershell
+      run: |
+        choco install msmpi hdf5 --no-progress --yes
+        $hdf5_root = "C:\tools\hdf5"
+        $msmpi_root = "C:\Program Files\Microsoft MPI"
+
+        echo "CMAKE_PREFIX_PATH=$hdf5_root;$msmpi_root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
+        echo "HDF5_ROOT=$hdf5_root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
+        echo "MPI_ROOT=$msmpi_root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
+
+    # - name: Install msmpi on windows
+    #   if: matrix.os == 'windows-latest'
+    #   uses: mpi4py/setup-mpi@v1
+
     - name: Set up nuget
       if: matrix.os == 'windows-latest'
       uses: nuget/setup-nuget@v2
