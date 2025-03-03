@@ -16,7 +16,7 @@ export PATH="$PATH:$EXTRA_PATH"
 export CL="/I$PROJECT_PATH\zlib-msvc-x64\build\native\include"
 export LINK="/LIBPATH:$PROJECT_PATH\zlib-msvc-x64\build\native\lib_release"
 export ZLIB_ROOT="$PROJECT_PATH\zlib-msvc-x64\build\native"
-export MSMPI_ROOT="$PROJECT_PATH\MSMPISDK\build\native"
+export MSMPI_ROOT="$PROJECT_PATH\MSMPISDK"
 
 # HDF5
 export HDF5_VERSION="1.14.6"
