@@ -27,7 +27,7 @@ jobs:
           environment-file: environment.yml
           conda-remove-defaults: true
 
-      - name: Manually sest env variables to allow conda deps to be discoverable
+      - name: Manually set env variables to allow conda deps to be discoverable
         shell: bash -l {0}
         run: |
           CONDA_PREFIX=$(conda info --base)/envs/build-vhdf
@@ -123,10 +123,6 @@ jobs:
         echo "MSMPI_PATH=$(echo $MSMPI_ROOT | sed 's/\\/\//g')/Lib/x64" >> $GITHUB_OUTPUT
         echo "ZLIB_PATH=$(echo $ZLIB_ROOT | sed 's/\\/\//g')/lib_release" >> $GITHUB_OUTPUT
 
-    # - name: Setup tmate session
-    #   if: matrix.os == 'windows-latest'
-    #   uses: mxschmitt/action-tmate@v3
-
     # Build the wheels
     - name: Triage the build
       run: bash ./ci/triage_build.sh "${{ matrix.arch }}" "${{ github.event.pull_request.head.sha || github.sha }}" "${{ matrix.python-version }}"
@@ -154,7 +150,6 @@ jobs:
           setup-args="--vsenv"
           setup-args="-Dmsmpi_libs=['${{ steps.envdata.outputs.MSMPI_PATH }}']"
           setup-args="-Dzlib_libs=['${{ steps.envdata.outputs.ZLIB_PATH }}']"
-
 
     - name: Bundle the hdf5 dlls into the wheels on windows
       if: runner.os == 'Windows'
