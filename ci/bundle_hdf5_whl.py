@@ -19,11 +19,11 @@ from zipfile import ZIP_DEFLATED, ZipFile
 def find_dlls():
     hdf5_path = os.environ.get("HDF5_DIR")
     print("HDF5_DIR", hdf5_path)
-    yield from glob(os.path.join(hdf5_path, "lib", "hdf*.dll"))
+    yield from glob(osp.join(hdf5_path, "lib", "hdf*.dll"))
     zlib_root = os.environ.get("ZLIB_ROOT")
     if zlib_root:
         print("ZLIB_ROOT", zlib_root)
-        yield os.path.join(zlib_root, "bin_release", "zlib.dll")
+        yield osp.join(zlib_root, "bin_release", "zlib.dll")
 
 
 def file_sha256(path):
@@ -74,9 +74,11 @@ def bundle(whl_file):
         for dll in find_dlls():
             size = os.stat(dll).st_size
             sha = file_sha256(dll)
-            dest = "h5py/" + os.path.basename(dll)
-            print(f"{dest} ({size} bytes)")
-            shutil.copy2(dll, osp.join(td, dest))
+            dest_dir = osp.join(td, "h5py")
+            os.makedirs(dest_dir, exist_ok=True)
+            dest = osp.join(dest_dir, osp.basename(dll))
+            print(f"Copy {dll} -> {dest} ({size} bytes)")
+            shutil.copy2(dll, dest)
 
             record += f"{dest},sha256={sha},{size}\n"
 

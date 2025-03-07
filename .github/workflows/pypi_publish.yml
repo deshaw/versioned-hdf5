@@ -151,9 +151,9 @@ jobs:
           setup-args="-Dmsmpi_libs=['${{ steps.envdata.outputs.MSMPI_PATH }}']"
           setup-args="-Dzlib_libs=['${{ steps.envdata.outputs.ZLIB_PATH }}']"
 
-    - name: Setup tmate session
-      if: matrix.os == 'windows-latest'
-      uses: mxschmitt/action-tmate@v3
+        CIBW_TEST_COMMAND: >
+            cd {project} &&
+            pytest versioned_hdf5/tests/test_api.py -m 'not slow'
 
     - name: Bundle the hdf5 dlls into the wheels on windows
       if: runner.os == 'Windows'
