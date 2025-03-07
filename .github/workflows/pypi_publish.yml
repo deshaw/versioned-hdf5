@@ -158,7 +158,7 @@ jobs:
         CIBW_TEST_COMMAND: >
             cd {project} &&
             pip uninstall --yes h5py &&
-            pip install Cython -v --only-binary :all: &&
+            pip install Cython -v &&
             pip install h5py -v --no-binary :all: &&
             pip install -v .[test] &&
             pytest -m 'api and not slow'
