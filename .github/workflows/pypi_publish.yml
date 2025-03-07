@@ -159,7 +159,7 @@ jobs:
             cd {project} &&
             pip install h5py --no-binary :all: &&
             pip install .[test] &&
-            pytest versioned_hdf5/tests/test_api.py -m 'not slow'
+            pytest -m 'api and not slow'
 
     - name: Bundle the hdf5 dlls into the wheels on windows
       if: runner.os == 'Windows'
