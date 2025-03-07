@@ -151,9 +151,10 @@ jobs:
           setup-args="-Dmsmpi_libs=['${{ steps.envdata.outputs.MSMPI_PATH }}']"
           setup-args="-Dzlib_libs=['${{ steps.envdata.outputs.ZLIB_PATH }}']"
 
-        CIBW_TEST_EXTRAS: test
         CIBW_TEST_COMMAND: >
             cd {project} &&
+            pip install h5py --no-binary :all: &&
+            pip install .[test] &&
             pytest versioned_hdf5/tests/test_api.py -m 'not slow'
 
     - name: Bundle the hdf5 dlls into the wheels on windows
