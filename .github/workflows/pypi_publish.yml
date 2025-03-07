@@ -140,7 +140,6 @@ jobs:
         CIBW_BEFORE_BUILD: ${{ env.CIBW_BEFORE_BUILD }}
         CIBW_BUILD_FRONTEND: ${{ env.CIBW_BUILD_FRONTEND }}
         CIBW_PRERELEASE_PYTHONS: ${{ env.CIBW_PRERELEASE_PYTHONS }}
-        CIBW_BEFORE_TEST: ${{ env.CIBW_BEFORE_TEST }}
         CIBW_BEFORE_BUILD_LINUX: yum install -y openmpi openmpi-devel zlib-devel; rpm -ql openmpi-devel
         CIBW_ENVIRONMENT_LINUX: PATH=/usr/lib64/openmpi/bin:$PATH # Make sure mpicc is on PATH
         CIBW_ENVIRONMENT_MACOS: CPATH=$HDF5_DIR/include:$CPATH
@@ -155,12 +154,12 @@ jobs:
           setup-args="-Dmsmpi_libs=['${{ steps.envdata.outputs.MSMPI_PATH }}']"
           setup-args="-Dzlib_libs=['${{ steps.envdata.outputs.ZLIB_PATH }}']"
 
+        CIBW_BEFORE_TEST: >
+            pip uninstall --yes h5py &&
+            pip install h5py -v --no-binary :all:
+        CIBW_TEST_EXTRAS: "test"
         CIBW_TEST_COMMAND: >
             cd {project} &&
-            pip uninstall --yes h5py &&
-            pip install Cython -v &&
-            pip install h5py -v --no-binary :all: &&
-            pip install -v .[test] &&
             pytest -m 'api and not slow'
 
     - name: Bundle the hdf5 dlls into the wheels on windows
