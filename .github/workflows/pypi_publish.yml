@@ -158,8 +158,8 @@ jobs:
         CIBW_TEST_COMMAND: >
             cd {project} &&
             pip uninstall --yes h5py &&
-            pip install h5py --no-binary :all: &&
-            pip install .[test] &&
+            pip install h5py -v --no-binary :all: &&
+            pip install -v .[test] &&
             pytest -m 'api and not slow'
 
     - name: Bundle the hdf5 dlls into the wheels on windows
