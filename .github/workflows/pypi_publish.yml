@@ -157,7 +157,7 @@ jobs:
 
         CIBW_TEST_COMMAND: >
             cd {project} &&
-            pip uninstall h5py &&
+            pip uninstall --no-input h5py &&
             pip install h5py --no-binary :all: &&
             pip install .[test] &&
             pytest -m 'api and not slow'
