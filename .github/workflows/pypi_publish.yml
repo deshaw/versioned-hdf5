@@ -154,17 +154,15 @@ jobs:
           setup-args="-Dmsmpi_libs=['${{ steps.envdata.outputs.MSMPI_PATH }}']"
           setup-args="-Dzlib_libs=['${{ steps.envdata.outputs.ZLIB_PATH }}']"
 
-        CIBW_BEFORE_TEST: >
-            pip uninstall --yes h5py &&
-            pip install h5py -v --no-binary :all:
-        CIBW_TEST_EXTRAS: "test"
-        CIBW_TEST_COMMAND: >
-            cd {project} &&
-            pytest -m 'api and not slow'
-
     - name: Bundle the hdf5 dlls into the wheels on windows
       if: runner.os == 'Windows'
       run: python ./ci/bundle_hdf5_whl.py wheelhouse
+
+    - name: Run smoke tests
+      run: |
+        pip install -v pytest pytest-env hypothesis packaging
+        pip install -v ./wheelhouse/*.whl
+        pytest -m 'api and not slow'
 
     - name: Upload wheels
       uses: actions/upload-artifact@v4
