@@ -18,6 +18,9 @@ jobs:
     steps:
       - name: 💻 Checkout the repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true # include tags to get correct version from setuptools_scm
 
       - name: 🐍 Set up Python
         uses: conda-incubator/setup-miniconda@v3
@@ -78,6 +81,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0  # get the non-merge commit for PRs
+        fetch-tags: true # include tags to get correct version from setuptools_scm
 
     # Don't use conda to build pip wheels
     # (it's going to be messy when you import the packages outside of conda)
