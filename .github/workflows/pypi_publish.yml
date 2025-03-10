@@ -161,6 +161,7 @@ jobs:
     - name: Run smoke tests
       shell: bash
       run: |
+        rm -rf ./vcpkg # In case we are running on windows; vcpkg comes with python tests we don't want to run
         pip install -v pytest pytest-env hypothesis packaging
         pip install -v ./wheelhouse/*.whl --force-reinstall
         pytest -m 'api and not slow'
