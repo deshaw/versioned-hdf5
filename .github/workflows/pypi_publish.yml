@@ -159,9 +159,9 @@ jobs:
       run: python ./ci/bundle_hdf5_whl.py wheelhouse
 
     - name: Run smoke tests
+      shell: bash
       run: |
         pip install -v pytest pytest-env hypothesis packaging
-        pip install -v h5py --no-binary :all: # Build against system hdf5
         pip install -v ./wheelhouse/*.whl
         pytest -m 'api and not slow'
 
