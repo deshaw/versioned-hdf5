@@ -127,7 +127,8 @@ jobs:
         CIBW_PRERELEASE_PYTHONS: ${{ env.CIBW_PRERELEASE_PYTHONS }}
         CIBW_BEFORE_BUILD_LINUX: yum install -y zlib-devel
         CIBW_ENVIRONMENT_MACOS: >
-          CPATH=$HDF5_DIR/include:$CPATH
+          CPATH="$HDF5_DIR/include:$CPATH"
+          PKG_CONFIG_PATH="$HDF5_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
         CIBW_ENVIRONMENT_WINDOWS: >
           CPATH="$HDF5_DIR/include;$CPATH"
           LIBRARY_PATH="$HDF5_DIR/lib;$LIBRARY_PATH"
