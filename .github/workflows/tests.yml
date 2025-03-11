@@ -53,15 +53,15 @@ jobs:
         if: matrix.ndindex-version != 'latest'
         run: pip install ndindex~=${{ matrix.ndindex-version }}
 
-      - name: Install latest h5py version
+      - name: Install latest h5py wheel
         if: matrix.h5py-version == 'latest'
         run: pip install h5py
 
-      - name: Install target h5py version
+      - name: Install target h5py wheel
         if: matrix.h5py-version != 'latest' && matrix.h5py-version != 'dev'
         run: pip install h5py~=${{ matrix.h5py-version }}
 
-      - name: Install development h5py version
+      - name: Build and install development h5py version
         if: matrix.h5py-version == 'dev'
         run: pip install git+https://github.com/h5py/h5py
 
@@ -78,8 +78,11 @@ jobs:
 
       - name: Print hdf5 configuration
         run: |
-          python -c 'import utils; utils.debug_libhdf5_so()'
+          set -xe
           h5cc -showconfig
-
+          SITE_PACKAGES=$(python -c 'import site; print(site.getsitepackages()[0])')
+          ldd $SITE_PACKAGES/h5py/*.so | grep libhdf5
+          ldd $SITE_PACKAGES/versioned_hdf5/*.so | grep libhdf5
+          python -c 'import utils; utils.debug_libhdf5_so()'
       - name: Run Tests
         run: pytest -v .
