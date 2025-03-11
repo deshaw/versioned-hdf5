@@ -27,7 +27,7 @@ jobs:
 
       - name: 🚀 Install build dependencies
         run: |
-          apt install -y libhdf5-dev build-essential
+          sudo apt install -y libhdf5-dev build-essential
           pip install build twine
 
       - name: 📦 Build the sdist and wheel
