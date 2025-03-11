@@ -1,9 +1,0 @@
-name: build-vhdf
-channels:
-  - conda-forge
-dependencies:
-  - hdf5=1.14.4
-  - hdf5tools=0.4.3
-  - python=3.12.0
-  - pkg-config
-  - msmpi=10.1.1
