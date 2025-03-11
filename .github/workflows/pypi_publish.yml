@@ -84,12 +84,12 @@ jobs:
       run: |
         bash ./ci/cibw_before_all_macos.sh "${{ github.workspace }}"
 
-    # Windows environment setup
     - name: 🐍 Set up Python
       uses: actions/setup-python@v5
-      if: runner.os == 'Windows'
       with:
         python-version: ${{ matrix.python-version }}
+
+    # Windows environment setup
     - name: Set up nuget
       if: runner.os == 'Windows'
       uses: nuget/setup-nuget@v2
