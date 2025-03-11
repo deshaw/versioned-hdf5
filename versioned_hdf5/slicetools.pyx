@@ -19,7 +19,6 @@ from libc.stddef cimport ptrdiff_t, size_t
 from libc.stdio cimport FILE, fclose
 
 from versioned_hdf5.cytools import np_hsize_t
-
 from versioned_hdf5.cytools cimport ceil_a_over_b, count2stop, hsize_t, stop2count
 
 from versioned_hdf5.tools import asarray
