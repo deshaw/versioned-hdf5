@@ -109,6 +109,10 @@ jobs:
         # it to meson; replace any backslashes with forward slashes
         echo "ZLIB_PATH=$(echo $ZLIB_ROOT | sed 's/\\/\//g')/lib_release" >> $GITHUB_OUTPUT
 
+    - name: Setup tmate session
+      if: runner.os == 'macOS'
+      uses: mxschmitt/action-tmate@v3
+
     # Build the wheels
     - name: Triage the build
       run: bash ./ci/triage_build.sh "${{ matrix.arch }}" "${{ github.event.pull_request.head.sha || github.sha }}" "${{ matrix.python-version }}"
@@ -123,7 +127,8 @@ jobs:
         CIBW_BUILD_FRONTEND: ${{ env.CIBW_BUILD_FRONTEND }}
         CIBW_PRERELEASE_PYTHONS: ${{ env.CIBW_PRERELEASE_PYTHONS }}
         CIBW_BEFORE_BUILD_LINUX: yum install -y zlib-devel
-        CIBW_ENVIRONMENT_MACOS: CPATH=$HDF5_DIR/include:$CPATH
+        CIBW_ENVIRONMENT_MACOS: >
+          CPATH=$HDF5_DIR/include:$CPATH
         CIBW_ENVIRONMENT_WINDOWS: >
           CPATH="$HDF5_DIR/include;$CPATH"
           LIBRARY_PATH="$HDF5_DIR/lib;$LIBRARY_PATH"
