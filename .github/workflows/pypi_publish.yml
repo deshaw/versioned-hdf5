@@ -143,8 +143,9 @@ jobs:
       shell: bash
       run: |
         rm -rf ./vcpkg # In case we are running on windows; vcpkg comes with python tests we don't want to run
+        pip uninstall --yes versioned-hdf5
         pip install -v pytest pytest-env hypothesis packaging
-        pip install -v ./wheelhouse/*.whl --force-reinstall
+        pip install -v ./wheelhouse/*.whl
         pytest -m 'api and not slow'
 
     - name: Upload wheels
