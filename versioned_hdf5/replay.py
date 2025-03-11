@@ -425,7 +425,7 @@ def _is_empty(f: VersionedHDF5File, name: str, version: str) -> bool:
     bool
         True if the dataset is empty, False otherwise
     """
-    return not f["_version_data/versions"][version][name].is_virtual
+    return f["_version_data/versions"][version][name].len() == 0
 
 
 def _exists_in_version(f: VersionedHDF5File, name: str, version: str) -> bool:
