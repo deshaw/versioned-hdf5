@@ -138,6 +138,7 @@ allow_untyped_defs = true
 build-verbosity = 1
 build-frontend = { name = "pip", args = ["--only-binary", "numpy"] }
 manylinux-x86_64-image = "ghcr.io/h5py/manylinux2014_x86_64-hdf5"
+manylinux-aarch64-image = "ghcr.io/h5py/manylinux2014_aarch64-hdf5"
 
 [tool.cibuildwheel.linux]
 environment-pass = ["GITHUB_ACTIONS"]
