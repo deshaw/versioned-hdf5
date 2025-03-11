@@ -2,7 +2,7 @@ name: Build and deploy docs to github pages
 
 on:
   push:
-    branches: ["master"]
+    branches: [master]
   release:
     types: [published]
   workflow_dispatch:
@@ -26,28 +26,26 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      # Always checkout master branch, even if triggered by a tag.
-      # Otherwise sphinx-multiversion does not pull the master branch.
       - uses: actions/checkout@v4
         with:
+          # Always checkout master branch, even if triggered by a tag.
+          # Otherwise sphinx-multiversion does not pull the master branch.
           ref: master
+          fetch-depth: 0
+          fetch-tags: true # include tags to get correct version from setuptools_scm
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: 3.11
 
-      - name: Setup Graphviz
+      - name: Install native dependencies
         run: |
+          set -xe
           sudo apt update -y
-          sudo apt install graphviz libhdf5-dev mpi-default-dev -y
+          sudo apt install -y libhdf5-dev graphviz
 
       - name: Install versioned-hdf5
-        run: |
-          pip install '.[doc]'
-
-      - name: Update git tags for sphinx-multiversion
-        run: |
-          git fetch --tags
+        run: pip install .[doc]
 
       - name: Build docs
         working-directory: docs

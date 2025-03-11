@@ -1,5 +1,11 @@
 name: Tests
-on: [push, pull_request]
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
 jobs:
   tests:
     runs-on: ubuntu-latest
@@ -26,14 +32,18 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true # include tags to get correct version from setuptools_scm
+
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install native dependencies
         run: |
           sudo apt update -y
-          sudo apt install -y hdf5-tools libhdf5-dev mpi-default-dev
+          sudo apt install -y hdf5-tools libhdf5-dev
 
       - name: Install target numpy version
         if: matrix.numpy-version != 'latest'
@@ -45,15 +55,11 @@ jobs:
 
       - name: Install latest h5py version
         if: matrix.h5py-version == 'latest'
-        run: |
-          # Build against system-wide libhdf5
-          pip install h5py --no-binary :all:
+        run: pip install h5py
 
       - name: Install target h5py version
         if: matrix.h5py-version != 'latest' && matrix.h5py-version != 'dev'
-        run: |
-          # Build against system-wide libhdf5
-          pip install h5py~=${{ matrix.h5py-version }} --no-binary :all:
+        run: pip install h5py~=${{ matrix.h5py-version }}
 
       - name: Install development h5py version
         if: matrix.h5py-version == 'dev'
