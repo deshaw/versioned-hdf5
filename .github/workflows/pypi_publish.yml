@@ -78,7 +78,6 @@ jobs:
       if: runner.os == 'macOS'
       run: |
         echo "CPATH=$(python -c 'import sysconfig; print(sysconfig.get_path("include"))'):$CPATH" >> $GITHUB_ENV
-        echo "MACOSX_DEPLOYMENT_TARGET=14.0" >> $GITHUB_ENV
     - name: Run cibw_before_all_macos
       if: runner.os == 'macOS'
       run: |
@@ -109,9 +108,9 @@ jobs:
         # it to meson; replace any backslashes with forward slashes
         echo "ZLIB_PATH=$(echo $ZLIB_ROOT | sed 's/\\/\//g')/lib_release" >> $GITHUB_OUTPUT
 
-    - name: Setup tmate session
-      if: runner.os == 'macOS'
-      uses: mxschmitt/action-tmate@v3
+    # - name: Setup tmate session
+    #   if: runner.os == 'macOS'
+    #   uses: mxschmitt/action-tmate@v3
 
     # Build the wheels
     - name: Triage the build
