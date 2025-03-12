@@ -154,7 +154,7 @@ jobs:
         python -c 'import h5py; print(h5py.version.info)'
         python -c 'import h5py; print(h5py.__file__)'
         otool -L $(find . -name "*.so" -o -name "*.dylib")
-        otool -L $(python -c 'import h5py; print(h5py.__file__)')
+        otool -L $(find $(dirname $(python -c 'import h5py; print(h5py.__file__)')) -name "*.so" -o -name "*.dylib")
 
     - name: Check HDF5 linkage (Windows)
       if: runner.os == 'Windows'
