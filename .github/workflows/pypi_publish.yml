@@ -139,6 +139,16 @@ jobs:
           setup-args="--vsenv"
           setup-args="-Dzlib_libs=['${{ steps.envdata.outputs.ZLIB_PATH }}']"
 
+    - name: Check HDF5 linkage (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        otool -L $(find . -name "*.so" -o -name "*.dylib")
+
+    - name: Check HDF5 linkage (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        dumpbin /DEPENDENTS $(find . -name "*.pyd")
+
     - name: Run smoke tests
       shell: bash
       run: |
