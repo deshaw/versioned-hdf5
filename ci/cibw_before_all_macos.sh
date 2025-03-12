@@ -30,6 +30,7 @@ if [[ "$GITHUB_ENV" != "" ]]; then
     # unless we again append it here (?)
     echo "PKG_CONFIG_PATH=$HDF5_DIR/lib/pkgconfig:$PKG_CONFIG_PATH" | tee -a $GITHUB_ENV
     echo "MACOSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET" | tee -a $GITHUB_ENV
+    echo "HDF5_PKGCONFIG_NAME=$HDF5_DIR/lib/pkgconfig/hdf5.pc" | tee -a $GITHUB_ENV
 fi
 
 cat "${HDF5_DIR}/lib/pkgconfig/hdf5.pc"

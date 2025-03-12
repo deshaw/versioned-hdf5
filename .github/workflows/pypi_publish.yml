@@ -139,11 +139,12 @@ jobs:
           setup-args="--vsenv"
           setup-args="-Dzlib_libs=['${{ steps.envdata.outputs.ZLIB_PATH }}']"
 
-    - name: Run smoke tests
+    - name: Install test dependencies
       shell: bash
       run: |
         rm -rf ./vcpkg # In case we are running on windows; vcpkg comes with python tests we don't want to run
-        pip uninstall --yes versioned-hdf5
+        unset HDF5_DIR
+        echo $HDF5_PKGCONFIG_NAME
         pip install -v pytest pytest-env hypothesis packaging
         pip install --no-binary=h5py h5py
 
