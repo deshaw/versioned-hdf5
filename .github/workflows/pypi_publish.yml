@@ -72,6 +72,11 @@ jobs:
         fetch-depth: 0  # get the non-merge commit for PRs
         fetch-tags: true # include tags to get correct version from setuptools_scm
 
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
     # MacOS environment setup
     # libz and libhdf5 require MacOS>=14.0
     - name: Update env variables on macos
@@ -82,11 +87,6 @@ jobs:
       if: runner.os == 'macOS'
       run: |
         bash ./ci/cibw_before_all_macos.sh "${{ github.workspace }}"
-
-    - name: 🐍 Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
 
     # Windows environment setup
     - name: Set up nuget
