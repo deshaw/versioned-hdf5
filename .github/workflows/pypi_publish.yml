@@ -139,10 +139,21 @@ jobs:
           setup-args="--vsenv"
           setup-args="-Dzlib_libs=['${{ steps.envdata.outputs.ZLIB_PATH }}']"
 
+    - name: Run smoke tests
+      shell: bash
+      run: |
+        rm -rf ./vcpkg # In case we are running on windows; vcpkg comes with python tests we don't want to run
+        pip uninstall --yes versioned-hdf5
+        pip install -v pytest pytest-env hypothesis packaging
+        pip install --no-binary=h5py h5py
+
     - name: Check HDF5 linkage (macOS)
       if: runner.os == 'macOS'
       run: |
+        python -c 'import h5py; print(h5py.version.info)'
+        python -c 'import h5py; print(h5py.__file__)'
         otool -L $(find . -name "*.so" -o -name "*.dylib")
+        otool -L $(python -c 'import h5py; print(h5py.__file__)')
 
     - name: Check HDF5 linkage (Windows)
       if: runner.os == 'Windows'
@@ -152,13 +163,6 @@ jobs:
     - name: Run smoke tests
       shell: bash
       run: |
-        rm -rf ./vcpkg # In case we are running on windows; vcpkg comes with python tests we don't want to run
-        pip uninstall --yes versioned-hdf5
-        pip install -v pytest pytest-env hypothesis packaging
-        pip install --no-binary=h5py h5py
-        python -c 'import h5py; print(h5py.version.info)'
-        python -c 'import h5py; print(h5py.__file__)'
-        otool -L $(python -c 'import h5py; print(h5py.__file__)')
         pip install -v ./wheelhouse/*.whl
         pytest -m 'api and not slow'
 
