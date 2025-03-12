@@ -165,6 +165,12 @@ jobs:
         pip install -v ./wheelhouse/*.whl
         pytest -m 'api and not slow'
 
+    - name: Set up Visual Studio environment
+      if: runner.os == 'Windows'
+      shell: cmd
+      run: |
+        call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+
     - name: Run smoke tests (Windows)
       if: runner.os == 'Windows'
       run: |
