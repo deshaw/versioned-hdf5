@@ -1,5 +1,8 @@
 name: Build docs
+
 on:
+  push:
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
@@ -8,29 +11,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true # include tags to get correct version from setuptools_scm
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: 3.11
 
-      - name: Setup Graphviz
-        run: |
-          sudo apt install graphviz -y
-
-      - name: Install libhdf5-dev
+      - name: Install native dependencies
         run: |
           set -xe
           sudo apt update -y
-          sudo apt install -y libhdf5-dev mpi-default-dev
+          sudo apt install -y libhdf5-dev graphviz
 
       - name: Install versioned-hdf5
-        run: |
-          set -xe
-          pip install .
-
-      - name: Install versioned-hdf5 doc
-        run: |
-          pip install .[doc]
+        run: pip install .[doc]
 
       - name: Build docs
         working-directory: docs
@@ -39,3 +35,9 @@ jobs:
           # when using act to run locally:
           # https://github.com/nektos/act/issues/1853
           TZ=UTC make html
+
+      - name: Upload docs to github artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs
+          path: docs/_build/html
