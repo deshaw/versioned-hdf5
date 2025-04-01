@@ -202,19 +202,21 @@ class InMemoryGroup(Group):
         self,
         name,
         shape=None,
-        dtype=None,
+        dtype: np.dtype | str | None = None,
         data: np.ndarray | None = None,
         fillvalue=None,
         **kwds,
     ):
         self._check_committed()
-        dirname, data_name = posixpath.split(name)
+        dirname, _ = posixpath.split(name)
         if dirname and dirname not in self:
             self.create_group(dirname)
         if "maxshape" in kwds and any(i != None for i in kwds["maxshape"]):
             warnings.warn(
                 "The maxshape parameter is currently ignored for versioned datasets."
             )
+        if dtype is not None and not isinstance(dtype, np.dtype):
+            dtype = np.dtype(dtype)
         data = _make_new_dset(
             data=data, shape=shape, dtype=dtype, fillvalue=fillvalue, **kwds
         )
