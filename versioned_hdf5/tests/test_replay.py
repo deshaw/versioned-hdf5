@@ -369,11 +369,12 @@ def test_modify_metadata_dtype(vfile):
     assert f["_version_data"]["test_data3"]["raw_data"].dtype == np.int64
     assert f["_version_data"]["group"]["test_data4"]["raw_data"].dtype == np.int64
 
-    modify_metadata(f, "test_data2", dtype=np.float64)
+    modify_metadata(f, "test_data", dtype=np.float32)  # sparse dataset
+    modify_metadata(f, "test_data2", dtype=np.float64)  # dense dataset
     check_data(vfile)
 
-    assert vfile["version1"]["test_data"].dtype == np.float64
-    assert vfile["version2"]["test_data"].dtype == np.float64
+    assert vfile["version1"]["test_data"].dtype == np.float32
+    assert vfile["version2"]["test_data"].dtype == np.float32
 
     assert vfile["version1"]["test_data2"].dtype == np.float64
     assert vfile["version2"]["test_data2"].dtype == np.float64
@@ -383,7 +384,7 @@ def test_modify_metadata_dtype(vfile):
     assert vfile["version1"]["group"]["test_data4"].dtype == np.int64
     assert vfile["version2"]["group"]["test_data4"].dtype == np.int64
 
-    assert f["_version_data"]["test_data"]["raw_data"].dtype == np.float64
+    assert f["_version_data"]["test_data"]["raw_data"].dtype == np.float32
     assert f["_version_data"]["test_data2"]["raw_data"].dtype == np.float64
     assert f["_version_data"]["test_data3"]["raw_data"].dtype == np.int64
     assert f["_version_data"]["group"]["test_data4"]["raw_data"].dtype == np.int64
@@ -450,7 +451,8 @@ def test_modify_metadata_dtype2(vfile):
     assert set(f["_version_data"]["group"]) == {"test_data4"}
 
 
-def test_modify_metadata_fillvalue1(vfile):
+@pytest.mark.parametrize("new_fillvalue", [0, 3])
+def test_modify_metadata_fillvalue1(vfile, new_fillvalue):
     setup_vfile(vfile)
 
     f = vfile.f
@@ -471,11 +473,11 @@ def test_modify_metadata_fillvalue1(vfile):
     assert f["_version_data"]["test_data3"]["raw_data"].fillvalue == 0
     assert f["_version_data"]["group"]["test_data4"]["raw_data"].fillvalue == 0
 
-    modify_metadata(f, "test_data", fillvalue=3.0)
-    check_data(vfile, test_data_fillvalue=3.0)
+    modify_metadata(f, "test_data", fillvalue=new_fillvalue)
+    check_data(vfile, test_data_fillvalue=new_fillvalue)
 
-    assert vfile["version1"]["test_data"].fillvalue == 3.0
-    assert vfile["version2"]["test_data"].fillvalue == 3.0
+    assert vfile["version1"]["test_data"].fillvalue == new_fillvalue
+    assert vfile["version2"]["test_data"].fillvalue == new_fillvalue
 
     assert vfile["version1"]["test_data2"].fillvalue == 0
     assert vfile["version2"]["test_data2"].fillvalue == 0
@@ -485,7 +487,7 @@ def test_modify_metadata_fillvalue1(vfile):
     assert vfile["version1"]["group"]["test_data4"].fillvalue == 0
     assert vfile["version2"]["group"]["test_data4"].fillvalue == 0
 
-    assert f["_version_data"]["test_data"]["raw_data"].fillvalue == 3.0
+    assert f["_version_data"]["test_data"]["raw_data"].fillvalue == new_fillvalue
     assert f["_version_data"]["test_data2"]["raw_data"].fillvalue == 0
     assert f["_version_data"]["test_data3"]["raw_data"].fillvalue == 0
     assert f["_version_data"]["group"]["test_data4"]["raw_data"].fillvalue == 0
@@ -601,6 +603,28 @@ def test_modify_metadata_fillvalue3(vfile):
         "versions",
     }
     assert set(f["_version_data"]["group"]) == {"test_data4"}
+
+
+def test_modify_metadata_dtype_fillvalue_overflow(vfile):
+    """Test calling modify_metadata() to change both dtype and fillvalue,
+    where the new fillvalue would overflow on the old dtype.
+    """
+    with vfile.stage_version("v1") as g:
+        g.create_dataset("x", shape=(2,), fillvalue=1, dtype="i1")
+        g.create_dataset("y", data=[1, 2], fillvalue=2, dtype="i2")
+
+    assert vfile["v1"]["x"].dtype == np.int8
+    assert vfile["v1"]["y"].dtype == np.int16
+    assert vfile["v1"]["x"].fillvalue == 1
+    assert vfile["v1"]["y"].fillvalue == 2
+
+    modify_metadata(vfile, "x", dtype=np.int32, fillvalue=2**17)
+    modify_metadata(vfile, "y", dtype=np.int64, fillvalue=2**33)
+
+    assert vfile["v1"]["x"].dtype == np.int32
+    assert vfile["v1"]["y"].dtype == np.int64
+    assert vfile["v1"]["x"].fillvalue == 2**17
+    assert vfile["v1"]["y"].fillvalue == 2**33
 
 
 def test_delete_version(vfile):
