@@ -70,6 +70,24 @@ def test_InMemoryArrayDataset_resize(h5file):
     assert dataset.shape == dataset.array.shape == (90,)
 
 
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        dict(data=[0], dtype=np.int16),
+        dict(data=np.asarray([0], dtype=np.int16)),
+        dict(data=np.asarray([0], dtype=np.int32), dtype=np.int16),
+        dict(shape=(1,), dtype=np.int16),
+    ],
+)
+def test_InMemoryArrayDataset_dtype(h5file, kwargs):
+    vfile = VersionedHDF5File(h5file)
+    with vfile.stage_version("r0") as group:
+        ds = group.create_dataset("x", **kwargs)
+        assert ds.dtype == np.int16
+        assert ds[:].dtype == np.int16
+        assert np.asarray(ds).dtype == np.int16
+
+
 def test_InMemorySparseDataset(h5file):
     group = h5file.create_group("group")
     parent = InMemoryGroup(group.id)

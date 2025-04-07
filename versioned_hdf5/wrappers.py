@@ -454,14 +454,18 @@ def _make_new_dset(
         else:
             _dtype = None
 
-        # if we are going to a f2 datatype, pre-convert in python
+        # Do not convert in memory input numpy data with the wrong dtype
+        # However, if we are going to a f2 datatype, pre-convert hee
         # to workaround a possible h5py bug in the conversion.
-        is_small_float = (
-            _dtype is not None and _dtype.kind == "f" and _dtype.itemsize == 2
-        )
-        data = np.asarray(
-            data, order="C", dtype=(_dtype if is_small_float else guess_dtype(data))
-        )
+        if _dtype is not None and _dtype.kind == "f" and _dtype.itemsize == 2:
+            preconvert_dtype = _dtype
+        else:
+            # Special cases for vlen strings
+            preconvert_dtype = guess_dtype(data)
+        if preconvert_dtype is None and not isinstance(data, np.ndarray):
+            preconvert_dtype = _dtype
+
+        data = np.asarray(data, order="C", dtype=preconvert_dtype)
 
     # Validate shape
     if shape is None:
@@ -963,7 +967,7 @@ class DatasetLike:
     def fillvalue(self):
         if self._fillvalue is not None:
             return np.array([self._fillvalue], dtype=self.dtype)[0]
-        if self.dtype.metadata:
+        if getattr(self.dtype, "metadata", None):
             # Custom h5py string dtype. Make sure to use a fillvalue of ''
             if "vlen" in self.dtype.metadata:
                 # h5py 3 reads str variable length datasets as bytes. See
@@ -1051,8 +1055,8 @@ class InMemoryArrayDataset(DatasetLike):
 
     def __init__(self, name, array, parent, fillvalue=None, chunks=None):
         self.name = name
-        self._array = array
-        self._dtype = None
+        self._array = array  # May have a different dtype!
+        self._dtype = None  # Maybe overwritten by create_dataset
         self.attrs = {}
         self.parent = parent
         self._fillvalue = fillvalue
@@ -1069,16 +1073,8 @@ class InMemoryArrayDataset(DatasetLike):
 
         """
         return self.__class__(
-            name, self.array.astype(dtype, casting=casting), parent=parent
+            name, self._array.astype(dtype, casting=casting), parent=parent
         )
-
-    @property
-    def array(self):
-        return self._array
-
-    @array.setter
-    def array(self, array):
-        self._array = array
 
     @property
     def shape(self):
@@ -1086,19 +1082,17 @@ class InMemoryArrayDataset(DatasetLike):
 
     @property
     def dtype(self):
-        if self._dtype is not None:
-            return self._dtype
-        return self._array.dtype
+        return self._dtype or self._array.dtype
 
     def __getitem__(self, item):
-        return self.array.__getitem__(item)
+        return np.asarray(self._array[item], dtype=self._dtype)
 
     def __setitem__(self, item, value):
         self.parent._check_committed()
-        self.array.__setitem__(item, value)
+        self._array[item] = value
 
     def __array__(self, dtype=None):
-        return self.array
+        return np.asarray(self._array, dtype=dtype or self._dtype)
 
     @property
     def chunks(self):
@@ -1122,15 +1116,15 @@ class InMemoryArrayDataset(DatasetLike):
             # Don't create a new array if the old one can just be sliced in
             # memory.
             idx = tuple(slice(0, i) for i in size)
-            self.array = self.array[idx]
+            self._array = self._array[idx]
         else:
             old_shape_idx = Tuple(*[Slice(0, i) for i in old_shape])
             new_shape_idx = Tuple(*[Slice(0, i) for i in size])
             new_array = np.full(size, self.fillvalue, dtype=self.dtype)
-            new_array[old_shape_idx.as_subindex(new_shape_idx).raw] = self.array[
+            new_array[old_shape_idx.as_subindex(new_shape_idx).raw] = self._array[
                 new_shape_idx.as_subindex(old_shape_idx).raw
             ]
-            self.array = new_array
+            self._array = new_array
 
 
 class InMemorySparseDataset(DatasetLike):
