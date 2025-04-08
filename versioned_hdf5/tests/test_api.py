@@ -26,6 +26,8 @@ from ..wrappers import (
     InMemorySparseDataset,
 )
 
+pytestmark = mark.api
+
 
 def test_stage_version(vfile):
     """Test that versions can be staged and are the expected shape."""

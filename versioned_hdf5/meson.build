@@ -22,11 +22,6 @@ npy_include_path = run_command(
     check: true
 ).stdout().strip()
 
-compiled_deps = [
-    dependency('hdf5'),
-    dependency('mpi'),
-]
-
 py.extension_module(
     'slicetools',
     'slicetools.pyx',
