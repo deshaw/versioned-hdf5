@@ -13,7 +13,7 @@ import warnings
 from collections import defaultdict
 from collections.abc import Iterable
 from functools import cached_property
-from typing import Optional, Union
+from typing import Any
 from weakref import WeakValueDictionary
 
 import numpy as np
@@ -622,7 +622,7 @@ class InMemoryDataset(Dataset):
             fill_value=self.fillvalue,
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         name = posixpath.basename(posixpath.normpath(self.name))
         namestr = '"%s"' % (name if name != "" else "/")
         return '<%s %s: shape %s, type "%s">' % (
@@ -683,7 +683,7 @@ class InMemoryDataset(Dataset):
         return new_dataset
 
     @property
-    def fillvalue(self):
+    def fillvalue(self) -> Any:
         if super().fillvalue is not None:
             return super().fillvalue
         if self.dtype.metadata:
@@ -699,11 +699,11 @@ class InMemoryDataset(Dataset):
         return np.zeros((), dtype=self.dtype)[()]
 
     @property
-    def shape(self):
+    def shape(self) -> tuple[int, ...]:
         return self.id.shape
 
     @property
-    def size(self):
+    def size(self) -> int:
         return int(np.prod(self.shape))
 
     @property
@@ -715,7 +715,7 @@ class InMemoryDataset(Dataset):
         return self._attrs
 
     @property
-    def parent(self):
+    def parent(self) -> InMemoryGroup:
         return self._parent
 
     def __array__(self, dtype=None):
@@ -958,13 +958,18 @@ class DatasetLike:
     _fillvalue
     parent (the parent group)
     """
+    name: str
+    shape: tuple[int, ...]
+    dtype: np.dtype
+    _fillvalue: object | None
+    parent: InMemoryGroup
 
     @property
-    def size(self):
-        return np.prod(self.shape)
+    def size(self) -> int:
+        return int(np.prod(self.shape))
 
     @property
-    def fillvalue(self):
+    def fillvalue(self) -> Any:
         if self._fillvalue is not None:
             return np.array([self._fillvalue], dtype=self.dtype)[0]
         if self.dtype.metadata:
@@ -980,25 +985,22 @@ class DatasetLike:
         return np.zeros((), dtype=self.dtype)[()]
 
     @property
-    def ndim(self):
+    def ndim(self) -> int:
         return len(self.shape)
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         return bool(self.size)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.len()
 
-    def len(self):
-        """
-        Length of the first axis
-        """
-        shape = self.shape
-        if len(shape) == 0:
+    def len(self) -> int:
+        """Length of the first axis."""
+        if len(self.shape) == 0:
             raise TypeError("Attempt to take len() of scalar dataset")
-        return shape[0]
+        return self.shape[0]
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         name = posixpath.basename(posixpath.normpath(self.name))
         namestr = '"%s"' % (name if name != "" else "/")
         return '<%s %s: shape %s, type "%s">' % (
@@ -1008,7 +1010,7 @@ class DatasetLike:
             self.dtype.str,
         )
 
-    def __iter__(self):
+    def __iter__(self) -> Iterable[np.ndarray | np.generic]:
         """Iterate over the first axis. TypeError if scalar.
 
         BEWARE: Modifications to the yielded data are *NOT* written to file.
@@ -1077,11 +1079,11 @@ class InMemoryArrayDataset(DatasetLike):
         )
 
     @property
-    def shape(self):
+    def shape(self) -> tuple[int, ...]:
         return self._array.shape
 
     @property
-    def dtype(self):
+    def dtype(self) -> np.dtype:
         return self._dtype or self._array.dtype
 
     def __getitem__(self, item):
