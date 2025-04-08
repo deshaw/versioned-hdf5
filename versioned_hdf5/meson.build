@@ -24,7 +24,6 @@ npy_include_path = run_command(
 
 compiled_deps = [
     dependency('hdf5'),
-    dependency('mpi'),
 ]
 
 py.extension_module(

@@ -1,5 +1,11 @@
 name: Tests
-on: [push, pull_request]
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
 jobs:
   tests:
     runs-on: ubuntu-latest
@@ -26,14 +32,18 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true # include tags to get correct version from setuptools_scm
+
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install native dependencies
         run: |
           sudo apt update -y
-          sudo apt install -y hdf5-tools libhdf5-dev mpi-default-dev
+          sudo apt install -y hdf5-tools libhdf5-dev
 
       - name: Install target numpy version
         if: matrix.numpy-version != 'latest'
@@ -43,19 +53,15 @@ jobs:
         if: matrix.ndindex-version != 'latest'
         run: pip install ndindex~=${{ matrix.ndindex-version }}
 
-      - name: Install latest h5py version
+      - name: Install latest h5py wheel
         if: matrix.h5py-version == 'latest'
-        run: |
-          # Build against system-wide libhdf5
-          pip install h5py --no-binary :all:
+        run: pip install h5py
 
-      - name: Install target h5py version
+      - name: Install target h5py wheel
         if: matrix.h5py-version != 'latest' && matrix.h5py-version != 'dev'
-        run: |
-          # Build against system-wide libhdf5
-          pip install h5py~=${{ matrix.h5py-version }} --no-binary :all:
+        run: pip install h5py~=${{ matrix.h5py-version }}
 
-      - name: Install development h5py version
+      - name: Build and install development h5py version
         if: matrix.h5py-version == 'dev'
         run: pip install git+https://github.com/h5py/h5py
 
@@ -72,8 +78,11 @@ jobs:
 
       - name: Print hdf5 configuration
         run: |
-          python -c 'import utils; utils.debug_libhdf5_so()'
+          set -xe
           h5cc -showconfig
-
+          SITE_PACKAGES=$(python -c 'import site; print(site.getsitepackages()[0])')
+          ldd $SITE_PACKAGES/h5py/*.so | grep libhdf5
+          ldd $SITE_PACKAGES/versioned_hdf5/*.so | grep libhdf5
+          python -c 'import utils; utils.debug_libhdf5_so()'
       - name: Run Tests
         run: pytest -v .
