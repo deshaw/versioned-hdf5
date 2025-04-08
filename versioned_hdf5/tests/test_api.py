@@ -2889,3 +2889,24 @@ def test_other_compression_validates(tmp_path, library):
         # First four numbers are reserved for blosc compression;
         # others are actual compression options
         assert raw_data._filters["32001"][4:] == (7, 1, 2)
+
+
+@pytest.mark.parametrize("dtype", ["i2", int, float, np.uint8])
+def test_create_dataset_dtype_arg(vfile, dtype):
+    with vfile.stage_version(f"r0") as sv:
+        dset = sv.create_dataset("x", shape=(2,), dtype=dtype)
+        assert isinstance(dset.dtype, np.dtype)
+        assert dset.dtype == np.dtype(dtype)
+
+        dset = sv.create_dataset("y", data=[1, 2], dtype=dtype)
+        assert isinstance(dset.dtype, np.dtype)
+        assert dset.dtype == np.dtype(dtype)
+
+    with vfile.stage_version(f"r1") as sv:
+        dset = sv["x"]
+        assert isinstance(dset.dtype, np.dtype)
+        assert dset.dtype == np.dtype(dtype)
+
+        dset = sv["y"]
+        assert isinstance(dset.dtype, np.dtype)
+        assert dset.dtype == np.dtype(dtype)
