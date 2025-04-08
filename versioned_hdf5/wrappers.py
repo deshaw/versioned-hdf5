@@ -958,6 +958,7 @@ class DatasetLike:
     _fillvalue
     parent (the parent group)
     """
+
     name: str
     shape: tuple[int, ...]
     dtype: np.dtype
