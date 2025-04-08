@@ -13,7 +13,7 @@ import warnings
 from collections import defaultdict
 from collections.abc import Iterable
 from functools import cached_property
-from typing import Optional, Union
+from typing import Any
 from weakref import WeakValueDictionary
 
 import numpy as np
@@ -456,14 +456,18 @@ def _make_new_dset(
         else:
             _dtype = None
 
-        # if we are going to a f2 datatype, pre-convert in python
+        # Do not convert in memory input numpy data with the wrong dtype
+        # However, if we are going to a f2 datatype, pre-convert hee
         # to workaround a possible h5py bug in the conversion.
-        is_small_float = (
-            _dtype is not None and _dtype.kind == "f" and _dtype.itemsize == 2
-        )
-        data = np.asarray(
-            data, order="C", dtype=(_dtype if is_small_float else guess_dtype(data))
-        )
+        if _dtype is not None and _dtype.kind == "f" and _dtype.itemsize == 2:
+            preconvert_dtype = _dtype
+        else:
+            # Special cases for vlen strings
+            preconvert_dtype = guess_dtype(data)
+        if preconvert_dtype is None and not isinstance(data, np.ndarray):
+            preconvert_dtype = _dtype
+
+        data = np.asarray(data, order="C", dtype=preconvert_dtype)
 
     # Validate shape
     if shape is None:
@@ -620,7 +624,7 @@ class InMemoryDataset(Dataset):
             fill_value=self.fillvalue,
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         name = posixpath.basename(posixpath.normpath(self.name))
         namestr = '"%s"' % (name if name != "" else "/")
         return '<%s %s: shape %s, type "%s">' % (
@@ -681,7 +685,7 @@ class InMemoryDataset(Dataset):
         return new_dataset
 
     @property
-    def fillvalue(self):
+    def fillvalue(self) -> Any:
         if super().fillvalue is not None:
             return super().fillvalue
         if self.dtype.metadata:
@@ -697,11 +701,11 @@ class InMemoryDataset(Dataset):
         return np.zeros((), dtype=self.dtype)[()]
 
     @property
-    def shape(self):
+    def shape(self) -> tuple[int, ...]:
         return self.id.shape
 
     @property
-    def size(self):
+    def size(self) -> int:
         return int(np.prod(self.shape))
 
     @property
@@ -713,7 +717,7 @@ class InMemoryDataset(Dataset):
         return self._attrs
 
     @property
-    def parent(self):
+    def parent(self) -> InMemoryGroup:
         return self._parent
 
     def __array__(self, dtype=None):
@@ -957,12 +961,18 @@ class DatasetLike:
     parent (the parent group)
     """
 
-    @property
-    def size(self):
-        return np.prod(self.shape)
+    name: str
+    shape: tuple[int, ...]
+    dtype: np.dtype
+    _fillvalue: object | None
+    parent: InMemoryGroup
 
     @property
-    def fillvalue(self):
+    def size(self) -> int:
+        return int(np.prod(self.shape))
+
+    @property
+    def fillvalue(self) -> Any:
         if self._fillvalue is not None:
             return np.array([self._fillvalue], dtype=self.dtype)[0]
         if self.dtype.metadata:
@@ -978,25 +988,22 @@ class DatasetLike:
         return np.zeros((), dtype=self.dtype)[()]
 
     @property
-    def ndim(self):
+    def ndim(self) -> int:
         return len(self.shape)
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         return bool(self.size)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.len()
 
-    def len(self):
-        """
-        Length of the first axis
-        """
-        shape = self.shape
-        if len(shape) == 0:
+    def len(self) -> int:
+        """Length of the first axis."""
+        if len(self.shape) == 0:
             raise TypeError("Attempt to take len() of scalar dataset")
-        return shape[0]
+        return self.shape[0]
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         name = posixpath.basename(posixpath.normpath(self.name))
         namestr = '"%s"' % (name if name != "" else "/")
         return '<%s %s: shape %s, type "%s">' % (
@@ -1006,7 +1013,7 @@ class DatasetLike:
             self.dtype.str,
         )
 
-    def __iter__(self):
+    def __iter__(self) -> Iterable[np.ndarray | np.generic]:
         """Iterate over the first axis. TypeError if scalar.
 
         BEWARE: Modifications to the yielded data are *NOT* written to file.
@@ -1053,8 +1060,8 @@ class InMemoryArrayDataset(DatasetLike):
 
     def __init__(self, name, array, parent, fillvalue=None, chunks=None):
         self.name = name
-        self._array = array
-        self._dtype = None
+        self._array = array  # May have a different dtype!
+        self._dtype = None  # Maybe overwritten by create_dataset
         self.attrs = {}
         self.parent = parent
         self._fillvalue = fillvalue
@@ -1071,36 +1078,26 @@ class InMemoryArrayDataset(DatasetLike):
 
         """
         return self.__class__(
-            name, self.array.astype(dtype, casting=casting), parent=parent
+            name, self._array.astype(dtype, casting=casting), parent=parent
         )
 
     @property
-    def array(self):
-        return self._array
-
-    @array.setter
-    def array(self, array):
-        self._array = array
-
-    @property
-    def shape(self):
+    def shape(self) -> tuple[int, ...]:
         return self._array.shape
 
     @property
-    def dtype(self):
-        if self._dtype is not None:
-            return self._dtype
-        return self._array.dtype
+    def dtype(self) -> np.dtype:
+        return self._dtype or self._array.dtype
 
     def __getitem__(self, item):
-        return self.array.__getitem__(item)
+        return np.asarray(self._array[item], dtype=self._dtype)[()]
 
     def __setitem__(self, item, value):
         self.parent._check_committed()
-        self.array.__setitem__(item, value)
+        self._array[item] = value
 
     def __array__(self, dtype=None):
-        return self.array
+        return np.asarray(self._array, dtype=dtype or self._dtype)
 
     @property
     def chunks(self):
@@ -1124,15 +1121,15 @@ class InMemoryArrayDataset(DatasetLike):
             # Don't create a new array if the old one can just be sliced in
             # memory.
             idx = tuple(slice(0, i) for i in size)
-            self.array = self.array[idx]
+            self._array = self._array[idx]
         else:
             old_shape_idx = Tuple(*[Slice(0, i) for i in old_shape])
             new_shape_idx = Tuple(*[Slice(0, i) for i in size])
             new_array = np.full(size, self.fillvalue, dtype=self.dtype)
-            new_array[old_shape_idx.as_subindex(new_shape_idx).raw] = self.array[
+            new_array[old_shape_idx.as_subindex(new_shape_idx).raw] = self._array[
                 new_shape_idx.as_subindex(old_shape_idx).raw
             ]
-            self.array = new_array
+            self._array = new_array
 
 
 class InMemorySparseDataset(DatasetLike):

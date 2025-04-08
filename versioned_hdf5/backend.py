@@ -23,10 +23,6 @@ DATA_VERSION = 4
 CORRUPT_DATA_VERSIONS = frozenset([2, 3])
 
 
-def normalize_dtype(dtype):
-    return np.array([], dtype=dtype).dtype
-
-
 def get_chunks(shape, dtype, chunk_size):
     # TODO: Implement this
     if len(shape) > 1:
@@ -92,7 +88,7 @@ def create_base_dataset(
     if dtype is None:
         # https://github.com/h5py/h5py/issues/1474
         dtype = data.dtype
-    dtype = normalize_dtype(dtype)
+    dtype = np.dtype(dtype)
     if dtype.metadata and (
         "vlen" in dtype.metadata or "h5py_encoding" in dtype.metadata
     ):
