@@ -967,7 +967,7 @@ class DatasetLike:
     def fillvalue(self):
         if self._fillvalue is not None:
             return np.array([self._fillvalue], dtype=self.dtype)[0]
-        if getattr(self.dtype, "metadata", None):
+        if self.dtype.metadata:
             # Custom h5py string dtype. Make sure to use a fillvalue of ''
             if "vlen" in self.dtype.metadata:
                 # h5py 3 reads str variable length datasets as bytes. See
@@ -1085,7 +1085,7 @@ class InMemoryArrayDataset(DatasetLike):
         return self._dtype or self._array.dtype
 
     def __getitem__(self, item):
-        return np.asarray(self._array[item], dtype=self._dtype)
+        return np.asarray(self._array[item], dtype=self._dtype)[()]
 
     def __setitem__(self, item, value):
         self.parent._check_committed()
