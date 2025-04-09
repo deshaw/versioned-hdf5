@@ -25,7 +25,7 @@ from versioned_hdf5.wrappers import (
     InMemorySparseDataset,
 )
 
-pytestmark = pytest.mark.api
+pytestmark = pytest.mark.smoke
 
 
 TEST_DATA = pathlib.Path(__file__).parent.parent / "test_data"
@@ -1507,6 +1507,7 @@ def test_scalar_dataset(setup_vfile, data1, data2):
         v1_ds = file["v1"]["scalar_ds"]
         assert v1_ds[()] == data1
         assert v1_ds.shape == ()
+        assert v1_ds._buffer.dtype == dt
         assert v1_ds.dtype == dt
 
         with file.stage_version("v2") as group:
@@ -1515,6 +1516,7 @@ def test_scalar_dataset(setup_vfile, data1, data2):
         v2_ds = file["v2"]["scalar_ds"]
         assert v2_ds[()] == data2
         assert v2_ds.shape == ()
+        assert v2_ds._buffer.dtype == dt
         assert v2_ds.dtype == dt
 
 

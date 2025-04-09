@@ -652,7 +652,7 @@ def modify_metadata(
         if isinstance(dataset, (InMemoryDataset, InMemoryArrayDataset)):
             new_dataset = InMemoryArrayDataset(
                 name,
-                np.asarray(dataset, dtype=dtype),
+                np.asarray(dataset._buffer, dtype=dtype),
                 parent=tmp_parent,
                 fillvalue=_fillvalue,
                 chunks=_chunks,
@@ -660,21 +660,22 @@ def modify_metadata(
             if _fillvalue not in (None, dataset.fillvalue):
                 new_dataset[new_dataset == dataset.fillvalue] = _fillvalue
         elif isinstance(dataset, InMemorySparseDataset):
-            new_dataset = InMemorySparseDataset(
-                name,
-                shape=dataset.shape,
-                parent=tmp_parent,
-                dtype=dtype or dataset.dtype,
-                chunks=_chunks,
-                fillvalue=_fillvalue,
-            )
             staged_changes = dataset.staged_changes
-            if dtype not in (None, dataset.dtype):
+            if dtype not in (None, staged_changes.dtype):
                 staged_changes = staged_changes.astype(dtype)
             if _fillvalue not in (None, dataset.fillvalue):
                 staged_changes = staged_changes.refill(_fillvalue)
             if staged_changes is dataset.staged_changes:
                 staged_changes = staged_changes.copy()
+
+            new_dataset = InMemorySparseDataset(
+                name,
+                shape=dataset.shape,
+                parent=tmp_parent,
+                dtype=staged_changes.dtype,
+                chunks=_chunks,
+                fillvalue=_fillvalue,
+            )
             new_dataset.staged_changes = staged_changes
 
         else:
