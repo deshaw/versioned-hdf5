@@ -2865,7 +2865,7 @@ def test_other_compression_bad_value(tmp_path, library):
     path = tmp_path / "tmp.h5"
     with h5py.File(path, "w") as f:
         vf = VersionedHDF5File(f)
-        with vf.stage_version("r0") as sv, pytest.raises(ValueError, match="invalid"):
+        with pytest.raises(ValueError, match="invalid"), vf.stage_version("r0") as sv:
             sv.create_dataset(
                 "values",
                 data=np.arange(10),
