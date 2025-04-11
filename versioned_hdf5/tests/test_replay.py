@@ -639,8 +639,8 @@ def test_modify_metadata_dtype_fillvalue(vfile):
 
     assert vfile["version1"]["test_data2"].dtype == np.float32
     assert vfile["version2"]["test_data2"].dtype == np.float32
-    assert vfile["version1"]["test_data2"].fillvalue == 3.14
-    assert vfile["version2"]["test_data2"].fillvalue == 3.14
+    np.testing.assert_allclose(vfile["version1"]["test_data2"].fillvalue, 3.14)
+    np.testing.assert_allclose(vfile["version2"]["test_data2"].fillvalue, 3.14)
 
 
 def test_delete_version(vfile):
