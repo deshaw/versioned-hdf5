@@ -219,6 +219,7 @@ def many_slices_st(
     return src_shape, dst_shape, src_indices, dst_indices
 
 
+@pytest.mark.slow
 @given(args=many_slices_st())
 @hypothesis.settings(
     max_examples=max_examples,
