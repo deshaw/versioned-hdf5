@@ -491,7 +491,7 @@ class StagedChangesArray(MutableMapping[Any, T]):
         # Preprocess value parameter
         # Avoid double deep-copy of array-like objects that support the __array_*
         # interface (e.g. sparse arrays).
-        value = cast(NDArray[T], asarray(value, self.dtype))
+        value = cast(NDArray[T], asarray(value, dtype=self.dtype))
 
         if plan.value_shape != value.shape:
             value = np.broadcast_to(value, plan.value_shape)
@@ -1684,7 +1684,7 @@ def _chunks_in_selection(
 
     if idxidx:
         # Don't copy when converting from np.intp to uint64 on 64-bit platforms
-        columns = [asarray(nz_i, np_hsize_t) for nz_i in nz]
+        columns = [asarray(nz_i, dtype=np_hsize_t) for nz_i in nz]
     else:
         columns = [
             np.asarray(mapper.chunk_indices)[nz_i] for mapper, nz_i in zip(mappers, nz)
