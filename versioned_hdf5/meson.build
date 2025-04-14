@@ -6,6 +6,7 @@ py.install_sources(
         'hashtable.py',
         'replay.py',
         'tools.py',
+        'typing_.py',
         'versions.py',
         'wrappers.py',
     ],

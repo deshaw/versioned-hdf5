@@ -570,7 +570,7 @@ class IntegerArrayMapper(IndexChunkMapper):
                 # O(n^2)
                 mask = (chunk_start <= self.idx) & (self.idx < chunk_stop)
                 # Don't copy when converting from np.intp to uint64 on 64-bit platforms
-                value_sub_idx = asarray(np.flatnonzero(mask), np_hsize_t)
+                value_sub_idx = asarray(np.flatnonzero(mask), dtype=np_hsize_t)
                 chunk_sub_idx = self.idx[value_sub_idx]
 
             if max_rows > n_sel_chunks:
@@ -825,7 +825,7 @@ def _maybe_array_idx_to_slice(idx: Any):  # -> NDArray[np_hsize_t] | slice:
         idx = np.flatnonzero(idx)
 
     # Don't copy when converting from np.intp to uint64 on 64-bit platforms
-    idx = asarray(idx, np_hsize_t)
+    idx = asarray(idx, dtype=np_hsize_t)
 
     if not idx.flags.writeable:
         # Cython doesn't support read-only views in pure Python mode,
