@@ -17,7 +17,7 @@ from numpy.typing import DTypeLike, NDArray
 class ArrayProtocol(Protocol):
     """Minimal read-only NumPy array-like interface.
 
-    Not to be confused with numpy.testing.ArrayLike, which is any object that
+    Not to be confused with numpy.typing.ArrayLike, which is any object that
     can be coerced into a numpy array, including a nested list.
     """
 
