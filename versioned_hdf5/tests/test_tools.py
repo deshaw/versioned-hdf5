@@ -7,24 +7,25 @@ from hypothesis.extra import numpy as stnp
 from numpy.testing import assert_array_equal
 
 from ..tools import asarray, ix_with_slices
+from .test_typing import MinimalArray
 
 
 def test_asarray():
     a = np.array([1, -1], dtype="i2")
     b = asarray(a)
     assert b is a
-    b = asarray(a, "i2")
+    b = asarray(a, dtype="i2")
     assert b is a
-    b = asarray(a, "u2")
+    b = asarray(a, dtype="u2")
     assert_array_equal(b, a.astype("u2"), strict=True)
     assert b.base is a
-    b = asarray(a, "i4")
+    b = asarray(a, dtype="i4")
     assert_array_equal(b, a.astype("i4"), strict=True)
     assert b.base is None
 
     # Don't just test itemsize
     a = np.array([1, -1], dtype="i4")
-    b = asarray(a, "f4")
+    b = asarray(a, dtype="f4")
     assert_array_equal(b, a.astype("f4"), strict=True)
     assert b.base is None
 
@@ -57,6 +58,12 @@ def test_asarray():
     assert type(b) is type(a)
     assert b.base is None
     assert_array_equal(b, a.astype("i4"), strict=True)
+
+    a = MinimalArray(np.asarray([1], dtype="i8"))
+    b = asarray(a)
+    assert b is a
+    b = asarray(a, dtype="i8")
+    assert b is a
 
 
 @st.composite
