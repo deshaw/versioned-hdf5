@@ -643,7 +643,7 @@ def modify_metadata(
 
     def callback(dataset, version_name):
         _chunks = chunks or dataset.chunks
-        _fillvalue = fillvalue or dataset.fillvalue
+        _fillvalue = fillvalue if fillvalue is not None else dataset.fillvalue
 
         if isinstance(dataset, DatasetWrapper):
             dataset = dataset.dataset
@@ -651,23 +651,32 @@ def modify_metadata(
         name = dataset.name[len(dataset.parent.name) + 1 :]
         if isinstance(dataset, (InMemoryDataset, InMemoryArrayDataset)):
             new_dataset = InMemoryArrayDataset(
-                name, dataset[()], tmp_parent, fillvalue=_fillvalue, chunks=_chunks
+                name,
+                np.asarray(dataset, dtype=dtype),
+                parent=tmp_parent,
+                fillvalue=_fillvalue,
+                chunks=_chunks,
             )
-            if _fillvalue is not None:
+            if _fillvalue not in (None, dataset.fillvalue):
                 new_dataset[new_dataset == dataset.fillvalue] = _fillvalue
         elif isinstance(dataset, InMemorySparseDataset):
             new_dataset = InMemorySparseDataset(
                 name,
                 shape=dataset.shape,
-                dtype=dataset.dtype,
                 parent=tmp_parent,
+                dtype=dtype or dataset.dtype,
                 chunks=_chunks,
                 fillvalue=_fillvalue,
             )
-            if _fillvalue is not None:
-                new_dataset.staged_changes = dataset.staged_changes.refill(_fillvalue)
-            else:
-                new_dataset.staged_changes = dataset.staged_changes.copy()
+            staged_changes = dataset.staged_changes
+            if dtype not in (None, dataset.dtype):
+                staged_changes = staged_changes.astype(dtype)
+            if _fillvalue not in (None, dataset.fillvalue):
+                staged_changes = staged_changes.refill(_fillvalue)
+            if staged_changes is dataset.staged_changes:
+                staged_changes = staged_changes.copy()
+            new_dataset.staged_changes = staged_changes
+
         else:
             raise NotImplementedError(type(dataset))
 
@@ -675,9 +684,6 @@ def modify_metadata(
             new_dataset.compression = compression
         if compression_opts:
             new_dataset.compression_opts = compression_opts
-
-        if dtype:
-            return new_dataset.as_dtype(name, dtype, tmp_parent)
 
         return new_dataset
 

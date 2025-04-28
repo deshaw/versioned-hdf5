@@ -83,8 +83,7 @@ def test_InMemoryArrayDataset_resize(h5file):
         dict(shape=(1,), dtype=np.int16),
     ],
 )
-def test_InMemoryArrayDataset_dtype(h5file, kwargs):
-    vfile = VersionedHDF5File(h5file)
+def test_InMemoryArrayDataset_dtype(vfile, kwargs):
     with vfile.stage_version("r0") as group:
         ds = group.create_dataset("x", **kwargs)
         assert isinstance(ds.dtype, np.dtype)

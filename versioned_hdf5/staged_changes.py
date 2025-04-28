@@ -40,6 +40,7 @@ if cython.compiled:  # pragma: nocover
 
 
 T = TypeVar("T", bound=np.generic)
+Casting = Literal["no", "equiv", "safe", "same_kind", "unsafe"]
 
 
 class StagedChangesArray(MutableMapping[Any, T]):
@@ -555,7 +556,11 @@ class StagedChangesArray(MutableMapping[Any, T]):
             out.slabs.append(slab)
         return out
 
-    def astype(self, dtype: DTypeLike, casting: Any = "unsafe") -> StagedChangesArray:
+    def astype(
+        self,
+        dtype: DTypeLike,
+        casting: Casting = "unsafe",
+    ) -> StagedChangesArray:
         """Return a new StagedChangesArray with a different dtype.
 
         Chunks that are not yet staged are loaded from the base slabs.
