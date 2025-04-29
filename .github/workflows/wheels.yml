@@ -16,7 +16,6 @@ on:
 jobs:
   build-wheels:
     name: 'Build wheel'
-    continue-on-error: true  # DNM
     runs-on: ${{ inputs.os }}
     steps:
     - name: Check out the repo
@@ -66,16 +65,18 @@ jobs:
     - name: DNM meson debug
       if: runner.os == 'Windows'
       shell: bash
+      continue-on-error: true
       run: |
-        pip install meson setuptools-scm
+        pip install meson-python setuptools-scm cython numpy
         rm -rf build
-        meson setup --verbose . build
+        meson setup . build
         cd build
-        meson compile --verbose
+        meson compile
 
     - name: Setup tmate session
       if: runner.os == 'Windows'
       uses: mxschmitt/action-tmate@v3
+      continue-on-error: true
 
     # Build the wheels
     - name: Triage the build
