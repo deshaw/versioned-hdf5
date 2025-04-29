@@ -31,15 +31,15 @@ jobs:
         python-version: ${{ inputs.python-version }}
 
     # MacOS environment setup
-    # libz and libhdf5 require MacOS>=14.0
-    - name: Update env variables on macos
+    - name: Set up Homebrew
+      id: set-up-homebrew
+      if: runner.os == 'macOS'
+      uses: Homebrew/actions/setup-homebrew@master    
+    - name: Install MacOS dependencies
       if: runner.os == 'macOS'
       run: |
-        echo "CPATH=$(python -c 'import sysconfig; print(sysconfig.get_path("include"))'):$CPATH" >> $GITHUB_ENV
-    - name: Run cibw_before_all_macos
-      if: runner.os == 'macOS'
-      run: |
-        bash ./ci/cibw_before_all_macos.sh "${{ github.workspace }}"
+        brew update
+        brew install hdf5@1.10
 
     # Windows environment setup
     - name: Set up nuget
