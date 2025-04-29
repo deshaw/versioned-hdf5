@@ -16,6 +16,7 @@ on:
 jobs:
   build-wheels:
     name: 'Build wheel'
+    continue-on-error: true  # DNM
     runs-on: ${{ inputs.os }}
     steps:
     - name: Check out the repo
@@ -62,9 +63,19 @@ jobs:
         # it to meson; replace any backslashes with forward slashes
         echo "ZLIB_PATH=$(echo $ZLIB_ROOT | sed 's/\\/\//g')/lib_release" >> $GITHUB_OUTPUT
 
-    # - name: Setup tmate session
-    #   if: runner.os == 'macOS'
-    #   uses: mxschmitt/action-tmate@v3
+    - name: DNM meson debug
+      if: runner.os == 'Windows'
+      shell: bash
+      run: |
+        pip install meson setuptools-scm
+        rm -rf build
+        meson setup --verbose . build
+        cd build
+        meson compile --verbose
+
+    - name: Setup tmate session
+      if: runner.os == 'Windows'
+      uses: mxschmitt/action-tmate@v3
 
     # Build the wheels
     - name: Triage the build
