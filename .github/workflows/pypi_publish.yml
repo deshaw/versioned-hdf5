@@ -42,7 +42,7 @@ jobs:
       - name: Upload sdist
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-sdist
+          name: sdist
           path: ./wheelhouse/*.tar.gz
 
   build-wheels:
@@ -92,6 +92,10 @@ jobs:
     - name: Set up nuget
       if: runner.os == 'Windows'
       uses: nuget/setup-nuget@v2
+    - name: Set up Visual Studio environment
+      if: runner.os == 'Windows'
+      shell: cmd
+      run: call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
     - name: Run cibw_before_all_windows
       if: runner.os == 'Windows'
       run: |
@@ -139,13 +143,22 @@ jobs:
           setup-args="--vsenv"
           setup-args="-Dzlib_libs=['${{ steps.envdata.outputs.ZLIB_PATH }}']"
 
+    - name: Upload wheels
+      uses: actions/upload-artifact@v4
+      with:
+        name: wheels-${{ matrix.os }}-${{matrix.arch}}-${{ matrix.python-version }}
+        path: ./wheelhouse/*.whl
+
+    - name: Install dependencies for smoke tests
+      run: pip install pytest pytest-env hypothesis packaging
+
+    - name: Install package for smoke tests
+      run: pip install -v ./wheelhouse/*.whl
+
     - name: Run smoke tests (Linux)
       shell: bash
       if: runner.os == 'Linux'
       run: |
-        rm -rf ./vcpkg # In case we are running on windows; vcpkg comes with python tests we don't want to run
-        pip install -v pytest pytest-env hypothesis packaging
-        pip install -v ./wheelhouse/*.whl
         pytest -m 'api and not slow'
 
     - name: Run smoke tests (macOS)
@@ -154,22 +167,13 @@ jobs:
         export HDF5_PKGCONFIG_NAME=$HDF5_DIR/lib/pkgconfig/hdf5.pc
         unset HDF5_DIR
         echo $HDF5_PKGCONFIG_NAME
-        pip install -v pytest pytest-env hypothesis packaging
-        pip install --no-binary=h5py h5py
 
         python -c 'import h5py; print(h5py.version.info)'
         python -c 'import h5py; print(h5py.__file__)'
         otool -L $(find . -name "*.so" -o -name "*.dylib")
         otool -L $(find $(dirname $(python -c 'import h5py; print(h5py.__file__)')) -name "*.so" -o -name "*.dylib")
 
-        pip install -v ./wheelhouse/*.whl
         pytest -m 'api and not slow'
-
-    - name: Set up Visual Studio environment
-      if: runner.os == 'Windows'
-      shell: cmd
-      run: |
-        call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
 
     - name: Run smoke tests (Windows)
       if: runner.os == 'Windows'
@@ -179,16 +183,7 @@ jobs:
         unset HDF5_DIR
         echo $HDF5_PKGCONFIG_NAME
 
-        pip install -v pytest pytest-env hypothesis packaging
-        pip install --no-binary=h5py h5py
-        pip install -v ./wheelhouse/*.whl
         pytest -m 'api and not slow'
-
-    - name: Upload wheels
-      uses: actions/upload-artifact@v4
-      with:
-        name: wheels-${{ matrix.os }}-${{ matrix.python-version }}
-        path: ./wheelhouse/*.whl
 
   publish:
     name: Publish Python packages on PyPI
