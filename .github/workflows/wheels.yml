@@ -17,7 +17,6 @@ jobs:
   build-wheels:
     name: 'Build wheel'
     runs-on: ${{ inputs.os }}
-    continue-on-error: true
     steps:
     - name: Check out the repo
       uses: actions/checkout@v4
@@ -38,8 +37,7 @@ jobs:
         echo "CPATH=$(python -c 'import sysconfig; print(sysconfig.get_path("include"))'):$CPATH" >> $GITHUB_ENV
     - name: Run cibw_before_all_macos
       if: runner.os == 'macOS'
-      run: |
-        bash ./ci/cibw_before_all_macos.sh "${{ github.workspace }}"
+      run: bash ./ci/cibw_before_all_macos.sh "${{ github.workspace }}"
 
     # Windows environment setup
     - name: Set up nuget
@@ -51,8 +49,7 @@ jobs:
       run: call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
     - name: Run cibw_before_all_windows
       if: runner.os == 'Windows'
-      run: |
-        bash ./ci/cibw_before_all_windows.sh "${{ github.workspace }}"
+      run: bash ./ci/cibw_before_all_windows.sh "${{ github.workspace }}"
     - name: Print environment info
       id: envdata
       if: runner.os == 'Windows'
@@ -90,7 +87,6 @@ jobs:
           CPATH="$HDF5_DIR/include;$CPATH"
           LIBRARY_PATH="$HDF5_DIR/lib;$LIBRARY_PATH"
           PATH="$PKGCONFBIN;$PATH"
-
         # Must use paths relative to the source root here: meson rejects absolute paths
         CIBW_CONFIG_SETTINGS_WINDOWS: >
           setup-args="--vsenv"
