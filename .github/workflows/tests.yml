@@ -33,7 +33,7 @@ jobs:
       - name: Install native dependencies
         run: |
           sudo apt update -y
-          sudo apt install -y hdf5-tools libhdf5-dev mpi-default-dev
+          sudo apt install -y libhdf5-dev hdf5-tools
 
       - name: Install target numpy version
         if: matrix.numpy-version != 'latest'

@@ -27,12 +27,12 @@ jobs:
 
       - name: 🚀 Install build dependencies
         run: |
-          sudo apt install -y libhdf5-dev build-essential
+          sudo apt update -y
+          sudo apt install -y libhdf5-dev
           pip install build twine
 
       - name: 📦 Build the sdist and wheel
-        run: |
-          python -m build --sdist -o wheelhouse
+        run: python -m build --sdist -o wheelhouse
 
       - name: List and check sdist
         run: |
@@ -53,18 +53,18 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-14, macos-13, windows-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-13, macos-14, windows-latest]
         include:
           - os: ubuntu-latest
             arch: x86_64
           - os: ubuntu-24.04-arm
             arch: aarch64
-          - os: windows-latest
-            arch: AMD64
-          - os: macos-14
-            arch: arm64
           - os: macos-13
             arch: x86_64
+          - os: macos-14
+            arch: arm64
+          - os: windows-latest
+            arch: AMD64
     steps:
     - name: Check out the repo
       uses: actions/checkout@v4
@@ -193,7 +193,7 @@ jobs:
   publish:
     name: Publish Python packages on PyPI
     if: (github.event_name == 'release' && startsWith(github.ref, 'refs/tags')) || (github.event_name == 'workflow_dispatch')
-    needs: [build-sdist]
+    needs: [build-sdist, build-wheels]
     runs-on: ubuntu-latest
     environment:
       name: pypi

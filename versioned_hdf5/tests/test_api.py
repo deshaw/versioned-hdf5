@@ -26,7 +26,7 @@ from ..wrappers import (
     InMemorySparseDataset,
 )
 
-pytestmark = mark.api
+pytestmark = pytest.mark.api
 
 
 def test_stage_version(vfile):
