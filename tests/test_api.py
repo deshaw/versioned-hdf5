@@ -26,7 +26,6 @@ from versioned_hdf5.wrappers import (
     InMemorySparseDataset,
 )
 
-
 TEST_DATA = pathlib.Path(__file__).parent.parent / "test_data"
 
 
