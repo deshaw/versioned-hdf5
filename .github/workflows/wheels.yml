@@ -117,6 +117,9 @@ jobs:
         merge-multiple: true  # Don't unzip into subdirectory
         path: wheels/
 
+    - name: TMP DEBUG
+      run: find .
+
     - name: 🐍 Set up Python
       uses: actions/setup-python@v5
       with:
@@ -127,7 +130,7 @@ jobs:
 
     # Note: this pulls in the h5py wheel from pypi, which embeds libhdf5.
     - name: Install package for smoke tests
-      run: pip install -v ./wheelhouse/*.whl
+      run: pip install -v ./wheels/*.whl
 
     - name: Test import h5py
       run: python -c 'import h5py; print(h5py.version.info)'
