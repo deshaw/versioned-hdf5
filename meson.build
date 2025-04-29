@@ -4,6 +4,7 @@ project(
   'cpp',
   'cython',
   version: run_command(['python', '-m', 'setuptools_scm'], check: true).stdout().strip(),
+  meson_version: '>=1.1',
 )
 
 py = import('python').find_installation(pure: false)
@@ -14,7 +15,7 @@ hdf5_dep = dependency('hdf5')
 
 if host_machine.system() == 'windows'
   cc = meson.get_compiler('c')
-  other_deps += cc.find_library('zlib', dirs: get_option('zlib_libs'))
+  other_deps += cc.find_library('zlib', dirs: get_option('zlib_path'))
   other_deps += cc.find_library('shlwapi')
 endif
 

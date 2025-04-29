@@ -90,7 +90,7 @@ jobs:
         # Must use paths relative to the source root here: meson rejects absolute paths
         CIBW_CONFIG_SETTINGS_WINDOWS: >
           setup-args="--vsenv"
-          setup-args="-Dzlib_libs=['${{ steps.envdata.outputs.ZLIB_PATH }}']"
+          setup-args="-Dzlib_path=['${{ steps.envdata.outputs.ZLIB_PATH }}']"
 
     - name: Upload wheels
       uses: actions/upload-artifact@v4
