@@ -147,31 +147,6 @@ jobs:
     - name: Print hdf5 install path
       run: python -c 'import utils; utils.debug_libhdf5_so()'
 
-    - name: Run smoke tests (Linux)
+    - name: Run smoke tests
       shell: bash
-      if: runner.os == 'Linux'
       run: pytest -m 'api and not slow'
-
-    - name: Run smoke tests (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        export HDF5_PKGCONFIG_NAME=$HDF5_DIR/lib/pkgconfig/hdf5.pc
-        unset HDF5_DIR
-        echo $HDF5_PKGCONFIG_NAME
-
-        python -c 'import h5py; print(h5py.version.info)'
-        python -c 'import h5py; print(h5py.__file__)'
-        otool -L $(find . -name "*.so" -o -name "*.dylib")
-        otool -L $(find $(dirname $(python -c 'import h5py; print(h5py.__file__)')) -name "*.so" -o -name "*.dylib")
-
-        pytest -m 'api and not slow'
-
-    - name: Run smoke tests (Windows)
-      if: runner.os == 'Windows'
-      run: |
-        dumpbin /DEPENDENTS $(find . -name "*.pyd")
-        export HDF5_PKGCONFIG_NAME=$HDF5_DIR/lib/pkgconfig/hdf5.pc
-        unset HDF5_DIR
-        echo $HDF5_PKGCONFIG_NAME
-
-        pytest -m 'api and not slow'
