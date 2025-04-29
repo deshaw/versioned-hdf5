@@ -144,9 +144,12 @@ jobs:
     - name: Test import versioned_hdf5
       run: python -c 'import versioned_hdf5; print(versioned_hdf5.__version__)'
 
+    - name: Print hdf5 install path
+      run: python -c 'import utils; utils.debug_libhdf5_so()'
+
     - name: Run smoke tests (Linux)
       shell: bash
-      # if: runner.os == 'Linux'
+      if: runner.os == 'Linux'
       run: pytest -m 'api and not slow'
 
     - name: Run smoke tests (macOS)
