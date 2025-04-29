@@ -8,13 +8,14 @@ from hypothesis import given
 from hypothesis import strategies as st
 from numpy.testing import assert_equal
 
-from .. import VersionedHDF5File
-from ..cytools import count2stop
-from ..slicetools import (
+from versioned_hdf5 import VersionedHDF5File
+from versioned_hdf5.cytools import count2stop
+from versioned_hdf5.slicetools import (
     build_slab_indices_and_offsets,
     read_many_slices,
     spaceid_to_slice,
 )
+
 from .test_typing import MinimalArray
 
 max_examples = 10_000

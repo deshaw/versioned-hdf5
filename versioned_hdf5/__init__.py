@@ -1,7 +1,7 @@
 from importlib.metadata import version
 
-from .api import VersionedHDF5File
-from .replay import delete_version, delete_versions, modify_metadata
+from versioned_hdf5.api import VersionedHDF5File
+from versioned_hdf5.replay import delete_version, delete_versions, modify_metadata
 
 __version__ = version(__package__)
 

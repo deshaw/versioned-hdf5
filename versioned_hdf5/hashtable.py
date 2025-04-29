@@ -7,7 +7,7 @@ import numpy as np
 from h5py import File
 from ndindex import ChunkSize, Slice, Tuple
 
-from .slicetools import spaceid_to_slice
+from versioned_hdf5.slicetools import spaceid_to_slice
 
 
 class Hashtable(MutableMapping):

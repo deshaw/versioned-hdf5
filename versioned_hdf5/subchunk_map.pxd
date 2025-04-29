@@ -1,6 +1,6 @@
 # This file allows cimport'ing the functions declared below from other Cython modules
 
-from .cytools cimport hsize_t
+from versioned_hdf5.cytools cimport hsize_t
 
 
 cdef class IndexChunkMapper:

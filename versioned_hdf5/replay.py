@@ -17,18 +17,18 @@ from h5py.h5i import get_name
 from ndindex import ChunkSize, Slice, Tuple
 from ndindex.ndindex import NDIndex
 
-from .api import VersionedHDF5File
-from .backend import (
+from versioned_hdf5.api import VersionedHDF5File
+from versioned_hdf5.backend import (
     create_base_dataset,
     create_virtual_dataset,
     initialize,
     write_dataset,
     write_dataset_chunks,
 )
-from .hashtable import Hashtable
-from .slicetools import spaceid_to_slice
-from .versions import all_versions
-from .wrappers import (
+from versioned_hdf5.hashtable import Hashtable
+from versioned_hdf5.slicetools import spaceid_to_slice
+from versioned_hdf5.versions import all_versions
+from versioned_hdf5.wrappers import (
     DatasetWrapper,
     InMemoryArrayDataset,
     InMemoryDataset,

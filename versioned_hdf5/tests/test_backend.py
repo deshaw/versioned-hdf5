@@ -6,7 +6,7 @@ from ndindex import ChunkSize, Slice, Tuple
 from numpy.testing import assert_equal
 from pytest import mark, raises
 
-from ..backend import (
+from versioned_hdf5.backend import (
     DEFAULT_CHUNK_SIZE,
     create_base_dataset,
     create_virtual_dataset,

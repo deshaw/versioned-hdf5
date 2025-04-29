@@ -6,8 +6,12 @@ from uuid import uuid4
 import numpy as np
 from h5py import Dataset, Group
 
-from .backend import create_virtual_dataset, write_dataset, write_dataset_chunks
-from .wrappers import (
+from versioned_hdf5.backend import (
+    create_virtual_dataset,
+    write_dataset,
+    write_dataset_chunks,
+)
+from versioned_hdf5.wrappers import (
     DatasetWrapper,
     InMemoryArrayDataset,
     InMemoryDataset,

@@ -13,8 +13,13 @@ from cython import bint, ssize_t
 from ndindex import ChunkSize, Tuple, ndindex
 from numpy.typing import NDArray
 
-from .cytools import ceil_a_over_b, np_hsize_t, smallest_step_after, stop2count
-from .tools import asarray
+from versioned_hdf5.cytools import (
+    ceil_a_over_b,
+    np_hsize_t,
+    smallest_step_after,
+    stop2count,
+)
+from versioned_hdf5.tools import asarray
 
 if TYPE_CHECKING:  # pragma: nocover
     # TODO import from typing and remove quotes (requires Python 3.10)

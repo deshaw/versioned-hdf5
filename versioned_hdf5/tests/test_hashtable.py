@@ -4,9 +4,9 @@ import h5py
 import numpy as np
 from pytest import raises
 
-from .. import VersionedHDF5File
-from ..backend import create_base_dataset
-from ..hashtable import Hashtable
+from versioned_hdf5 import VersionedHDF5File
+from versioned_hdf5.backend import create_base_dataset
+from versioned_hdf5.hashtable import Hashtable
 
 
 def test_hashtable(h5file):

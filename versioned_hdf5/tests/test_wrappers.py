@@ -5,8 +5,12 @@ import numpy as np
 import pytest
 from numpy.testing import assert_equal
 
-from ..api import VersionedHDF5File
-from ..wrappers import InMemoryArrayDataset, InMemoryGroup, InMemorySparseDataset
+from versioned_hdf5 import VersionedHDF5File
+from versioned_hdf5.wrappers import (
+    InMemoryArrayDataset,
+    InMemoryGroup,
+    InMemorySparseDataset,
+)
 
 
 @pytest.fixture()
