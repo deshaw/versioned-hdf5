@@ -35,6 +35,9 @@ export HDF5_DIR="$PROJECT_PATH/cache/hdf5/$HDF5_VERSION"
 pip install requests
 python $PROJECT_PATH/ci/get_hdf5_win.py
 
+# Work around glitch in generation of libhdf5 pkgconfig file
+sed -i.bak /NOTFOUND/d $HDF5_DIR/lib/pkgconfig/hdf5.pc
+
 if [[ "$GITHUB_ENV" != "" ]] ; then
     # PATH on windows is special
     echo "$EXTRA_PATH" | tee -a $GITHUB_PATH
