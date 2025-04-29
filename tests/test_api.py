@@ -27,6 +27,9 @@ from versioned_hdf5.wrappers import (
 )
 
 
+TEST_DATA = pathlib.Path(__file__).parent.parent / "test_data"
+
+
 def test_stage_version(vfile):
     """Test that versions can be staged and are the expected shape."""
     test_data = np.concatenate(
@@ -2151,11 +2154,7 @@ def test_rebuild_hashtable(tmp_path, caplog):
     """
     caplog.set_level(logging.INFO)
 
-    bad_file = (
-        pathlib.Path(__file__).parents[2]
-        / "test_data"
-        / "object_dtype_bad_hashtable_data.h5"
-    )
+    bad_file = TEST_DATA / "object_dtype_bad_hashtable_data.h5"
     filename = pathlib.Path(tmp_path) / "file.h5"
     shutil.copy(str(bad_file), str(filename))
 
@@ -2252,11 +2251,7 @@ def test_rebuild_hashtable_multiple_datasets(tmp_path, caplog):
     """
     caplog.set_level(logging.INFO)
 
-    bad_file = (
-        pathlib.Path(__file__).parents[2]
-        / "test_data"
-        / "object_dtype_bad_hashtable_data2.h5"
-    )
+    bad_file = TEST_DATA / "object_dtype_bad_hashtable_data2.h5"
     filename = pathlib.Path(tmp_path) / "file.h5"
     shutil.copy(str(bad_file), str(filename))
 
@@ -2341,11 +2336,7 @@ def test_rebuild_hashtable_nested_dataset(tmp_path, caplog):
     """Test rebuilding the hash tables of a nested dataset."""
     caplog.set_level(logging.INFO)
 
-    bad_file = (
-        pathlib.Path(__file__).parents[2]
-        / "test_data"
-        / "nested_data_old_data_version.h5"
-    )
+    bad_file = TEST_DATA / "nested_data_old_data_version.h5"
     filename = pathlib.Path(tmp_path) / "file.h5"
     shutil.copy(str(bad_file), str(filename))
 
@@ -2372,11 +2363,7 @@ def test_rebuild_hashtable_multiple_nested_dataset(tmp_path, caplog):
     """Test rebuilding the hash tables of a nested dataset."""
     caplog.set_level(logging.INFO)
 
-    bad_file = (
-        pathlib.Path(__file__).parents[2]
-        / "test_data"
-        / "multiple_nested_data_old_data_version.h5"
-    )
+    bad_file = TEST_DATA / "multiple_nested_data_old_data_version.h5"
     filename = pathlib.Path(tmp_path) / "file.h5"
     shutil.copy(str(bad_file), str(filename))
 
@@ -2409,11 +2396,7 @@ def test_rebuild_hashtable_chunk_reuse(tmp_path, caplog):
     """Test that the correct chunks are used after rebuilding the tables."""
     caplog.set_level(logging.INFO)
 
-    bad_file = (
-        pathlib.Path(__file__).parents[2]
-        / "test_data"
-        / "object_dtype_bad_hashtable_chunk_reuse.h5"
-    )
+    bad_file = TEST_DATA / "object_dtype_bad_hashtable_chunk_reuse.h5"
     filename = pathlib.Path(tmp_path) / "file.h5"
     shutil.copy(str(bad_file), str(filename))
 
@@ -2472,11 +2455,7 @@ def test_rebuild_hashtable_chunk_reuse_unicode(tmp_path, caplog):
     """Test that the correct chunks are used after rebuilding the tables for non-ascii data."""
     caplog.set_level(logging.INFO)
 
-    bad_file = (
-        pathlib.Path(__file__).parents[2]
-        / "test_data"
-        / "object_dtype_bad_hashtable_chunk_reuse_unicode.h5"
-    )
+    bad_file = TEST_DATA / "object_dtype_bad_hashtable_chunk_reuse_unicode.h5"
     filename = pathlib.Path(tmp_path) / "file.h5"
     shutil.copy(str(bad_file), str(filename))
 
@@ -2549,11 +2528,7 @@ def test_rebuild_hashtable_chunk_reuse_multi_dim(tmp_path, caplog):
     """Test that the correct chunks are used after rebuilding the tables for a multi-dimensional array."""
     caplog.set_level(logging.INFO)
 
-    bad_file = (
-        pathlib.Path(__file__).parents[2]
-        / "test_data"
-        / "object_dtype_bad_hashtable_chunk_reuse_multi_dim.h5"
-    )
+    bad_file = TEST_DATA / "object_dtype_bad_hashtable_chunk_reuse_multi_dim.h5"
     filename = pathlib.Path(tmp_path) / "file.h5"
     shutil.copy(str(bad_file), str(filename))
 
