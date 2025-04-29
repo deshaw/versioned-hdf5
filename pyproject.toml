@@ -128,7 +128,6 @@ show_error_codes = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 warn_unreachable = true
-plugins = "numpy.typing.mypy_plugin"
 
 [[tool.mypy.overrides]]
 module = ["*.tests.*"]

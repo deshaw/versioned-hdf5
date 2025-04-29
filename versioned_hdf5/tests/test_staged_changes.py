@@ -13,6 +13,7 @@ from numpy.testing import assert_array_equal
 
 from ..staged_changes import StagedChangesArray
 from .test_subchunk_map import idx_st, shape_chunks_st
+from .test_typing import MinimalArray
 
 max_examples = 10_000
 
@@ -156,69 +157,37 @@ def test_staged_array(args):
     assert_array_equal(list(arr), list(expect), strict=True)
 
 
-class MyArray(Mapping):
-    """A minimal numpy-like read-only array"""
-
-    def __init__(self, arr):
-        self.arr = np.asarray(arr)
-
-    @property
-    def shape(self):
-        return self.arr.shape
-
-    @property
-    def ndim(self):
-        return self.arr.ndim
-
-    @property
-    def itemsize(self):
-        return self.arr.itemsize
-
-    @property
-    def dtype(self):
-        return self.arr.dtype
-
-    def astype(self, dtype):
-        return MyArray(self.arr.astype(dtype))
-
-    def __array__(self, dtype=None, copy=None):
-        kwargs = {"copy": copy} if copy is not None else {}  # Requires numpy >=2
-        return np.asarray(self.arr, dtype=dtype, **kwargs)
-
-    def __getitem__(self, idx):
-        return MyArray(self.arr[idx])
-
-    def __iter__(self):
-        return (MyArray(row) for row in self.arr)
-
-    def __len__(self):
-        return len(self.arr)
-
-
-def test_array_like_setitem():
+def test_array_protocol_setitem():
+    """Test that the value of __setitem__ can be anything that implements ArrayProtocol"""
     arr = StagedChangesArray.full((3, 3), (3, 1), dtype="f4")
-    arr[:2, :2] = MyArray([[1, 2], [3, 4]])
+    arr[:2, :2] = MinimalArray([[1, 2], [3, 4]])
     assert all(isinstance(slab, np.ndarray) for slab in arr.slabs)
     assert_array_equal(arr, np.array([[1, 2, 0], [3, 4, 0], [0, 0, 0]], dtype="f4"))
 
 
-def test_array_like_from_array():
-    orig = MyArray(np.arange(9).reshape(3, 3))
+def test_array_protocol_from_array():
+    """Test that from_array() accepts anything that implements ArrayProtocol
+    and that it does not coerce it to a numpy array.
+    """
+    orig = MinimalArray(np.arange(9).reshape(3, 3))
     arr = StagedChangesArray.from_array(orig, (2, 2))
     assert isinstance(arr.full_slab, np.ndarray)
     assert arr.n_base_slabs == 2
 
-    # Because MyArray supports views (see MyArray.__getitem__), then the base slabs
-    # must be views of the original array.
+    # Because MinimalArray supports views (see MinimalArray.__getitem__),
+    # then the base slabs must be views of the original array.
     for slab in arr.base_slabs:
-        assert isinstance(slab, MyArray)
-        assert slab.arr.base is orig.arr.base
+        assert isinstance(slab, MinimalArray)
+        assert slab._array.base is orig._array.base
 
-    assert_array_equal(arr, orig.arr, strict=True)
+    assert_array_equal(arr, orig._array, strict=True)
 
 
-def test_array_like_from_slabs():
-    base_slab = MyArray(np.arange(9).reshape(3, 3))
+def test_array_protocol_from_slabs():
+    """Test that the base slabs can be anything that implements ArrayProtocol
+    and that they are not coerced to a numpy array.
+    """
+    base_slab = MinimalArray(np.arange(9, dtype=np.int16).reshape(3, 3))
     arr = StagedChangesArray(
         shape=(3, 3),
         chunk_size=(2, 3),
@@ -226,8 +195,51 @@ def test_array_like_from_slabs():
         slab_indices=[[1], [1]],
         slab_offsets=[[0], [2]],
     )
+    expect = base_slab._array
     assert arr.slabs[1] is base_slab
-    assert_array_equal(arr, base_slab.arr, strict=True)
+    assert_array_equal(arr, expect, strict=True)
+    assert arr.dtype == np.int16
+    assert arr.ndim == 2
+    assert arr.shape == (3, 3)
+
+    # MinimalArray doesn't implement these
+    assert arr.itemsize == 2
+    assert arr.nbytes == 2 * 9
+    assert arr.size == 9
+    assert len(arr) == 3
+    assert "MinimalArray" not in repr(arr)
+    np.testing.assert_array_equal(arr, expect, strict=True)  # __array__
+    np.testing.assert_array_equal(arr[:, :], expect, strict=True)  # __getitem__
+    np.testing.assert_array_equal(np.stack(list(arr)), expect, strict=True)  # __iter__
+
+    for _, _, chunk_or_slices in arr.changes():
+        assert isinstance(chunk_or_slices, tuple)
+
+    # StagedChangesArray.__setitem__, resize(), refill()
+    arr[0, 0] = 42
+    arr.resize((3, 2))
+    arr.refill(43)
+    expect = expect.copy()
+    expect[0, 0] = 42
+    expect = expect[:, :2]
+    assert arr.slabs[1] is base_slab
+    np.testing.assert_array_equal(arr, expect, strict=True)
+
+    # StagedChangesArray.load(), copy(), astype()
+    arr2 = arr.copy(deep=True)
+    arr3 = arr.copy(deep=False)
+    arr4 = arr.astype("i4")
+    arr.load()
+
+    assert arr.slabs[1] is None
+    assert arr2.slabs[1] is base_slab
+    assert arr3.slabs[1] is base_slab
+    assert arr4.slabs[1] is None
+
+    np.testing.assert_array_equal(arr, expect, strict=True)
+    np.testing.assert_array_equal(arr2, expect, strict=True)
+    np.testing.assert_array_equal(arr3, expect, strict=True)
+    np.testing.assert_array_equal(arr4, expect.astype("i4"), strict=True)
 
 
 def test_asarray():

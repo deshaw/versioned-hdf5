@@ -21,6 +21,7 @@ from libc.stdio cimport FILE, fclose
 from versioned_hdf5.cytools import np_hsize_t
 from versioned_hdf5.cytools cimport ceil_a_over_b, count2stop, hsize_t, stop2count
 from versioned_hdf5.tools import asarray
+from versioned_hdf5.typing_ import ArrayProtocol
 
 
 cdef extern from *:
@@ -289,7 +290,7 @@ cdef Exception HDF5Error():
 
 
 cpdef void read_many_slices(
-    src: np.ndarray | h5py.Dataset,
+    src: ArrayProtocol,
     np.ndarray dst,
     src_start: ArrayLike,
     dst_start: ArrayLike,
@@ -308,7 +309,7 @@ cpdef void read_many_slices(
 
     Parameters
     ----------
-    src: np.ndarray | h5py.Dataset
+    src: np.ndarray | h5py.Dataset | other array-like object
         The source data to read from
     dst: np.ndarray
         The destination array to write to.
@@ -462,7 +463,7 @@ cpdef void read_many_slices(
     )
     # On 32-bit platforms, sizeof(hsize_t) == 8; sizeof(npy_intp) == 4
     # On 64-bit platforms, don't copy unnecessarily
-    dst_shape = asarray(dst_shape, np_hsize_t)
+    dst_shape = asarray(dst_shape, dtype=np_hsize_t)
 
     clipped_count = _clip_count(
         src_shape,
@@ -513,7 +514,7 @@ cdef np.ndarray _preproc_many_slices_idx(obj: ArrayLike, hsize_t ndim, bint fast
     if hasattr(obj, "dtype") and obj.dtype.kind != "u" and (obj < 0).any():
         raise OverflowError("index out of bounds for uint64")
     # Don't copy when converting from np.intp to uint64 on 64-bit platforms
-    cdef np.ndarray arr = asarray(obj, np_hsize_t)
+    cdef np.ndarray arr = asarray(obj, dtype=np_hsize_t)
 
     if arr.ndim not in (1, 2):
         raise ValueError("Coordinates arrays must have 1 or 2 dimensions")
@@ -650,7 +651,7 @@ cdef void _read_many_slices_fast (
 @cython.boundscheck(False)
 @cython.infer_types(True)
 cdef void _read_many_slices_slow (
-    src: np.ndarray | h5py.Dataset,
+    src: ArrayProtocol,
     np.ndarray dst,
     const hsize_t[:, :] src_start,
     const hsize_t[:, :] dst_start,
@@ -665,6 +666,7 @@ cdef void _read_many_slices_slow (
        This is to avoid replicating the complex machinery found in
        h5py.Dataset.__getitem__.
     2. src is a numpy array.
+    3. src is a numpy-like object, e.g. a h5py AsTypeView object.
 
     Performance notes
     -----------------

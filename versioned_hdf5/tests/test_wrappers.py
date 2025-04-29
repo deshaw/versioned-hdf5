@@ -23,7 +23,7 @@ def test_InMemoryArrayDataset(h5file):
     ).reshape((50, 2))
     dataset = InMemoryArrayDataset("data", a, parent=parent)
     assert dataset.name == "data"
-    assert_equal(dataset.array, a)
+    assert_equal(dataset._array, a)
     assert dataset.attrs == {}
     assert dataset.shape == a.shape
     assert dataset.dtype == a.dtype
@@ -39,9 +39,12 @@ def test_InMemoryArrayDataset(h5file):
     assert_equal(list(dataset), list(a))
 
     assert dataset[30, 0] == a[30, 0] == 60
+    assert isinstance(dataset[30, 0], np.generic)
     dataset[30, 0] = 1000
     assert dataset[30, 0] == 1000
-    assert dataset.array[30, 0] == 1000
+    assert dataset._array[30, 0] == 1000
+    assert (dataset[30, :] == a[30, :]).all()
+    assert isinstance(dataset[30, :], np.ndarray)
 
     assert dataset.size == 100
 
@@ -54,20 +57,39 @@ def test_InMemoryArrayDataset_resize(h5file):
     dataset.resize((110,))
 
     assert len(dataset) == 110
-    assert_equal(dataset[:100], dataset.array[:100])
+    assert_equal(dataset[:100], dataset._array[:100])
     assert_equal(dataset[:100], a)
-    assert_equal(dataset[100:], dataset.array[100:])
+    assert_equal(dataset[100:], dataset._array[100:])
     assert_equal(dataset[100:], 0)
-    assert dataset.shape == dataset.array.shape == (110,)
+    assert dataset.shape == dataset._array.shape == (110,)
 
     a = np.arange(100)
     dataset = InMemoryArrayDataset("data", a, parent=parent)
     dataset.resize((90,))
 
     assert len(dataset) == 90
-    assert_equal(dataset, dataset.array)
+    assert_equal(dataset, dataset._array)
     assert_equal(dataset, np.arange(90))
-    assert dataset.shape == dataset.array.shape == (90,)
+    assert dataset.shape == dataset._array.shape == (90,)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        dict(data=[0], dtype="i2"),
+        dict(data=[0], dtype=np.int16),
+        dict(data=np.asarray([0], dtype=np.int16)),
+        dict(data=np.asarray([0], dtype=np.int32), dtype=np.int16),
+        dict(shape=(1,), dtype=np.int16),
+    ],
+)
+def test_InMemoryArrayDataset_dtype(vfile, kwargs):
+    with vfile.stage_version("r0") as group:
+        ds = group.create_dataset("x", **kwargs)
+        assert isinstance(ds.dtype, np.dtype)
+        assert ds.dtype == np.int16
+        assert ds[:].dtype == np.int16
+        assert np.asarray(ds).dtype == np.int16
 
 
 def test_InMemorySparseDataset(h5file):

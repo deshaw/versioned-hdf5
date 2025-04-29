@@ -12,7 +12,7 @@ import pytest
 from h5py._hl.filters import guess_chunk
 from numpy.testing import assert_equal
 from packaging.version import Version
-from pytest import mark, raises
+from pytest import raises
 
 from ..api import VersionedHDF5File
 from ..backend import DATA_VERSION, DEFAULT_CHUNK_SIZE
@@ -317,6 +317,26 @@ def test_create_dataset(vfile):
     )
 
 
+def test_create_dataset_warns_for_ignored_kwargs(vfile):
+    """create_dataset() in versioned_hdf5 has a lot less kwargs
+    than the same function in h5py. Test that the extra args are
+    accepted, but ignored with a warning.
+    """
+    match = "parameter is currently ignored for versioned datasets"
+    with vfile.stage_version("v1", "") as group:
+        with pytest.warns(UserWarning, match=match):
+            group.create_dataset("a", data=[1, 2], track_order=True)
+        with pytest.warns(UserWarning, match=match):
+            group.create_dataset("b", data=[1, 2], track_order=False)
+        # None is quietly ignored
+        group.create_dataset("c", data=[1, 2], track_order=None)
+
+        # Quietly ignore maxshape if it's a tuple of Nones
+        with pytest.warns(UserWarning, match=match):
+            group.create_dataset("d", data=[1, 2], maxshape=(3,))
+        group.create_dataset("e", data=[1, 2], maxshape=(None,))
+
+
 def test_changes_dataset(vfile):
     # Testcase similar to those on generate_data.py
     test_data = np.ones((2 * DEFAULT_CHUNK_SIZE,))
@@ -599,7 +619,7 @@ def test_resize_unaligned(vfile):
             assert_equal(group[ds_name][:], np.arange((i + 1) * 1000))
 
 
-@mark.slow
+@pytest.mark.slow
 def test_resize_multiple_dimensions(tmp_path, h5file):
     # Test semantics against raw HDF5
 
@@ -2847,7 +2867,7 @@ def test_other_compression_bad_value(tmp_path, library):
     path = tmp_path / "tmp.h5"
     with h5py.File(path, "w") as f:
         vf = VersionedHDF5File(f)
-        with vf.stage_version("r0") as sv, pytest.raises(ValueError, match="invalid"):
+        with pytest.raises(ValueError, match="invalid"), vf.stage_version("r0") as sv:
             sv.create_dataset(
                 "values",
                 data=np.arange(10),
@@ -2891,3 +2911,24 @@ def test_other_compression_validates(tmp_path, library):
         # First four numbers are reserved for blosc compression;
         # others are actual compression options
         assert raw_data._filters["32001"][4:] == (7, 1, 2)
+
+
+@pytest.mark.parametrize("dtype", ["i2", int, float, np.uint8])
+def test_create_dataset_dtype_arg(vfile, dtype):
+    with vfile.stage_version(f"r0") as sv:
+        dset = sv.create_dataset("x", shape=(2,), dtype=dtype)
+        assert isinstance(dset.dtype, np.dtype)
+        assert dset.dtype == np.dtype(dtype)
+
+        dset = sv.create_dataset("y", data=[1, 2], dtype=dtype)
+        assert isinstance(dset.dtype, np.dtype)
+        assert dset.dtype == np.dtype(dtype)
+
+    with vfile.stage_version(f"r1") as sv:
+        dset = sv["x"]
+        assert isinstance(dset.dtype, np.dtype)
+        assert dset.dtype == np.dtype(dtype)
+
+        dset = sv["y"]
+        assert isinstance(dset.dtype, np.dtype)
+        assert dset.dtype == np.dtype(dtype)

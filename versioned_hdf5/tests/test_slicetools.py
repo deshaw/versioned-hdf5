@@ -15,6 +15,7 @@ from ..slicetools import (
     read_many_slices,
     spaceid_to_slice,
 )
+from .test_typing import MinimalArray
 
 max_examples = 10_000
 
@@ -219,6 +220,7 @@ def many_slices_st(
     return src_shape, dst_shape, src_indices, dst_indices
 
 
+@pytest.mark.slow
 @given(args=many_slices_st())
 @hypothesis.settings(
     max_examples=max_examples,
@@ -464,6 +466,15 @@ def test_read_many_slices_not_fast_read_ok(h5file):
 
     with pytest.raises(ValueError, match="fast transfer is not possible"):
         read_many_slices(src, dst, [[1]], [[0]], [[1]], fast=True)
+
+
+def test_read_many_slices_array_protocol():
+    """Test that the src array can be anything that implements ArrayProtocol"""
+    src = MinimalArray(np.arange(10))
+    dst = np.zeros(4, dtype=src.dtype)
+    expect = np.asarray([0, 2, 3, 0])
+    read_many_slices(src, dst, src_start=[(2,)], dst_start=[(1,)], count=[(2,)])
+    np.testing.assert_equal(dst, expect)
 
 
 def test_read_many_slices_fail():

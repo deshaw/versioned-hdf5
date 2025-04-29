@@ -40,6 +40,7 @@ if cython.compiled:  # pragma: nocover
 
 
 T = TypeVar("T", bound=np.generic)
+Casting = Literal["no", "equiv", "safe", "same_kind", "unsafe"]
 
 
 class StagedChangesArray(MutableMapping[Any, T]):
@@ -491,7 +492,7 @@ class StagedChangesArray(MutableMapping[Any, T]):
         # Preprocess value parameter
         # Avoid double deep-copy of array-like objects that support the __array_*
         # interface (e.g. sparse arrays).
-        value = cast(NDArray[T], asarray(value, self.dtype))
+        value = cast(NDArray[T], asarray(value, dtype=self.dtype))
 
         if plan.value_shape != value.shape:
             value = np.broadcast_to(value, plan.value_shape)
@@ -555,7 +556,11 @@ class StagedChangesArray(MutableMapping[Any, T]):
             out.slabs.append(slab)
         return out
 
-    def astype(self, dtype: DTypeLike, casting: Any = "unsafe") -> StagedChangesArray:
+    def astype(
+        self,
+        dtype: DTypeLike,
+        casting: Casting = "unsafe",
+    ) -> StagedChangesArray:
         """Return a new StagedChangesArray with a different dtype.
 
         Chunks that are not yet staged are loaded from the base slabs.
@@ -1684,7 +1689,7 @@ def _chunks_in_selection(
 
     if idxidx:
         # Don't copy when converting from np.intp to uint64 on 64-bit platforms
-        columns = [asarray(nz_i, np_hsize_t) for nz_i in nz]
+        columns = [asarray(nz_i, dtype=np_hsize_t) for nz_i in nz]
     else:
         columns = [
             np.asarray(mapper.chunk_indices)[nz_i] for mapper, nz_i in zip(mappers, nz)
