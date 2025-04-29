@@ -62,6 +62,10 @@ jobs:
         # it to meson; replace any backslashes with forward slashes
         echo "ZLIB_PATH=$(echo $ZLIB_ROOT | sed 's/\\/\//g')/lib_release" >> $GITHUB_OUTPUT
 
+    # Build the wheels
+    - name: Triage the build
+      run: bash ./ci/triage_build.sh "${{ inputs.arch }}" "${{ github.event.pull_request.head.sha || github.sha }}" "${{ inputs.python-version }}"
+
     - name: DNM meson debug
       if: runner.os == 'Windows'
       shell: bash
@@ -69,7 +73,11 @@ jobs:
       run: |
         pip install meson-python setuptools-scm cython numpy
         rm -rf build
-        meson setup . build
+        export CPATH="$HDF5_DIR/include;$CPATH"
+        export LIBRARY_PATH="$HDF5_DIR/lib;$LIBRARY_PATH"
+        export PATH="$PKGCONFBIN;$PATH"
+        export ZLIB_PATH=$(echo $ZLIB_ROOT | sed 's/\\/\//g')/lib_release"
+        meson setup --vsenv -Dzlib_path=$ZLIB_PATH . build
         cd build
         meson compile
 
@@ -78,9 +86,6 @@ jobs:
       uses: mxschmitt/action-tmate@v3
       continue-on-error: true
 
-    # Build the wheels
-    - name: Triage the build
-      run: bash ./ci/triage_build.sh "${{ inputs.arch }}" "${{ github.event.pull_request.head.sha || github.sha }}" "${{ inputs.python-version }}"
     - name: Run cibuildwheel
       uses: pypa/cibuildwheel@v2.22.0
       env:
