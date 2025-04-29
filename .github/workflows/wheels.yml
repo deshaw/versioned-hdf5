@@ -117,9 +117,7 @@ jobs:
         fetch-tags: true # include tags to get correct version from setuptools_scm
 
     - name: Prevent accidentally testing repository package
-      run: |
-        mv versioned_hdf5/tests ./
-        rm -r versioned_hdf5
+      run: rm -r versioned_hdf5
 
     - name: Retrieve wheel
       uses: actions/download-artifact@v4
