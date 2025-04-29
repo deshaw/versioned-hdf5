@@ -11,7 +11,8 @@ from hypothesis import given
 from hypothesis import strategies as st
 from numpy.testing import assert_array_equal
 
-from ..staged_changes import StagedChangesArray
+from versioned_hdf5.staged_changes import StagedChangesArray
+
 from .test_subchunk_map import idx_st, shape_chunks_st
 from .test_typing import MinimalArray
 

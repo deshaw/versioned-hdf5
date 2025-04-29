@@ -3,7 +3,12 @@ import math
 from hypothesis import given
 from hypothesis import strategies as st
 
-from ..cytools import ceil_a_over_b, count2stop, smallest_step_after, stop2count
+from versioned_hdf5.cytools import (
+    ceil_a_over_b,
+    count2stop,
+    smallest_step_after,
+    stop2count,
+)
 
 
 def free_slices_st(size: int):

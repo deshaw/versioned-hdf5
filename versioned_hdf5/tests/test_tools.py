@@ -6,7 +6,8 @@ from hypothesis import strategies as st
 from hypothesis.extra import numpy as stnp
 from numpy.testing import assert_array_equal
 
-from ..tools import asarray, ix_with_slices
+from versioned_hdf5.tools import asarray, ix_with_slices
+
 from .test_typing import MinimalArray
 
 

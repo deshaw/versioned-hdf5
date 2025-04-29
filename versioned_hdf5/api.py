@@ -15,10 +15,10 @@ import h5py
 import ndindex
 import numpy as np
 
-from .backend import CORRUPT_DATA_VERSIONS, DATA_VERSION, initialize
-from .hashtable import Hashtable
-from .slicetools import spaceid_to_slice
-from .versions import (
+from versioned_hdf5.backend import CORRUPT_DATA_VERSIONS, DATA_VERSION, initialize
+from versioned_hdf5.hashtable import Hashtable
+from versioned_hdf5.slicetools import spaceid_to_slice
+from versioned_hdf5.versions import (
     all_versions,
     commit_version,
     create_version_group,
@@ -27,7 +27,7 @@ from .versions import (
     get_version_by_timestamp,
     set_current_version,
 )
-from .wrappers import (
+from versioned_hdf5.wrappers import (
     DatasetWrapper,
     InMemoryArrayDataset,
     InMemoryDataset,

@@ -7,8 +7,8 @@ from collections.abc import Callable
 import h5py
 from pytest import fixture
 
-from ..api import VersionedHDF5File
-from ..backend import initialize
+from versioned_hdf5 import VersionedHDF5File
+from versioned_hdf5.backend import initialize
 
 
 # Run tests marked with @pytest.mark.slow last. See

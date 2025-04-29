@@ -14,7 +14,7 @@ from h5py._selector import Selector
 from ndindex import ChunkSize, Slice, Tuple, ndindex
 from numpy.testing import assert_array_equal
 
-from .hashtable import Hashtable
+from versioned_hdf5.hashtable import Hashtable
 
 DEFAULT_CHUNK_SIZE = 2**12
 DATA_VERSION = 4

@@ -14,11 +14,11 @@ from numpy.testing import assert_equal
 from packaging.version import Version
 from pytest import raises
 
-from ..api import VersionedHDF5File
-from ..backend import DATA_VERSION, DEFAULT_CHUNK_SIZE
-from ..replay import delete_versions
-from ..versions import TIMESTAMP_FMT, all_versions
-from ..wrappers import (
+from versioned_hdf5 import VersionedHDF5File
+from versioned_hdf5.backend import DATA_VERSION, DEFAULT_CHUNK_SIZE
+from versioned_hdf5.replay import delete_versions
+from versioned_hdf5.versions import TIMESTAMP_FMT, all_versions
+from versioned_hdf5.wrappers import (
     DatasetWrapper,
     InMemoryArrayDataset,
     InMemoryDataset,

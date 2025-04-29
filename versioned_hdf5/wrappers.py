@@ -26,9 +26,9 @@ from h5py._hl.selections import guess_shape
 from ndindex import Slice, Tuple, ndindex
 from numpy.typing import ArrayLike, DTypeLike
 
-from .backend import DEFAULT_CHUNK_SIZE
-from .slicetools import build_slab_indices_and_offsets
-from .staged_changes import Casting, StagedChangesArray
+from versioned_hdf5.backend import DEFAULT_CHUNK_SIZE
+from versioned_hdf5.slicetools import build_slab_indices_and_offsets
+from versioned_hdf5.staged_changes import Casting, StagedChangesArray
 
 if TYPE_CHECKING:
     # TODO import from typing (requires Python >=3.11)
