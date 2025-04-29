@@ -10,7 +10,11 @@ on:
         type: boolean
         description: 'Test release: publish on test.pypi.org'
         default: false
-
+      prod_pypi:
+          type: boolean
+          description: 'Production release: publish on test.pypi.org'
+          default: true
+  
 jobs:
   build-sdist:
     name: Build sdist
@@ -46,9 +50,11 @@ jobs:
           path: ./wheelhouse/*.tar.gz
 
   build-wheels:
-    name: 'Wheels: ${{ matrix.os }} ${{ matrix.arch }} ${{ matrix.python-version }}'
-    runs-on: ${{ matrix.os }}
-    continue-on-error: true
+    uses: ./.github/workflows/wheels.yml
+    with:
+      python-version: ${{ matrix.python-version }}
+      os: ${{ matrix.os }}
+      arch: ${{ matrix.arch }}
     strategy:
       fail-fast: false
       matrix:
@@ -65,125 +71,6 @@ jobs:
             arch: arm64
           - os: windows-latest
             arch: AMD64
-    steps:
-    - name: Check out the repo
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0  # get the non-merge commit for PRs
-        fetch-tags: true # include tags to get correct version from setuptools_scm
-
-    - name: 🐍 Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
-
-    # MacOS environment setup
-    # libz and libhdf5 require MacOS>=14.0
-    - name: Update env variables on macos
-      if: runner.os == 'macOS'
-      run: |
-        echo "CPATH=$(python -c 'import sysconfig; print(sysconfig.get_path("include"))'):$CPATH" >> $GITHUB_ENV
-    - name: Run cibw_before_all_macos
-      if: runner.os == 'macOS'
-      run: |
-        bash ./ci/cibw_before_all_macos.sh "${{ github.workspace }}"
-
-    # Windows environment setup
-    - name: Set up nuget
-      if: runner.os == 'Windows'
-      uses: nuget/setup-nuget@v2
-    - name: Set up Visual Studio environment
-      if: runner.os == 'Windows'
-      shell: cmd
-      run: call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-    - name: Run cibw_before_all_windows
-      if: runner.os == 'Windows'
-      run: |
-        bash ./ci/cibw_before_all_windows.sh "${{ github.workspace }}"
-    - name: Print environment info
-      id: envdata
-      if: runner.os == 'Windows'
-      shell: bash
-      run: |
-        echo $PATH
-        echo $PKG_CONFIG_PATH
-
-        # Inject zlib library paths into github context so we can pass
-        # it to meson; replace any backslashes with forward slashes
-        echo "ZLIB_PATH=$(echo $ZLIB_ROOT | sed 's/\\/\//g')/lib_release" >> $GITHUB_OUTPUT
-
-    # - name: Setup tmate session
-    #   if: runner.os == 'macOS'
-    #   uses: mxschmitt/action-tmate@v3
-
-    # Build the wheels
-    - name: Triage the build
-      run: bash ./ci/triage_build.sh "${{ matrix.arch }}" "${{ github.event.pull_request.head.sha || github.sha }}" "${{ matrix.python-version }}"
-    - name: Run cibuildwheel
-      uses: pypa/cibuildwheel@v2.22.0
-      env:
-        # Note that tool.cibuildwheel "skip" in pyproject.toml also limits what gets built
-        CIBW_ARCHS: ${{ matrix.arch }}
-        CIBW_BUILD: ${{ env.CIBW_BUILD }}
-        CIBW_SKIP: ${{ env.CIBW_SKIP }}
-        CIBW_BEFORE_BUILD: ${{ env.CIBW_BEFORE_BUILD }}
-        CIBW_BUILD_FRONTEND: ${{ env.CIBW_BUILD_FRONTEND }}
-        CIBW_PRERELEASE_PYTHONS: ${{ env.CIBW_PRERELEASE_PYTHONS }}
-        CIBW_BEFORE_BUILD_LINUX: yum install -y zlib-devel
-        CIBW_ENVIRONMENT_MACOS: >
-          CPATH="$HDF5_DIR/include:$CPATH"
-          PKG_CONFIG_PATH="$HDF5_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
-        CIBW_ENVIRONMENT_WINDOWS: >
-          CPATH="$HDF5_DIR/include;$CPATH"
-          LIBRARY_PATH="$HDF5_DIR/lib;$LIBRARY_PATH"
-          PATH="$PKGCONFBIN;$PATH"
-
-        # Must use paths relative to the source root here: meson rejects absolute paths
-        CIBW_CONFIG_SETTINGS_WINDOWS: >
-          setup-args="--vsenv"
-          setup-args="-Dzlib_libs=['${{ steps.envdata.outputs.ZLIB_PATH }}']"
-
-    - name: Upload wheels
-      uses: actions/upload-artifact@v4
-      with:
-        name: wheels-${{ matrix.os }}-${{matrix.arch}}-${{ matrix.python-version }}
-        path: ./wheelhouse/*.whl
-
-    - name: Install dependencies for smoke tests
-      run: pip install pytest pytest-env hypothesis packaging
-
-    - name: Install package for smoke tests
-      run: pip install -v ./wheelhouse/*.whl
-
-    - name: Run smoke tests (Linux)
-      shell: bash
-      if: runner.os == 'Linux'
-      run: |
-        pytest -m 'api and not slow'
-
-    - name: Run smoke tests (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        export HDF5_PKGCONFIG_NAME=$HDF5_DIR/lib/pkgconfig/hdf5.pc
-        unset HDF5_DIR
-        echo $HDF5_PKGCONFIG_NAME
-
-        python -c 'import h5py; print(h5py.version.info)'
-        python -c 'import h5py; print(h5py.__file__)'
-        otool -L $(find . -name "*.so" -o -name "*.dylib")
-        otool -L $(find $(dirname $(python -c 'import h5py; print(h5py.__file__)')) -name "*.so" -o -name "*.dylib")
-
-        pytest -m 'api and not slow'
-
-    - name: Run smoke tests (Windows)
-      if: runner.os == 'Windows'
-      run: |
-        dumpbin /DEPENDENTS $(find . -name "*.pyd")
-        export HDF5_PKGCONFIG_NAME=$HDF5_DIR/lib/pkgconfig/hdf5.pc
-        unset HDF5_DIR
-        echo $HDF5_PKGCONFIG_NAME
-
-        pytest -m 'api and not slow'
 
   publish:
     name: Publish Python packages on PyPI
@@ -203,8 +90,7 @@ jobs:
           path: wheels/
 
       - name: print artifacts
-        run: |
-          ls -l wheels/
+        run: ls -l wheels/
 
       - name: 🧪 Publish to PyPI Testing
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -215,6 +101,6 @@ jobs:
 
       - name: 🎉 Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        if: ${{ !inputs.test_pypi }}
+        if: ${{ inputs.prod_pypi }}
         with:
           packages-dir: wheels
