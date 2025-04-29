@@ -14,7 +14,7 @@ on:
           type: boolean
           description: 'Production release: publish on test.pypi.org'
           default: true
-  
+
 jobs:
   build-sdist:
     name: Build sdist
