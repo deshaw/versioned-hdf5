@@ -50,6 +50,7 @@ jobs:
           path: ./wheelhouse/*.tar.gz
 
   build-wheels:
+    name: 'Build wheels: ${{ matrix.os }} ${{ matrix.arch }} ${{ matrix.python-version }}'
     uses: ./.github/workflows/wheels.yml
     with:
       python-version: ${{ matrix.python-version }}
