@@ -161,11 +161,7 @@ jobs:
         python-version: ${{ inputs.python-version }}
 
     - name: Install dependencies for smoke tests
-      run: pip install pytest pytest-env hypothesis packaging
-
-    # - name: Setup tmate session
-    #   if: runner.os == 'Windows' || runner.os == 'macOS'
-    #   uses: mxschmitt/action-tmate@v3
+      run: pip install pytest pytest-env hypothesis packaging psutil
 
     # Note: this pulls in the h5py wheel from pypi, which embeds libhdf5.
     - name: Install package for smoke tests
@@ -177,11 +173,13 @@ jobs:
 
     - name: Test import versioned_hdf5
       run: python -c 'import versioned_hdf5; print(versioned_hdf5.__version__)'
-
-    - name: Install debug_libhdf5_so dependencies  
-      run: pip install psutil
+      
+    - name: Setup tmate session
+      if: runner.os == 'macOS'
+      uses: mxschmitt/action-tmate@v3
 
     - name: Print hdf5 install path
+      if: runner.os != 'macOS'
       run: |
         python utils/debug_libhdf5_so.py h5py
         python utils/debug_libhdf5_so.py versioned_hdf5
