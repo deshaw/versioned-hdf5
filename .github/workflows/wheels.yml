@@ -178,9 +178,11 @@ jobs:
     - name: Test import versioned_hdf5
       run: python -c 'import versioned_hdf5; print(versioned_hdf5.__version__)'
 
+    - name: Install debug_libhdf5_so dependencies  
+      run: pip install psutil
+
     - name: Print hdf5 install path
       run: |
-        pip install psutil
         python utils/debug_libhdf5_so.py h5py
         python utils/debug_libhdf5_so.py versioned_hdf5
 
