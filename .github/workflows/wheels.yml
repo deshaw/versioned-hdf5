@@ -29,13 +29,6 @@ jobs:
       with:
         python-version: ${{ inputs.python-version }}
 
-    # Cache HDF5
-    - name: Cache built HDF5
-      uses: actions/cache@v4
-      with:
-        key: ${{ inputs.os }}-${{ inputs.arch }}-${{ hashFiles('ci/**') }}-1
-        path: cache/hdf5
-
     # MacOS environment setup
     # libz and libhdf5 require MacOS>=14.0
     - name: Update env variables on macos
