@@ -24,3 +24,7 @@ def debug_libhdf5_so():
         row = row.strip()
         if "libhdf5" in row:
             print(row)
+
+
+if __name__ == "__main__":
+    debug_libhdf5_so()

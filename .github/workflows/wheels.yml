@@ -110,6 +110,12 @@ jobs:
           setup-args="--vsenv"
           setup-args="-Dzlib_path=['${{ steps.envdata.outputs.ZLIB_PATH }}']"
 
+    - name: Remove embedded libhdf5
+      # This is spurious.
+      # At runtime, versioned_hdf5 will link against ../h5py.libs/*.so.*
+      if: runner.os == 'Linux'    
+      run: zip -d ./wheelhouse/*.whl 'versioned_hdf5.libs/*'
+
     - name: Upload wheels
       uses: actions/upload-artifact@v4
       with:
