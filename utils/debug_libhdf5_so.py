@@ -1,7 +1,8 @@
 import argparse
 import importlib
-import os
-import subprocess
+import os.path
+
+import psutil
 
 
 def main():
@@ -15,10 +16,10 @@ def main():
     print(f"import {args.module}")
     importlib.import_module(args.module)
 
-    stdout = subprocess.check_output(["lsof", "-p", str(os.getpid())])
-    for row in stdout.decode("utf-8").splitlines():
-        if "libhdf5" in row:
-            print(row.strip())
+    proc = psutil.Process()
+    for m in proc.memory_maps():
+        if "hdf5" in os.path.basename(m.path):
+            print(m.path)
 
 
 if __name__ == "__main__":
