@@ -165,10 +165,6 @@ jobs:
     - name: Run smoke tests
       run: pytest -m 'api and not slow'
 
-    - name: Start tmate session
-      if: failure()
-      uses: mxschmitt/action-tmate@v3
-
     - name: pip uninstall
       run: pip uninstall -y versioned-hdf5
 
