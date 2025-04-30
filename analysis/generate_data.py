@@ -3,8 +3,11 @@ from __future__ import absolute_import, division, print_function, with_statement
 import datetime
 import logging
 import random
+import shutil
 import sys
+import tempfile
 import time
+from contextlib import contextmanager
 
 import h5py
 import numpy as np
