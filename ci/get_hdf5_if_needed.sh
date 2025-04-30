@@ -86,8 +86,7 @@ else
         url_base="https://github.com/HDFGroup/hdf5/archive/refs/tags/"
         curl -fsSL -o "hdf5-$HDF5_VERSION.tar.gz" "${url_base}${ASSET_FMT1}.tar.gz" || curl -fsSL -o "hdf5-$HDF5_VERSION.tar.gz" "${url_base}${ASSET_FMT2}.tar.gz"
 
-        mkdir -p hdf5-$HDF5_VERSION
-        tar -xzf hdf5-$HDF5_VERSION.tar.gz --strip-components=1 -C hdf5-$HDF5_VERSION
+        mkdir -p hdf5-$HDF5_VERSION && tar -xzvf hdf5-$HDF5_VERSION.tar.gz --strip-components=1 -C hdf5-$HDF5_VERSION
 
         pushd hdf5-$HDF5_VERSION
 

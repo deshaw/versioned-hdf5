@@ -23,9 +23,9 @@ mv $PKGCONFBIN/pkgconf.exe $PKGCONFBIN/pkg-config.exe
 nuget install zlib-msvc-x64 -ExcludeVersion -OutputDirectory "$PROJECT_PATH"
 EXTRA_PATH="$PROJECT_PATH\zlib-msvc-x64\build\native\bin_release"
 export PATH="$PATH:$EXTRA_PATH"
+export CL="/I$PROJECT_PATH\zlib-msvc-x64\build\native\include"
+export LINK="/LIBPATH:$PROJECT_PATH\zlib-msvc-x64\build\native\lib_release"
 export ZLIB_ROOT="$PROJECT_PATH\zlib-msvc-x64\build\native"
-export CL="/I$ZLIB_ROOT\include"
-export LINK="/LIBPATH:$ZLIB_ROOT\lib_release"
 
 # HDF5
 export HDF5_VERSION="1.14.6"
