@@ -163,5 +163,10 @@ jobs:
         python utils/debug_libhdf5_so.py versioned_hdf5
 
     - name: Run smoke tests
-      shell: bash
       run: pytest -m 'api and not slow'
+
+    - name: Test pip uninstall
+      # Test that pip uninstall versioned-hdf5 doesn't accidentally break h5py
+      run: |
+        pip uninstall -y versioned-hdf5
+        python -c 'import h5py; print(h5py.version.info)'
