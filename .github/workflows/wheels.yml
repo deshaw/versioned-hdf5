@@ -105,11 +105,8 @@ jobs:
         sed -n '/^h5py/p' */RECORD
         # No sed -i available on MacOS
         sed '/^h5py/d' */RECORD > RECORD.new
-        mv RECORD.new RECORD
+        mv -v RECORD.new */RECORD
         zip *.whl */RECORD
-
-    - name: Start tmate session
-      uses: mxschmitt/action-tmate@v3
 
     - name: Upload wheels
       uses: actions/upload-artifact@v4
@@ -168,8 +165,12 @@ jobs:
     - name: Run smoke tests
       run: pytest -m 'api and not slow'
 
-    - name: Test pip uninstall
-      # Test that pip uninstall versioned-hdf5 doesn't accidentally break h5py
-      run: |
-        pip uninstall -y versioned-hdf5
-        python -c 'import h5py; print(h5py.version.info)'
+    - name: Start tmate session
+      if: failure()
+      uses: mxschmitt/action-tmate@v3
+
+    - name: pip uninstall
+      run: pip uninstall -y versioned-hdf5
+
+    - name: Retest h5py after uninstalling versioned-hdf5
+      run: python -c 'import h5py; print(h5py.version.info)'
