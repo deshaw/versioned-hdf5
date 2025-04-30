@@ -108,6 +108,9 @@ jobs:
         mv RECORD.new RECORD
         zip *.whl */RECORD
 
+    - name: Start tmate session
+      uses: mxschmitt/action-tmate@v3
+
     - name: Upload wheels
       uses: actions/upload-artifact@v4
       with:
