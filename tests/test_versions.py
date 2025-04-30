@@ -3,8 +3,8 @@ from ndindex import Slice, Tuple
 from numpy.testing import assert_equal
 from pytest import raises
 
-from ..backend import DEFAULT_CHUNK_SIZE
-from ..versions import (
+from versioned_hdf5.backend import DEFAULT_CHUNK_SIZE
+from versioned_hdf5.versions import (
     all_versions,
     commit_version,
     create_version_group,

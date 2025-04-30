@@ -4,7 +4,7 @@ import numpy.ma as ma
 import pytest
 from packaging.version import Version
 
-from ..typing_ import ArrayProtocol
+from versioned_hdf5.typing_ import ArrayProtocol
 
 
 class MinimalArray:

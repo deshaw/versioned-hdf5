@@ -10,9 +10,9 @@ from hypothesis import given
 from hypothesis import strategies as st
 from numpy.testing import assert_array_equal
 
-from ..cytools import np_hsize_t
-from ..slicetools import read_many_slices
-from ..subchunk_map import (
+from versioned_hdf5.cytools import np_hsize_t
+from versioned_hdf5.slicetools import read_many_slices
+from versioned_hdf5.subchunk_map import (
     EntireChunksMapper,
     SliceMapper,
     TransferType,

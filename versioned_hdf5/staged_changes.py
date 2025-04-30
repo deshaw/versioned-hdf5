@@ -16,16 +16,16 @@ import numpy as np
 from cython import bint, ssize_t
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
-from .cytools import ceil_a_over_b, count2stop, np_hsize_t
-from .slicetools import read_many_slices
-from .subchunk_map import (
+from versioned_hdf5.cytools import ceil_a_over_b, count2stop, np_hsize_t
+from versioned_hdf5.slicetools import read_many_slices
+from versioned_hdf5.subchunk_map import (
     EntireChunksMapper,
     IndexChunkMapper,
     TransferType,
     index_chunk_mappers,
     read_many_slices_params_nd,
 )
-from .tools import asarray, format_ndindex, ix_with_slices
+from versioned_hdf5.tools import asarray, format_ndindex, ix_with_slices
 
 if cython.compiled:  # pragma: nocover
     from cython.cimports.versioned_hdf5.cytools import (  # type: ignore

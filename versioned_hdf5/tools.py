@@ -6,7 +6,7 @@ import ndindex
 import numpy as np
 from numpy.typing import ArrayLike, DTypeLike
 
-from .typing_ import ArrayProtocol
+from versioned_hdf5.typing_ import ArrayProtocol
 
 
 def asarray(a: ArrayLike, /, *, dtype: DTypeLike | None = None):
