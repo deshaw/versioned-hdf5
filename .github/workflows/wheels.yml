@@ -103,6 +103,15 @@ jobs:
     - name: Remove embedded libhdf5 (MacOS)
       if: runner.os == 'macOS'
       run: zip -d ./wheelhouse/*.whl 'h5py/*'
+    - name: Remove h5py DLLs from RECORD
+      if: runner.os == 'Linux' || runner.os == 'macOS'
+      run: |
+        cd wheelhouse
+        unzip *.whl '*/RECORD'
+        echo "Removing lines:"
+        sed -n '/^h5py/p' */RECORD
+        sed -i '/^h5py/d' */RECORD
+        zip *.whl */RECORD
 
     - name: Upload wheels
       uses: actions/upload-artifact@v4
