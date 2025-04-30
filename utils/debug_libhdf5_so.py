@@ -1,8 +1,23 @@
 import argparse
 import importlib
-import os.path
+import os
+import subprocess
+import sys
 
-import psutil
+
+def get_open_dlls() -> list[str]:
+    """Yield location of loaded dynamic libraries (plus spurious open files)"""
+    if sys.platform in ("win32", "cygwin"):
+        # Note: this code path also works on Linux, but not on MacOS
+        import psutil
+
+        proc = psutil.Process()
+        return [m.path for m in proc.memory_maps()]
+    else:
+        stdout = subprocess.check_output(
+            f"lsof -p {os.getpid()} -Fn | grep '^n' | cut -c2-", shell=True
+        )
+        return [line for line in stdout.decode("utf-8").splitlines()]
 
 
 def main():
@@ -16,11 +31,9 @@ def main():
     print(f"import {args.module}")
     importlib.import_module(args.module)
 
-    proc = psutil.Process()
-    for m in proc.memory_maps():
-        if "hdf5" in os.path.basename(m.path):
-            print(m.path)
-
+    for fname in get_open_dlls():
+        if "libhdf5" in os.path.basename(fname):
+            print(fname)
 
 if __name__ == "__main__":
     main()
