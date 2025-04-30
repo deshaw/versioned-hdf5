@@ -113,7 +113,7 @@ jobs:
     - name: Remove embedded libhdf5
       # This is spurious.
       # At runtime, versioned_hdf5 will link against ../h5py.libs/*.so.*
-      if: runner.os == 'Linux'    
+      if: runner.os == 'Linux'
       run: zip -d ./wheelhouse/*.whl 'versioned_hdf5.libs/*'
 
     - name: Upload wheels
