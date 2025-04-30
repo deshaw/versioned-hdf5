@@ -170,7 +170,7 @@ jobs:
 
     - name: Test import versioned_hdf5
       run: python -c 'import versioned_hdf5; print(versioned_hdf5.__version__)'
-      
+
     # - name: Setup tmate session
     #   if: runner.os == 'macOS'
     #   uses: mxschmitt/action-tmate@v3
