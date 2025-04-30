@@ -110,12 +110,16 @@ jobs:
           setup-args="--vsenv"
           setup-args="-Dzlib_path=['${{ steps.envdata.outputs.ZLIB_PATH }}']"
 
-    - name: Remove embedded libhdf5
-      # *Partially* what auditwheels just did in the previous step
+      # *Partially* revert what auditwheels/delocate just did in the previous step
       # (see https://cibuildwheel.pypa.io/en/stable/options/#repair-wheel-command)
-      # At runtime, versioned_hdf5 will link against ../h5py.libs/*.so.*
+      # At runtime, versioned_hdf5 will link against ../h5py.libs/*.so.* on Linux
+      # and against ../h5py/.dylibs/*.dylib on MacOS.
+    - name: Remove embedded libhdf5 (Linux)
       if: runner.os == 'Linux'
       run: zip -d ./wheelhouse/*.whl 'versioned_hdf5.libs/*'
+    - name: Remove embedded libhdf5 (MacOS)
+      if: runner.os == 'macOS'
+      run: zip -d ./wheelhouse/*.whl 'versioned_hdf5/.dylibs/*'
 
     - name: Upload wheels
       uses: actions/upload-artifact@v4
@@ -146,6 +150,9 @@ jobs:
         name: wheels-${{ inputs.os }}-${{inputs.arch}}-${{ inputs.python-version }}
         merge-multiple: true  # Don't unzip into subdirectory
         path: wheels/
+
+    - name: List wheels
+      run: find ./wheels/
 
     - name: 🐍 Set up Python
       uses: actions/setup-python@v5
