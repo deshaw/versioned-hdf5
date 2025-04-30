@@ -29,6 +29,13 @@ jobs:
       with:
         python-version: ${{ inputs.python-version }}
 
+    # Cache HDF5
+    - name: Cache built HDF5
+      uses: actions/cache@v4
+      with:
+        key: ${{ inputs.os }}-${{ inputs.arch }}-${{ hashFiles('ci/**') }}
+        path: cache/hdf5
+
     # MacOS environment setup
     # libz and libhdf5 require MacOS>=14.0
     - name: Update env variables on macos
@@ -47,9 +54,6 @@ jobs:
       if: runner.os == 'Windows'
       shell: cmd
       run: call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-    - name: Run cibw_before_all_windows
-      if: runner.os == 'Windows'
-      run: bash ./ci/cibw_before_all_windows.sh "${{ github.workspace }}"
     - name: Print environment info
       id: envdata
       if: runner.os == 'Windows'
@@ -65,27 +69,6 @@ jobs:
     # Build the wheels
     - name: Triage the build
       run: bash ./ci/triage_build.sh "${{ inputs.arch }}" "${{ github.event.pull_request.head.sha || github.sha }}" "${{ inputs.python-version }}"
-
-    # - name: DNM meson debug
-    #   if: runner.os == 'Windows'
-    #   shell: bash
-    #   continue-on-error: true
-    #   run: |
-    #     pip install meson-python setuptools-scm cython numpy
-    #     rm -rf build
-    #     export CPATH="$HDF5_DIR/include;$CPATH"
-    #     export LIBRARY_PATH="$HDF5_DIR/lib;$LIBRARY_PATH"
-    #     export PKG_CONFIG_PATH="$HDF5_DIR/lib/pkgconfig;$PKG_CONFIG_PATH"
-    #     export PATH="$PKGCONFBIN;$PATH"
-    #     export ZLIB_PATH=$(echo $ZLIB_ROOT | sed 's/\\/\//g')/lib_release
-    #     meson setup --vsenv -Dzlib_path=$ZLIB_PATH . build
-    #     cd build
-    #     meson compile
-
-    # - name: Setup tmate session
-    #   if: runner.os == 'Windows'
-    #   uses: mxschmitt/action-tmate@v3
-    #   continue-on-error: true
 
     - name: Run cibuildwheel
       uses: pypa/cibuildwheel@v2.22.0
@@ -170,10 +153,6 @@ jobs:
 
     - name: Test import versioned_hdf5
       run: python -c 'import versioned_hdf5; print(versioned_hdf5.__version__)'
-
-    # - name: Setup tmate session
-    #   if: runner.os == 'macOS'
-    #   uses: mxschmitt/action-tmate@v3
 
     - name: Print hdf5 install path
       run: |
