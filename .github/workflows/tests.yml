@@ -65,7 +65,7 @@ jobs:
       - name: Install versioned-hdf5 test packages and extra h5py compression types
         run: |
           pip install .[test]
-          pip install hdf5plugin tables
+          pip install hdf5plugin tables psutil
 
       - name: Dump pip environment
         run: pip list
