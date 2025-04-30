@@ -151,9 +151,6 @@ jobs:
         merge-multiple: true  # Don't unzip into subdirectory
         path: wheels/
 
-    - name: List wheels
-      run: find ./wheels/
-
     - name: 🐍 Set up Python
       uses: actions/setup-python@v5
       with:
@@ -161,6 +158,10 @@ jobs:
 
     - name: Install dependencies for smoke tests
       run: pip install pytest pytest-env hypothesis packaging
+
+    - name: Setup tmate session
+      if: runner.os == 'Windows' || runner.os == 'macOS'
+      uses: mxschmitt/action-tmate@v3
 
     # Note: this pulls in the h5py wheel from pypi, which embeds libhdf5.
     - name: Install package for smoke tests
