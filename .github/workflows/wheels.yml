@@ -103,7 +103,9 @@ jobs:
         unzip *.whl '*/RECORD'
         echo "Removing lines:"
         sed -n '/^h5py/p' */RECORD
-        sed -i '/^h5py/d' */RECORD
+        # No sed -i available on MacOS
+        sed '/^h5py/d' */RECORD > RECORD.new
+        mv RECORD.new RECORD
         zip *.whl */RECORD
 
     - name: Upload wheels
