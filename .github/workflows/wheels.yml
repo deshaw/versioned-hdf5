@@ -33,7 +33,7 @@ jobs:
     - name: Cache built HDF5
       uses: actions/cache@v4
       with:
-        key: ${{ inputs.os }}-${{ inputs.arch }}-${{ hashFiles('ci/**') }}
+        key: ${{ inputs.os }}-${{ inputs.arch }}-${{ hashFiles('ci/**') }}-1
         path: cache/hdf5
 
     # MacOS environment setup
@@ -50,10 +50,9 @@ jobs:
     - name: Set up nuget
       if: runner.os == 'Windows'
       uses: nuget/setup-nuget@v2
-    - name: Set up Visual Studio environment
+    - name: Run cibw_before_all_windows
       if: runner.os == 'Windows'
-      shell: cmd
-      run: call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+      run: bash ./ci/cibw_before_all_windows.sh "${{ github.workspace }}"
     - name: Print environment info
       id: envdata
       if: runner.os == 'Windows'
