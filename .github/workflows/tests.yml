@@ -65,14 +65,15 @@ jobs:
       - name: Install versioned-hdf5 test packages and extra h5py compression types
         run: |
           pip install .[test]
-          pip install hdf5plugin tables
+          pip install hdf5plugin tables psutil
 
       - name: Dump pip environment
         run: pip list
 
       - name: Print hdf5 configuration
         run: |
-          python -c 'import utils; utils.debug_libhdf5_so()'
+          python utils/debug_libhdf5_so.py h5py
+          python utils/debug_libhdf5_so.py versioned_hdf5
           h5cc -showconfig
 
       - name: Run Tests
