@@ -11,10 +11,20 @@ import numpy as np
 
 sys.path.append("..")
 
+import shutil
+import tempfile
+from contextlib import contextmanager
+
 from generate_data_base import TestDatasetPerformanceBase
 
-from utils import temp_dir_ctx
 from versioned_hdf5.api import VersionedHDF5File
+
+
+@contextmanager
+def temp_dir_ctx():
+    tmp_dir = tempfile.mkdtemp()
+    yield tmp_dir
+    shutil.rmtree(tmp_dir)
 
 
 class TestVersionedDatasetPerformance(TestDatasetPerformanceBase):
