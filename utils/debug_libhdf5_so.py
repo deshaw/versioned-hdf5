@@ -32,7 +32,7 @@ def main():
     importlib.import_module(args.module)
 
     for fname in get_open_dlls():
-        if "libhdf5" in os.path.basename(fname):
+        if "hdf5" in os.path.basename(fname):
             print(fname)
 
 if __name__ == "__main__":
