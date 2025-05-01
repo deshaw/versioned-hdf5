@@ -60,7 +60,7 @@ jobs:
 
     # Build the wheels
     - name: Triage the build
-      run: bash ./ci/triage_build.sh "${{ inputs.arch }}" "${{ github.event.pull_request.head.sha || github.sha }}" "${{ inputs.python-version }}"
+      run: bash ./ci/triage_build.sh "${{ inputs.arch }}" "${{ github.event.pull_request.head.sha || github.sha }}"
 
     - name: Run cibuildwheel
       uses: pypa/cibuildwheel@v2.22.0
