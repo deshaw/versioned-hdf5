@@ -19,6 +19,14 @@ export PKGCONFBIN="$GITHUB_WORKSPACE/vcpkg/installed/x64-windows/tools/pkgconf"
 # doesn't work and is rejected by meson
 mv $PKGCONFBIN/pkgconf.exe $PKGCONFBIN/pkg-config.exe
 
+# nuget
+nuget install zlib-msvc-x64 -ExcludeVersion -OutputDirectory "$PROJECT_PATH"
+EXTRA_PATH="$PROJECT_PATH\zlib-msvc-x64\build\native\bin_release"
+export PATH="$PATH:$EXTRA_PATH"
+export CL="/I$PROJECT_PATH\zlib-msvc-x64\build\native\include"
+export LINK="/LIBPATH:$PROJECT_PATH\zlib-msvc-x64\build\native\lib_release"
+export ZLIB_ROOT="$PROJECT_PATH\zlib-msvc-x64\build\native"
+
 # HDF5
 export HDF5_VERSION="1.14.6"
 export HDF5_VSVERSION="17-64"
@@ -36,6 +44,7 @@ if [[ "$GITHUB_ENV" != "" ]] ; then
     echo "$PKGCONFBIN" | tee -a $GITHUB_PATH
     echo "CL=$CL" | tee -a $GITHUB_ENV
     echo "LINK=$LINK" | tee -a $GITHUB_ENV
+    echo "ZLIB_ROOT=$ZLIB_ROOT" | tee -a $GITHUB_ENV
     echo "HDF5_DIR=$HDF5_DIR" | tee -a $GITHUB_ENV
     echo "PKG_CONFIG_PATH=$HDF5_DIR/lib/pkgconfig;$PKG_CONFIG_PATH" | tee -a $GITHUB_ENV
 fi

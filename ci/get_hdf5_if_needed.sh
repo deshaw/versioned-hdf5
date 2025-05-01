@@ -9,6 +9,13 @@ if [ -z ${HDF5_DIR+x} ]; then
 else
     echo "Using downloaded HDF5"
 
+    if [[ ${HDF5_MPI} != "ON" ]]; then
+        echo "Building serial"
+    else
+        echo "Building with MPI"
+        EXTRA_MPI_FLAGS="--enable-parallel --enable-shared"
+    fi
+
     if [[ "$OSTYPE" == "darwin"* ]]; then
         lib_name=libhdf5.dylib
         NPROC=$(sysctl -n hw.ncpu)
@@ -42,8 +49,20 @@ else
 
         if [[ "$OSTYPE" == "darwin"* ]]; then
             ARCH=$(uname -m)
+            ZLIB_VERSION="1.3.1"
+
+            pushd /tmp
+            curl -sLO https://zlib.net/fossils/zlib-$ZLIB_VERSION.tar.gz
+            tar xzf zlib-$ZLIB_VERSION.tar.gz
+            cd zlib-$ZLIB_VERSION
+            ./configure --prefix="$HDF5_DIR"
+            make
+            make install
+            popd
+
             export LD_LIBRARY_PATH="$HDF5_DIR/lib:${LD_LIBRARY_PATH}"
             export PKG_CONFIG_PATH="$HDF5_DIR/lib/pkgconfig:${PKG_CONFIG_PATH}"
+            ZLIB_ARG="--with-zlib=$HDF5_DIR"
 
             # Add an hdf5.pc so that it can be found by meson
             echo "prefix=${HDF5_DIR}
@@ -58,7 +77,7 @@ else
             Cflags: -I\${includedir}
             Libs: -L\${libdir}  -lhdf5
             Requires:
-            Libs.private:
+            Libs.private:   -lzlib-static
             Requires.private:" >> ${HDF5_DIR}/lib/pkgconfig/hdf5.pc
 
         fi
@@ -72,6 +91,8 @@ else
         pushd hdf5-$HDF5_VERSION
 
         ./configure --prefix="$HDF5_DIR" \
+            ${ZLIB_ARG} \
+            ${EXTRA_MPI_FLAGS} \
             ${BUILD_MODE} \
             ${ENABLE_DIRECT_VFD} \
             --enable-tests=no
