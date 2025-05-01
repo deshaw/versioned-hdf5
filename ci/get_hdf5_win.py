@@ -20,7 +20,6 @@ from zipfile import ZipFile
 import requests
 
 HDF5_URL = "https://github.com/HDFGroup/hdf5/archive/refs/tags/{zip_file}"
-ZLIB_ROOT = environ.get("ZLIB_ROOT")
 
 CI_DIR = dirname(abspath(__file__))
 
@@ -33,13 +32,6 @@ CMAKE_CONFIGURE_CMD = [
     "-DHDF5_BUILD_TOOLS:BOOL=OFF",
     "-DBUILD_TESTING:BOOL=OFF",
 ]
-if ZLIB_ROOT:
-    CMAKE_CONFIGURE_CMD += [
-        "-DHDF5_ENABLE_Z_LIB_SUPPORT=ON",
-        f"-DZLIB_INCLUDE_DIR={ZLIB_ROOT}\\include",
-        f"-DZLIB_LIBRARY_RELEASE={ZLIB_ROOT}\\lib_release\\zlib.lib",
-        f"-DZLIB_LIBRARY_DEBUG={ZLIB_ROOT}\\lib_debug\\zlibd.lib",
-    ]
 CMAKE_BUILD_CMD = ["cmake", "--build"]
 CMAKE_INSTALL_ARG = ["--target", "install", "--config", "Release"]
 CMAKE_INSTALL_PATH_ARG = "-DCMAKE_INSTALL_PREFIX={install_path}"

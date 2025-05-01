@@ -1,6 +1,0 @@
-option(
-  'zlib_path',
-  type: 'array',
-  value: [],
-  description: 'Paths to the zlib lib directories for windows builds',
-)

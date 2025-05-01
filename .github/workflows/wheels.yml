@@ -83,7 +83,6 @@ jobs:
         # Must use paths relative to the source root here: meson rejects absolute paths
         CIBW_CONFIG_SETTINGS_WINDOWS: >
           setup-args="--vsenv"
-          setup-args="-Dzlib_path=['${{ steps.envdata.outputs.ZLIB_PATH }}']"
         CIBW_REPAIR_WHEEL_COMMAND_LINUX: >
           auditwheel repair -w {dest_dir} {wheel} -L /../h5py.libs
         CIBW_REPAIR_WHEEL_COMMAND_MACOS: >
