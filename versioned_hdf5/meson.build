@@ -64,6 +64,7 @@ py.extension_module(
     'cytools.pyx',
     install: true,
     subdir: 'versioned_hdf5',
+    dependencies: compiled_deps,
     cython_args: cython_args,
 )
 
@@ -73,6 +74,7 @@ py.extension_module(
     'subchunk_map.pyx',
     install: true,
     subdir: 'versioned_hdf5',
+    dependencies: compiled_deps,
     cython_args: cython_args,
 )
 
@@ -82,5 +84,6 @@ py.extension_module(
     'staged_changes.pyx',
     install: true,
     subdir: 'versioned_hdf5',
+    dependencies: compiled_deps,
     cython_args: cython_args,
 )
