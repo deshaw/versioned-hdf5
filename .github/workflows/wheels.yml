@@ -93,6 +93,10 @@ jobs:
           delvewheel repair -v -L ../h5py {wheel} && \
           mv -v {wheel} {dest_dir}
 
+    - name: Start tmate session on failure
+      if: failure()
+      uses: mxschmitt/action-tmate@v3
+
     # Remove spurious libraries added by auditwheels/delocate in the repair step
     - name: Remove embedded libhdf5 (Linux)
       if: runner.os == 'Linux'
