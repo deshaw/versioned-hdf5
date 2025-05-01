@@ -14,7 +14,6 @@ compiled_deps = [dependency('hdf5')]
 
 if host_machine.system() == 'windows'
   cc = meson.get_compiler('c')
-  compiled_deps += cc.find_library('zlib', dirs: get_option('zlib_path'))
   compiled_deps += cc.find_library('shlwapi')
 endif
 
