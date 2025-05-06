@@ -24,10 +24,16 @@ from versioned_hdf5.tools import asarray
 from versioned_hdf5.typing_ import ArrayProtocol
 
 
-cdef FILE* fmemopen(void* buf, size_t size, const char* mode):
-    raise NotImplementedError("fmemopen is not available on Windows")
-if sys.platform != "win32":
-    from posix.stdio cimport fmemopen
+cdef extern from *:
+    """
+    #if defined(_WIN32) || defined(MS_WINDOWS) || defined(_MSC_VER)
+      #define fmemopen(x, y, z) NULL
+    #else
+      #include <stdio.h>
+    #endif
+    """
+    # using "slicetools_" prefix in the C code to prevent C naming conflicts
+    FILE* slicetools_fmemopen "fmemopen"(void *, size_t, const char *) nogil
 
 ctypedef ptrdiff_t ssize_t
 
@@ -273,7 +279,7 @@ cdef Exception HDF5Error():
         return RuntimeError("HDF5 error")
 
     cdef char buf[20000]
-    cdef FILE* stream = fmemopen(buf, sizeof(buf), "w")
+    cdef FILE* stream = slicetools_fmemopen(buf, sizeof(buf), "w")
     if stream == NULL:
         return MemoryError("fmemopen() failed")
     with phil:

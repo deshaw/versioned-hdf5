@@ -26,6 +26,9 @@ from versioned_hdf5.wrappers import (
     InMemorySparseDataset,
 )
 
+pytestmark = pytest.mark.api
+
+
 TEST_DATA = pathlib.Path(__file__).parent.parent / "test_data"
 
 
