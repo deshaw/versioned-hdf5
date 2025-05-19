@@ -801,6 +801,7 @@ def test_create_empty_virtual_dataset(setup_vfile):
         assert ds.shape == (0,)
         assert ds.size == 0
 
+
 def test_create_empty_multidimensional_virtual_dataset(setup_vfile):
     """Check that creating an empty multidimensional virtual dataset writes no raw data.
 
