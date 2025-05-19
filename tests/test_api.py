@@ -2712,6 +2712,36 @@ def test_make_empty_dataset(tmp_path):
         assert_equal(cv["values"][:], np.array([]))
 
 
+def test_make_empty_multidimensional_dataset(tmp_path):
+    """Check that creating a multidimensional dataset before making it empty can be done successfully.
+
+    See https://github.com/deshaw/versioned-hdf5/issues/430 for context.
+    """
+    path = tmp_path / "tmp.h5"
+    with h5py.File(path, "w") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r0") as sv:
+            sv.create_dataset("values", data=np.array([[1, 2, 3], [4, 5, 6]]), chunks=(100, 100))
+
+    with h5py.File(path, "r+") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r1") as sv:
+            sv["values"].resize((0, 0))
+
+    with h5py.File(path, "r+") as f:
+        delete_versions(f, ["r0"])
+
+    with h5py.File(path, "r+") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r2") as sv:
+            sv["values"].resize((0, 0))
+
+    with h5py.File(path, "r+") as f:
+        vf = VersionedHDF5File(f)
+        cv = vf[vf.current_version]
+        assert_equal(cv["values"][:], np.zeros((0, 0), dtype='int64'))
+
+
 def test_insert_in_middle_multi_dim(tmp_path):
     """
     Test we correctly handle inserting into a multi-dimensional Dataset
