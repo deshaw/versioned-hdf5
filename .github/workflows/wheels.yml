@@ -39,25 +39,6 @@ jobs:
       if: runner.os == 'macOS'
       run: bash ./ci/cibw_before_all_macos.sh "${{ github.workspace }}"
 
-    # Windows environment setup
-    - name: Set up nuget
-      if: runner.os == 'Windows'
-      uses: nuget/setup-nuget@v2
-    - name: Run cibw_before_all_windows
-      if: runner.os == 'Windows'
-      run: bash ./ci/cibw_before_all_windows.sh "${{ github.workspace }}"
-    - name: Print environment info
-      id: envdata
-      if: runner.os == 'Windows'
-      shell: bash
-      run: |
-        echo $PATH
-        echo $PKG_CONFIG_PATH
-
-        # Inject zlib library paths into github context so we can pass
-        # it to meson; replace any backslashes with forward slashes
-        echo "ZLIB_PATH=$(echo $ZLIB_ROOT | sed 's/\\/\//g')/lib_release" >> $GITHUB_OUTPUT
-
     # Build the wheels
     - name: Triage the build
       run: bash ./ci/triage_build.sh "${{ inputs.arch }}" "${{ github.event.pull_request.head.sha || github.sha }}" "${{ inputs.python-version }}"
@@ -76,23 +57,11 @@ jobs:
         CIBW_ENVIRONMENT_MACOS: >
           CPATH="$HDF5_DIR/include:$CPATH"
           PKG_CONFIG_PATH="$HDF5_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
-        CIBW_ENVIRONMENT_WINDOWS: >
-          CPATH="$HDF5_DIR/include;$CPATH"
-          LIBRARY_PATH="$HDF5_DIR/lib;$LIBRARY_PATH"
-          PATH="$PKGCONFBIN;$PATH"
-        # Must use paths relative to the source root here: meson rejects absolute paths
-        CIBW_CONFIG_SETTINGS_WINDOWS: >
-          setup-args="--vsenv"
-          setup-args="-Dzlib_path=['${{ steps.envdata.outputs.ZLIB_PATH }}']"
         CIBW_REPAIR_WHEEL_COMMAND_LINUX: >
           auditwheel repair -w {dest_dir} {wheel} -L /../h5py.libs
         CIBW_REPAIR_WHEEL_COMMAND_MACOS: >
           delocate-wheel --require-archs {delocate_archs}
           -w {dest_dir} -v {wheel} -L ../h5py/.dylibs
-        CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: >
-          pip install delvewheel
-          && delvewheel repair -v {wheel}
-          && mv -v {wheel} {dest_dir}
 
     # Remove spurious libraries added by auditwheels/delocate in the repair step
     - name: Remove embedded libhdf5 (Linux)
