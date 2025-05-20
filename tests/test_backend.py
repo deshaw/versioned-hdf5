@@ -800,3 +800,30 @@ def test_create_empty_virtual_dataset(setup_vfile):
         assert_equal(ds, np.array([]))
         assert ds.shape == (0,)
         assert ds.size == 0
+
+
+def test_create_empty_multidimensional_virtual_dataset(setup_vfile):
+    """Check that creating an empty multidimensional virtual dataset writes no raw data.
+
+    See https://github.com/deshaw/versioned-hdf5/issues/430 for context.
+    """
+    name = "empty_dataset"
+
+    with setup_vfile(version_name="r0") as f:
+        write_dataset(f, name, np.array([[]]), chunks=(100, 100))
+        create_virtual_dataset(
+            f,
+            "r0",
+            name,
+            (0, 0),
+            {},
+        )
+
+        # Check that the raw data has only fill_value in it
+        assert_equal(f["_version_data"][name]["raw_data"][:], 0.0)
+
+        # Check that the virtual data is empty
+        ds = f["_version_data"]["versions"]["r0"][name][:]
+        assert_equal(ds, np.zeros((0, 0)))
+        assert ds.shape == (0, 0)
+        assert ds.size == 0
