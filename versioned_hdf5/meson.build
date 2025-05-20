@@ -23,11 +23,6 @@ npy_include_path = run_command(
     check: true
 ).stdout().strip()
 
-compiled_deps = [
-    dependency('hdf5'),
-    dependency('mpi'),
-]
-
 py.extension_module(
     'slicetools',
     'slicetools.pyx',
@@ -63,7 +58,7 @@ cython_args = [
 
 # Hack to convince Meson to compile pure-python .py files with Cython
 # (read: https://cython.readthedocs.io/en/latest/src/tutorial/pure.html)
-run_command('cp', 'cytools.py', 'cytools.pyx')
+run_command('cp', 'cytools.py', 'cytools.pyx', check: true)
 py.extension_module(
     'cytools',
     'cytools.pyx',
@@ -73,7 +68,7 @@ py.extension_module(
     cython_args: cython_args,
 )
 
-run_command('cp', 'subchunk_map.py', 'subchunk_map.pyx')
+run_command('cp', 'subchunk_map.py', 'subchunk_map.pyx', check: true)
 py.extension_module(
     'subchunk_map',
     'subchunk_map.pyx',
@@ -83,7 +78,7 @@ py.extension_module(
     cython_args: cython_args,
 )
 
-run_command('cp', 'staged_changes.py', 'staged_changes.pyx')
+run_command('cp', 'staged_changes.py', 'staged_changes.pyx', check: true)
 py.extension_module(
     'staged_changes',
     'staged_changes.pyx',

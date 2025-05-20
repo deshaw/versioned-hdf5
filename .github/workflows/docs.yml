@@ -13,15 +13,11 @@ jobs:
         with:
           python-version: 3.11
 
-      - name: Setup Graphviz
-        run: |
-          sudo apt install graphviz -y
-
-      - name: Install libhdf5-dev
+      - name: Install dependencies
         run: |
           set -xe
           sudo apt update -y
-          sudo apt install -y libhdf5-dev mpi-default-dev
+          sudo apt install -y graphviz libhdf5-dev
 
       - name: Install versioned-hdf5
         run: |

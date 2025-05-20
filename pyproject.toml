@@ -110,11 +110,12 @@ profile = "black"
 ENABLE_CHUNK_REUSE_VALIDATION = 1
 
 [tool.pytest.ini_options]
-addopts = "--doctest-modules --ignore=analysis/ --import-mode=importlib"
+addopts = "--doctest-modules --ignore=ci/ --ignore=analysis/ --import-mode=importlib"
 doctest_optionflags = "NORMALIZE_WHITESPACE"
 markers = [
     "setup_args : kwargs for setup fixture.",
     "slow: slow tests",
+    "api: api smoke tests",
 ]
 
 [tool.mypy]
@@ -131,3 +132,26 @@ warn_unreachable = true
 [[tool.mypy.overrides]]
 module = ["*.tests.*"]
 allow_untyped_defs = true
+
+[tool.cibuildwheel]
+build-verbosity = 1
+build-frontend = { name = "pip", args = ["--only-binary", "numpy"] }
+manylinux-x86_64-image = "ghcr.io/h5py/manylinux2014_x86_64-hdf5"
+manylinux-aarch64-image = "ghcr.io/h5py/manylinux2014_aarch64-hdf5"
+
+[tool.cibuildwheel.linux]
+environment-pass = ["GITHUB_ACTIONS"]
+
+[tool.cibuildwheel.linux.environment]
+CFLAGS = "-g1"
+
+[tool.cibuildwheel.macos]
+# https://cibuildwheel.pypa.io/en/stable/faq/#macos-passing-dyld_library_path-to-delocate
+repair-wheel-command = """\
+DYLD_FALLBACK_LIBRARY_PATH=$HDF5_DIR/lib \
+delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel} \
+"""
+
+[tool.cibuildwheel.macos.environment]
+H5PY_ROS3 = "0"
+H5PY_DIRECT_VFD = "0"
