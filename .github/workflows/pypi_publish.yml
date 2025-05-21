@@ -3,7 +3,7 @@ name: Release Python Bindings to PyPI
 on:
   release:
     types: [published]
-  # pull_request:
+  pull_request:
   workflow_dispatch:
     inputs:
       test_pypi:
