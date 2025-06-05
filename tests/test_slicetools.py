@@ -497,11 +497,11 @@ def test_read_many_slices_fail():
     with pytest.raises(ValueError, match="at least one dimension"):
         read_many_slices(np.array(0), np.array(0), [[]], [[]], [[]])
 
-    # src.ndim != dst.ndim
+    # src.ndim != dst.ndim  # noqa: ERA001
     with pytest.raises(ValueError, match="same dtype and dimensionality"):
         read_many_slices(src.reshape(2, 2), dst, [[0]], [[0]], [[1]])
 
-    # src.dtype != dst.dtype
+    # src.dtype != dst.dtype  # noqa: ERA001
     with pytest.raises(ValueError, match="same dtype and dimensionality"):
         read_many_slices(src.astype(float), dst, [[0]], [[0]], [[1]])
 
@@ -517,7 +517,7 @@ def test_read_many_slices_fail():
     with pytest.raises(ValueError, match="must have 1 or 2 dimensions"):
         read_many_slices(src, dst, np.zeros((1, 1, 1)), [[0]], [[1]])
 
-    # indices.shape[1] != src.ndim
+    # indices.shape[1] != src.ndim  # noqa: ERA001
     with pytest.raises(ValueError, match="as many columns as src.ndim"):
         read_many_slices(src, dst, [(0, 0)], [(0, 0)], [(1, 1)])
 

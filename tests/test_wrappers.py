@@ -13,7 +13,7 @@ from versioned_hdf5.wrappers import (
 )
 
 
-@pytest.fixture()
+@pytest.fixture
 def premade_group(h5file):
     group = h5file.create_group("group")
     return InMemoryGroup(group.id)
@@ -120,7 +120,7 @@ def test_InMemorySparseDataset_getitem(h5file):
 
 
 @pytest.mark.parametrize(
-    "oldshape,newshape",
+    ("oldshape", "newshape"),
     itertools.combinations_with_replacement(
         itertools.product(range(5, 25, 5), repeat=3), 2
     ),

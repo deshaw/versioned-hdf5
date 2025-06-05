@@ -95,67 +95,67 @@ def test_modify_metadata_compression(vfile):
 
     f = vfile.f
 
-    assert vfile["version1"]["test_data"].compression == None
-    assert vfile["version2"]["test_data"].compression == None
-    assert vfile["version1"]["test_data"].compression_opts == None
-    assert vfile["version2"]["test_data"].compression_opts == None
+    assert vfile["version1"]["test_data"].compression is None
+    assert vfile["version2"]["test_data"].compression is None
+    assert vfile["version1"]["test_data"].compression_opts is None
+    assert vfile["version2"]["test_data"].compression_opts is None
 
-    assert vfile["version1"]["test_data2"].compression == None
-    assert vfile["version2"]["test_data2"].compression == None
-    assert vfile["version1"]["test_data2"].compression_opts == None
-    assert vfile["version2"]["test_data2"].compression_opts == None
+    assert vfile["version1"]["test_data2"].compression is None
+    assert vfile["version2"]["test_data2"].compression is None
+    assert vfile["version1"]["test_data2"].compression_opts is None
+    assert vfile["version2"]["test_data2"].compression_opts is None
 
-    assert vfile["version2"]["test_data3"].compression == None
-    assert vfile["version2"]["test_data3"].compression_opts == None
+    assert vfile["version2"]["test_data3"].compression is None
+    assert vfile["version2"]["test_data3"].compression_opts is None
 
-    assert vfile["version1"]["group"]["test_data4"].compression == None
-    assert vfile["version2"]["group"]["test_data4"].compression == None
-    assert vfile["version1"]["group"]["test_data4"].compression_opts == None
-    assert vfile["version2"]["group"]["test_data4"].compression_opts == None
+    assert vfile["version1"]["group"]["test_data4"].compression is None
+    assert vfile["version2"]["group"]["test_data4"].compression is None
+    assert vfile["version1"]["group"]["test_data4"].compression_opts is None
+    assert vfile["version2"]["group"]["test_data4"].compression_opts is None
 
-    assert f["_version_data"]["test_data"]["raw_data"].compression == None
-    assert f["_version_data"]["test_data2"]["raw_data"].compression == None
-    assert f["_version_data"]["test_data3"]["raw_data"].compression == None
-    assert f["_version_data"]["group"]["test_data4"]["raw_data"].compression == None
+    assert f["_version_data"]["test_data"]["raw_data"].compression is None
+    assert f["_version_data"]["test_data2"]["raw_data"].compression is None
+    assert f["_version_data"]["test_data3"]["raw_data"].compression is None
+    assert f["_version_data"]["group"]["test_data4"]["raw_data"].compression is None
 
-    assert f["_version_data"]["test_data"]["raw_data"].compression_opts == None
-    assert f["_version_data"]["test_data2"]["raw_data"].compression_opts == None
-    assert f["_version_data"]["test_data3"]["raw_data"].compression_opts == None
+    assert f["_version_data"]["test_data"]["raw_data"].compression_opts is None
+    assert f["_version_data"]["test_data2"]["raw_data"].compression_opts is None
+    assert f["_version_data"]["test_data3"]["raw_data"].compression_opts is None
     assert (
-        f["_version_data"]["group"]["test_data4"]["raw_data"].compression_opts == None
+        f["_version_data"]["group"]["test_data4"]["raw_data"].compression_opts is None
     )
 
     modify_metadata(f, "test_data2", compression="gzip", compression_opts=3)
     check_data(vfile)
 
-    assert vfile["version1"]["test_data"].compression == None
-    assert vfile["version2"]["test_data"].compression == None
-    assert vfile["version1"]["test_data"].compression_opts == None
-    assert vfile["version2"]["test_data"].compression_opts == None
+    assert vfile["version1"]["test_data"].compression is None
+    assert vfile["version2"]["test_data"].compression is None
+    assert vfile["version1"]["test_data"].compression_opts is None
+    assert vfile["version2"]["test_data"].compression_opts is None
 
     assert vfile["version1"]["test_data2"].compression == "gzip"
     assert vfile["version2"]["test_data2"].compression == "gzip"
     assert vfile["version1"]["test_data2"].compression_opts == 3
     assert vfile["version2"]["test_data2"].compression_opts == 3
 
-    assert vfile["version2"]["test_data3"].compression == None
-    assert vfile["version2"]["test_data3"].compression_opts == None
+    assert vfile["version2"]["test_data3"].compression is None
+    assert vfile["version2"]["test_data3"].compression_opts is None
 
-    assert vfile["version1"]["group"]["test_data4"].compression == None
-    assert vfile["version2"]["group"]["test_data4"].compression == None
-    assert vfile["version1"]["group"]["test_data4"].compression_opts == None
-    assert vfile["version2"]["group"]["test_data4"].compression_opts == None
+    assert vfile["version1"]["group"]["test_data4"].compression is None
+    assert vfile["version2"]["group"]["test_data4"].compression is None
+    assert vfile["version1"]["group"]["test_data4"].compression_opts is None
+    assert vfile["version2"]["group"]["test_data4"].compression_opts is None
 
-    assert f["_version_data"]["test_data"]["raw_data"].compression == None
+    assert f["_version_data"]["test_data"]["raw_data"].compression is None
     assert f["_version_data"]["test_data2"]["raw_data"].compression == "gzip"
-    assert f["_version_data"]["test_data3"]["raw_data"].compression == None
-    assert f["_version_data"]["group"]["test_data4"]["raw_data"].compression == None
+    assert f["_version_data"]["test_data3"]["raw_data"].compression is None
+    assert f["_version_data"]["group"]["test_data4"]["raw_data"].compression is None
 
-    assert f["_version_data"]["test_data"]["raw_data"].compression_opts == None
+    assert f["_version_data"]["test_data"]["raw_data"].compression_opts is None
     assert f["_version_data"]["test_data2"]["raw_data"].compression_opts == 3
-    assert f["_version_data"]["test_data3"]["raw_data"].compression_opts == None
+    assert f["_version_data"]["test_data3"]["raw_data"].compression_opts is None
     assert (
-        f["_version_data"]["group"]["test_data4"]["raw_data"].compression_opts == None
+        f["_version_data"]["group"]["test_data4"]["raw_data"].compression_opts is None
     )
 
     # Make sure the tmp group group has been destroyed.
@@ -174,65 +174,65 @@ def test_modify_metadata_compression2(vfile):
 
     f = vfile.f
 
-    assert vfile["version1"]["test_data"].compression == None
-    assert vfile["version2"]["test_data"].compression == None
-    assert vfile["version1"]["test_data"].compression_opts == None
-    assert vfile["version2"]["test_data"].compression_opts == None
+    assert vfile["version1"]["test_data"].compression is None
+    assert vfile["version2"]["test_data"].compression is None
+    assert vfile["version1"]["test_data"].compression_opts is None
+    assert vfile["version2"]["test_data"].compression_opts is None
 
-    assert vfile["version1"]["test_data2"].compression == None
-    assert vfile["version2"]["test_data2"].compression == None
-    assert vfile["version1"]["test_data2"].compression_opts == None
-    assert vfile["version2"]["test_data2"].compression_opts == None
+    assert vfile["version1"]["test_data2"].compression is None
+    assert vfile["version2"]["test_data2"].compression is None
+    assert vfile["version1"]["test_data2"].compression_opts is None
+    assert vfile["version2"]["test_data2"].compression_opts is None
 
-    assert vfile["version2"]["test_data3"].compression == None
-    assert vfile["version2"]["test_data3"].compression_opts == None
+    assert vfile["version2"]["test_data3"].compression is None
+    assert vfile["version2"]["test_data3"].compression_opts is None
 
-    assert vfile["version1"]["group"]["test_data4"].compression == None
-    assert vfile["version2"]["group"]["test_data4"].compression == None
-    assert vfile["version1"]["group"]["test_data4"].compression_opts == None
-    assert vfile["version2"]["group"]["test_data4"].compression_opts == None
+    assert vfile["version1"]["group"]["test_data4"].compression is None
+    assert vfile["version2"]["group"]["test_data4"].compression is None
+    assert vfile["version1"]["group"]["test_data4"].compression_opts is None
+    assert vfile["version2"]["group"]["test_data4"].compression_opts is None
 
-    assert f["_version_data"]["test_data"]["raw_data"].compression == None
-    assert f["_version_data"]["test_data2"]["raw_data"].compression == None
-    assert f["_version_data"]["test_data3"]["raw_data"].compression == None
-    assert f["_version_data"]["group"]["test_data4"]["raw_data"].compression == None
+    assert f["_version_data"]["test_data"]["raw_data"].compression is None
+    assert f["_version_data"]["test_data2"]["raw_data"].compression is None
+    assert f["_version_data"]["test_data3"]["raw_data"].compression is None
+    assert f["_version_data"]["group"]["test_data4"]["raw_data"].compression is None
 
-    assert f["_version_data"]["test_data"]["raw_data"].compression_opts == None
-    assert f["_version_data"]["test_data2"]["raw_data"].compression_opts == None
-    assert f["_version_data"]["test_data3"]["raw_data"].compression_opts == None
+    assert f["_version_data"]["test_data"]["raw_data"].compression_opts is None
+    assert f["_version_data"]["test_data2"]["raw_data"].compression_opts is None
+    assert f["_version_data"]["test_data3"]["raw_data"].compression_opts is None
     assert (
-        f["_version_data"]["group"]["test_data4"]["raw_data"].compression_opts == None
+        f["_version_data"]["group"]["test_data4"]["raw_data"].compression_opts is None
     )
 
     modify_metadata(f, "group/test_data4", compression="gzip", compression_opts=3)
     check_data(vfile)
 
-    assert vfile["version1"]["test_data"].compression == None
-    assert vfile["version2"]["test_data"].compression == None
-    assert vfile["version1"]["test_data"].compression_opts == None
-    assert vfile["version2"]["test_data"].compression_opts == None
+    assert vfile["version1"]["test_data"].compression is None
+    assert vfile["version2"]["test_data"].compression is None
+    assert vfile["version1"]["test_data"].compression_opts is None
+    assert vfile["version2"]["test_data"].compression_opts is None
 
-    assert vfile["version1"]["test_data2"].compression == None
-    assert vfile["version2"]["test_data2"].compression == None
-    assert vfile["version1"]["test_data2"].compression_opts == None
-    assert vfile["version2"]["test_data2"].compression_opts == None
+    assert vfile["version1"]["test_data2"].compression is None
+    assert vfile["version2"]["test_data2"].compression is None
+    assert vfile["version1"]["test_data2"].compression_opts is None
+    assert vfile["version2"]["test_data2"].compression_opts is None
 
-    assert vfile["version2"]["test_data3"].compression == None
-    assert vfile["version2"]["test_data3"].compression_opts == None
+    assert vfile["version2"]["test_data3"].compression is None
+    assert vfile["version2"]["test_data3"].compression_opts is None
 
     assert vfile["version1"]["group"]["test_data4"].compression == "gzip"
     assert vfile["version2"]["group"]["test_data4"].compression == "gzip"
     assert vfile["version1"]["group"]["test_data4"].compression_opts == 3
     assert vfile["version2"]["group"]["test_data4"].compression_opts == 3
 
-    assert f["_version_data"]["test_data"]["raw_data"].compression == None
-    assert f["_version_data"]["test_data2"]["raw_data"].compression == None
-    assert f["_version_data"]["test_data3"]["raw_data"].compression == None
+    assert f["_version_data"]["test_data"]["raw_data"].compression is None
+    assert f["_version_data"]["test_data2"]["raw_data"].compression is None
+    assert f["_version_data"]["test_data3"]["raw_data"].compression is None
     assert f["_version_data"]["group"]["test_data4"]["raw_data"].compression == "gzip"
 
-    assert f["_version_data"]["test_data"]["raw_data"].compression_opts == None
-    assert f["_version_data"]["test_data2"]["raw_data"].compression_opts == None
-    assert f["_version_data"]["test_data3"]["raw_data"].compression_opts == None
+    assert f["_version_data"]["test_data"]["raw_data"].compression_opts is None
+    assert f["_version_data"]["test_data2"]["raw_data"].compression_opts is None
+    assert f["_version_data"]["test_data3"]["raw_data"].compression_opts is None
     assert f["_version_data"]["group"]["test_data4"]["raw_data"].compression_opts == 3
 
     # Make sure the tmp group group has been destroyed.
@@ -623,19 +623,19 @@ def test_modify_metadata_dtype_fillvalue(vfile):
     assert vfile["version2"]["test_data2"].fillvalue == 0
 
     # Integer near 2**63; loses precision when converted to float64
-    HUGE_INT = 9223372036854775807
-    assert int(float(HUGE_INT)) != HUGE_INT
+    huge_int = 9223372036854775807
+    assert int(float(huge_int)) != huge_int
 
-    modify_metadata(vfile, "test_data", dtype=np.int64, fillvalue=HUGE_INT)
+    modify_metadata(vfile, "test_data", dtype=np.int64, fillvalue=huge_int)
     modify_metadata(vfile, "test_data2", dtype=np.float32, fillvalue=3.14)  # Was int64
-    check_data(vfile, test_data_fillvalue=HUGE_INT)
+    check_data(vfile, test_data_fillvalue=huge_int)
 
     assert vfile["version1"]["test_data"].dtype == np.int64
     assert vfile["version2"]["test_data"].dtype == np.int64
     assert vfile["version1"]["test_data"].fillvalue.dtype == np.int64
     assert vfile["version2"]["test_data"].fillvalue.dtype == np.int64
-    assert vfile["version1"]["test_data"].fillvalue == HUGE_INT
-    assert vfile["version2"]["test_data"].fillvalue == HUGE_INT
+    assert vfile["version1"]["test_data"].fillvalue == huge_int
+    assert vfile["version2"]["test_data"].fillvalue == huge_int
 
     assert vfile["version1"]["test_data2"].dtype == np.float32
     assert vfile["version2"]["test_data2"].dtype == np.float32
@@ -832,8 +832,6 @@ def test_recreate_hashtable(vfile):
             "test_data2", data=np.arange(20000).reshape((1000, 20)), chunks=(101, 11)
         )
         g["test_data2"][::200] = -g["test_data2"][::200]
-
-    # orig_hashtable = Hashtable(vfile.f, 'test_data')
 
     _recreate_hashtable(vfile.f, "test_data", chunks_map, tmp=True)
 
@@ -1191,7 +1189,9 @@ def test_delete_versions_after_updates(vfile, delete_order):
     ],
 )
 def test_modify_metadata_compression_default_compression(vfile, obj, metadata_opts):
-    """Test that setting compression via modify_metadata works for default compression."""
+    """Test that setting compression via modify_metadata works for default
+    compression.
+    """
     setup_vfile(vfile)
 
     f = vfile.f
@@ -1270,7 +1270,9 @@ def test_modify_metadata_compression_default_compression(vfile, obj, metadata_op
 def test_modify_metadata_compression_nondefault_compression(
     vfile, obj, metadata_opts, library
 ):
-    """Test that setting compression via modify_metadata works for nondefault compression."""
+    """Test that setting compression via modify_metadata works for nondefault
+    compression.
+    """
     if library == "tables" and Version(importlib.metadata.version("numpy")) >= Version(
         "2"
     ):
@@ -1294,8 +1296,8 @@ def test_modify_metadata_compression_nondefault_compression(
     modify_metadata(f, obj, **metadata_opts)
     check_data(vfile)
 
-    # Check that the compression is not set for the group that had its metadata modified;
-    # the compression of a virtual dataset does not get set from its parent
+    # Check that the compression is not set for the group that had its metadata
+    # modified; the compression of a virtual dataset does not get set from its parent.
     for dataset in ["test_data", "test_data2", "group/test_data4"]:
         for version in ["version1", "version2"]:
             if dataset == obj:

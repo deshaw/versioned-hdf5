@@ -2,7 +2,7 @@ from unittest import mock
 
 import h5py
 import numpy as np
-from pytest import raises
+import pytest
 
 from versioned_hdf5 import VersionedHDF5File
 from versioned_hdf5.backend import create_base_dataset
@@ -21,13 +21,13 @@ def test_hashtable(h5file):
         assert tuple(h.hash_table[0][1]) == (0, 1)
         assert h == {b"\xff" * 32: slice(0, 1)}
 
-        with raises(TypeError):
+        with pytest.raises(TypeError):
             h["\x01" * 32] = slice(0, 1)
-        with raises(ValueError):
+        with pytest.raises(ValueError):
             h[b"\x01"] = slice(0, 1)
-        with raises(TypeError):
+        with pytest.raises(TypeError):
             h[b"\x01" * 32] = (0, 1)
-        with raises(ValueError):
+        with pytest.raises(ValueError):
             h[b"\x01" * 32] = slice(0, 4, 2)
 
 
@@ -183,7 +183,7 @@ def test_verify_chunk_reuse_data_version_2(tmp_path, monkeypatch):
                     chunks=(2,),
                 )
 
-            with raises(ValueError):
+            with pytest.raises(ValueError):
                 with vf.stage_version("r1") as group:
                     group["values"] = np.concatenate((data2, data2))
 
@@ -236,7 +236,7 @@ def test_verify_chunk_reuse_data_version_3(tmp_path, monkeypatch):
                     chunks=(100,),
                 )
 
-            with raises(ValueError):
+            with pytest.raises(ValueError):
                 with vf.stage_version("r1") as group:
                     group["values"] = np.array([b"ab", b"", b"cd"], dtype=object)
                 with vf.stage_version("r2") as group:
@@ -280,7 +280,9 @@ def test_verify_chunk_reuse_strings(tmp_path):
 
 
 def test_verify_chunk_reuse_multidim_1(tmp_path):
-    """Check that we correctly handle chunk reuse verification for multi-dimensional Datasets."""
+    """Check that we correctly handle chunk reuse verification for multi-dimensional
+    Datasets.
+    """
     filename = tmp_path / "testdata.h5"
     with h5py.File(filename, mode="w") as f:
         vf = VersionedHDF5File(f)
@@ -301,7 +303,9 @@ def test_verify_chunk_reuse_multidim_1(tmp_path):
 
 
 def test_verify_chunk_disabled_by_default(tmp_path, monkeypatch):
-    """Check that we skip chunk reuse verification if the environment variable is not set."""
+    """Check that we skip chunk reuse verification if the environment variable is not
+    set.
+    """
     monkeypatch.delenv("ENABLE_CHUNK_REUSE_VALIDATION", raising=False)
 
     # This is the same test as test_verify_chunk_reuse_data_version_2,

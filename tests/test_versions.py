@@ -1,7 +1,7 @@
 import numpy as np
+import pytest
 from ndindex import Slice, Tuple
 from numpy.testing import assert_equal
-from pytest import raises
 
 from versioned_hdf5.backend import DEFAULT_CHUNK_SIZE
 from versioned_hdf5.versions import (
@@ -31,30 +31,22 @@ def test_create_version(h5file):
     )
 
     version_bad = create_version_group(h5file, "version_bad", "")
-    raises(
-        ValueError,
-        lambda: commit_version(
-            version_bad, {"test_data": data}, chunks={"test_data": (2**9,)}
-        ),
-    )
+    with pytest.raises(ValueError):
+        commit_version(version_bad, {"test_data": data}, chunks={"test_data": (2**9,)})
     delete_version(h5file, "version_bad", "version1")
 
     version_bad = create_version_group(h5file, "version_bad", "")
-    raises(
-        ValueError,
-        lambda: commit_version(
+    with pytest.raises(ValueError):
+        commit_version(
             version_bad, {"test_data": data}, compression={"test_data": "lzf"}
-        ),
-    )
+        )
     delete_version(h5file, "version_bad", "version1")
 
     version_bad = create_version_group(h5file, "version_bad", "")
-    raises(
-        ValueError,
-        lambda: commit_version(
+    with pytest.raises(ValueError):
+        commit_version(
             version_bad, {"test_data": data}, compression_opts={"test_data": 4}
-        ),
-    )
+        )
     delete_version(h5file, "version_bad", "version1")
 
     assert version1.attrs["prev_version"] == "__first_version__"
@@ -76,10 +68,8 @@ def test_create_version(h5file):
     data[0] = 0.0
     version2 = create_version_group(h5file, "version2", "version1")
 
-    raises(
-        ValueError,
-        lambda: commit_version(version1, {"test_data": data}, make_current=False),
-    )
+    with pytest.raises(ValueError):
+        commit_version(version1, {"test_data": data}, make_current=False)
     commit_version(version2, {"test_data": data}, make_current=False)
     assert version2.attrs["prev_version"] == "version1"
     assert_equal(h5file["_version_data/versions/version2/test_data"], data)
@@ -118,30 +108,22 @@ def test_create_version_chunks(h5file):
         compression_opts={"test_data": 3},
     )
     version_bad = create_version_group(h5file, "version_bad", "")
-    raises(
-        ValueError,
-        lambda: commit_version(
-            version_bad, {"test_data": data}, chunks={"test_data": (2**9,)}
-        ),
-    )
+    with pytest.raises(ValueError):
+        commit_version(version_bad, {"test_data": data}, chunks={"test_data": (2**9,)})
     delete_version(h5file, "version_bad", "version1")
 
     version_bad = create_version_group(h5file, "version_bad", "")
-    raises(
-        ValueError,
-        lambda: commit_version(
+    with pytest.raises(ValueError):
+        commit_version(
             version_bad, {"test_data": data}, compression={"test_data": "lzf"}
-        ),
-    )
+        )
     delete_version(h5file, "version_bad", "version1")
 
     version_bad = create_version_group(h5file, "version_bad", "")
-    raises(
-        ValueError,
-        lambda: commit_version(
+    with pytest.raises(ValueError):
+        commit_version(
             version_bad, {"test_data": data}, compression_opts={"test_data": 4}
-        ),
-    )
+        )
     delete_version(h5file, "version_bad", "version1")
 
     assert_equal(h5file["_version_data/versions/version1/test_data"], data)
@@ -234,23 +216,23 @@ def test_get_nth_prev_version(h5file):
 
     assert get_nth_previous_version(h5file, "version1", 0) == "version1"
 
-    with raises(IndexError):
+    with pytest.raises(IndexError):
         get_nth_previous_version(h5file, "version1", 1)
 
     assert get_nth_previous_version(h5file, "version2", 0) == "version2"
     assert get_nth_previous_version(h5file, "version2", 1) == "version1"
-    with raises(IndexError):
+    with pytest.raises(IndexError):
         get_nth_previous_version(h5file, "version2", 2)
 
     assert get_nth_previous_version(h5file, "version3", 0) == "version3"
     assert get_nth_previous_version(h5file, "version3", 1) == "version2"
     assert get_nth_previous_version(h5file, "version3", 2) == "version1"
-    with raises(IndexError):
+    with pytest.raises(IndexError):
         get_nth_previous_version(h5file, "version3", 3)
 
     assert get_nth_previous_version(h5file, "version2_1", 0) == "version2_1"
     assert get_nth_previous_version(h5file, "version2_1", 1) == "version1"
-    with raises(IndexError):
+    with pytest.raises(IndexError):
         get_nth_previous_version(h5file, "version2_1", 2)
 
 
@@ -276,12 +258,13 @@ def test_set_current_version(h5file):
     set_current_version(h5file, "version1")
     assert versions.attrs["current_version"] == "version1"
 
-    with raises(ValueError):
+    with pytest.raises(ValueError):
         set_current_version(h5file, "version3")
 
 
 def test_delete_version(h5file):
-    raises(ValueError, lambda: delete_version(h5file, "version1"))
+    with pytest.raises(ValueError):
+        delete_version(h5file, "version1")
 
     data = np.concatenate(
         (
@@ -296,7 +279,8 @@ def test_delete_version(h5file):
     versions = h5file["_version_data/versions"]
     assert versions.attrs["current_version"] == "version1"
 
-    raises(ValueError, lambda: delete_version(h5file, "version1", "doesntexist"))
+    with pytest.raises(ValueError):
+        delete_version(h5file, "version1", "doesntexist")
 
     delete_version(h5file, "version1")
     versions = h5file["_version_data/versions"]
@@ -315,5 +299,5 @@ def test_forbidden_dataset_name(h5file):
     )
     v1 = create_version_group(h5file, "v1")
 
-    with raises(ValueError):
+    with pytest.raises(ValueError):
         commit_version(v1, {"versions": data})

@@ -40,13 +40,12 @@ class Hashtable(MutableMapping):
     # Cache instances of the class for performance purposes. This works off
     # the assumption that nothing else modifies the version data.
 
-    # This is done here because putting @lru_cache() on the class breaks the
+    # This is done here because putting @lru_cache on the class breaks the
     # classmethods. Warning: This does not normalize kwargs, so it is possible
     # to have multiple hashtable instances for the same hashtable.
-    @lru_cache()  # type: ignore
+    @lru_cache
     def __new__(cls, *args, **kwargs):
-        obj = super().__new__(cls)
-        return obj
+        return super().__new__(cls)
 
     def __init__(self, f, name, *, chunk_size=None, hash_table_name="hash_table"):
         from .backend import DEFAULT_CHUNK_SIZE
@@ -184,8 +183,7 @@ class Hashtable(MutableMapping):
         f = self.f
         name = self.name
 
-        # TODO: Use get_chunks() here (the real chunk size should be based on
-        # bytes, not number of elements)
+        # TODO: The real chunk size should be based on bytes, not number of elements
         dtype = np.dtype([("hash", "B", (self.hash_size,)), ("shape", "i8", (2,))])
         hash_table = f["_version_data"][name].create_dataset(
             self.hash_table_name,
@@ -221,7 +219,7 @@ class Hashtable(MutableMapping):
         if not isinstance(key, bytes):
             raise TypeError(f"key must be bytes, got {type(key)}")
         if len(key) != self.hash_size:
-            raise ValueError("key must be %d bytes" % self.hash_size)
+            raise ValueError(f"key must be {self.hash_size} bytes")
         if isinstance(value, Tuple):
             if len(value.args) > 1:
                 raise NotImplementedError(

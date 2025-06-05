@@ -13,6 +13,7 @@ import textwrap
 import warnings
 from collections import defaultdict
 from collections.abc import Iterable
+from contextlib import suppress
 from functools import cached_property
 from typing import Any
 from weakref import WeakValueDictionary
@@ -626,12 +627,10 @@ class InMemoryDataset(Dataset):
             try:
                 val = np.asarray(val, dtype=vlen)
             except ValueError:
-                try:
+                with suppress(ValueError):
                     val = np.array(
                         [np.array(x, dtype=vlen) for x in val], dtype=self.dtype
                     )
-                except ValueError:
-                    pass
             if vlen == val.dtype:
                 if val.ndim > 1:
                     tmp = np.empty(shape=val.shape[:-1], dtype=object)

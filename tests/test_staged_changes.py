@@ -158,7 +158,9 @@ def test_staged_array(args):
 
 
 def test_array_protocol_setitem():
-    """Test that the value of __setitem__ can be anything that implements ArrayProtocol"""
+    """Test that the value of __setitem__ can be anything that implements
+    ArrayProtocol
+    """
     arr = StagedChangesArray.full((3, 3), (3, 1), dtype="f4")
     arr[:2, :2] = MinimalArray([[1, 2], [3, 4]])
     assert all(isinstance(slab, np.ndarray) for slab in arr.slabs)
@@ -215,7 +217,7 @@ def test_array_protocol_from_slabs():
     for _, _, chunk_or_slices in arr.changes():
         assert isinstance(chunk_or_slices, tuple)
 
-    # StagedChangesArray.__setitem__, resize(), refill()
+    # StagedChangesArray.__setitem__, resize(), refill()  # noqa: ERA001
     arr[0, 0] = 42
     arr.resize((3, 2))
     arr.refill(43)
@@ -225,7 +227,7 @@ def test_array_protocol_from_slabs():
     assert arr.slabs[1] is base_slab
     np.testing.assert_array_equal(arr, expect, strict=True)
 
-    # StagedChangesArray.load(), copy(), astype()
+    # StagedChangesArray.load(), copy(), astype()  # noqa: ERA001
     arr2 = arr.copy(deep=True)
     arr3 = arr.copy(deep=False)
     arr4 = arr.astype("i4")
@@ -314,7 +316,7 @@ def test_shrinking_dereferences_slabs():
     assert arr.slabs[1:] == [None, None, None, None, None]
 
 
-@pytest.mark.parametrize("starting_size", (6, 5))
+@pytest.mark.parametrize("starting_size", [6, 5])
 def test_shrinking_does_not_reuse_partial_chunks(starting_size):
     """Test that if a partial chunk is created or resized when shrinking, and that
     chunk was on a base slab, it is loaded into memory to avoid different keys in the

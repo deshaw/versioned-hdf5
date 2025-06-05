@@ -19,15 +19,9 @@ from versioned_hdf5.hashtable import Hashtable
 DEFAULT_CHUNK_SIZE = 2**12
 DATA_VERSION = 4
 # data_version 2 has broken hashtables, always need to rebuild
-# data_version 3 hash collisions for string arrays which, when concatenated, give the same string
+# data_version 3 hash collisions for string arrays which, when concatenated,
+# give the same string
 CORRUPT_DATA_VERSIONS = frozenset([2, 3])
-
-
-def get_chunks(shape, dtype, chunk_size):
-    # TODO: Implement this
-    if len(shape) > 1:
-        raise NotImplementedError
-    return (chunk_size,)
 
 
 def initialize(f):
@@ -148,9 +142,8 @@ def write_dataset(
                 "Chunk size specified but doesn't match already existing chunk size"
             )
 
-    if dtype is not None:
-        if dtype != ds.dtype:
-            raise ValueError("dtype specified but doesn't match already existing dtype")
+    if dtype is not None and dtype != ds.dtype:
+        raise ValueError("dtype specified but doesn't match already existing dtype")
 
     if (
         compression
@@ -162,7 +155,8 @@ def write_dataset(
             "\n".join(str(filter) for filter in get_available_filters()), "  "
         )
         raise ValueError(
-            "Compression options can only be specified for the first version of a dataset.\n"
+            "Compression options can only be specified for the first version of a "
+            "dataset.\n"
             f"Dataset: {name}\n"
             f"Current filters: {ds._filters}\n"
             f"Available hdf5 compression types:\n{available_filters}"
@@ -304,7 +298,7 @@ def _verify_new_chunk_reuse(
     # are the same - for example, if the raw_data.dtype == dtype('O'), but the elements
     # are bytes, and chunk_being_written.dtype == dtype('O'), but the elements are
     # utf-8 strings. For this case, when the raw_data is changed, e.g.
-    #      raw_data[some_slice] = chunk_being_written[another_slice]
+    #     raw_data[some_slice] = chunk_being_written[another_slice]  # noqa: ERA001
     # the data that gets written is bytes. So in certain cases, just calling
     # assert_array_equal doesn't work. Instead, we convert each element to a bytestring
     # first.
