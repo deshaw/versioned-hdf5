@@ -232,7 +232,7 @@ def write_dataset(
         new_chunks = hashtable.largest_index
 
     logging.debug(
-        "  %s: " "New chunks written: %d; " "Number of chunks reused: %d",
+        "  %s: New chunks written: %d; Number of chunks reused: %d",
         name,
         new_chunks - old_chunks,
         chunks_reused,
@@ -423,7 +423,7 @@ def write_dataset_chunks(f, name, data_dict):
         raw_data[c] = data_s
 
     logging.debug(
-        "  %s: " "New chunks written: %d; " "Number of chunks reused: %d",
+        "  %s: New chunks written: %d; Number of chunks reused: %d",
         name,
         new_chunks - old_chunks,
         chunks_reused,

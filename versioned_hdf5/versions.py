@@ -92,7 +92,8 @@ def commit_version(
 
     If make_current is True, the new version will be set as the current version.
 
-    If the user specifies a dataset name found in FORBIDDEN_NAMES, a ValueError will be raised.
+    If the user specifies a dataset name found in FORBIDDEN_NAMES, a ValueError
+    will be raised.
 
     Returns the group for the new version.
     """
@@ -201,7 +202,8 @@ def commit_version(
             )
         else:
             raise TypeError(
-                "timestamp must be either a datetime.datetime or numpy.datetime64 object"
+                "timestamp must be either a datetime.datetime or "
+                "numpy.datetime64 object"
             )
     else:
         ts = datetime.datetime.now(datetime.timezone.utc)
@@ -231,7 +233,7 @@ def get_nth_previous_version(f, version_name, n):
         raise IndexError(f"Version {version_name!r} not found")
 
     version = version_name
-    for i in range(n):
+    for _ in range(n):
         version = versions[version].attrs["prev_version"]
 
         # __first_version__ is a meta-version and should not be returnable

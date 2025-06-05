@@ -32,7 +32,6 @@ if TYPE_CHECKING:  # pragma: nocover
 if cython.compiled:  # pragma: nocover
     from cython.cimports.versioned_hdf5.cytools import (  # type: ignore
         ceil_a_over_b,
-        count2stop,
         hsize_t,
         smallest_step_after,
         stop2count,
@@ -572,7 +571,7 @@ class IntegerArrayMapper(IndexChunkMapper):
                 chunk_sub_idx = idx_v[start_idx:stop_idx]
             # TODO optimize monotonic descending
             else:
-                # O(n^2)
+                # O(n^2)  # noqa: ERA001
                 mask = (chunk_start <= self.idx) & (self.idx < chunk_stop)
                 # Don't copy when converting from np.intp to uint64 on 64-bit platforms
                 value_sub_idx = asarray(np.flatnonzero(mask), dtype=np_hsize_t)
@@ -816,7 +815,7 @@ def _index_to_mapper(idx, dset_size: hsize_t, chunk_size: hsize_t) -> IndexChunk
         return SliceMapper(idx, dset_size, chunk_size)
 
     if idx is None:
-        raise NotImplementedError(f"None/np.newaxis not supported")
+        raise NotImplementedError("None/np.newaxis not supported")
 
     # Unreachable: ndindex preprocessing should have caught this
     raise TypeError(f"Bad index {idx} of type {type(idx)}")  # pragma: nocover
@@ -957,7 +956,7 @@ def read_many_slices_params_nd(
     slices_refs = []
     # Can't define module-level constants in pure-python mode
     # https://github.com/numpy/numpy/blob/b0a52b76c2bebe5c237722589d13bf02affa9c43/numpy/core/include/numpy/ndarraytypes.h#L30
-    # NPY_MAXDIMS = 32
+    # NPY_MAXDIMS = 32  # noqa: ERA001
     slices: hsize_t[:, :][32]  # type: ignore
     if not cython.compiled:
         slices = [None] * ndim
@@ -1031,7 +1030,7 @@ def read_many_slices_params_nd(
         for j in range(ndim):
             slices_j = slices[j]
             # For the mapping, refer to docstring of
-            # IndexChunkMapper.read_many_slices_params()
+            # IndexChunkMapper.read_many_slices_params()  # noqa: ERA001
             # For column indices, refer to subchunk_map.pxd::ReadManySlicesColumn
             if transfer_type_int == TRANSFER_TYPE_GETITEM:
                 src_start = slices_j[:, 0]  # chunk_sub_start

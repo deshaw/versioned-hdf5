@@ -14,25 +14,19 @@ import warnings
 from collections import defaultdict
 from collections.abc import Iterable
 from functools import cached_property
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from weakref import WeakValueDictionary
 
 import numpy as np
-from h5py import Dataset, Empty, Group, h5a, h5d, h5g, h5i, h5p, h5r, h5s, h5t
-from h5py._hl import filters
+from h5py import Dataset, Empty, Group, h5a, h5d, h5g, h5i, h5r, h5s, h5t
 from h5py._hl.base import guess_dtype, phil, with_phil
-from h5py._hl.dataset import _LEGACY_GZIP_COMPRESSION_VALS
 from h5py._hl.selections import guess_shape
 from ndindex import Slice, Tuple, ndindex
 from numpy.typing import ArrayLike, DTypeLike
 
 from versioned_hdf5.backend import DEFAULT_CHUNK_SIZE
 from versioned_hdf5.slicetools import build_slab_indices_and_offsets
-from versioned_hdf5.staged_changes import Casting, StagedChangesArray
-
-if TYPE_CHECKING:
-    # TODO import from typing (requires Python >=3.11)
-    from typing_extensions import Self
+from versioned_hdf5.staged_changes import StagedChangesArray
 
 _groups = WeakValueDictionary({})
 
@@ -94,8 +88,8 @@ class InMemoryGroup(Group):
 
     def _check_committed(self):
         if self._committed:
-            namestr = ('"%s"' % self.name) if self.name is not None else "(anonymous)"
-            raise ValueError("InMemoryGroup %s has already been committed" % namestr)
+            namestr = f'"{self.name}"' if self.name is not None else "(anonymous)"
+            raise ValueError(f"InMemoryGroup {namestr} has already been committed")
 
     def __getitem__(self, name):
         dirname, basename = posixpath.split(name)
@@ -220,9 +214,10 @@ class InMemoryGroup(Group):
             self.create_group(dirname)
 
         for k, v in kwds.items():
-            if v is not None and not (k == "maxshape" and all(i == None for i in v)):
+            if v is not None and not (k == "maxshape" and all(i is None for i in v)):
                 warnings.warn(
-                    f"The {k} parameter is currently ignored for versioned datasets."
+                    f"The {k} parameter is currently ignored for versioned datasets.",
+                    stacklevel=2,
                 )
 
         if dtype is not None and not isinstance(dtype, np.dtype):
@@ -311,10 +306,7 @@ class InMemoryGroup(Group):
         dirname, data_name = posixpath.split(item)
         if dirname not in ["", "/"]:
             return dirname in self and data_name in self[dirname]
-        for i in self:
-            if i == item:
-                return True
-        return False
+        return any(i == item for i in self)
 
     def datasets(self):
         res = self._data.copy()
@@ -444,8 +436,8 @@ class InMemoryDataset(Dataset):
 
     def __repr__(self) -> str:
         name = posixpath.basename(posixpath.normpath(self.name))
-        namestr = '"%s"' % (name if name != "" else "/")
-        return '<%s %s: shape %s, type "%s">' % (
+        namestr = '"{}"'.format(name if name != "" else "/")
+        return '<{} {}: shape {}, type "{}">'.format(
             self.__class__.__name__,
             namestr,
             self.shape,
@@ -528,7 +520,8 @@ class InMemoryDataset(Dataset):
             try:
                 newlen = int(size)
             except TypeError:
-                raise TypeError("Argument must be a single int if axis is specified")
+                msg = "Argument must be a single int if axis is specified"
+                raise TypeError(msg) from None
             size = list(self.shape)
             size[axis] = newlen
 
@@ -650,12 +643,12 @@ class InMemoryDataset(Dataset):
         elif self.dtype.kind == "O" or (
             self.dtype.kind == "V"
             and (not isinstance(val, np.ndarray) or val.dtype.kind != "V")
-            and (self.dtype.subdtype == None)
+            and (self.dtype.subdtype is None)
         ):
             if len(names) == 1 and self.dtype.fields is not None:
                 # Single field selected for write, from a non-array source
-                if not names[0] in self.dtype.fields:
-                    raise ValueError("No such field for indexing: %s" % names[0])
+                if names[0] not in self.dtype.fields:
+                    raise ValueError(f"No such field for indexing: {names[0]}")
                 dtype = self.dtype.fields[names[0]][0]
                 cast_compound = True
             else:
@@ -675,28 +668,21 @@ class InMemoryDataset(Dataset):
             valshp = val.shape[-len(shp) :]
             if valshp != shp:  # Last dimension has to match
                 raise TypeError(
-                    "When writing to array types, last N dimensions have to match (got %s, but should be %s)"
-                    % (
-                        valshp,
-                        shp,
-                    )
+                    "When writing to array types, last N dimensions have to match "
+                    f"(got {valshp}, but should be {shp})"
                 )
             mtype = h5t.py_create(np.dtype((val.dtype, shp)))
-            # mshape = val.shape[0:len(val.shape)-len(shp)]
 
         # Make a compound memory type if field-name slicing is required
         elif len(names) != 0:
-            # mshape = val.shape
-
             # Catch common errors
             if self.dtype.fields is None:
                 raise TypeError("Illegal slicing argument (not a compound dataset)")
             mismatch = [x for x in names if x not in self.dtype.fields]
             if len(mismatch) != 0:
-                mismatch = ", ".join('"%s"' % x for x in mismatch)
+                mismatch = ", ".join(f'"{x}"' for x in mismatch)
                 raise ValueError(
-                    "Illegal slicing argument (fields %s not in dataset type)"
-                    % mismatch
+                    f"Illegal slicing argument (fields {mismatch} not in dataset type)"
                 )
 
             # Write non-compound source into a single dataset field
@@ -756,9 +742,9 @@ class DatasetLike:
         if fv is None and self.dtype.metadata:
             # Custom h5py string dtype. Make sure to use a fillvalue of ''
             if (vlen := self.dtype.metadata.get("vlen")) is not None:
-                fv = bytes() if vlen is str else vlen()
+                fv = b"" if vlen is str else vlen()
             elif "h5py_encoding" in self.dtype.metadata:
-                fv = bytes()
+                fv = b""
 
         if fv is not None:
             return np.asarray(fv, dtype=self.dtype)[()]
@@ -783,7 +769,7 @@ class DatasetLike:
     def __repr__(self) -> str:
         name = posixpath.basename(posixpath.normpath(self.name))
         namestr = '"%s"' % (name if name != "" else "/")
-        return '<%s %s: shape %s, type "%s">' % (
+        return '<{} {}: shape {}, type "{}">'.format(
             self.__class__.__name__,
             namestr,
             self.shape,
@@ -879,7 +865,8 @@ class InMemoryArrayDataset(DatasetLike):
             try:
                 newlen = int(size)
             except TypeError:
-                raise TypeError("Argument must be a single int if axis is specified")
+                msg = "Argument must be a single int if axis is specified"
+                raise TypeError(msg) from None
             size = list(self.shape)
             size[axis] = newlen
 
@@ -944,7 +931,6 @@ class InMemorySparseDataset(DatasetLike):
 
     @classmethod
     def from_dataset(cls, dataset, parent=None):
-        # np.testing.assert_equal(dataset[()], dataset.fillvalue)
         return cls(
             dataset.name,
             shape=dataset.shape,
@@ -961,7 +947,8 @@ class InMemorySparseDataset(DatasetLike):
             try:
                 newlen = int(size)
             except TypeError:
-                raise TypeError("Argument must be a single int if axis is specified")
+                msg = "Argument must be a single int if axis is specified"
+                raise TypeError(msg) from None
             size = list(self.shape)
             size[axis] = newlen
 

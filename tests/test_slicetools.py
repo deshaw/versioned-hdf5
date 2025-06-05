@@ -1,5 +1,3 @@
-from typing import Any
-
 import hypothesis
 import numpy as np
 import pytest

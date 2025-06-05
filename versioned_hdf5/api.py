@@ -342,8 +342,7 @@ class VersionedHDF5File:
             return "<Closed VersionedHDF5File>"
         else:
             return (
-                f'<VersionedHDF5File object "{self.f.filename}" (mode'
-                f" {self.f.mode})>"
+                f'<VersionedHDF5File object "{self.f.filename}" (mode {self.f.mode})>'
             )
 
     def rebuild_hashtables(self):

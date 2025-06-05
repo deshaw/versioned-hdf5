@@ -29,20 +29,20 @@ repos:
         types_or: [javascript, ts, tsx, html, css]
 
   # - repo: https://github.com/pre-commit/mirrors-mypy
-  #   rev: v1.12.0
+  #   rev: v1.16.0
   #   hooks:
   #     - id: mypy
 
   - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
+    rev: 6.0.1
     hooks:
       - id: isort
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
+    rev: v0.11.12
     hooks:
-      # - id: ruff
       - id: ruff-format
+      # - id: ruff
 
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: v1.10.0
@@ -54,7 +54,7 @@ repos:
       - id: python-check-mock-methods
 
   - repo: https://github.com/MarcoGorelli/cython-lint
-    rev: v0.16.2
+    rev: v0.16.6
     hooks:
     - id: cython-lint
     - id: double-quote-cython-strings
