@@ -109,6 +109,24 @@ def create_base_dataset(
     return write_dataset(f, name, data, chunks=chunks)
 
 
+def _is_vstring_dtype(dtype: np.dtype) -> bool:
+    return (
+        # NpyStrings
+        dtype.kind == "T"
+        # h5py object strings
+        or (
+            dtype.metadata
+            and "vlen" in dtype.metadata
+            or "h5py_encoding" in dtype.metadata
+        )
+    )
+
+
+def _check_compatible_dtypes(a: np.dtype, b: np.dtype) -> None:
+    if a != b and not (_is_vstring_dtype(a) and _is_vstring_dtype(b)):
+        raise ValueError(f"dtypes do not match ({a} != {b})")
+
+
 def write_dataset(
     f,
     name,
@@ -142,8 +160,8 @@ def write_dataset(
                 "Chunk size specified but doesn't match already existing chunk size"
             )
 
-    if dtype is not None and dtype != ds.dtype:
-        raise ValueError("dtype specified but doesn't match already existing dtype")
+    if dtype is not None:
+        _check_compatible_dtypes(dtype, ds.dtype)
 
     if (
         compression
@@ -171,8 +189,7 @@ def write_dataset(
             pass
         else:
             raise ValueError(f"fillvalues do not match ({fillvalue} != {ds.fillvalue})")
-    if data.dtype != ds.dtype:
-        raise ValueError(f"dtypes do not match ({data.dtype} != {ds.dtype})")
+    _check_compatible_dtypes(data.dtype, ds.dtype)
     # TODO: Handle more than one dimension
     old_shape = ds.shape
     slices = {}
@@ -375,10 +392,7 @@ def write_dataset_chunks(f, name, data_dict):
             if isinstance(data_s, (slice, tuple, Tuple, Slice)):
                 slices[chunk] = ndindex(data_s)
             else:
-                if data_s.dtype != raw_data.dtype:
-                    raise ValueError(
-                        f"dtypes do not match ({data_s.dtype} != {raw_data.dtype})"
-                    )
+                _check_compatible_dtypes(data_s.dtype, raw_data.dtype)
 
                 data_hash = hashtable.hash(data_s)
 

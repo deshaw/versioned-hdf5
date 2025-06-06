@@ -4,6 +4,7 @@ import numpy.ma as ma
 import pytest
 from packaging.version import Version
 
+from versioned_hdf5.h5py_compat import h5py_astype
 from versioned_hdf5.typing_ import ArrayProtocol
 
 
@@ -60,3 +61,11 @@ def test_array_protocol_h5_astypeview(h5file):
     """Test that h5py AsTypeView is a ArrayProtocol"""
     dset = h5file.create_dataset("x", shape=(10,), dtype="i2")
     assert isinstance(dset.astype("i4"), ArrayProtocol)
+
+
+def test_array_protocol_h5_astypeview_compat(h5file):
+    """Test that h5py_astype() returns an ArrayProtocol, also on older h5py versions.
+    TODO delete this test when dropping support for h5py <3.13.
+    """
+    dset = h5file.create_dataset("x", shape=(10,), dtype="i2")
+    assert isinstance(h5py_astype(dset, "i4"), ArrayProtocol)

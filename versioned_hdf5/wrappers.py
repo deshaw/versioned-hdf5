@@ -7,6 +7,7 @@ h5py license.
 
 from __future__ import annotations
 
+import abc
 import math
 import posixpath
 import textwrap
@@ -25,9 +26,12 @@ from h5py._hl.selections import guess_shape
 from ndindex import Slice, Tuple, ndindex
 from numpy.typing import ArrayLike, DTypeLike
 
-from versioned_hdf5.backend import DEFAULT_CHUNK_SIZE
+from versioned_hdf5.backend import DEFAULT_CHUNK_SIZE, _is_vstring_dtype
+from versioned_hdf5.h5py_compat import H5PY_VERSION, h5py_astype
 from versioned_hdf5.slicetools import build_slab_indices_and_offsets
 from versioned_hdf5.staged_changes import StagedChangesArray
+from versioned_hdf5.tools import NP_VERSION, asarray
+from versioned_hdf5.typing_ import ArrayProtocol
 
 _groups = WeakValueDictionary({})
 
@@ -403,7 +407,119 @@ class InMemoryGroup(Group):
     # TODO: override other relevant methods here
 
 
-class InMemoryDataset(Dataset):
+class AsTypeMixin(abc.ABC):
+    """Mixin for all staged datasets, handling dtype conversions.
+
+    Includes special handling for NumPy StringDType, a.k.a. NpyStrings:
+
+    In h5py, when you open or create a dataset with variable string dtype,
+    regardless of whatever dtype= parameter you pass, it will result in a Dataset
+    with object dtype. Then, you have to call `astype("T")` (a no-op) to retrieve an
+    AsTypeView and finally call `__getitem__` on the view, which directly reads from
+    HDF5 into StringDType without passing by python object arrays.
+    To write, you call `__setitem__` on the Dataset with object dtype, passing a
+    NumPy array with StringDType. Again, there is ad-hoc h5py machinery that ensures
+    that there is no intermediate conversion to python object arrays.
+
+    This means that, in h5py, it is reasonably performant to create and destroy
+    AsTypeView objects in rapid succession, and possibly interleave them with
+    `__setitem__` calls::
+
+        for i in range(ds.shape[0]):
+            ds[i, 1] = ds.astype("T")[i, 0]
+
+    We need to make sure that versioned-hdf5 is performant in the same use case.
+    This means:
+    - avoiding spurious intermediate conversions to python string arrays; and
+    - avoiding loading/converting a whole array when only a slice is needed.
+
+    To achieve this, methods `astype`, `__getitem__`, `__setitem__`, and `__array__`
+    internally call `_maybe_swap_string_dtype`, which eagerly converts in-memory
+    data and hot-swaps the base slab of the StagedChangesArray with a zero-cost
+    AsTypeView.
+
+    This means that if the user consistently reads and/or writes only StringDType
+    arrays or only object string arrays, the whole machinery will be as performant
+    as h5py, whereas if they interleave the two dtypes it will be very slow. This
+    second use case should not be common.
+
+    Additionally, `resize()` will tentatively change object-type StagedChangesArray
+    to StringDType unless it already observed accesses on object type. This speeds
+    up the open->resize->write pattern on string dtype, when the new size is not an
+    exact multiple of the chunk size, and slightly slows it down for object-type.
+    """
+
+    _buffer: ArrayProtocol
+    dtype: np.dtype  # Outwards dtype; not necessarily _buffer.dtype
+    _swaps_counter: int = 0
+    _prev_dtype_swap: DTypeLike = "T"
+
+    def _maybe_swap_string_dtype(self, dtype: DTypeLike | None = None) -> None:
+        if dtype is None:
+            # resize(). Guess the best dtype when loading partial chunks from HDF5
+            # from previous activity. If resize() is the very first operation after
+            # opening the dataset, prefer dtype="T".
+            dtype = self._prev_dtype_swap
+
+        if H5PY_VERSION <= (3, 13, 0):  # FIXME change to < (3, 14) after release
+            return
+        if NP_VERSION < (2,) and dtype == "T":
+            return
+        dtype = np.dtype(dtype)
+        if self._buffer.dtype == dtype:
+            return
+        if not _is_vstring_dtype(self._buffer.dtype) or not _is_vstring_dtype(dtype):
+            return
+
+        if (
+            isinstance(self._buffer, StagedChangesArray)
+            and self._buffer.n_staged_slabs == 0
+        ):
+            # Converting an empty StagedChangesArray is cheap; don't warn
+            self._swaps_counter = 0
+
+        # Don't warn if resize() chose the wrong heuristic
+        if self._swaps_counter > 1:
+            warnings.warn(
+                "Performing multiple internal conversions between object type and "
+                "StrindDType in memory. This will result in poor performance. "
+                "Consider using the same dtype for all reads and writes on the dataset",
+                UserWarning,
+                stacklevel=2,
+            )
+        self._swaps_counter += 1
+        self._buffer = self._astype_impl(dtype, writeable=True)
+        self._prev_dtype_swap = dtype
+
+    def __array__(
+        self,
+        dtype: DTypeLike | None = None,
+        copy: bool | None = None,
+    ) -> np.ndarray:
+        out = self.astype(dtype or self.dtype)
+        if copy and out is not self._buffer:
+            copy = None
+        if NP_VERSION < (2,):
+            return np.array(out, copy=bool(copy))
+        return np.asarray(out, copy=copy)
+
+    def __getitem__(self, item):
+        self._maybe_swap_string_dtype(self.dtype)
+        assert self._buffer.dtype == self.dtype  # Thanks to _maybe_swap_string_dtype
+        return self._buffer[item]
+
+    def astype(self, dtype: DTypeLike) -> ArrayProtocol:
+        dtype = np.dtype(dtype)
+        self._maybe_swap_string_dtype(dtype)
+        return self._astype_impl(dtype, writeable=False)
+
+    @abc.abstractmethod
+    def _astype_impl(self, dtype: np.dtype, writeable: bool) -> ArrayProtocol:
+        """Return self._buffer as a new dtype. Return a view if possible."""
+
+
+# Note: NpyStringsMixin methods override those from Dataset
+class InMemoryDataset(AsTypeMixin, Dataset):
     """
     Class that looks like a h5py.Dataset but is backed by a versioned dataset
 
@@ -434,6 +550,25 @@ class InMemoryDataset(Dataset):
             slab_offsets=slab_offsets,
             fill_value=self.fillvalue,
         )
+
+    @property
+    def _buffer(self) -> ArrayProtocol:
+        """Hook for NpyStringsMixin"""
+        return self.staged_changes
+
+    @_buffer.setter
+    def _buffer(self, value: ArrayProtocol) -> None:
+        """Hook for NpyStringsMixin"""
+        assert isinstance(value, StagedChangesArray)
+        self.__dict__["staged_changes"] = value
+
+    def _astype_impl(self, dtype: np.dtype, writeable: bool) -> ArrayProtocol:
+        """Hook for NpyStringsMixin"""
+        # Backwards compatibility with h5py <3.13
+        raw_data_view = h5py_astype(self.id.raw_data, dtype)  # AsTypeView
+        out = self.staged_changes.astype(dtype, base_slabs=[raw_data_view])
+        out.writeable = writeable
+        return out
 
     def __repr__(self) -> str:
         name = posixpath.basename(posixpath.normpath(self.name))
@@ -498,9 +633,6 @@ class InMemoryDataset(Dataset):
     def parent(self) -> InMemoryGroup:
         return self._parent
 
-    def __array__(self, dtype=None):
-        return self.__getitem__(())
-
     def resize(self, size, axis=None):
         """Resize the dataset, or the specified axis.
 
@@ -528,7 +660,7 @@ class InMemoryDataset(Dataset):
 
         size = tuple(size)
         # === END CODE FROM h5py.Dataset.resize ===
-
+        self._maybe_swap_string_dtype()
         self.staged_changes.resize(size)
         self.id.shape = size
 
@@ -601,8 +733,7 @@ class InMemoryDataset(Dataset):
             return out
 
         # === END CODE FROM h5py.Dataset.__getitem__ ===
-
-        return self.staged_changes[args]
+        return AsTypeMixin.__getitem__(self, args)
 
     @with_phil
     def __setitem__(self, args, val):
@@ -706,6 +837,7 @@ class InMemoryDataset(Dataset):
             mtype = None
 
         # === END CODE FROM h5py.Dataset.__setitem__ ===
+        self._maybe_swap_string_dtype(val.dtype)
         self.staged_changes[args] = val
 
 
@@ -815,7 +947,7 @@ class DatasetLike:
         self.parent.set_compression_opts(name, value)
 
 
-class InMemoryArrayDataset(DatasetLike):
+class InMemoryArrayDataset(AsTypeMixin, DatasetLike):
     """
     Class that looks like a h5py.Dataset but is backed by an array
     """
@@ -829,8 +961,11 @@ class InMemoryArrayDataset(DatasetLike):
         fillvalue: Any | None = None,
         chunks: tuple[int, ...] | None = None,
     ):
+        if not array.flags.writeable:
+            array = array.copy()
+        self._buffer = array
+        self.dtype = array.dtype  # NpyStringsMixin can later change array.dtype
         self.name = name
-        self._array = array
         self.attrs = {}
         self.parent = parent
         self._fillvalue = fillvalue
@@ -839,22 +974,23 @@ class InMemoryArrayDataset(DatasetLike):
         self.chunks = chunks
 
     @property
-    def shape(self) -> tuple[int, ...]:
-        return self._array.shape
+    def shape(self) -> tuple[int, ...]:  # type: ignore[override]
+        return self._buffer.shape
 
-    @property
-    def dtype(self) -> np.dtype:
-        return self._array.dtype
-
-    def __getitem__(self, item):
-        return self._array[item]
+    def _astype_impl(self, dtype: np.dtype, writeable: bool) -> ArrayProtocol:
+        """Hook for NpyStringsMixin"""
+        # Work around https://github.com/numpy/numpy/issues/28269
+        # on NumPy >=2.0.0,<2.2.3 when converting from arrays of object strings to
+        # NpyStrings
+        out = asarray(self._buffer, dtype=dtype).view()
+        out.flags.writeable = writeable
+        return out
 
     def __setitem__(self, item, value):
         self.parent._check_committed()
-        self._array[item] = value
-
-    def __array__(self, dtype=None):
-        return self._array
+        dtype = getattr(value, "dtype", self.dtype)
+        self._maybe_swap_string_dtype(dtype)
+        self._buffer[item] = value
 
     def resize(self, size, axis=None):
         self.parent._check_committed()
@@ -869,24 +1005,25 @@ class InMemoryArrayDataset(DatasetLike):
             size = list(self.shape)
             size[axis] = newlen
 
+        self._maybe_swap_string_dtype()
         old_shape = self.shape
         size = tuple(size)
         if all(new <= old for new, old in zip(size, old_shape)):
             # Don't create a new array if the old one can just be sliced in
             # memory.
             idx = tuple(slice(0, i) for i in size)
-            self._array = self._array[idx]
+            self._buffer = self._buffer[idx]
         else:
             old_shape_idx = Tuple(*[Slice(0, i) for i in old_shape])
             new_shape_idx = Tuple(*[Slice(0, i) for i in size])
             new_array = np.full(size, self.fillvalue, dtype=self.dtype)
-            new_array[old_shape_idx.as_subindex(new_shape_idx).raw] = self._array[
+            new_array[old_shape_idx.as_subindex(new_shape_idx).raw] = self._buffer[
                 new_shape_idx.as_subindex(old_shape_idx).raw
             ]
-            self._array = new_array
+            self._buffer = new_array
 
 
-class InMemorySparseDataset(DatasetLike):
+class InMemorySparseDataset(AsTypeMixin, DatasetLike):
     """
     Class that looks like a Dataset that has no data (only the fillvalue)
     """
@@ -911,6 +1048,8 @@ class InMemorySparseDataset(DatasetLike):
             dtype=dtype,
             fill_value=fillvalue,
         )
+        # NpyStringsMixin can later change self.staged_changes.dtype
+        self.dtype = self.staged_changes.dtype
 
     @property
     def data_dict(self) -> dict[Tuple, Slice | np.ndarray]:
@@ -924,9 +1063,28 @@ class InMemorySparseDataset(DatasetLike):
     def chunks(self):
         return self.staged_changes.chunk_size
 
+    def _astype_impl(self, dtype: np.dtype, writeable: bool) -> ArrayProtocol:
+        """Hook for NpyStringsMixin"""
+        out = self.staged_changes.astype(dtype)
+        out.writeable = writeable
+        return out
+
     @property
-    def dtype(self):
-        return self.staged_changes.dtype
+    def _buffer(self) -> ArrayProtocol:
+        """Hook for NpyStringsMixin"""
+        return self.staged_changes
+
+    @_buffer.setter
+    def _buffer(self, value: ArrayProtocol) -> None:
+        """Hook for NpyStringsMixin"""
+        assert isinstance(value, StagedChangesArray)
+        self.staged_changes = value
+
+    def __setitem__(self, index, value):
+        self.parent._check_committed()
+        dtype = getattr(value, "dtype", self.dtype)
+        self._maybe_swap_string_dtype(dtype)
+        self.staged_changes[index] = value
 
     @classmethod
     def from_dataset(cls, dataset, parent=None):
@@ -951,16 +1109,8 @@ class InMemorySparseDataset(DatasetLike):
             size = list(self.shape)
             size[axis] = newlen
 
-        size = tuple(size)
-        self.staged_changes.resize(size)
-        self.shape = size
-
-    def __getitem__(self, index):
-        return self.staged_changes[index]
-
-    def __setitem__(self, index, value):
-        self.parent._check_committed()
-        self.staged_changes[index] = value
+        self._maybe_swap_string_dtype()
+        self.staged_changes.resize(tuple(size))
 
 
 def _staged_changes_to_data_dict(
@@ -1006,7 +1156,7 @@ class DatasetWrapper(DatasetLike):
             new_dataset.attrs = self.dataset.attrs
             self.dataset = new_dataset
             return
-        self.dataset.__setitem__(index, value)
+        self.dataset[index] = value
 
     def __getitem__(self, index):
         return self.dataset.__getitem__(index)
