@@ -75,8 +75,7 @@ def basic_idx_st(
         ),
     )
     idx = draw(idx_st)
-    idx = idx[:nidx_before] + ((...,) if has_ellipsis else ()) + idx[nidx_before:]
-    return idx
+    return idx[:nidx_before] + ((...,) if has_ellipsis else ()) + idx[nidx_before:]
 
 
 @st.composite
@@ -342,7 +341,7 @@ def test_read_many_slices_param_nd(args):
         slab[slab_offset_i:][tuple(slice(c) for c in chunk.shape)] = chunk
 
     # Can't pass "hsize_t[:] | None" to cythonized functions
-    DUMMY_SLAB_OFFSETS = np.empty(0, dtype=np_hsize_t)
+    dummy_slab_offsets = np.empty(0, dtype=np_hsize_t)
 
     getitem_dst = np.zeros_like(expect)
     getitem_dst_view = getitem_dst[tuple(m.value_view_idx for m in mappers)]
@@ -353,7 +352,7 @@ def test_read_many_slices_param_nd(args):
         mappers,
         chunk_idxidx,
         src_slab_offsets=slab_offsets,
-        dst_slab_offsets=DUMMY_SLAB_OFFSETS,
+        dst_slab_offsets=dummy_slab_offsets,
     )
     read_many_slices(
         src=slab,
@@ -373,7 +372,7 @@ def test_read_many_slices_param_nd(args):
         TransferType.setitem,
         mappers,
         chunk_idxidx,
-        src_slab_offsets=DUMMY_SLAB_OFFSETS,
+        src_slab_offsets=dummy_slab_offsets,
         dst_slab_offsets=slab_offsets,
     )
     read_many_slices(
@@ -423,7 +422,7 @@ def test_read_many_slices_param_nd(args):
         mappers,
         chunk_idxidx,
         src_slab_offsets=dst_slab_offsets,
-        dst_slab_offsets=DUMMY_SLAB_OFFSETS,
+        dst_slab_offsets=dummy_slab_offsets,
     )
     getitem_dst3 = np.zeros_like(getitem_dst)
     getitem_dst_view3 = getitem_dst3[tuple(m.value_view_idx for m in mappers)]
@@ -505,7 +504,9 @@ def test_simplify_indices():
 
 
 def test_chunks_indexer_simplifies_indices():
-    """Test that chunks_indexer() and whole_chunks_indexer() return a slice if possible"""
+    """Test that chunks_indexer() and whole_chunks_indexer() return a
+    slice if possible.
+    """
     _, (mapper,) = index_chunk_mappers(slice(None, None, 3), (10,), (2,))
     assert_array_equal(mapper.chunks_indexer(), [0, 1, 3, 4])
 

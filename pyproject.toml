@@ -50,9 +50,9 @@ select = [
     # pep8 naming
     "N",
     # pydocstyle
-    "D",
+    # "D",  # TODO review and fix errors
     # annotations
-    "ANN",
+    # "ANN",  # TODO review and fix errors
     # debugger
     "T10",
     # flake8-pytest
@@ -62,7 +62,7 @@ select = [
     # flake8-unused-arguments
     "ARG",
     # flake8-fixme
-    "FIX",
+    # "FIX",  # Typically this should be uncommented in one-off reviews
     # flake8-eradicate
     "ERA",
     # pandas-vet
@@ -73,27 +73,28 @@ select = [
 ignore = [
     "D104", # Missing docstring in public package
     "D100", # Missing docstring in public module
-    "D211", # No blank line before class
     "D213", # Multiline summary second line
     "PD901", # Avoid using 'df' for pandas dataframes. Perfectly fine in functions with limited scope
-    "ANN201", # Missing return type annotation for public function (makes no sense for NoneType return types...)
-    "ANN101", # Missing type annotation for `self`
     "ANN204", # Missing return type annotation for special method
     "ANN002", # Missing type annotation for `*args`
     "ANN003", # Missing type annotation for `**kwargs`
     "D105", # Missing docstring in magic method
     "D203", # 1 blank line before after class docstring
-    "D204", # 1 blank line required after class docstring
     "D413", # 1 black line after parameters
     "SIM108", # Simplify if/else to one line; not always clearer
-    "D206", # Docstrings should be indented with spaces; unnecessary when running ruff-format
-    "E501", # Line length too long; unnecessary when running ruff-format
-    "W191", # Indentation contains tabs; unnecessary when running ruff-format
+    "SIM114", # Combine `if` branches using logical `or` operator; not always clearer
+    "SIM300", # Yoda condition `a < var`; clearer in `a < var and var < b`
+    "RET505", # Unnecessary elif after return statement; not always clearer
+    "UP032", # Use f-string instead of `format` call; not always clearer
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-"test_*.py" = ["ANN001"]
+"test_*.py" = [
+    "ANN001",
+    "N802",  # Function name should be lowercase
+]
+
 
 [project.optional-dependencies]
 dev = ["pre-commit>=3.6.0", 'cython', 'meson-python', 'setuptools-scm']

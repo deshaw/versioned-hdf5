@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import copy
 import itertools
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, MutableMapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal, MutableMapping, TypeVar, cast
+from typing import Any, Literal, TypeVar, cast
 
 import cython
 import numpy as np
@@ -1202,7 +1202,7 @@ class ChangesPlan:
             dst_slices_ix = []
             a: hsize_t = 0
             assert mapper.n_chunks > 0  # not size 0
-            for i in range(mapper.n_chunks - 1):
+            for _ in range(mapper.n_chunks - 1):
                 b = a + mapper.chunk_size
                 dst_slices_ix.append(slice(a, b, 1))
                 a = b

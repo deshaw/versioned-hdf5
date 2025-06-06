@@ -187,8 +187,8 @@ def _get_np_fillvalue(data: Dataset) -> Any:
         return data.fillvalue
     if data.dtype.metadata:
         if "vlen" in data.dtype.metadata:
-            if h5py_version.startswith("3") and data.dtype.metadata["vlen"] == str:
-                return bytes()
+            if h5py_version.startswith("3") and data.dtype.metadata["vlen"] is str:
+                return b""
             return data.dtype.metadata["vlen"]()
         elif "h5py_encoding" in data.dtype.metadata:
             return data.dtype.type()
@@ -369,7 +369,8 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
                 src_slice = spaceid_to_slice(src_space)
                 if src_slice not in raw_data_chunks_map:
                     raise ValueError(
-                        f"Could not find the chunk for {vslice} ({src_slice} in the old raw dataset) for {name!r} in {version_name!r}"
+                        f"Could not find the chunk for {vslice} ({src_slice} in the "
+                        f"old raw dataset) for {name!r} in {version_name!r}"
                     )
 
                 new_src_slice = raw_data_chunks_map[src_slice]
@@ -470,11 +471,10 @@ def _all_extant_are_empty(
         True if any version of the dataset that can be found is empty,
         False if a version exists which is not.
     """
-    for version in versions:
-        if _exists_in_version(f, name, version):
-            if not _is_empty(f, name, version):
-                return False
-    return True
+    return all(
+        not _exists_in_version(f, name, version) or _is_empty(f, name, version)
+        for version in versions
+    )
 
 
 def _delete_dataset(f: VersionedHDF5File, name: str, versions_to_delete: Iterable[str]):
@@ -707,9 +707,8 @@ def swap(old, new):
     move_names = []
 
     def _move(name, object):
-        if isinstance(object, Dataset):
-            if name in new:
-                move_names.append(name)
+        if isinstance(object, Dataset) and name in new:
+            move_names.append(name)
 
     old.visititems(_move)
     for name in move_names:
@@ -730,7 +729,9 @@ def swap(old, new):
                 return name2 + path[len(name1) :]
 
             def _new_vds_layout(d, name1, name2):
-                """Recreate a VirtualLayout for d, replacing name1 with name2 in the source dset name"""
+                """Recreate a VirtualLayout for d, replacing name1 with name2 in the
+                source dset name
+                """
                 virtual_sources = d.virtual_sources()
                 layout = VirtualLayout(d.shape, dtype=d.dtype)
                 for vmap in virtual_sources:

@@ -88,22 +88,28 @@ class VersionedHDF5File:
             if self.data_version_identifier < DATA_VERSION:
                 if self.data_version_identifier in CORRUPT_DATA_VERSIONS:
                     raise ValueError(
-                        f"Versioned Hdf5 file {f.filename} has data_version {self.data_version_identifier}, "
+                        f"Versioned Hdf5 file {f.filename} has data_version "
+                        f"{self.data_version_identifier}, "
                         "which has corrupted hash_tables. "
                         "See https://github.com/deshaw/versioned-hdf5/issues/256 and "
-                        "https://github.com/deshaw/versioned-hdf5/issues/288 for details. "
-                        "You should recreate the file from scratch. "
-                        "In an emergency you could also rebuild the hash tables by calling "
-                        f"with h5py.File({f.filename!r}) as f: VersionedHDF5File(f).rebuild_hashtables() and use "
-                        f"delete_versions to delete all versions after the upgrade to "
-                        f"data_version == {self.data_version_identifier} if you can identify them."
+                        "https://github.com/deshaw/versioned-hdf5/issues/288 for "
+                        "details. You should recreate the file from scratch. "
+                        "In an emergency you could also rebuild the hash tables by "
+                        "calling:\n"
+                        f"    with h5py.File({f.filename!r}) as f:\n"
+                        "        VersionedHDF5File(f).rebuild_hashtables()\n"
+                        "and use delete_versions to delete all versions after the "
+                        "upgrade to data_version == "
+                        f"{self.data_version_identifier} if you can identify them."
                     )
                 if any(self._find_object_dtype_data_groups()):
                     logger.warning(
-                        'Detected dtype="O" arrays which are not reused when creating new versions. '
-                        "See https://github.com/deshaw/versioned-hdf5/issues/256 for details. "
-                        "Rebuilding hash tables for %s is recommended by calling "
-                        "with h5py.File(%r) as f: VersionedHDF5File(f).rebuild_object_dtype_hashtables().",
+                        'Detected dtype="O" arrays which are not reused when creating '
+                        "new versions. See "
+                        "https://github.com/deshaw/versioned-hdf5/issues/256 for "
+                        "details. Rebuilding hash tables for %s is recommended by "
+                        "calling with h5py.File(%r) as f: VersionedHDF5File(f). "
+                        "rebuild_object_dtype_hashtables().",
                         f.filename,
                         f.filename,
                     )
@@ -189,7 +195,8 @@ class VersionedHDF5File:
     def get_version_by_name(self, version):
         if version.startswith("/"):
             raise ValueError(
-                "Versions cannot start with '/'. VersionedHDF5File should not be used to access the top-level of an h5py File."
+                "Versions cannot start with '/'. VersionedHDF5File should not be used "
+                "to access the top-level of an h5py File."
             )
 
         if version == "":
@@ -201,7 +208,8 @@ class VersionedHDF5File:
         g = self._versions[version]
         if not g.attrs["committed"]:
             raise ValueError(
-                "Version groups cannot accessed from the VersionedHDF5File object before they are committed."
+                "Version groups cannot accessed from the VersionedHDF5File object "
+                "before they are committed."
             )
         if self.f.file.mode == "r":
             return g
@@ -212,7 +220,8 @@ class VersionedHDF5File:
         g = self._versions[version]
         if not g.attrs["committed"]:
             raise ValueError(
-                "Version groups cannot accessed from the VersionedHDF5File object before they are committed."
+                "Version groups cannot accessed from the VersionedHDF5File object "
+                "before they are committed."
             )
         if self.f.file.mode == "r":
             return g
@@ -342,8 +351,7 @@ class VersionedHDF5File:
             return "<Closed VersionedHDF5File>"
         else:
             return (
-                f'<VersionedHDF5File object "{self.f.filename}" (mode'
-                f" {self.f.mode})>"
+                f'<VersionedHDF5File object "{self.f.filename}" (mode {self.f.mode})>'
             )
 
     def rebuild_hashtables(self):
@@ -537,7 +545,7 @@ class VersionedHDF5File:
                 # Data was modified
                 diff[vir2] = (self[v1][name][vir2.raw], self[v2][name][vir2.raw])
 
-        for vir1, src1 in sd1.items():
+        for vir1 in sd1:
             if vir1 not in sd2:
                 # Data was deleted
                 diff[vir1] = (self[v1][name][vir1.raw], None)
