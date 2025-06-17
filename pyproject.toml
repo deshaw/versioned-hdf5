@@ -81,6 +81,7 @@ ignore = [
     "D105", # Missing docstring in magic method
     "D203", # 1 blank line before after class docstring
     "D413", # 1 black line after parameters
+    "N806", # Variable name should be lowercase; uppercase indicates constants
     "SIM108", # Simplify if/else to one line; not always clearer
     "SIM114", # Combine `if` branches using logical `or` operator; not always clearer
     "SIM300", # Yoda condition `a < var`; clearer in `a < var and var < b`
@@ -118,6 +119,7 @@ markers = [
     "slow: slow tests",
     "api: api smoke tests",
 ]
+filterwarnings = ["error"]  # Fail on all unhandled warnings
 
 [tool.mypy]
 allow_incomplete_defs = true  # FIXME

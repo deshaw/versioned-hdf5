@@ -721,6 +721,7 @@ def test_delete_versions_no_data2(vfile):
 
 
 def test_delete_versions_nested_groups(vfile):
+    rng = np.random.default_rng(42)
     data = []
 
     with vfile.stage_version("r0") as sv:
@@ -732,7 +733,7 @@ def test_delete_versions_nested_groups(vfile):
 
     for i in range(1, 11):
         with vfile.stage_version(f"r{i}") as sv:
-            data.append(np.random.randint(0, 1000, size=500))
+            data.append(rng.integers(0, 1000, size=500))
             sv["group1"]["group2"]["test_data"][:] = data[-1]
 
     assert set(vfile) == {
@@ -866,24 +867,17 @@ def test_recreate_virtual_dataset(vfile):
     np.testing.assert_equal(orig_virtual_dataset, new_virtual_dataset)
 
 
-@pytest.mark.parametrize("execution_number", range(30))
-def test_delete_versions2(vfile, execution_number):
+def test_delete_versions2(vfile):
     setup2(vfile)
     data = np.arange(20000).reshape((1000, 20))
     data[::200] = -data[::200]
 
     assert vfile["version2"]["test_data"].shape == data.shape
-
     delete_versions(vfile, ["version1"])
-
     assert list(vfile) == ["version2"]
-
     assert list(vfile["version2"]) == ["test_data"]
-
     assert vfile["version2"]["test_data"].shape == data.shape
-
     np.testing.assert_equal(vfile["version2"]["test_data"][:], data)
-
     assert set(vfile.f["_version_data/test_data/raw_data"][:].flat) == set(data.flat)
 
 

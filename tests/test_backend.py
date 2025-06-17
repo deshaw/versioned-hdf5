@@ -1,10 +1,10 @@
 import itertools
 
 import numpy as np
+import pytest
 from h5py._hl.filters import guess_chunk
 from ndindex import ChunkSize, Slice, Tuple
 from numpy.testing import assert_equal
-from pytest import mark, raises
 
 from versioned_hdf5.backend import (
     DEFAULT_CHUNK_SIZE,
@@ -444,7 +444,7 @@ def test_write_dataset_offset_multidimension(h5file):
     assert ds.dtype == np.float64
 
 
-@mark.setup_args(version_name="test_version")
+@pytest.mark.setup_args(version_name="test_version")
 def test_create_virtual_dataset(h5file):
     """Check that creating a virtual dataset from chunks of real datasets works."""
     data1 = np.ones((2 * DEFAULT_CHUNK_SIZE,))
@@ -485,7 +485,7 @@ def test_create_virtual_dataset(h5file):
         assert virtual_data.dtype == np.float64
 
 
-@mark.setup_args(version_name="test_version")
+@pytest.mark.setup_args(version_name="test_version")
 def test_create_virtual_dataset_attrs(h5file):
     data1 = np.ones((2 * DEFAULT_CHUNK_SIZE,))
     data2 = np.concatenate(
@@ -528,7 +528,7 @@ def test_create_virtual_dataset_attrs(h5file):
         }
 
 
-@mark.setup_args(version_name=["test_version1", "test_version2"])
+@pytest.mark.setup_args(version_name=["test_version1", "test_version2"])
 def test_create_virtual_dataset_multidimension(h5file):
     chunks = 3 * (CHUNK_SIZE_3D,)
     shape = (2 * CHUNK_SIZE_3D, 2 * CHUNK_SIZE_3D, 2 * CHUNK_SIZE_3D)
@@ -570,7 +570,7 @@ def test_create_virtual_dataset_multidimension(h5file):
     assert virtual_data2.dtype == np.float64
 
 
-@mark.setup_args(version_name="test_version")
+@pytest.mark.setup_args(version_name="test_version")
 def test_create_virtual_dataset_offset(h5file):
     data1 = np.ones((2 * DEFAULT_CHUNK_SIZE,))
     data2 = np.concatenate(
@@ -589,10 +589,10 @@ def test_create_virtual_dataset_offset(h5file):
     nchunks2 = int(np.ceil(data2.size / chunksize))
 
     # After writing the data above, there is now 4 chunks in the raw dataset:
-    #   raw_data[0*chunksize:1*chunksize] == 1.0
-    #   raw_data[1*chunksize:2*chunksize] == 2.0
-    #   raw_data[2*chunksize:3*chunksize] == 3.0
-    #   raw_data[3*chunksize:4*chunksize-2] == 3.0
+    #   raw_data[0*chunksize:1*chunksize] == 1.0  # noqa: ERA001
+    #   raw_data[1*chunksize:2*chunksize] == 2.0  # noqa: ERA001
+    #   raw_data[2*chunksize:3*chunksize] == 3.0  # noqa: ERA001
+    #   raw_data[3*chunksize:4*chunksize-2] == 3.0  # noqa: ERA001
     # Create a virtual dataset including all data from the first dataset
     # and the last chunk of data from the second dataset.
     virtual_data = create_virtual_dataset(
@@ -617,7 +617,7 @@ def test_create_virtual_dataset_offset(h5file):
     )
 
 
-@mark.setup_args(version_name="test_version")
+@pytest.mark.setup_args(version_name="test_version")
 def test_create_virtual_dataset_offset_multidimension(h5file):
     chunks = ChunkSize(3 * (CHUNK_SIZE_3D,))
     shape = (2 * CHUNK_SIZE_3D, 2 * CHUNK_SIZE_3D, 2 * CHUNK_SIZE_3D)
@@ -645,10 +645,8 @@ def test_write_dataset_chunk_size(h5file):
     slices1 = write_dataset(
         h5file, "test_data", np.ones((2 * chunk_size,)), chunks=chunks
     )
-    raises(
-        ValueError,
-        lambda: write_dataset(h5file, "test_data", np.ones(chunks), chunks=(2**9,)),
-    )
+    with pytest.raises(ValueError):
+        write_dataset(h5file, "test_data", np.ones(chunks), chunks=(2**9,))
     slices2 = write_dataset_chunks(
         h5file,
         "test_data",
@@ -747,12 +745,12 @@ def test_write_dataset_compression(h5file):
         h5file, "test_data", data, compression="gzip", compression_opts=3
     )
 
-    with raises(ValueError):
+    with pytest.raises(ValueError):
         write_dataset(
             h5file, "test_data", np.ones((DEFAULT_CHUNK_SIZE,)), compression="lzf"
         )
 
-    with raises(ValueError):
+    with pytest.raises(ValueError):
         write_dataset(
             h5file,
             "test_data",
