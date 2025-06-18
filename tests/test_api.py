@@ -12,7 +12,6 @@ import pytest
 from h5py._hl.filters import guess_chunk
 from numpy.testing import assert_equal
 from packaging.version import Version
-from pytest import raises
 
 from versioned_hdf5 import VersionedHDF5File
 from versioned_hdf5.backend import DATA_VERSION, DEFAULT_CHUNK_SIZE
@@ -90,7 +89,7 @@ def test_stage_version_chunk_size(vfile):
     with vfile.stage_version("version1", "") as group:
         group.create_dataset("test_data", data=test_data, chunks=(chunk_size,))
 
-    with raises(ValueError):
+    with pytest.raises(ValueError):
         with vfile.stage_version("version_bad") as group:
             group.create_dataset("test_data", data=test_data, chunks=(2**9,))
 
@@ -135,11 +134,11 @@ def test_stage_version_compression(vfile):
             "test_data", data=test_data, compression="gzip", compression_opts=3
         )
 
-    with raises(ValueError):
+    with pytest.raises(ValueError):
         with vfile.stage_version("version_bad") as group:
             group.create_dataset("test_data", data=test_data, compression="lzf")
 
-    with raises(ValueError):
+    with pytest.raises(ValueError):
         with vfile.stage_version("version_bad") as group:
             group.create_dataset(
                 "test_data", data=test_data, compression="gzip", compression_opts=4
@@ -188,35 +187,35 @@ def test_version_int_slicing(vfile):
 
     assert vfile[0]["test_data"][0] == 3.0
 
-    with raises(KeyError):
+    with pytest.raises(KeyError):
         vfile["bad"]
 
-    with raises(IndexError):
+    with pytest.raises(IndexError):
         vfile[1]
 
     assert vfile[-1]["test_data"][0] == 2.0
     assert vfile[-2]["test_data"][0] == 1.0, vfile[-2]
-    with raises(IndexError):
+    with pytest.raises(IndexError):
         vfile[-3]
 
     vfile.current_version = "version2"
 
     assert vfile[0]["test_data"][0] == 2.0
     assert vfile[-1]["test_data"][0] == 1.0
-    with raises(IndexError):
+    with pytest.raises(IndexError):
         vfile[-2]
 
     vfile.current_version = "version2_1"
 
     assert vfile[0]["test_data"][0] == 2.0
     assert vfile[-1]["test_data"][0] == 1.0
-    with raises(IndexError):
+    with pytest.raises(IndexError):
         vfile[-2]
 
     vfile.current_version = "version1"
 
     assert vfile[0]["test_data"][0] == 1.0
-    with raises(IndexError):
+    with pytest.raises(IndexError):
         vfile[-1]
 
 
@@ -243,13 +242,13 @@ def test_version_name_slicing(vfile):
 
     assert vfile[0]["test_data"][0] == 3.0
 
-    with raises(IndexError):
+    with pytest.raises(IndexError):
         vfile[1]
 
     assert vfile[-1]["test_data"][0] == 2.0
     assert vfile[-2]["test_data"][0] == 1.0, vfile[-2]
 
-    with raises(ValueError):
+    with pytest.raises(ValueError):
         vfile["/_version_data"]
 
 
@@ -615,18 +614,16 @@ def test_resize_unaligned(vfile):
 
     for i in range(1, 10):
         with vfile.stage_version(str(i)) as group:
-            l = len(group[ds_name])
+            len_ = len(group[ds_name])
             assert_equal(group[ds_name][:], np.arange(i * 1000))
-            group[ds_name].resize((l + 1000,))
-            group[ds_name][-1000:] = np.arange(l, l + 1000)
+            group[ds_name].resize((len_ + 1000,))
+            group[ds_name][-1000:] = np.arange(len_, len_ + 1000)
             assert_equal(group[ds_name][:], np.arange((i + 1) * 1000))
 
 
 @pytest.mark.slow
-def test_resize_multiple_dimensions(tmp_path, h5file):
+def test_resize_multiple_dimensions(vfile):
     # Test semantics against raw HDF5
-
-    vfile = VersionedHDF5File(h5file)
     shapes = range(5, 25, 5)  # 5, 10, 15, 20
     chunks = (10, 10, 10)
     for i, (oldshape, newshape) in enumerate(
@@ -766,8 +763,8 @@ def test_timestamp_auto(vfile):
 
 
 def test_timestamp_manual(vfile):
-    data1 = np.ones((2 * DEFAULT_CHUNK_SIZE,))
-    data2 = np.ones((3 * DEFAULT_CHUNK_SIZE))
+    data1 = np.ones(2 * DEFAULT_CHUNK_SIZE)
+    data2 = np.ones(3 * DEFAULT_CHUNK_SIZE)
 
     ts1 = datetime.datetime(2020, 6, 29, 20, 12, 56, tzinfo=datetime.timezone.utc)
     ts2 = datetime.datetime(2020, 6, 29, 22, 12, 56)
@@ -776,11 +773,11 @@ def test_timestamp_manual(vfile):
 
     assert vfile["version1"].attrs["timestamp"] == ts1.strftime(TIMESTAMP_FMT)
 
-    with raises(ValueError):
+    with pytest.raises(ValueError):
         with vfile.stage_version("version2", timestamp=ts2) as group:
             group["test_data_2"] = data2
 
-    with raises(TypeError):
+    with pytest.raises(TypeError):
         with vfile.stage_version("version3", timestamp="2020-6-29") as group:
             group["test_data_3"] = data1
 
@@ -845,33 +842,42 @@ def test_getitem_by_timestamp(vfile):
 
     assert vfile[ts2_1] == v2
     assert vfile.get_version_by_timestamp(ts2_1) == v2
-    raises(KeyError, lambda: vfile.get_version_by_timestamp(ts2_1, exact=True))
+    with pytest.raises(KeyError):
+        vfile.get_version_by_timestamp(ts2_1, exact=True)
 
     assert vfile[dt2_1] == v2
     assert vfile.get_version_by_timestamp(dt2_1) == v2
-    raises(KeyError, lambda: vfile.get_version_by_timestamp(dt2_1, exact=True))
+    with pytest.raises(KeyError):
+        vfile.get_version_by_timestamp(dt2_1, exact=True)
 
     ts1_1 = ts1 + second
     dt1_1 = np.datetime64(ts1_1.replace(tzinfo=None))
 
     assert vfile[ts1_1] == v1
     assert vfile.get_version_by_timestamp(ts1_1) == v1
-    raises(KeyError, lambda: vfile.get_version_by_timestamp(ts1_1, exact=True))
+    with pytest.raises(KeyError):
+        vfile.get_version_by_timestamp(ts1_1, exact=True)
 
     assert vfile[dt1_1] == v1
     assert vfile.get_version_by_timestamp(dt1_1) == v1
-    raises(KeyError, lambda: vfile.get_version_by_timestamp(dt1_1, exact=True))
+    with pytest.raises(KeyError):
+        vfile.get_version_by_timestamp(dt1_1, exact=True)
 
     ts0 = ts1 - second
     dt0 = np.datetime64(ts0.replace(tzinfo=None))
 
-    raises(KeyError, lambda: vfile[ts0] == v1)
-    raises(KeyError, lambda: vfile.get_version_by_timestamp(ts0) == v1)
-    raises(KeyError, lambda: vfile.get_version_by_timestamp(ts0, exact=True))
-
-    raises(KeyError, lambda: vfile[dt0] == v1)
-    raises(KeyError, lambda: vfile.get_version_by_timestamp(dt0) == v1)
-    raises(KeyError, lambda: vfile.get_version_by_timestamp(dt0, exact=True))
+    with pytest.raises(KeyError):
+        vfile[ts0] == v1
+    with pytest.raises(KeyError):
+        vfile.get_version_by_timestamp(ts0)
+    with pytest.raises(KeyError):
+        vfile.get_version_by_timestamp(ts0, exact=True)
+    with pytest.raises(KeyError):
+        vfile[dt0]
+    with pytest.raises(KeyError):
+        vfile.get_version_by_timestamp(dt0)
+    with pytest.raises(KeyError):
+        vfile.get_version_by_timestamp(dt0, exact=True)
 
 
 def test_nonroot(vfile):
@@ -974,7 +980,7 @@ def test_delitem(vfile):
     assert list(vfile) == ["version1"]
     assert vfile.current_version == "version1"
 
-    with raises(KeyError):
+    with pytest.raises(KeyError):
         del vfile["version2"]
 
     del vfile["version1"]
@@ -1134,8 +1140,10 @@ def test_groups(vfile):
     )
 
     with vfile.stage_version("version-bad", "") as group:
-        raises(ValueError, lambda: group.create_dataset("/group1/test_data", data=data))
-        raises(ValueError, lambda: group.create_group("/group1"))
+        with pytest.raises(ValueError):
+            group.create_dataset("/group1/test_data", data=data)
+        with pytest.raises(ValueError):
+            group.create_group("/group1")
 
 
 def test_group_contains(vfile):
@@ -1224,7 +1232,7 @@ def test_group_contains(vfile):
     assert "/_version_data/versions/version1/group1/group2" not in version2
 
 
-def test_moved_file(setup_vfile, tmpdir):
+def test_moved_file(setup_vfile):
     h5file = setup_vfile()
     path = pathlib.Path(h5file.filename)
 
@@ -1438,7 +1446,7 @@ def test_group_chunks_compression(vfile):
 
 
 def test_closes(vfile):
-    data = np.ones((DEFAULT_CHUNK_SIZE,))
+    data = np.ones(DEFAULT_CHUNK_SIZE)
 
     with vfile.stage_version("version1") as g:
         g.create_dataset("test_data", data=data)
@@ -1453,9 +1461,9 @@ def test_closes(vfile):
 
     assert vfile._closed is True
     assert vfile.closed is True
-    raises(AttributeError, lambda: vfile.f)
-    raises(AttributeError, lambda: vfile._version_data)
-    raises(AttributeError, lambda: vfile._versions)
+    assert not hasattr(vfile, "f")
+    assert not hasattr(vfile, "_version_data")
+    assert not hasattr(vfile, "_versions")
     assert repr(vfile) == "<Closed VersionedHDF5File>"
 
     reopened_file = VersionedHDF5File(h5pyfile)
@@ -1468,8 +1476,10 @@ def test_closes(vfile):
     # Close the underlying file
     h5pyfile.close()
     assert vfile.closed is True
-    raises(ValueError, lambda: vfile["version1"])
-    raises(ValueError, lambda: vfile["version2"])
+    with pytest.raises(ValueError):
+        vfile["version1"]
+    with pytest.raises(ValueError):
+        vfile["version2"]
     assert repr(vfile) == "<Closed VersionedHDF5File>"
 
 
@@ -1522,25 +1532,25 @@ def test_check_committed(vfile):
     with vfile.stage_version("version1") as g:
         g.create_dataset("test_data", data=data)
 
-    with raises(ValueError, match="committed"):
+    with pytest.raises(ValueError, match="committed"):
         g["data"] = data
 
-    with raises(ValueError, match="committed"):
+    with pytest.raises(ValueError, match="committed"):
         g.create_dataset("data", data=data)
 
-    with raises(ValueError, match="committed"):
+    with pytest.raises(ValueError, match="committed"):
         g.create_group("subgruop")
 
-    with raises(ValueError, match="committed"):
+    with pytest.raises(ValueError, match="committed"):
         del g["test_data"]
 
     # Incorrectly uses g from the previous version (InMemoryArrayDataset)
-    with raises(ValueError, match="committed"):
+    with pytest.raises(ValueError, match="committed"):
         with vfile.stage_version("version2"):
             assert isinstance(g["test_data"], InMemoryArrayDataset)
             g["test_data"][0] = 1
 
-    with raises(ValueError, match="committed"):
+    with pytest.raises(ValueError, match="committed"):
         with vfile.stage_version("version2"):
             assert isinstance(g["test_data"], InMemoryArrayDataset)
             g["test_data"].resize((100,))
@@ -1549,13 +1559,13 @@ def test_check_committed(vfile):
         pass
 
     # Incorrectly uses g from the previous version (InMemoryDataset)
-    with raises(ValueError, match="committed"):
+    with pytest.raises(ValueError, match="committed"):
         with vfile.stage_version("version3"):
             assert isinstance(g2["test_data"], DatasetWrapper)
             assert isinstance(g2["test_data"].dataset, InMemoryDataset)
             g2["test_data"][0] = 1
 
-    with raises(ValueError, match="committed"):
+    with pytest.raises(ValueError, match="committed"):
         with vfile.stage_version("version3"):
             assert isinstance(g2["test_data"], DatasetWrapper)
             assert isinstance(g2["test_data"].dataset, InMemoryDataset)
@@ -1659,32 +1669,32 @@ def test_read_only(setup_vfile):
         with file.stage_version("version1", timestamp=timestamp) as g:
             g["data"] = [0, 1, 2]
 
-        with raises(ValueError):
+        with pytest.raises(ValueError):
             g["data"][0] = 1
-        with raises(ValueError):
+        with pytest.raises(ValueError):
             g["data2"] = [1, 2, 3]
 
-        with raises(ValueError):
+        with pytest.raises(ValueError):
             file["version1"]["data"][0] = 1
-        with raises(ValueError):
+        with pytest.raises(ValueError):
             file["version1"]["data2"] = [1, 2, 3]
 
-        with raises(ValueError):
+        with pytest.raises(ValueError):
             file[timestamp]["data"][0] = 1
-        with raises(ValueError):
+        with pytest.raises(ValueError):
             file[timestamp]["data2"] = [1, 2, 3]
 
     with h5py.File(filename, "r+") as f:
         file = VersionedHDF5File(f)
 
-        with raises(ValueError):
+        with pytest.raises(ValueError):
             file["version1"]["data"][0] = 1
-        with raises(ValueError):
+        with pytest.raises(ValueError):
             file["version1"]["data2"] = [1, 2, 3]
 
-        with raises(ValueError):
+        with pytest.raises(ValueError):
             file[timestamp]["data"][0] = 1
-        with raises(ValueError):
+        with pytest.raises(ValueError):
             file[timestamp]["data2"] = [1, 2, 3]
 
 
@@ -1937,14 +1947,16 @@ def test_no_recursive_version_group_access(vfile):
     minute = datetime.timedelta(minutes=1)
     with vfile.stage_version("version2", timestamp=timestamp2) as g:
         vfile["version1"]  # Doesn't raise
-        raises(ValueError, lambda: vfile["version2"])
+        with pytest.raises(ValueError):
+            vfile["version2"]
 
         vfile[timestamp1]  # Doesn't raise
         # Without +minute, it will pick the previous version, as the
         # uncommitted group only has a placeholder timestamp, which will be
         # after timestamp2. Since this isn't supposed to work in the first
         # place, this isn't a big deal.
-        raises(ValueError, lambda: vfile[timestamp2 + minute])
+        with pytest.raises(ValueError):
+            vfile[timestamp2 + minute]
 
 
 def test_empty_dataset_str_dtype(vfile):
@@ -2454,7 +2466,9 @@ def test_rebuild_hashtable_chunk_reuse(tmp_path, caplog):
 
 
 def test_rebuild_hashtable_chunk_reuse_unicode(tmp_path, caplog):
-    """Test that the correct chunks are used after rebuilding the tables for non-ascii data."""
+    """Test that the correct chunks are used after rebuilding the tables for
+    non-ascii data.
+    """
     caplog.set_level(logging.INFO)
 
     bad_file = TEST_DATA / "object_dtype_bad_hashtable_chunk_reuse_unicode.h5"
@@ -2527,7 +2541,9 @@ def test_rebuild_hashtable_chunk_reuse_unicode(tmp_path, caplog):
 
 
 def test_rebuild_hashtable_chunk_reuse_multi_dim(tmp_path, caplog):
-    """Test that the correct chunks are used after rebuilding the tables for a multi-dimensional array."""
+    """Test that the correct chunks are used after rebuilding the tables for a
+    multi-dimensional array.
+    """
     caplog.set_level(logging.INFO)
 
     bad_file = TEST_DATA / "object_dtype_bad_hashtable_chunk_reuse_multi_dim.h5"
@@ -2716,7 +2732,8 @@ def test_make_empty_dataset(tmp_path):
 
 
 def test_make_empty_multidimensional_dataset(tmp_path):
-    """Check that creating a multidimensional dataset before making it empty can be done successfully.
+    """Check that creating a multidimensional dataset before making it empty can be
+    done successfully.
 
     See https://github.com/deshaw/versioned-hdf5/issues/430 for context.
     """
@@ -2922,7 +2939,7 @@ def test_other_compression_validates(tmp_path, library):
 
 @pytest.mark.parametrize("dtype", ["i2", int, float, np.uint8])
 def test_create_dataset_dtype_arg(vfile, dtype):
-    with vfile.stage_version(f"r0") as sv:
+    with vfile.stage_version("r0") as sv:
         dset = sv.create_dataset("x", shape=(2,), dtype=dtype)
         assert isinstance(dset.dtype, np.dtype)
         assert dset.dtype == np.dtype(dtype)
@@ -2931,7 +2948,7 @@ def test_create_dataset_dtype_arg(vfile, dtype):
         assert isinstance(dset.dtype, np.dtype)
         assert dset.dtype == np.dtype(dtype)
 
-    with vfile.stage_version(f"r1") as sv:
+    with vfile.stage_version("r1") as sv:
         dset = sv["x"]
         assert isinstance(dset.dtype, np.dtype)
         assert dset.dtype == np.dtype(dtype)

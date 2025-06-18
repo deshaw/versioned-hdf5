@@ -230,6 +230,8 @@ def test_chunks_indexer(args):
 @given(idx_shape_chunks_st(max_ndim=1))
 @hypothesis.settings(max_examples=max_examples, deadline=None)
 def test_read_many_slices_param(args):
+    rng = np.random.default_rng(42)
+
     idx, shape, chunks = args
     _, mappers = index_chunk_mappers(idx, shape, chunks)
     if not mappers:
@@ -251,7 +253,7 @@ def test_read_many_slices_param(args):
     # Randomize the order of the chunks on the slab.
     # Note that the last chunk may be smaller than chunk_size,
     # so we may end up with an area of the slab full off zeros.
-    slab_offsets = np.random.permutation(slab_offsets)
+    slab_offsets = rng.permutation(slab_offsets)
     slab = np.zeros(mapper.n_chunks * chunk_size, dtype=source.dtype)
     for i, offset in enumerate(slab_offsets.tolist()):
         chunk = source[i * chunk_size : (i + 1) * chunk_size]
@@ -306,6 +308,7 @@ def test_read_many_slices_param(args):
 @given(idx_shape_chunks_st())
 @hypothesis.settings(max_examples=max_examples, deadline=None)
 def test_read_many_slices_param_nd(args):
+    rng = np.random.default_rng(42)
     idx, shape, chunks = args
     _, mappers = index_chunk_mappers(idx, shape, chunks)
     if not mappers:
@@ -324,7 +327,7 @@ def test_read_many_slices_param_nd(args):
     # we just need the chunks impacted by the index.
     n_chunks = np.prod([m.n_chunks for m in mappers])
     slab = np.zeros((n_chunks * chunks[0], *chunks[1:]), dtype=source.dtype)
-    slab_offsets = np.random.choice(  # randomize slab order
+    slab_offsets = rng.choice(  # randomize slab order
         np.arange(0, n_chunks * chunks[0], chunks[0], dtype=np_hsize_t),
         size=len(chunk_idxidx),
         replace=False,
@@ -399,7 +402,7 @@ def test_read_many_slices_param_nd(args):
 
     # And finally slab-to-slab
     slab2slab_dst = np.zeros_like(slab)
-    dst_slab_offsets = np.random.permutation(slab_offsets)
+    dst_slab_offsets = rng.permutation(slab_offsets)
     slab2slab_slices_nd = read_many_slices_params_nd(
         TransferType.slab_to_slab,
         mappers,

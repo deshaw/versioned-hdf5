@@ -254,7 +254,9 @@ def test_asarray():
 
     if NP_GE_200:
         assert isinstance(np.asarray(arr, copy=True), np.ndarray)
-        with pytest.raises(ValueError):
+        with pytest.raises(
+            ValueError, match="Cannot return a ndarray view of a StagedChangesArray"
+        ):
             np.asarray(arr, copy=False)
 
 
@@ -359,7 +361,7 @@ def test_copy():
     # staged slabs are turned into read-only views
     assert c.slabs[2].base is a.slabs[2].base
     assert not c.slabs[2].flags.writeable
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="must be a writeable numpy array"):
         c[0, 1] = 5
 
 
@@ -733,7 +735,7 @@ def test_invalid_parameters():
         )
 
     a = StagedChangesArray.full((2,), (2,))
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Cannot delete"):
         del a[0]
     with pytest.raises(ValueError, match="scalar"):
         a.refill(np.zeros(2))
@@ -742,7 +744,9 @@ def test_invalid_parameters():
     with pytest.raises(ValueError, match="non-negative"):
         a.resize((-1,))
     if NP_GE_200:
-        with pytest.raises(ValueError):
+        with pytest.raises(
+            ValueError, match="Cannot return a ndarray view of a StagedChangesArray"
+        ):
             np.asarray(a, copy=False)
 
 

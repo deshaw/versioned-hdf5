@@ -5,7 +5,7 @@ import uuid
 from collections.abc import Callable
 
 import h5py
-from pytest import fixture
+import pytest
 
 from versioned_hdf5 import VersionedHDF5File
 from versioned_hdf5.backend import initialize
@@ -21,27 +21,26 @@ def pytest_collection_modifyitems(items):
     items.sort(key=by_slow_marker)
 
 
-@fixture
+@pytest.fixture
 def filepath(tmp_path, request):
     file_name = os.path.join(tmp_path, "file.hdf5")
     m = request.node.get_closest_marker("setup_args")
-    if m is not None:
-        if "file_name" in m.kwargs.keys():
-            file_name = m.kwargs["file_name"]
-    yield file_name
+    if m is not None and "file_name" in m.kwargs:
+        file_name = m.kwargs["file_name"]
+    return file_name
 
 
-@fixture
+@pytest.fixture
 def h5file(setup_vfile, tmp_path, request):
     file_name = os.path.join(tmp_path, "file.hdf5")
     version_name = None
     m = request.node.get_closest_marker("setup_args")
     if m is not None:
-        if "file_name" in m.kwargs.keys():
+        if "file_name" in m.kwargs:
             file_name = m.kwargs["file_name"]
-        if "name" in m.kwargs.keys():
+        if "name" in m.kwargs:
             raise ValueError("The name argument is no longer used")
-        if "version_name" in m.kwargs.keys():
+        if "version_name" in m.kwargs:
             version_name = m.kwargs["version_name"]
 
     f = setup_vfile(file_name=file_name, version_name=version_name)
@@ -63,8 +62,8 @@ def h5file(setup_vfile, tmp_path, request):
         raise
 
 
-@fixture
-def vfile(tmp_path, h5file):
+@pytest.fixture
+def vfile(h5file):
     file = VersionedHDF5File(h5file)
     yield file
     file.close()
@@ -331,7 +330,7 @@ def _check_running_version(target):
     try:
         from versioned_hdf5.backend import DATA_VERSION  # noqa: F401
     except ImportError:
-        DATA_VERSION = None  # noqa: N806
+        DATA_VERSION = None
 
     if DATA_VERSION != target:
         raise ImportError(
@@ -340,9 +339,11 @@ def _check_running_version(target):
         )
 
 
-@fixture
+@pytest.fixture
 def setup_vfile(tmp_path: str) -> Callable[[str | None, str | None], h5py.File]:
-    """Fixture which provides a function that creates an hdf5 file, optionally with groups."""
+    """Fixture which provides a function that creates an hdf5 file, optionally
+    with groups.
+    """
 
     def _setup_vfile(file_name="file.hdf5", *, version_name=None):
         f = h5py.File(tmp_path / file_name, "w")

@@ -943,8 +943,8 @@ def read_many_slices_params_nd(
     """
     # Hack around lack of cython enums in pure python mode
     transfer_type_int: cython.int = transfer_type.value
-    TRANSFER_TYPE_GETITEM: cython.int = TransferType.getitem.value  # noqa: N806
-    TRANSFER_TYPE_SETITEM: cython.int = TransferType.setitem.value  # noqa: N806
+    TRANSFER_TYPE_GETITEM: cython.int = TransferType.getitem.value
+    TRANSFER_TYPE_SETITEM: cython.int = TransferType.setitem.value
 
     nchunks = chunk_idxidx.shape[0]
     ndim = chunk_idxidx.shape[1]
