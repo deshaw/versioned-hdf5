@@ -1446,7 +1446,7 @@ def test_group_chunks_compression(vfile):
 
 
 def test_closes(vfile):
-    data = np.ones((DEFAULT_CHUNK_SIZE,))
+    data = np.ones(DEFAULT_CHUNK_SIZE)
 
     with vfile.stage_version("version1") as g:
         g.create_dataset("test_data", data=data)
@@ -1461,9 +1461,9 @@ def test_closes(vfile):
 
     assert vfile._closed is True
     assert vfile.closed is True
-    pytest.raises(AttributeError, lambda: vfile.f)
-    pytest.raises(AttributeError, lambda: vfile._version_data)
-    pytest.raises(AttributeError, lambda: vfile._versions)
+    assert not hasattr(vfile, "f")
+    assert not hasattr(vfile, "_version_data")
+    assert not hasattr(vfile, "_versions")
     assert repr(vfile) == "<Closed VersionedHDF5File>"
 
     reopened_file = VersionedHDF5File(h5pyfile)
@@ -1476,8 +1476,10 @@ def test_closes(vfile):
     # Close the underlying file
     h5pyfile.close()
     assert vfile.closed is True
-    pytest.raises(ValueError, lambda: vfile["version1"])
-    pytest.raises(ValueError, lambda: vfile["version2"])
+    with pytest.raises(ValueError):
+        vfile["version1"]
+    with pytest.raises(ValueError):
+        vfile["version2"]
     assert repr(vfile) == "<Closed VersionedHDF5File>"
 
 
