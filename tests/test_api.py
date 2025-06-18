@@ -2540,7 +2540,8 @@ def test_rebuild_hashtable_chunk_reuse_unicode(tmp_path, caplog):
 
 def test_rebuild_hashtable_chunk_reuse_multi_dim(tmp_path, caplog):
     """Test that the correct chunks are used after rebuilding the tables for a
-    multi-dimensional array."""
+    multi-dimensional array.
+    """
     caplog.set_level(logging.INFO)
 
     bad_file = TEST_DATA / "object_dtype_bad_hashtable_chunk_reuse_multi_dim.h5"
