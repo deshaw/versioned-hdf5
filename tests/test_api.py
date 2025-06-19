@@ -1483,33 +1483,39 @@ def test_closes(vfile):
     assert repr(vfile) == "<Closed VersionedHDF5File>"
 
 
-def test_scalar_dataset(setup_vfile):
-    for data1, data2 in [
+@pytest.mark.parametrize(
+    "data1,data2",
+    [
         (b"baz", b"foo"),
         (np.asarray("baz", dtype="S"), np.asarray("foo", dtype="S")),
+        (
+            np.asarray("baz", dtype=h5py.string_dtype()),
+            np.asarray("foo", dtype=h5py.string_dtype()),
+        ),
         (1.5, 2.3),
         (1, 0),
-    ]:
-        dt = np.asarray(data1).dtype
-        with setup_vfile() as f:
-            file = VersionedHDF5File(f)
-            with file.stage_version("v1") as group:
-                group["scalar_ds"] = data1
+        (np.int16(1), np.int16(2)),
+    ],
+)
+def test_scalar_dataset(setup_vfile, data1, data2):
+    dt = np.asarray(data1).dtype
+    with setup_vfile() as f:
+        file = VersionedHDF5File(f)
+        with file.stage_version("v1") as group:
+            group["scalar_ds"] = data1
 
-            v1_ds = file["v1"]["scalar_ds"]
-            assert v1_ds[()] == data1
-            assert v1_ds.shape == ()
-            assert v1_ds.dtype == dt
+        v1_ds = file["v1"]["scalar_ds"]
+        assert v1_ds[()] == data1
+        assert v1_ds.shape == ()
+        assert v1_ds.dtype == dt
 
-            with file.stage_version("v2") as group:
-                group["scalar_ds"] = data2
+        with file.stage_version("v2") as group:
+            group["scalar_ds"] = data2
 
-            v2_ds = file["v2"]["scalar_ds"]
-            assert v2_ds[()] == data2
-            assert v2_ds.shape == ()
-            assert v2_ds.dtype == dt
-
-        file.close()
+        v2_ds = file["v2"]["scalar_ds"]
+        assert v2_ds[()] == data2
+        assert v2_ds.shape == ()
+        assert v2_ds.dtype == dt
 
 
 def test_store_binary_as_void(vfile):
