@@ -261,6 +261,7 @@ def test_tight_iteration_big_O_performance(h5file):
             large[i + 1, :] = np.strings.capitalize(large.astype("T")[i, :])
         t2 = time.thread_time()
 
+        # print(type(getattr(small, "dataset", small)).__name__, t1 - t0, t2 - t1)  # DNM
         # Generously allow 5x difference in performance to ensure stability.
         # If there are conversions of the whole dataset, we're going to get 100x.
         np.testing.assert_allclose(t2 - t1, t1 - t0, rtol=5, atol=0)

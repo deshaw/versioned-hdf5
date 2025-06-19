@@ -463,11 +463,22 @@ class BufferMixin(abc.ABC):
     _swaps_counter: int = 0
 
     def _maybe_swap_string_dtype(self, dtype: np.dtype) -> None:
+        #### DNM
+        # def dbg_dtype(n, d):
+        #     print(f"  {n}={d} metadata={d.metadata} vstring={is_vstring_dtype(d)=}")
+
+        # print(f"_maybe_swap_string_dtype")
+        # dbg_dtype("dtype", dtype)
+        # dbg_dtype("self.dtype", self.dtype)
+        # dbg_dtype("self._buffer.dtype", self._buffer.dtype)
+        #### /DNM
+
         if (
             not HAS_NPYSTRINGS
             or self._buffer.dtype == dtype
             or not (is_vstring_dtype(self._buffer.dtype) and is_vstring_dtype(dtype))
         ):
+            # print("  DO NOT swap")  # DNM
             return
 
         has_staged_changes = (
@@ -495,6 +506,9 @@ class BufferMixin(abc.ABC):
                 )
 
         self._buffer = self._astype_impl(dtype, writeable=True)
+        # print(f"  {has_staged_changes=}")  # DNM
+        # print(f"  {self._swaps_counter=}")  # DNM
+        # dbg_dtype("NEW self._buffer.dtype", self._buffer.dtype)  # DNM
 
     def __array__(
         self,
@@ -509,12 +523,15 @@ class BufferMixin(abc.ABC):
         return np.asarray(out, copy=copy)
 
     def __getitem__(self, index) -> MutableArrayProtocol:
+        # print(f"__getitem__ calling _maybe_swap_string_dtype({self.dtype})")  # DNM
         self._maybe_swap_string_dtype(self.dtype)
         assert self._buffer.dtype == self.dtype  # Thanks to _maybe_swap_string_dtype
         return self._buffer[index]
 
     def __setitem__(self, index, value: ArrayLike) -> None:
+        # print(f"BufferMixin.__setitem__({index}, {value!r})")  # DNM
         if hasattr(value, "dtype"):
+            # print(f"__setitem__ calling _maybe_swap_string_dtype({value.dtype})")  # DNM
             self._maybe_swap_string_dtype(value.dtype)
         else:
             value = np.asarray(value, dtype=self._buffer.dtype)
@@ -522,6 +539,7 @@ class BufferMixin(abc.ABC):
 
     def astype(self, dtype: DTypeLike) -> MutableArrayProtocol:
         dtype = np.dtype(dtype)
+        # print(f"astype() calling _maybe_swap_string_dtype({dtype})")  # DNM
         self._maybe_swap_string_dtype(dtype)
         return self._astype_impl(dtype, writeable=False)
 
