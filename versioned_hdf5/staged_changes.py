@@ -40,7 +40,6 @@ if cython.compiled:  # pragma: nocover
 
 
 T = TypeVar("T", bound=np.generic)
-Casting = Literal["no", "equiv", "safe", "same_kind", "unsafe"]
 
 
 class StagedChangesArray(MutableMapping[Any, T]):
@@ -159,6 +158,9 @@ class StagedChangesArray(MutableMapping[Any, T]):
     #: Staged slabs start at index n_base_slabs + 1.
     n_base_slabs: int
 
+    #: Set to False to disable mutating methods
+    writeable: bool
+
     __slots__ = tuple(__annotations__)
 
     def __init__(
@@ -184,6 +186,7 @@ class StagedChangesArray(MutableMapping[Any, T]):
 
         self.shape = shape
         self._resized = False
+        self.writeable = True
 
         dtype = base_slabs[0].dtype if base_slabs else None
         if fill_value is None:
@@ -278,12 +281,17 @@ class StagedChangesArray(MutableMapping[Any, T]):
         return self.n_slabs - self.n_base_slabs - 1
 
     @property
+    def staged_slabs_start(self) -> int:
+        """First index of staged slabs inside self.slabs"""
+        return self.n_base_slabs + 1
+
+    @property
     def base_slabs(self) -> Sequence[NDArray[T] | None]:
-        return self.slabs[1 : self.n_base_slabs + 1]
+        return self.slabs[1 : self.staged_slabs_start]
 
     @property
     def staged_slabs(self) -> Sequence[NDArray[T] | None]:
-        return self.slabs[self.n_base_slabs + 1 :]
+        return self.slabs[self.staged_slabs_start :]
 
     @property
     def has_changes(self) -> bool:
@@ -295,7 +303,8 @@ class StagedChangesArray(MutableMapping[Any, T]):
     def __array__(self, dtype=None, copy=None) -> NDArray[T]:
         if copy is False:
             raise ValueError("Cannot return a ndarray view of a StagedChangesArray")
-        return np.asarray(self[()], dtype=dtype)
+        out = self if dtype in (None, self.dtype) else self.astype(dtype)
+        return np.asarray(out[()])
 
     def __len__(self) -> int:
         return self.shape[0]
@@ -322,7 +331,10 @@ class StagedChangesArray(MutableMapping[Any, T]):
     # intended to be used during demo or debugging sessions, e.g. in a Jupyter notebook.
 
     def _changes_plan(self) -> ChangesPlan:
-        """Formulate a plan to export all the staged and unchanged chunks."""
+        """Formulate a plan to export all the staged and unchanged chunks.
+
+        This is a read-only operation.
+        """
         return ChangesPlan(
             shape=self.shape,
             chunk_size=self.chunk_size,
@@ -331,7 +343,10 @@ class StagedChangesArray(MutableMapping[Any, T]):
         )
 
     def _getitem_plan(self, idx: Any) -> GetItemPlan:
-        """Formulate a plan to get a slice of the array."""
+        """Formulate a plan to get a slice of the array.
+
+        This is a read-only operation.
+        """
         return GetItemPlan(
             idx,
             shape=self.shape,
@@ -360,6 +375,10 @@ class StagedChangesArray(MutableMapping[Any, T]):
                 until it's consumed by __setitem__.
                 This is useful for debugging and testing.
         """
+        # When writeable=False, we're going to abort the operation later.
+        # Having copy=False would result in a corrupted state.
+        copy = copy or not self.slab_indices.flags.writeable
+
         return SetItemPlan(
             idx,
             shape=self.shape,
@@ -371,7 +390,14 @@ class StagedChangesArray(MutableMapping[Any, T]):
         )
 
     def _resize_plan(self, shape: tuple[int, ...], copy: bool = True) -> ResizePlan:
-        """Formulate a plan to resize the array."""
+        """Formulate a plan to resize the array in place.
+
+        See Also
+        --------
+        _setitem_plan
+        """
+        copy = copy or not self.slab_indices.flags.writeable
+
         return ResizePlan(
             old_shape=self.shape,
             new_shape=shape,
@@ -383,7 +409,14 @@ class StagedChangesArray(MutableMapping[Any, T]):
         )
 
     def _load_plan(self, copy: bool = True) -> LoadPlan:
-        """Formulate a plan to load all chunks from the base slabs."""
+        """Formulate a plan to load all chunks from the base slabs into staged slabs.
+
+        See Also
+        --------
+        _setitem_plan
+        """
+        copy = copy or not self.slab_indices.flags.writeable
+
         return LoadPlan(
             shape=self.shape,
             chunk_size=self.chunk_size,
@@ -394,12 +427,42 @@ class StagedChangesArray(MutableMapping[Any, T]):
         )
 
     def _get_slab(
-        self, idx: int | None, default: NDArray[T] | None = None
+        self,
+        idx: int | None,
+        default: NDArray[T] | None = None,
+        writeable: bool = False,
     ) -> NDArray[T]:
+        """Fetch a slab by index, or the __getitem__/__setitem__ array if idx is None.
+
+        If there was a previous call to copy() and the slab is going to be mutated,
+        eagerly perform a deep-copy of the slab before returning it.
+        If there was a previous call to astype(), eagerly convert the slab to the new
+        dtype. In both cases, the returned slab replaces the previous one in self.slabs.
+        """
         slab = self.slabs[idx] if idx is not None else default
         assert slab is not None
-        assert slab.dtype == self.dtype, (slab.dtype, self.dtype)
         assert slab.ndim == self.ndim
+
+        if slab.dtype != self.dtype:
+            # There was a previous call to astype().
+            # `slab` Must be a staged slab.
+            # The full slab and __setitem__ value are converted eagerly.
+            # Base slabs are eagerly loaded or swapped out.
+            assert idx is not None
+            assert idx > self.n_base_slabs  # only staged slabs are converted lazily
+            slab = asarray(slab, dtype=self.dtype)
+            self.slabs[idx] = slab
+
+        if writeable:
+            # dst_slab is either a staged slab or the return value of __getitem__
+            assert isinstance(slab, np.ndarray)
+            if not slab.flags.writeable:
+                assert idx is not None  # __getitem__ return value is always writeable
+                assert idx > self.n_base_slabs  # Only staged slabs are writeable
+                # There was a previous call to copy()
+                slab = slab.copy()
+                self.slabs[idx] = slab
+
         return slab
 
     def changes(
@@ -418,6 +481,10 @@ class StagedChangesArray(MutableMapping[Any, T]):
         >> for idx, _, value in staged_array.changes():
         ..     if isinstance(value, np.ndarray):
         ..         virtual_base[idx] = value
+
+        This is functionally a read-only operation; however chunks that were lazily
+        converted with :meth:`astype` are going to be actually replaced in
+        ``self.slabs``.
         """
         plan = self._changes_plan()
 
@@ -434,6 +501,10 @@ class StagedChangesArray(MutableMapping[Any, T]):
         """Get a slice of data from the array. This reads from the staged slabs
         in memory when available and from either the base slab or the fill_value
         otherwise.
+
+        This is functionally a read-only operation; however chunks that were lazily
+        converted with :meth:`astype` are going to be actually replaced in
+        ``self.slabs``.
 
         Returns
         -------
@@ -464,7 +535,7 @@ class StagedChangesArray(MutableMapping[Any, T]):
 
             assert tplan.dst_slab_idx is not None
             assert tplan.dst_slab_idx > self.n_base_slabs
-            dst_slab = self._get_slab(tplan.dst_slab_idx)
+            dst_slab = self._get_slab(tplan.dst_slab_idx, writeable=True)
 
             tplan.transfer(src_slab, dst_slab)
 
@@ -485,6 +556,9 @@ class StagedChangesArray(MutableMapping[Any, T]):
         hold all such chunks, then copy the chunks from the full slab or a base slab to
         the new slab, and finally update the new slab from the value parameter.
         """
+        if not self.writeable:
+            raise ValueError("assignment destination is read-only")
+
         plan = self._setitem_plan(idx, copy=False)
         if not plan.mutates:
             return
@@ -516,6 +590,9 @@ class StagedChangesArray(MutableMapping[Any, T]):
         list is replaced with None.
         This may cause base slabs to be dereferenced, but never the full slab.
         """
+        if not self.writeable:
+            raise ValueError("assignment destination is read-only")
+
         # Sanitize input (e.g. convert np.int64 to int)
         shape = tuple(int(s) for s in shape)
 
@@ -530,54 +607,87 @@ class StagedChangesArray(MutableMapping[Any, T]):
 
     def load(self) -> None:
         """Load all chunks that are not yet in memory from the base array."""
-        if all(slab is None for slab in self.slabs[1 : self.n_base_slabs + 1]):
+        if all(slab is None for slab in self.base_slabs):
             return
+        if not self.writeable:
+            raise ValueError("assignment destination is read-only")
+
         plan = self._load_plan(copy=False)
         self._apply_mutating_plan(plan)  # This may be a no-op
 
-    def copy(self, deep: bool = True) -> StagedChangesArray[T]:
-        """Return a copy of self. If deep=True, slabs are deep-copied.
-        If deep=False, the copy gets read-only views of the slabs and attempts to
-        change them will fail.
+    def copy(self) -> StagedChangesArray[T]:
+        """Return a writeable Copy-on-Write (CoW) copy of self.
 
+        Staged slabs will be individually deep-copied upon first access on either side.
         Read-only full slab and base slabs are never copied.
         """
-        out = copy.copy(self)
-        out.slab_indices = self.slab_indices.copy()
-        out.slab_offsets = self.slab_offsets.copy()
-        out.slabs = self.slabs[: self.n_base_slabs + 1]
+        # Force _setitem_plan, _resize_plan, and _load_plan to deep copy
+        self.slab_indices.flags.writeable = False
+        self.slab_offsets.flags.writeable = False
         for slab in self.staged_slabs:
             if slab is not None:
-                if deep:
-                    slab = slab.copy()
-                else:
-                    slab = slab[()]
-                    slab.flags.writeable = False
-            out.slabs.append(slab)
+                # Force _get_slab() to deep-copy upon the first write access
+                slab.flags.writeable = False
+
+        out = copy.copy(self)  # Shallow object copy
+        out.slabs = self.slabs.copy()  # Shallow list copy
+        out.writeable = True  # Coherently with np.ndarray.copy()
         return out
 
     def astype(
         self,
         dtype: DTypeLike,
-        casting: Casting = "unsafe",
+        base_slabs: Sequence[NDArray[T]] | None = None,
     ) -> StagedChangesArray:
         """Return a new StagedChangesArray with a different dtype.
 
-        Chunks that are not yet staged are loaded from the base slabs.
-        """
-        if self.dtype == dtype:
-            return self.copy(deep=True)
+        Staged slabs will be converted lazily, upon first access.
 
-        out = self.copy(deep=False)
-        out.load()  # Create new slabs and set all the base slabs to None
+        Parameters
+        ----------
+        dtype:
+            The new dtype.
+        base_slabs: optional
+            If provided, the new base slabs. Must have the same shapes as the original
+            base_slabs be of the new dtype.
+            If omitted, load into memory all chunks that are not yet staged and
+            dereference the previous base slabs.
+        """
+        out = self.copy()
+        dtype = np.dtype(dtype)
+        if self.dtype == dtype:
+            return out
+
+        if base_slabs is None:
+            # Load all base slabs, if any, into new staged slabs
+            # and set all the base slabs to None
+            out.load()
+        else:
+            # Hot-swap the base slabs
+            for i, old in enumerate(out.base_slabs):
+                if old is None:
+                    continue
+                new = base_slabs[i]
+                if new is None:
+                    raise TypeError(f"new base_slabs[{i}] is None but old one isn't")
+                if new.dtype != dtype:
+                    raise TypeError(
+                        f"base_slabs[{i}] mismatched dtype: {new.dtype} != {dtype}"
+                    )
+                if new.shape != old.shape:
+                    raise ValueError(
+                        f"base_slabs[{i}] mismatched shape: {new.shape} != {old.shape}"
+                    )
+                out.slabs[i + 1] = new  # offset by the full slab at index 0
+
+        # Convert the full slab; this has to happen after calling out.load().
         out.slabs[0] = np.broadcast_to(
-            out.fill_value.astype(dtype, casting=casting),
-            out.chunk_size,
+            asarray(out.fill_value, dtype=dtype), out.chunk_size
         )
-        out.slabs[1:] = [
-            slab.astype(dtype, casting=casting) if slab is not None else None
-            for slab in out.slabs[1:]
-        ]
+
+        # Leave the staged slabs as read-only views of the original slabs, with
+        # original dtype. They will be converted lazily, upon first access, by
+        # _get_slab(). This includes any base slabs we just loaded with out.load().
         return out
 
     def refill(self, fill_value: Any) -> StagedChangesArray[T]:
@@ -591,14 +701,20 @@ class StagedChangesArray(MutableMapping[Any, T]):
         if fill_value.ndim != 0:
             raise ValueError("fill_value must be a scalar")
 
-        out = self.copy(deep=True)
-        if fill_value != self.fill_value:
-            out.load()
-            out.slabs[0] = np.broadcast_to(fill_value, out.chunk_size)
-            for slab in out.staged_slabs:
-                if slab is not None:
-                    slab[slab == self.fill_value] = fill_value
+        out = self.copy()
+        if fill_value == self.fill_value:
+            return out
 
+        out.load()
+        out.slabs[0] = np.broadcast_to(fill_value, out.chunk_size)
+        for idx, slab in enumerate(out.staged_slabs, start=out.staged_slabs_start):
+            if slab is None:
+                continue
+            mask = slab == self.fill_value
+            if np.any(mask):
+                # Potentially remove read-only flag and convert dtype
+                slab = out._get_slab(idx, writeable=True)
+                slab[mask] = fill_value
         return out
 
     @staticmethod
