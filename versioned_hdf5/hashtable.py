@@ -135,7 +135,7 @@ class Hashtable(MutableMapping):
                 # Use little-endian byte order (e.g. x86, ARM) for consistency
                 # everywhere, even on big-endian architectures (e.g. PowerPC).
                 hash_value.update(struct.pack("<Q", len(value)))
-                # Hash the buffer of bytes, bytearray, memoryview, etc.
+                # Hash the buffer of bytes.
                 hash_value.update(value)
         else:
             hash_value.update(np.ascontiguousarray(data))
