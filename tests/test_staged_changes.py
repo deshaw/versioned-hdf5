@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import time
 from typing import Any, Literal
 
@@ -228,20 +229,17 @@ def test_array_protocol_from_slabs():
     np.testing.assert_array_equal(arr, expect, strict=True)
 
     # StagedChangesArray.load(), copy(), astype()  # noqa: ERA001
-    arr2 = arr.copy(deep=True)
-    arr3 = arr.copy(deep=False)
-    arr4 = arr.astype("i4")
+    arr2 = arr.copy()
+    arr3 = arr.astype("i4")
     arr.load()
 
     assert arr.slabs[1] is None
     assert arr2.slabs[1] is base_slab
-    assert arr3.slabs[1] is base_slab
-    assert arr4.slabs[1] is None
+    assert arr3.slabs[1] is None
 
     np.testing.assert_array_equal(arr, expect, strict=True)
     np.testing.assert_array_equal(arr2, expect, strict=True)
-    np.testing.assert_array_equal(arr3, expect, strict=True)
-    np.testing.assert_array_equal(arr4, expect.astype("i4"), strict=True)
+    np.testing.assert_array_equal(arr3, expect.astype("i4"), strict=True)
 
 
 def test_asarray():
@@ -340,29 +338,38 @@ def test_shrinking_does_not_reuse_partial_chunks(starting_size):
 
 
 def test_copy():
-    a = StagedChangesArray.from_array([[1, 2]], chunk_size=(1, 1), fill_value=42)
-    a.resize((1, 3))
-    a[0, 1] = 4
-    assert_array_equal(a, [[1, 4, 42]])
-    assert_array_equal(a.slab_indices, [[1, 3, 0]])
+    a = StagedChangesArray.from_array([1, 2, 3], chunk_size=(1,), fill_value=42)
+    a[2] = 4
+    a.resize((2,))  # Set a.slabs[2] to None
+    a.resize((3,))
+    a[1] = 4
+    assert_array_equal(a, [1, 4, 42])
+    assert_array_equal(a.slab_indices, [1, 3, 0])
+    assert a.slabs[2] is None
 
-    b = a.copy(deep=True)
-    assert b.slabs[0] is a.slabs[0]  # full slab is shared
-    assert b.slabs[1] is a.slabs[1]  # base slabs are shared
-    # staged slabs are deep-copied
-    b[0, 1] = 5
-    assert_array_equal(b.slab_indices, [[1, 3, 0]])
-    assert_array_equal(a, [[1, 4, 42]])
-    assert_array_equal(b, [[1, 5, 42]])
+    b = a.copy()
+    # All slabs are shared
+    # staged slabs have been changed to read-only views on both sides
+    kwargs = {"strict": True} if sys.version_info >= (3, 10) else {}
+    assert a.slab_indices is b.slab_indices
+    assert a.slab_offsets is b.slab_offsets
+    for a_slab, b_slab in zip(a.slabs, b.slabs, **kwargs):
+        assert a_slab is b_slab
+    assert not a.slabs[3].flags.writeable
 
-    c = a.copy(deep=False)
-    assert b.slabs[0] is a.slabs[0]  # full slab is shared
-    assert c.slabs[1] is a.slabs[1]  # base slabs are shared
-    # staged slabs are turned into read-only views
-    assert c.slabs[2].base is a.slabs[2].base
-    assert not c.slabs[2].flags.writeable
-    with pytest.raises(ValueError, match="must be a writeable numpy array"):
-        c[0, 1] = 5
+    # Upon first change on either side, slab_indices, slab_offsets,
+    # and the staged slabs are deep-copied
+    a[0] = 5
+    a.resize((4,))  # Force change in slab_indices and slab_offsets
+    assert_array_equal(a, [5, 4, 42, 42])
+    assert_array_equal(b, [1, 4, 42])
+    b[0] = 6
+    b.resize((2,))
+    assert_array_equal(a, [5, 4, 42, 42])
+    assert_array_equal(b, [6, 4])
+
+    assert a.slab_indices is not b.slab_indices
+    assert a.slab_offsets is not b.slab_offsets
 
 
 def test_astype():
@@ -393,15 +400,135 @@ def test_astype():
     assert_array_equal(b.slab_indices, [[5, 4, 0]])
 
     assert a.dtype == "f4"
+    assert b.n_base_slabs == 3
+    assert b.n_staged_slabs == 2
     for slab in a.slabs:
         assert slab is None or slab.dtype == "f4"
 
     assert b.dtype == "i2"
-    for slab in b.slabs:
-        assert slab is None or slab.dtype == "i2"
+    assert b.full_slab.dtype == "i2"
+    assert b.base_slabs == [None, None, None]
+    assert b.n_staged_slabs == 2
+    for slab in b.staged_slabs:
+        # astype() is lazy on staged slabs
+        assert slab.dtype == "f4"
 
     assert_array_equal(a, np.array([[1, 4, 0]], dtype="f4"), strict=True)
     assert_array_equal(b, np.array([[1, 4, 0]], dtype="i2"), strict=True)
+
+    for slab in b.staged_slabs:
+        # Lazy conversion happened
+        assert slab.dtype == "i2"
+
+
+def test_astype_base_slabs():
+    a = StagedChangesArray(
+        shape=(3,),
+        chunk_size=(1,),
+        base_slabs=[
+            np.array([1, 2], dtype="i1"),
+            np.array([3, 4], dtype="i1"),
+        ],
+        slab_indices=[1, 1, 2],
+        slab_offsets=[0, 1, 0],
+    )
+    a[1] = 4  # base slab -> staged slab; chunks remain on the base slab
+    a.resize((2,))  # drop base_slabs[1]
+    assert a.slab_indices.tolist() == [1, 3]
+    assert a.slab_offsets.tolist() == [0, 0]
+    assert a.base_slabs[1] is None
+    base_slabs = [np.array([6, 7], dtype="i2"), None]
+    b = a.astype("i2", base_slabs=base_slabs)
+    assert b.base_slabs[0] is base_slabs[0]
+    assert_array_equal(a, np.array([1, 4], dtype="i1"), strict=True)
+    assert_array_equal(b, np.array([6, 4], dtype="i2"), strict=True)
+
+    # It's ok to pass non-None base slabs when the replaced base slabs are None;
+    # they won't be referenced in the slabs list.
+    base_slabs = [np.array([6, 7], dtype="i2"), np.array([8, 9], dtype="i2")]
+    b = a.astype("i2", base_slabs=base_slabs)
+    assert b.base_slabs[0] is base_slabs[0]
+    assert b.base_slabs[1] is None
+    assert_array_equal(b, np.array([6, 4], dtype="i2"), strict=True)
+
+    with pytest.raises(TypeError, match=r"base_slabs\[0\] is None"):
+        a.astype("i2", base_slabs=[None, None])
+    with pytest.raises(IndexError):
+        a.astype("i2", base_slabs=[])
+    with pytest.raises(TypeError, match="dtype"):
+        a.astype("i2", base_slabs=[np.array([6, 7], dtype="i4"), None])
+    with pytest.raises(ValueError, match="shape"):
+        a.astype("i2", base_slabs=[np.array([6], dtype="i2"), None])
+    with pytest.raises(ValueError, match="shape"):
+        a.astype("i2", base_slabs=[np.array([[6, 7]], dtype="i2"), None])
+
+
+class TestAsTypeLazy:
+    """Test that astype() does not eagerly convert staged slabs, but
+    various methods do so upon first access.
+    """
+
+    def setup_method(self):
+        a = StagedChangesArray.full((6,), (2,), dtype="i1")
+        a[0:2] = [0, 1]
+        a[2:4] = [2, 3]
+        a = a.astype("i2")
+        assert a.dtype == "i2"
+        assert a.slab_indices.tolist() == [1, 2, 0]
+        assert a.n_base_slabs == 0
+        assert a.n_staged_slabs == 2
+        assert a.full_slab.dtype == "i2"
+        # Staged slabs have not been yet converted
+        assert a.staged_slabs[0].dtype == "i1"
+        assert a.staged_slabs[1].dtype == "i1"
+        self.a = a
+
+    def test_getitem(self):
+        """__getitem__ changes chunk dtype upon first access."""
+        assert_array_equal(self.a[:2], np.asarray([0, 1], dtype="i2"), strict=True)
+        assert self.a.staged_slabs[0].dtype == "i2"
+        assert self.a.staged_slabs[1].dtype == "i1"
+
+    def test_array(self):
+        """__array__ changes chunk dtype upon first access."""
+        expect = np.asarray([0, 1, 2, 3, 0, 0], dtype="i2")
+        assert_array_equal(np.asarray(self.a), expect, strict=True)
+        assert self.a.staged_slabs[0].dtype == "i2"
+        assert self.a.staged_slabs[1].dtype == "i2"
+
+    def test_setitem(self):
+        """__setitem__() changes chunk dtype upon first access.
+        This happens **before** the values are replaced, to avoid overflows or
+        loss of definition.
+        """
+        self.a[0] = 1000  # Overflow for int8, but not for int16
+        assert self.a.staged_slabs[0].dtype == "i2"
+        assert self.a.staged_slabs[1].dtype == "i1"
+        assert_array_equal(self.a[:2], np.array([1000, 1], dtype="i2"))
+
+    def test_changes(self):
+        """changes() changes chunk dtype upon first access."""
+        changes = list(self.a.changes())
+        assert len(changes) == 2
+        assert changes[0][:2] == ((slice(0, 2, 1),), 1)
+        assert changes[1][:2] == ((slice(2, 4, 1),), 2)
+        assert_array_equal(changes[0][2], np.array([0, 1], dtype="i2"), strict=True)
+        assert_array_equal(changes[1][2], np.array([2, 3], dtype="i2"), strict=True)
+        assert self.a.staged_slabs[0].dtype == "i2"
+        assert self.a.staged_slabs[1].dtype == "i2"
+
+    def test_refill(self):
+        """refill() changes chunk dtype upon first access.
+        This happens **before** the new fill_value is applied, to avoid overflows or
+        loss of definition.
+        """
+        b = self.a.refill(1000)  # Overflow for int8, but not for int16
+        assert self.a.staged_slabs[0].dtype == "i1"
+        assert self.a.staged_slabs[1].dtype == "i1"
+        assert b.staged_slabs[0].dtype == "i2"
+        assert b.staged_slabs[1].dtype == "i1"
+        expect = np.asarray([1000, 1, 2, 3, 1000, 1000], dtype="i2")
+        assert_array_equal(np.asarray(b), expect, strict=True)
 
 
 def test_refill():
@@ -801,3 +928,34 @@ def test_numpy_ints_methods():
     assert_array_equal(arr, np.array([0, 1, 2, 3, 4, 5, 6, 42, 43, 0, 0, 0, 0]))
     arr.resize((np.int64(4),))  # Shrink base chunk
     assert_array_equal(arr, np.array([0, 1, 2, 3]))
+
+
+def test_readonly():
+    a = StagedChangesArray.from_array(np.arange(10), (5,))
+    a.writeable = False
+    assert a.slab_indices.tolist() == [1, 1]
+    with pytest.raises(ValueError, match="read-only"):
+        a[0] = 42  # Would change slab_indices to [2, 1]
+    with pytest.raises(ValueError, match="read-only"):
+        a.resize((11,))  # Would change slab_indices to [1, 1, 0]
+    with pytest.raises(ValueError, match="read-only"):
+        a.load()  # Would change slab_indices to [2, 2]
+
+    # The state can become corrupted if one formulates a mutating plan but then doesn't
+    # follow through. Verify that the plans were not formulated in the first place.
+    assert a.slab_indices.tolist() == [1, 1]
+    assert_array_equal(a, np.arange(10))
+
+    # copy() clears the writeable flag
+    b = a.copy()
+    assert b.writeable
+    assert not a.writeable
+
+    # astype() and refill() internally create copies
+    b = a.astype("i4")
+    assert b.writeable
+    assert not a.writeable
+
+    b = a.refill(42)
+    assert b.writeable
+    assert not a.writeable
