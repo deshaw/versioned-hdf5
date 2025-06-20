@@ -137,7 +137,7 @@ jobs:
         python utils/debug_libhdf5_so.py versioned_hdf5
 
     - name: Run smoke tests
-      run: pytest -m 'api and not slow'
+      run: pytest -m 'smoke and not slow'
 
     - name: pip uninstall
       run: pip uninstall -y versioned-hdf5

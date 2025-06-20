@@ -14,6 +14,7 @@ from h5py._selector import Selector
 from ndindex import ChunkSize, Slice, Tuple, ndindex
 from numpy.testing import assert_array_equal
 
+from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS
 from versioned_hdf5.hashtable import Hashtable
 
 DEFAULT_CHUNK_SIZE = 2**12
@@ -22,6 +23,37 @@ DATA_VERSION = 4
 # data_version 3 hash collisions for string arrays which, when concatenated,
 # give the same string
 CORRUPT_DATA_VERSIONS = frozenset([2, 3])
+
+
+def is_vstring_dtype(dtype: np.dtype) -> bool:
+    """Return True if the dtype is a variable length string dtype,
+    either a NpyString (a.k.a. StringDType) or an h5py object string;
+    False otherwise.
+    """
+    metadata = dtype.metadata or ()
+    return (
+        # NpyStrings
+        HAS_NPYSTRINGS
+        and dtype.kind == "T"
+        # h5py object strings
+        or "vlen" in metadata
+        or "h5py_encoding" in metadata
+    )
+
+
+def are_compatible_dtypes(a: np.dtype, b: np.dtype) -> bool:
+    """Return True if the dtypes are compatible.
+    Compatible dtypes are those that are either equal or both variable length strings.
+    """
+    return a == b or is_vstring_dtype(a) and is_vstring_dtype(b)
+
+
+def check_compatible_dtypes(a: np.dtype, b: np.dtype) -> None:
+    """Raise if the dtypes are not compatible.
+    Compatible dtypes are those that are either equal or both variable length strings.
+    """
+    if not are_compatible_dtypes(a, b):
+        raise ValueError(f"dtypes are not compatible ({a} != {b})")
 
 
 def initialize(f):
@@ -142,8 +174,8 @@ def write_dataset(
                 "Chunk size specified but doesn't match already existing chunk size"
             )
 
-    if dtype is not None and dtype != ds.dtype:
-        raise ValueError("dtype specified but doesn't match already existing dtype")
+    if dtype is not None:
+        check_compatible_dtypes(dtype, ds.dtype)
 
     if (
         compression
@@ -171,8 +203,7 @@ def write_dataset(
             pass
         else:
             raise ValueError(f"fillvalues do not match ({fillvalue} != {ds.fillvalue})")
-    if data.dtype != ds.dtype:
-        raise ValueError(f"dtypes do not match ({data.dtype} != {ds.dtype})")
+    check_compatible_dtypes(data.dtype, ds.dtype)
     # TODO: Handle more than one dimension
     old_shape = ds.shape
     slices = {}
@@ -300,26 +331,29 @@ def _verify_new_chunk_reuse(
     # utf-8 strings. For this case, when the raw_data is changed, e.g.
     #     raw_data[some_slice] = chunk_being_written[another_slice]  # noqa: ERA001
     # the data that gets written is bytes. So in certain cases, just calling
-    # assert_array_equal doesn't work. Instead, we convert each element to a bytestring
-    # first.
-    if reused_chunk.dtype == "O" and chunk_being_written.dtype == "O":
-        to_be_written = _convert_to_bytes(chunk_being_written)
-        to_be_reused = _convert_to_bytes(reused_chunk)
-    else:
-        to_be_written = chunk_being_written
-        to_be_reused = reused_chunk
+    # assert_array_equal doesn't work. Instead, we encode each element to bytes first.
+    def normalize_chunk(chunk):
+        if chunk.dtype.kind == "T":
+            return _convert_to_bytes(chunk.astype("O"))
+        if chunk.dtype.kind == "O":
+            return _convert_to_bytes(chunk)
+        return chunk
+
+    to_be_written = normalize_chunk(chunk_being_written)
+    to_be_reused = normalize_chunk(reused_chunk)
 
     try:
-        assert_array_equal(to_be_reused, to_be_written)
+        assert_array_equal(to_be_reused, to_be_written, strict=True)
     except AssertionError as e:
         raise ValueError(
-            f"Hash {data_hash!r} of existing data chunk {reused_chunk} "
-            f"matches the hash of new data chunk {chunk_being_written}, "
+            f"Hash {data_hash!r} of existing data chunk {reused_chunk!r} "
+            f"matches the hash of new data chunk {chunk_being_written!r}, "
             "but data does not."
         ) from e
 
 
-def _convert_to_bytes(arr: np.ndarray) -> np.ndarray:
+@np.vectorize
+def _convert_to_bytes(x: str | bytes) -> bytes:
     """Convert each element in the array to bytes.
 
     Each element in the array is assumed to be the same type, even if the input is an
@@ -328,19 +362,14 @@ def _convert_to_bytes(arr: np.ndarray) -> np.ndarray:
     Parameters
     ----------
     arr : np.ndarray
-        Array to be converted; no conversion is done if the elements are already bytes
+        Array to be converted; no conversion is done if the elements are already bytes.
 
     Returns
     -------
     np.ndarray
         Object dtype array filled with elements of type bytes
     """
-    # Check the actual type of the first element of the array; if it's bytes,
-    # there's no need to cast (and casting won't work anyway)
-    if len(arr) > 0 and isinstance(arr.flatten()[0], bytes):
-        return arr
-    else:
-        return np.vectorize(lambda i: bytes(i, encoding="utf-8"))(arr)
+    return x.encode("utf-8") if isinstance(x, str) else x
 
 
 def write_dataset_chunks(f, name, data_dict):
@@ -375,10 +404,7 @@ def write_dataset_chunks(f, name, data_dict):
             if isinstance(data_s, (slice, tuple, Tuple, Slice)):
                 slices[chunk] = ndindex(data_s)
             else:
-                if data_s.dtype != raw_data.dtype:
-                    raise ValueError(
-                        f"dtypes do not match ({data_s.dtype} != {raw_data.dtype})"
-                    )
+                check_compatible_dtypes(data_s.dtype, raw_data.dtype)
 
                 data_hash = hashtable.hash(data_s)
 

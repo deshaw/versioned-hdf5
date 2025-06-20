@@ -124,6 +124,15 @@ class Hashtable(MutableMapping):
         # reused, making it unsuitable for hashing. Instead, we need to make a combined
         # hash with the value of each element.
         hash_value = self.hash_function()  # type: ignore
+
+        if data.dtype.kind == "T":
+            # Ensure that StringDType and object type strings proudce the same hash.
+            # TODO this can be accelerated in C/Cython
+            # DO NOT use hash_value.update(data)!
+            # Besides producing a different hash, it also suffers from hash collisions
+            # for long strings: https://github.com/numpy/numpy/issues/29226
+            data = data.astype(object)
+
         if data.dtype == object:
             for value in data.flat:
                 if isinstance(value, str):
@@ -135,7 +144,7 @@ class Hashtable(MutableMapping):
                 # Use little-endian byte order (e.g. x86, ARM) for consistency
                 # everywhere, even on big-endian architectures (e.g. PowerPC).
                 hash_value.update(struct.pack("<Q", len(value)))
-                # Hash the buffer of bytes, bytearray, memoryview, etc.
+                # Hash the buffer of bytes.
                 hash_value.update(value)
         else:
             hash_value.update(np.ascontiguousarray(data))

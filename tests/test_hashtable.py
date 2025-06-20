@@ -8,6 +8,8 @@ from versioned_hdf5 import VersionedHDF5File
 from versioned_hdf5.backend import create_base_dataset
 from versioned_hdf5.hashtable import Hashtable
 
+from .conftest import assert_slab_offsets
+
 
 def test_hashtable(h5file):
     create_base_dataset(h5file, "test_data", data=np.empty((0,)))
@@ -243,63 +245,71 @@ def test_verify_chunk_reuse_data_version_3(tmp_path, monkeypatch):
                     group["values"] = np.array([b"ab", b"c", b"d"], dtype=object)
 
 
-def test_verify_chunk_reuse_nan(tmp_path):
+def test_chunk_reuse_nan(vfile):
     """Check that chunks are correctly verified when reused, even with nans."""
     data = np.array([1, 2, 3, 4, 5, np.nan])
-    filename = tmp_path / "testdata.h5"
-    with h5py.File(filename, mode="w") as f:
-        vf = VersionedHDF5File(f)
-        with vf.stage_version("r0") as sv:
-            sv.create_dataset("values", data=data, chunks=(6,))
-
-    with h5py.File(filename, mode="r+") as f:
-        vf = VersionedHDF5File(f)
-        with vf.stage_version("r1") as sv:
-            sv["values"] = np.concatenate((data, data))
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("values", data=data, chunks=(6,))
+    with vfile.stage_version("r1") as sv:
+        sv["values"] = np.concatenate((data, data))
+    with vfile.stage_version("r2") as sv:
+        assert_slab_offsets(sv, "values", [0, 0])
 
 
-def test_verify_chunk_reuse_strings(tmp_path):
+def test_chunk_reuse_strings(vfile):
     """Check that that strings can be reused and verified."""
     data = np.array([b"a", b"b", b"cd"], dtype=object)
-    filename = tmp_path / "testdata.h5"
-    with h5py.File(filename, mode="w") as f:
-        vf = VersionedHDF5File(f)
-        with vf.stage_version("r0") as group:
-            group.create_dataset(
-                "values",
-                data=data,
-                dtype=h5py.string_dtype(length=None),
-                maxshape=(None,),
-                chunks=(3,),
-            )
-
-    with h5py.File(filename, mode="r+") as f:
-        vf = VersionedHDF5File(f)
-        with vf.stage_version("r1") as group:
-            group["values"] = np.concatenate((data, data))
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset(
+            "values",
+            data=data,
+            dtype=h5py.string_dtype(),
+            maxshape=(None,),
+            chunks=(3,),
+        )
+    with vfile.stage_version("r1") as sv:
+        sv["values"] = np.concatenate((data, data))
+    with vfile.stage_version("r2") as sv:
+        assert_slab_offsets(sv, "values", [0, 0])
 
 
-def test_verify_chunk_reuse_multidim_1(tmp_path):
+def test_chunk_reuse_bytes_strings_mix(vfile):
+    """Check that that, when writing to a h5py.string_dtype dataset, strings
+    and bytes can be used interchangeably."""
+
+    data = np.array([b"a", "b", "a", b"b", b"c", "d"], dtype=object)
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset(
+            "values",
+            data=data,
+            dtype=h5py.string_dtype(),
+            maxshape=(None,),
+            chunks=(2,),
+        )
+    with vfile.stage_version("r1") as sv:
+        assert_slab_offsets(sv, "values", [0, 0, 2])
+        sv["values"] = data[[4, 5, 2, 3, 0, 1]]
+    with vfile.stage_version("r2") as sv:
+        assert_slab_offsets(sv, "values", [2, 0, 0])
+
+
+def test_chunk_reuse_multidim_1(vfile):
     """Check that we correctly handle chunk reuse verification for multi-dimensional
     Datasets.
     """
-    filename = tmp_path / "testdata.h5"
-    with h5py.File(filename, mode="w") as f:
-        vf = VersionedHDF5File(f)
-        with vf.stage_version("r0") as group:
-            group.create_dataset(
-                "values",
-                data=np.array([[i + (j % 3) for i in range(8)] for j in range(7)]),
-                maxshape=(None, None),
-                chunks=(3, 3),
-            )
-
-    with h5py.File(filename, mode="r+") as f:
-        vf = VersionedHDF5File(f)
-        with vf.stage_version("r1") as group:
-            values_ds = group["values"]
-            values_ds.resize((8, 8))
-            values_ds[:] = np.array([[i + (j % 3) for i in range(8)] for j in range(8)])
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset(
+            "values",
+            data=np.array([[i + (j % 3) for i in range(8)] for j in range(7)]),
+            maxshape=(None, None),
+            chunks=(3, 3),
+        )
+    with vfile.stage_version("r1") as sv:
+        values_ds = sv["values"]
+        values_ds.resize((8, 8))
+        values_ds[:] = np.array([[i + (j % 3) for i in range(8)] for j in range(8)])
+    with vfile.stage_version("r2") as sv:
+        assert_slab_offsets(sv, "values", [[0, 3, 6], [0, 3, 6], [18, 21, 24]])
 
 
 def test_verify_chunk_disabled_by_default(tmp_path, monkeypatch):
