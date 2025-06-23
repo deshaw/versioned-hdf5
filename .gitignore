@@ -121,6 +121,9 @@ venv.bak/
 # Rever
 rever/
 
+# AirSpeed Velocity
+.asv/
+
 # Cython byproducts
 versioned_hdf5/*.c
 versioned_hdf5/*.cpp
