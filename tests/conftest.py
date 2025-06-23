@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 import h5py
 import pytest
+from numpy.testing import assert_array_equal
 
 from versioned_hdf5 import VersionedHDF5File
 from versioned_hdf5.backend import initialize
@@ -356,3 +357,11 @@ def setup_vfile(tmp_path: str) -> Callable[[str | None, str | None], h5py.File]:
         return f
 
     return _setup_vfile
+
+
+def assert_slab_offsets(version, name, expect):
+    """Assert that the StagedChangesArray.slab_offsets matches the expectations.
+    This is useful to test chunk reuse.
+    """
+    ds = version[name]
+    assert_array_equal(ds.staged_changes.slab_offsets, expect)
