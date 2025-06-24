@@ -300,26 +300,27 @@ def _verify_new_chunk_reuse(
     # utf-8 strings. For this case, when the raw_data is changed, e.g.
     #     raw_data[some_slice] = chunk_being_written[another_slice]  # noqa: ERA001
     # the data that gets written is bytes. So in certain cases, just calling
-    # assert_array_equal doesn't work. Instead, we convert each element to a bytestring
-    # first.
-    if reused_chunk.dtype == "O" and chunk_being_written.dtype == "O":
-        to_be_written = _convert_to_bytes(chunk_being_written)
-        to_be_reused = _convert_to_bytes(reused_chunk)
-    else:
-        to_be_written = chunk_being_written
-        to_be_reused = reused_chunk
+    # assert_array_equal doesn't work. Instead, we encode each element to bytes first.
+    def normalize_chunk(chunk):
+        if chunk.dtype.kind == "O":
+            return _convert_to_bytes(chunk)
+        return chunk
+
+    to_be_written = normalize_chunk(chunk_being_written)
+    to_be_reused = normalize_chunk(reused_chunk)
 
     try:
-        assert_array_equal(to_be_reused, to_be_written)
+        assert_array_equal(to_be_reused, to_be_written, strict=True)
     except AssertionError as e:
         raise ValueError(
-            f"Hash {data_hash!r} of existing data chunk {reused_chunk} "
-            f"matches the hash of new data chunk {chunk_being_written}, "
+            f"Hash {data_hash!r} of existing data chunk {reused_chunk!r} "
+            f"matches the hash of new data chunk {chunk_being_written!r}, "
             "but data does not."
         ) from e
 
 
-def _convert_to_bytes(arr: np.ndarray) -> np.ndarray:
+@np.vectorize
+def _convert_to_bytes(x: str | bytes) -> bytes:
     """Convert each element in the array to bytes.
 
     Each element in the array is assumed to be the same type, even if the input is an
@@ -328,19 +329,14 @@ def _convert_to_bytes(arr: np.ndarray) -> np.ndarray:
     Parameters
     ----------
     arr : np.ndarray
-        Array to be converted; no conversion is done if the elements are already bytes
+        Array to be converted; no conversion is done if the elements are already bytes.
 
     Returns
     -------
     np.ndarray
         Object dtype array filled with elements of type bytes
     """
-    # Check the actual type of the first element of the array; if it's bytes,
-    # there's no need to cast (and casting won't work anyway)
-    if len(arr) > 0 and isinstance(arr.flatten()[0], bytes):
-        return arr
-    else:
-        return np.vectorize(lambda i: bytes(i, encoding="utf-8"))(arr)
+    return x.encode("utf-8") if isinstance(x, str) else x
 
 
 def write_dataset_chunks(f, name, data_dict):
