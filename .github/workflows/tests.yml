@@ -18,6 +18,10 @@ jobs:
           numpy-version: '1.26'
           ndindex-version: 'latest'
           h5py-version: 'latest'
+        - python-version: '3.12'  # NumPy 2.0 has wheels up to Python 3.12
+          numpy-version: '2.0'  # NumPy >=2.0,<2.2.2 has special cases (numpy#28269)
+          ndindex-version: 'latest'
+          h5py-version: 'latest'
         - python-version: '3.13'
           numpy-version: 'latest'
           ndindex-version: 'latest'

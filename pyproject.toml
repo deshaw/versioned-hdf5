@@ -119,6 +119,7 @@ markers = [
     "slow: slow tests",
     "api: api smoke tests",
 ]
+filterwarnings = ["error"]  # Fail on all unhandled warnings
 
 [tool.mypy]
 allow_incomplete_defs = true  # FIXME

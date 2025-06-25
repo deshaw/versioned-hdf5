@@ -1,6 +1,7 @@
 import hypothesis
 import numpy as np
 import numpy.ma as ma
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 from hypothesis.extra import numpy as stnp
@@ -65,6 +66,19 @@ def test_asarray():
     assert b is a
     b = asarray(a, dtype="i8")
     assert b is a
+
+
+@pytest.mark.skipif(np.__version__ < "2", reason="StringDType requires NumPy >=2.0")
+def test_asarray_np2_strings():
+    """Test workaround to bug when converting from object array of bytes to NpyStrings
+    This issue affected NumPy >=2.0.0,<2.2.3
+    https://github.com/numpy/numpy/issues/28269
+
+    TODO remove this test when NumPy >=2.2.3 is required
+    """
+    a = np.array([b"foo", b"bar"], dtype="O")
+    b = asarray(a, dtype="T")
+    assert_array_equal(b, np.array(["foo", "bar"], dtype="T"), strict=True)
 
 
 @st.composite

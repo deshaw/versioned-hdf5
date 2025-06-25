@@ -3,11 +3,14 @@ import itertools
 import h5py
 import numpy as np
 import pytest
-from numpy.testing import assert_equal
+from numpy.testing import assert_array_equal, assert_equal
 
 from versioned_hdf5 import VersionedHDF5File
+from versioned_hdf5.typing_ import ArrayProtocol
 from versioned_hdf5.wrappers import (
+    DatasetWrapper,
     InMemoryArrayDataset,
+    InMemoryDataset,
     InMemoryGroup,
     InMemorySparseDataset,
 )
@@ -22,12 +25,10 @@ def premade_group(h5file):
 def test_InMemoryArrayDataset(h5file):
     group = h5file.create_group("group")
     parent = InMemoryGroup(group.id)
-    a = np.arange(
-        100,
-    ).reshape((50, 2))
+    a = np.arange(100).reshape((50, 2))
     dataset = InMemoryArrayDataset("data", a, parent=parent)
     assert dataset.name == "data"
-    assert_equal(dataset._array, a)
+    assert_equal(dataset._buffer, a)
     assert dataset.attrs == {}
     assert dataset.shape == a.shape
     assert dataset.dtype == a.dtype
@@ -46,7 +47,7 @@ def test_InMemoryArrayDataset(h5file):
     assert isinstance(dataset[30, 0], np.generic)
     dataset[30, 0] = 1000
     assert dataset[30, 0] == 1000
-    assert dataset._array[30, 0] == 1000
+    assert dataset._buffer[30, 0] == 1000
     assert (dataset[30, :] == a[30, :]).all()
     assert isinstance(dataset[30, :], np.ndarray)
 
@@ -61,20 +62,20 @@ def test_InMemoryArrayDataset_resize(h5file):
     dataset.resize((110,))
 
     assert len(dataset) == 110
-    assert_equal(dataset[:100], dataset._array[:100])
+    assert_equal(dataset[:100], dataset._buffer[:100])
     assert_equal(dataset[:100], a)
-    assert_equal(dataset[100:], dataset._array[100:])
+    assert_equal(dataset[100:], dataset._buffer[100:])
     assert_equal(dataset[100:], 0)
-    assert dataset.shape == dataset._array.shape == (110,)
+    assert dataset.shape == dataset._buffer.shape == (110,)
 
     a = np.arange(100)
     dataset = InMemoryArrayDataset("data", a, parent=parent)
     dataset.resize((90,))
 
     assert len(dataset) == 90
-    assert_equal(dataset, dataset._array)
+    assert_equal(dataset, dataset._buffer)
     assert_equal(dataset, np.arange(90))
-    assert dataset.shape == dataset._array.shape == (90,)
+    assert dataset.shape == dataset._buffer.shape == (90,)
 
 
 @pytest.mark.parametrize(
@@ -187,3 +188,72 @@ def test_committed_propagation():
 
     assert vfile["version2"]._committed
     assert vfile["version2"][name]._committed
+
+
+def test_readonly_data(vfile):
+    """Read-only data is copied upon creation of a new version."""
+    data = np.array([0, 1, 2])
+    data.flags.writeable = False
+    with vfile.stage_version("r0") as group:
+        dset = group.create_dataset("x", data=data)
+        dset[0] = 3
+
+    assert_array_equal(data, np.array([0, 1, 2]))
+    assert_array_equal(vfile[None]["x"], np.array([3, 1, 2]))
+
+
+@pytest.mark.parametrize("dtype", ["i1", "i2"])  # no-op view vs. actual conversion
+def test_astype_dense(vfile, dtype):
+    with vfile.stage_version("r0") as group:
+        dset = group.create_dataset("x", data=np.array([0, 1, 2], dtype="i1"))
+        assert isinstance(dset, InMemoryArrayDataset)
+
+        a = dset.astype(dtype)
+        assert isinstance(a, ArrayProtocol)
+        assert a.dtype == dtype
+        assert dset.dtype == "i1"
+        with pytest.raises(ValueError, match="read-only"):
+            a[0] = 123
+        assert_array_equal(a, np.array([0, 1, 2], dtype=dtype), strict=True)
+        # The read-only flag has only been applied to the view
+        dset[0] = 3
+
+    with vfile.stage_version("r1") as group:
+        dset = group["x"]
+        assert isinstance(dset, DatasetWrapper)
+        assert isinstance(dset.dataset, InMemoryDataset)
+        assert dset.dtype == "i1"
+
+        a = dset.astype(dtype)
+        assert isinstance(a, ArrayProtocol)
+        assert a.dtype == dtype
+        assert dset.dtype == "i1"
+        with pytest.raises(ValueError, match="read-only"):
+            a[0] = 123
+        assert_array_equal(a, np.array([3, 1, 2], dtype=dtype), strict=True)
+        # The read-only flag has only been applied to the view
+        dset[1] = 4
+
+    dset = vfile[None]["x"]
+    assert_array_equal(dset, np.array([3, 4, 2], dtype="i1"), strict=True)
+
+
+@pytest.mark.parametrize("dtype", ["i1", "i2"])  # no-op view vs. actual conversion
+def test_astype_sparse(vfile, dtype):
+    with vfile.stage_version("r0") as group:
+        dset = group.create_dataset("x", shape=(3,), chunks=(2,), dtype="i1")
+        assert isinstance(dset, InMemorySparseDataset)
+        dset[0] = 1
+
+        a = dset.astype(dtype)
+        assert isinstance(a, ArrayProtocol)
+        assert a.dtype == dtype
+        assert dset.dtype == "i1"
+        with pytest.raises(ValueError, match="read-only"):
+            a[0] = 123
+        assert_array_equal(a, np.array([1, 0, 0], dtype=dtype), strict=True)
+        # The read-only flag has only been applied to the view
+        dset[1] = 2
+
+    dset = vfile[None]["x"]
+    assert_array_equal(dset, np.array([1, 2, 0], dtype="i1"), strict=True)
