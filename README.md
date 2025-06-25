@@ -2,7 +2,7 @@
 
 Versioned HDF5 provides a versioned abstraction on top of `h5py`.
 
-See the documentation at https://deshaw.github.io/versioned-hdf5/.
+See the documentation at https://deshaw.github.io/versioned-hdf5/ and [learn more about Versioned HDF5](https://www.deshaw.com/library/desco-quansight-introducing-versioned-hdf5) in our external document library.
 
 ## History
 This was created by the [D. E. Shaw group](https://www.deshaw.com/) in conjunction with [Quansight](https://www.quansight.com/).
