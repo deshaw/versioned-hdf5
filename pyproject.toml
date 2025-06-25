@@ -117,8 +117,9 @@ doctest_optionflags = "NORMALIZE_WHITESPACE"
 markers = [
     "setup_args : kwargs for setup fixture.",
     "slow: slow tests",
-    "api: api smoke tests",
+    "smoke: smoke tests",
 ]
+filterwarnings = ["error"]  # Fail on all unhandled warnings
 
 [tool.mypy]
 allow_incomplete_defs = true  # FIXME
