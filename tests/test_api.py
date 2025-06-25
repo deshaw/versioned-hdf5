@@ -1497,25 +1497,23 @@ def test_closes(vfile):
         (np.int16(1), np.int16(2)),
     ],
 )
-def test_scalar_dataset(setup_vfile, data1, data2):
-    dt = np.asarray(data1).dtype
-    with setup_vfile() as f:
-        file = VersionedHDF5File(f)
-        with file.stage_version("v1") as group:
-            group["scalar_ds"] = data1
+def test_scalar_dataset(vfile, data1, data2):
+    dtype = np.asarray(data1).dtype
+    with vfile.stage_version("v1") as group:
+        group["scalar_ds"] = data1
 
-        v1_ds = file["v1"]["scalar_ds"]
-        assert v1_ds[()] == data1
-        assert v1_ds.shape == ()
-        assert v1_ds.dtype == dt
+    v1_ds = vfile["v1"]["scalar_ds"]
+    assert v1_ds[()] == data1
+    assert v1_ds.shape == ()
+    assert v1_ds.dtype == dtype
 
-        with file.stage_version("v2") as group:
-            group["scalar_ds"] = data2
+    with vfile.stage_version("v2") as group:
+        group["scalar_ds"] = data2
 
-        v2_ds = file["v2"]["scalar_ds"]
-        assert v2_ds[()] == data2
-        assert v2_ds.shape == ()
-        assert v2_ds.dtype == dt
+    v2_ds = vfile["v2"]["scalar_ds"]
+    assert v2_ds[()] == data2
+    assert v2_ds.shape == ()
+    assert v2_ds.dtype == dtype
 
 
 def test_store_binary_as_void(vfile):
