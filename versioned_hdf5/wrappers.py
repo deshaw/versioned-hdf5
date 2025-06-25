@@ -12,7 +12,7 @@ import posixpath
 import textwrap
 import warnings
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from contextlib import suppress
 from functools import cached_property
 from typing import Any
@@ -30,6 +30,11 @@ from versioned_hdf5.slicetools import build_slab_indices_and_offsets
 from versioned_hdf5.staged_changes import StagedChangesArray
 
 _groups = WeakValueDictionary({})
+
+try:
+    from numpy.exceptions import AxisError  # numpy >=1.25
+except ModuleNotFoundError:
+    from numpy import AxisError  # numpy 1.24
 
 
 class InMemoryGroup(Group):
@@ -506,7 +511,7 @@ class InMemoryDataset(Dataset):
 
         The rank of the dataset cannot be changed.
 
-        "Size" should be a shape tuple, or if an axis is specified, an integer.
+        "size" should be a shape tuple, or if an axis is specified, an integer.
 
         BEWARE: This functions differently than the NumPy resize() method!
         The data is not "reshuffled" to fit in the new shape; each axis is
@@ -514,23 +519,9 @@ class InMemoryDataset(Dataset):
         fixed.
         """
         self.parent._check_committed()
-        # This boilerplate code is based on h5py.Dataset.resize
-        if axis is not None:
-            if not (axis >= 0 and axis < self.id.rank):
-                raise ValueError("Invalid axis (0 to %s allowed)" % (self.id.rank - 1))
-            try:
-                newlen = int(size)
-            except TypeError:
-                msg = "Argument must be a single int if axis is specified"
-                raise TypeError(msg) from None
-            size = list(self.shape)
-            size[axis] = newlen
-
-        size = tuple(size)
-        # === END CODE FROM h5py.Dataset.resize ===
-
-        self.staged_changes.resize(size)
-        self.id.shape = size
+        new_shape = _normalize_resize_args(self.shape, size, axis)
+        self.staged_changes.resize(new_shape)
+        self.id.shape = new_shape
 
     @with_phil
     def __getitem__(
@@ -858,31 +849,18 @@ class InMemoryArrayDataset(DatasetLike):
 
     def resize(self, size, axis=None):
         self.parent._check_committed()
-        if axis is not None:
-            if not (axis >= 0 and axis < self.ndim):
-                raise ValueError("Invalid axis (0 to %s allowed)" % (self.ndim - 1))
-            try:
-                newlen = int(size)
-            except TypeError:
-                msg = "Argument must be a single int if axis is specified"
-                raise TypeError(msg) from None
-            size = list(self.shape)
-            size[axis] = newlen
-
-        old_shape = self.shape
-        size = tuple(size)
-        if all(new <= old for new, old in zip(size, old_shape)):
-            # Don't create a new array if the old one can just be sliced in
-            # memory.
-            idx = tuple(slice(0, i) for i in size)
-            self._array = self._array[idx]
+        new_shape = _normalize_resize_args(self.shape, size, axis)
+        if all(new <= old for new, old in zip(new_shape, self.shape)):
+            new_idx = tuple(slice(i) for i in new_shape)
+            self._array = self._array[new_idx]
         else:
-            old_shape_idx = Tuple(*[Slice(0, i) for i in old_shape])
-            new_shape_idx = Tuple(*[Slice(0, i) for i in size])
-            new_array = np.full(size, self.fillvalue, dtype=self.dtype)
-            new_array[old_shape_idx.as_subindex(new_shape_idx).raw] = self._array[
-                new_shape_idx.as_subindex(old_shape_idx).raw
-            ]
+            # FIXME this can be very problematic if the user is not going to fill
+            # the new area afterwards!
+            # https://github.com/deshaw/versioned-hdf5/issues/440
+            old_idx = tuple(slice(i) for i in self.shape)
+            new_idx = tuple(slice(i) for i in new_shape)
+            new_array = np.full(new_shape, self.fillvalue, dtype=self.dtype)
+            new_array[old_idx] = self._array[new_idx]
             self._array = new_array
 
 
@@ -940,20 +918,8 @@ class InMemorySparseDataset(DatasetLike):
         )
 
     def resize(self, size, axis=None):
-        if axis is not None:
-            if not (axis >= 0 and axis < self.ndim):
-                raise ValueError("Invalid axis (0 to %s allowed)" % (self.ndim - 1))
-            try:
-                newlen = int(size)
-            except TypeError:
-                msg = "Argument must be a single int if axis is specified"
-                raise TypeError(msg) from None
-            size = list(self.shape)
-            size[axis] = newlen
-
-        size = tuple(size)
-        self.staged_changes.resize(size)
-        self.shape = size
+        new_shape = _normalize_resize_args(self.shape, size, axis)
+        self.staged_changes.resize(new_shape)
 
     def __getitem__(self, index):
         return self.staged_changes[index]
@@ -981,6 +947,39 @@ def _staged_changes_to_data_dict(
         Tuple(*k): Slice(v[0]) if isinstance(v, tuple) else v
         for k, _, v in staged_changes.changes()
     }
+
+
+def _normalize_resize_args(
+    shape: tuple[int, ...], size: int | Sequence[int], axis: int | None
+) -> tuple[int, ...]:
+    """Normalize the parameters of Dataset.resize()"""
+    ndim = len(shape)
+    if axis is not None:
+        if axis >= ndim or axis < -ndim:
+            msg = f"axis {axis} is out of bounds for dataset of dimension {ndim}"
+            raise AxisError(msg)
+        try:
+            size = int(size)  # type: ignore[arg-type]
+        except TypeError:
+            msg = f"size must be an integer when axis is specified, got {size!r}"
+            raise TypeError(msg) from None
+
+        new_shape = list(shape)
+        new_shape[axis] = size
+    else:
+        if (
+            isinstance(size, (list, tuple))
+            or isinstance(size, np.ndarray)
+            and size.ndim == 1
+        ):
+            new_shape = [int(i) for i in size]
+        else:
+            new_shape = [int(size)]
+        if len(new_shape) != ndim:
+            msg = f"Invalid shape {size} for dataset of dimension {ndim}"
+            raise ValueError(msg)
+
+    return tuple(new_shape)
 
 
 class DatasetWrapper(DatasetLike):
