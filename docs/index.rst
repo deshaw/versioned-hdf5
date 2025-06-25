@@ -10,6 +10,7 @@ Versioned HDF5 provides a versioned abstraction on top of `h5py <https://www.h5p
    quickstart
    installation
    performance
+   strings
    reference
    design
    staged_changes
