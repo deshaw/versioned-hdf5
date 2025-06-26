@@ -1,7 +1,7 @@
 name: Benchmarks
 on: [push, pull_request]
 jobs:
-  tests:
+  benchmarks:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # get the non-merge commit for PRs
-          fetch-tags: true # include tags to get correct version from setuptools_scm
+          fetch-tags: true # include tags to get correct version in setuptools_scm and asv
 
       - name: Generate environment.yml
         run: |
@@ -59,7 +59,16 @@ jobs:
         run: mamba env export
 
       - name: Setup asv
-        run: asv machine --yes
+        run: |
+          # Work around https://github.com/airspeed-velocity/asv/issues/1508
+          sed -i "s/master/$(git rev-parse --abbrev-ref HEAD)/" asv.conf.json
+          asv machine --yes
 
       - name: Run Benchmarks
-        run: asv run --python=same --quick
+        run: asv run --python=same --quick --set-commit-hash $(git rev-parse HEAD)
+
+      - name: Upload asv results
+        uses: actions/upload-artifact@v4
+        with:
+          name: asv-results
+          path: .asv/results
