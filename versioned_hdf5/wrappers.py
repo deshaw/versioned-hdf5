@@ -818,72 +818,82 @@ class DatasetLike:
 class InMemoryArrayDataset(DatasetLike):
     """
     Class that looks like a h5py.Dataset but is backed by an array
+    with support for lazy allocation.
     """
 
     def __init__(
         self,
         name: str,
-        array: np.ndarray,
+        array: np.ndarray | None,
         *,
         parent: InMemoryGroup,
         fillvalue: Any | None = None,
         chunks: tuple[int, ...] | None = None,
+        shape: tuple[int, ...] | None = None,
+        dtype: DTypeLike | None = None,
     ):
         self.name = name
-        self._array = array
         self.attrs = {}
         self.parent = parent
         self._fillvalue = fillvalue
+
+        self._array = array
+        self._lazy_shape = array.shape if array is not None else shape
+        self._lazy_dtype = array.dtype if array is not None else np.dtype(dtype)
+        if self._array is None and (self._lazy_shape is None or self._lazy_dtype is None):
+            raise ValueError("Either array or (shape and dtype) must be provided")
+
         if chunks is None:
             chunks = parent.chunks[name]
         self.chunks = chunks
 
+    def _ensure_allocated(self):
+        if self._array is None:
+            self._array = np.full(self._lazy_shape, self.fillvalue, dtype=self._lazy_dtype)
+
     @property
     def shape(self) -> tuple[int, ...]:
-        return self._array.shape
+        return self._array.shape if self._array is not None else self._lazy_shape
 
     @property
     def dtype(self) -> np.dtype:
-        return self._array.dtype
+        return self._array.dtype if self._array is not None else self._lazy_dtype
 
     def __getitem__(self, item):
+        self._ensure_allocated()
         return self._array[item]
 
     def __setitem__(self, item, value):
         self.parent._check_committed()
+        self._ensure_allocated()
         self._array[item] = value
 
     def __array__(self, dtype=None):
+        self._ensure_allocated()
         return self._array
 
     def resize(self, size, axis=None):
         self.parent._check_committed()
-        if axis is not None:
-            if not (axis >= 0 and axis < self.ndim):
-                raise ValueError("Invalid axis (0 to %s allowed)" % (self.ndim - 1))
-            try:
-                newlen = int(size)
-            except TypeError:
-                msg = "Argument must be a single int if axis is specified"
-                raise TypeError(msg) from None
-            size = list(self.shape)
-            size[axis] = newlen
 
-        old_shape = self.shape
+        if axis is not None:
+            if not (0 <= axis < self.ndim):
+                raise ValueError(f"Invalid axis (0 to {self.ndim - 1} allowed)")
+            size = list(self.shape)
+            size[axis] = int(size)
         size = tuple(size)
-        if all(new <= old for new, old in zip(size, old_shape)):
-            # Don't create a new array if the old one can just be sliced in
-            # memory.
-            idx = tuple(slice(0, i) for i in size)
-            self._array = self._array[idx]
+
+        if self._array is None:
+            self._lazy_shape = size
         else:
-            old_shape_idx = Tuple(*[Slice(0, i) for i in old_shape])
-            new_shape_idx = Tuple(*[Slice(0, i) for i in size])
-            new_array = np.full(size, self.fillvalue, dtype=self.dtype)
-            new_array[old_shape_idx.as_subindex(new_shape_idx).raw] = self._array[
-                new_shape_idx.as_subindex(old_shape_idx).raw
-            ]
-            self._array = new_array
+            old_shape = self._array.shape
+            if all(new <= old for new, old in zip(size, old_shape)):
+                self._array = self._array[tuple(slice(0, s) for s in size)]
+            else:
+                new_array = np.full(size, self.fillvalue, dtype=self._array.dtype)
+                slices = tuple(slice(0, min(n, o)) for n, o in zip(size, old_shape))
+                new_array[slices] = self._array[slices]
+                self._array = new_array
+
 
 
 class InMemorySparseDataset(DatasetLike):
