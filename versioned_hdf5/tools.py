@@ -8,6 +8,8 @@ from numpy.typing import ArrayLike, DTypeLike
 
 from versioned_hdf5.typing_ import ArrayProtocol
 
+NP_VERSION = tuple(int(i) for i in np.__version__.split(".")[:3])
+
 
 def asarray(a: ArrayLike, /, *, dtype: DTypeLike | None = None):
     """Variant of np.asarray(a, dtype=dtype), with some differences:
@@ -15,6 +17,9 @@ def asarray(a: ArrayLike, /, *, dtype: DTypeLike | None = None):
     1. If a is a numpy-like array, don't coerce it to a numpy.ndarray
     2. If a has a ABI-compatible dtype, return a view instead of a copy
        (works around https://github.com/numpy/numpy/issues/27509)
+    3. Work around https://github.com/numpy/numpy/issues/28269
+       on NumPy >=2.0.0,<2.2.3 when converting from arrays of object strings to
+       NpyStrings
     """
     if not isinstance(a, ArrayProtocol) or np.isscalar(a):
         return np.asarray(a, dtype=dtype)
@@ -35,6 +40,12 @@ def asarray(a: ArrayLike, /, *, dtype: DTypeLike | None = None):
         # Note that this does not reduce the amount of safety checks:
         # np.array(-1).astype("u1") doesn't raise and returns 255!
         return a.view(dtype)
+
+    if NP_VERSION < (2, 2, 3) and a.dtype.kind == "O" and dtype.kind == "T":
+        # Work around bug in conversion from array of bytes objects to NpyStrings
+        # https://github.com/numpy/numpy/issues/28269
+        # Note that this can be memory intensive.
+        return asarray(asarray(a, dtype="U"), dtype=dtype)
 
     if hasattr(a, "astype"):
         return a.astype(dtype)

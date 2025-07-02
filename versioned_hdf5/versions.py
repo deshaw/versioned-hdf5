@@ -121,9 +121,9 @@ def commit_version(
             raise ValueError(f"{name} is not a forbidden dataset name; aborting.")
 
     for name, data in datasets.items():
-        fillvalue = None
         if isinstance(data, DatasetWrapper):
             data = data.dataset
+
         if isinstance(
             data, (InMemoryDataset, InMemoryArrayDataset, InMemorySparseDataset)
         ):
@@ -131,6 +131,7 @@ def commit_version(
             fillvalue = data.fillvalue
         else:
             attrs = {}
+            fillvalue = None
 
         shape = None
         if isinstance(data, InMemoryDataset):
@@ -156,7 +157,7 @@ def commit_version(
             write_dataset(
                 f,
                 name,
-                np.empty((0,) * len(data.shape), dtype=data.dtype),
+                np.empty((0,) * len(data.shape), dtype=data._buffer.dtype),
                 chunks=chunks[name],
                 compression=compression[name],
                 compression_opts=compression_opts[name],
@@ -164,6 +165,12 @@ def commit_version(
             )
             slices = write_dataset_chunks(f, name, data.data_dict)
         else:
+            if isinstance(data, InMemoryArrayDataset):
+                # If buffer has StringDType, avoid unnecessary conversion from outwardly
+                # presented object dtype.
+                data = data._buffer
+
+            assert isinstance(data, (np.ndarray, dict))
             slices = write_dataset(
                 f,
                 name,

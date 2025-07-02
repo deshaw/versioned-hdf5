@@ -1594,6 +1594,7 @@ def test_scalar_dataset(vfile, data1, data2):
     assert v1_ds[()] == data1
     assert v1_ds.shape == ()
     assert v1_ds.dtype == dtype
+    assert v1_ds._buffer.dtype == dtype
 
     with vfile.stage_version("v2") as group:
         group["scalar_ds"] = data2
@@ -1602,6 +1603,7 @@ def test_scalar_dataset(vfile, data1, data2):
     assert v2_ds[()] == data2
     assert v2_ds.shape == ()
     assert v2_ds.dtype == dtype
+    assert v2_ds._buffer.dtype == dtype
 
 
 def test_store_binary_as_void(vfile):
