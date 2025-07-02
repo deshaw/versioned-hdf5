@@ -18,6 +18,7 @@ from versioned_hdf5.backend import DATA_VERSION, DEFAULT_CHUNK_SIZE
 from versioned_hdf5.replay import delete_versions
 from versioned_hdf5.versions import TIMESTAMP_FMT, all_versions
 from versioned_hdf5.wrappers import (
+    AxisError,
     DatasetWrapper,
     InMemoryArrayDataset,
     InMemoryDataset,
@@ -725,6 +726,93 @@ def test_resize_int_types_grow(tmp_path):
             new_size = old_size + 7
             sv["values"].resize((new_size,))
             sv["values"][old_size:new_size] = np.arange(new_size - old_size)
+
+
+def test_resize_sparse(vfile):
+    with vfile.stage_version("version1") as group:
+        ds = group.create_dataset(
+            "data",
+            shape=(5, 5),
+            chunks=(3, 3),
+            maxshape=(None,),
+        )
+        ds[0, 0] = 1
+        ds[4, 4] = 2
+
+        ds.resize((6, 6))
+        assert ds.shape == (6, 6)
+        expect = np.zeros((6, 6))
+        expect[0, 0] = 1
+        expect[4, 4] = 2
+        assert_equal(ds[:], expect)
+
+        ds.resize((4, 3))
+        assert ds.shape == (4, 3)
+        expect = expect[:4, :3]
+        assert_equal(ds[:], expect)
+
+    ds = vfile["version1"]["data"]
+    assert ds.shape == (4, 3)
+    assert_equal(ds[:], expect)
+
+
+def test_resize_axis(vfile):
+    # test axis= parameter of resize
+    with vfile.stage_version("v0") as sv:
+        ds = sv.create_dataset("x", shape=(5, 5), chunks=(3, 3), maxshape=(None, None))
+        ds.resize(6, axis=0)
+        assert ds.shape == (6, 5)
+        ds.resize(4, axis=1)
+        assert ds.shape == (6, 4)
+        ds.resize(7, axis=-2)
+        assert ds.shape == (7, 4)
+        ds.resize(np.int32(8), axis=0)
+        assert ds.shape == (8, 4)
+        assert type(ds.shape[0]) is int
+        ds.resize(9.0, axis=0)
+        assert ds.shape == (9, 4)
+        assert type(ds.shape[0]) is int
+
+        with pytest.raises(AxisError):
+            ds.resize(8, axis=2)
+        with pytest.raises(AxisError):
+            ds.resize(8, axis=-3)
+        with pytest.raises(TypeError, match="must be an integer"):
+            ds.resize((2, 2), axis=0)
+
+
+@pytest.mark.parametrize(
+    "size",
+    [
+        (6,),
+        [6],
+        6,
+        (np.int8(6),),
+        np.int8(6),
+        np.asarray([6]),
+        np.asarray(6),
+    ],
+)
+def test_resize_weird_size(vfile, size):
+    with vfile.stage_version("v0") as sv:
+        # InMemorySparseDataset
+        ds = sv.create_dataset("x", shape=(5,), chunks=(3,), maxshape=(None,))
+        ds.resize(size)
+        assert ds.shape == (6,)
+        assert type(ds.shape[0]) is int
+
+        # InMemoryArrayDataset
+        ds = sv.create_dataset("y", data=np.arange(5), chunks=(3,), maxshape=(None,))
+        ds.resize(size)
+        assert ds.shape == (6,)
+        assert type(ds.shape[0]) is int
+
+    with vfile.stage_version("v1") as sv:
+        # InMemoryDataset
+        ds = sv["x"]
+        ds.resize(size)
+        assert ds.shape == (6,)
+        assert type(ds.shape[0]) is int
 
 
 def test_getitem(vfile):
