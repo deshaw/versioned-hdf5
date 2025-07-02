@@ -348,6 +348,30 @@ The full slab is never dropped, as it may be needed later by ``resize()`` to cre
 chunks or partially fill existing edge chunks.
 
 
+Copy-on-Write (CoW) mechanics
+-----------------------------
+Several methods (``copy()``, ``astype()``, ``refill()``) perform a functional deep
+copy of the array. What is actually happening however is that ``slab_indices``,
+``slab_offsets``, and chunks are replaced on both the source and destination with
+read-only views. Upon the first write access (which may never happen!) on either side,
+these views are lazily replaced with a writeable deep copy.
+
+Additionally, ``astype()`` doesn't actually change the dtype of staged slabs until the
+first write *or read* access. Upon first access, the full staged slab is converted to
+the new dtype, not just the selection requested.
+
+
+Hot-swapping the base slabs
+---------------------------
+When calling ``astype()``, base slabs are normally fully loaded into memory and then
+converted with NumPy to the new dtype. This may not be desirable:
+`h5py.Dataset.astype()`_ returns a lazy ``AsTypeView`` object, which directly performs
+dtype conversions in libhdf5, only on the areas selected with ``__getitem__``. To
+leverage this, ``StagedChangesArray.astype()`` has the option of hot-swapping the base
+slabs with any other array-like objects with the new dtype and the same shapes as the
+original slabs.
+
+
 API interaction
 ---------------
 .. graphviz::
@@ -428,3 +452,4 @@ API interaction
 
 .. _H5Sselect_hyperslab: https://support.hdfgroup.org/documentation/hdf5/latest/group___h5_s.html#ga6adfdf1b95dc108a65bf66e97d38536d
 .. _H5DRead: https://support.hdfgroup.org/documentation/hdf5/latest/group___h5_d.html#ga8287d5a7be7b8e55ffeff68f7d26811c
+.. _h5py.Dataset.astype(): https://docs.h5py.org/en/stable/high/dataset.html#h5py.Dataset.astype
