@@ -1200,16 +1200,15 @@ class DatasetWrapper(DatasetLike):
         new_ds = InMemorySparseDataset(
             name=self.dataset.name,
             shape=self.dataset.shape,
-            dtype=self.dataset._buffer.dtype,
+            dtype=self.dataset.dtype,
             parent=self.dataset.parent,
             chunks=self.dataset.chunks,
             fillvalue=self.dataset.fillvalue,
         )
-        # In case of variable strings, self.dataset._buffer.dtype and
-        # self.dataset.dtype may differ.
-        new_ds.dtype = self.dataset.dtype
         # Use a writeable view of old buffer as the slabs, if geometry allows
         new_ds.staged_changes = StagedChangesArray.from_array(
+            # Note: in case of variable-width strings, _buffer.dtype may be different
+            # from dataset.dtype
             self.dataset._buffer,
             chunk_size=self.dataset.chunks,
             fill_value=self.dataset.fillvalue,

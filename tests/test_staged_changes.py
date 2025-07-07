@@ -967,3 +967,59 @@ def test_readonly():
     b = a.refill(42)
     assert b.writeable
     assert not a.writeable
+
+
+def test_from_array_as_staged_slabs_1():
+    """from_array(..., as_base_slabs=False); arr is exactly divisible by chunk_size.
+    Slabs are writeable views of the original array.
+    """
+    arr = np.arange(4).reshape((2, 2))
+    a = StagedChangesArray.from_array(arr, chunk_size=(2, 2), as_base_slabs=False)
+    # Test that all chunks are views
+    a[:, :] = -1
+    assert_array_equal(arr, np.array([[-1, -1], [-1, -1]]))
+
+
+def test_from_array_as_staged_slabs_2():
+    """from_array(..., as_base_slabs=False); arr is not exactly divisible by chunk_size.
+    Edge slabs are deep-copied; everything else is a writeable view.
+    """
+    arr = np.arange(15).reshape((3, 5))
+    a = StagedChangesArray.from_array(arr, chunk_size=(2, 2), as_base_slabs=False)
+    # Test that non-edge chunks are views
+    a[:, :] = -1
+    assert_array_equal(
+        arr,
+        np.array(
+            [
+                [-1, -1, -1, -1, 4],
+                [-1, -1, -1, -1, 9],
+                [10, 11, 12, 13, 14],
+            ]
+        ),
+    )
+    # Enlarging at a later time is OK
+    a.resize((4, 6))
+    a[0, -1] = 22
+    a[-1, 0] = 33
+    assert_array_equal(
+        a,
+        np.array(
+            [
+                [-1, -1, -1, -1, -1, 22],
+                [-1, -1, -1, -1, -1, 0],
+                [-1, -1, -1, -1, -1, 0],
+                [33, 0, 0, 0, 0, 0],
+            ]
+        ),
+    )
+
+
+def test_from_array_as_staged_slabs_3():
+    """from_array(..., as_base_slabs=False);
+    Only some axes are not exactly divisible by chunk_size.
+    """
+    arr = np.arange(6).reshape((2, 3))
+    a = StagedChangesArray.from_array(arr, chunk_size=(2, 2), as_base_slabs=False)
+    a[:, :] = -1
+    assert_array_equal(arr, np.array([[-1, -1, 2], [-1, -1, 5]]))

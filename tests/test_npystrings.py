@@ -457,3 +457,49 @@ def test_hash_arena_strings(vfile):
         v["x"][1] = data[2]
     with vfile.stage_version("v2") as v:
         assert_slab_offsets(v, "x", [1, 2])
+
+
+def test_datasetwrapper_setitem(vfile):
+    """DatasetWrapper.__setitem__() hot-swaps a InMemoryDataset for a
+    InMemoryArrayDataset when the whole dataset is updated.
+    Test that this doesn't flip the buffer dtype.
+    """
+    with vfile.stage_version("v0") as v:
+        ds = v.create_dataset("x", data=["foo", "bar"], dtype="T")
+
+    with vfile.stage_version("v1") as v:
+        ds = v["x"]
+        # swap buffers
+        _ = ds.astype("T")
+        assert isinstance(ds.dataset, InMemoryDataset)
+        assert ds.dataset._buffer.dtype.kind == "T"
+        assert ds.dtype.kind == "O"
+
+        ds[:] = ["baz", "qux"]
+        assert isinstance(ds.dataset, InMemoryArrayDataset)
+        assert ds.dataset._buffer.dtype.kind == "T"
+        assert ds.dtype.kind == "O"
+
+
+def test_datasetwrapper_resize(vfile):
+    """DatasetWrapper.resize() hot-swaps a InMemoryArrayDataset for a
+    InMemorySparseDataset when enlarging.
+    Test that this doesn't flip the buffer dtype.
+    """
+    with vfile.stage_version("v0") as v:
+        ds = v.create_dataset(
+            "x",
+            data=["foo", "bar"],
+            dtype="T",
+            chunks=(2,),
+            maxshape=(None,),
+        )
+        _ = ds.astype("T")
+        assert isinstance(ds.dataset, InMemoryArrayDataset)
+        assert ds.dataset._buffer.dtype.kind == "T"
+        assert ds.dtype.kind == "O"
+
+        ds.resize((3,))
+        assert isinstance(ds.dataset, InMemorySparseDataset)
+        assert ds.dataset._buffer.dtype.kind == "T"
+        assert ds.dtype.kind == "O"
