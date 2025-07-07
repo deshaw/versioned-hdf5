@@ -756,9 +756,19 @@ class StagedChangesArray(MutableMapping[Any, T]):
         arr: ArrayLike,
         chunk_size: tuple[int, ...],
         fill_value: Any | None = None,
+        as_base_slabs: bool = True,
     ) -> StagedChangesArray:
-        """Create a new StagedChangesArray where the base slabs are read-only views
-        (if supported, otherwise deep-copies) of an existing array-like.
+        """Create a new StagedChangesArray from an array.
+
+        :param as_base_slabs:
+            True (default)
+                The base slabs are read-only views if supported, otherwise deep-copies)
+                of an existing array-like. This is mostly useful for debugging and
+                testing.
+            False
+                There are no base slabs; set the staged slabs as writeable views (if
+                possible; otherwise read-only views; otherwise deep copies) of the
+                previous array data.
         """
         # Don't deep-copy array-like objects, as long as they allow for views
         arr = cast(np.ndarray, asarray(arr))
@@ -776,19 +786,52 @@ class StagedChangesArray(MutableMapping[Any, T]):
         slab_offsets = np.arange(0, arr.shape[0], step=chunk_size[0])
         out.slab_offsets[()] = slab_offsets[(slice(None),) + (None,) * (out.ndim - 1)]
 
+        if not as_base_slabs and arr.shape[0] % chunk_size[0]:
+            # staged slab is not exactly divisible by chunk_size along axis 0.
+            # This is going to be problematic later if we call resize() to
+            # enlarge the array. Use views of the array where possible and deep-copy
+            # the chunks along the edge of axis 0.
+            # See below for equivalent treatment along axes 1+.
+            axis0_idx = slice(0, (n_chunks[0] - 1) * chunk_size[0])
+            axis0_rest_idx = slice(axis0_idx.stop, arr.shape[0])
+            out.slab_indices[-1] = 0  # Set last row as full of fill_value
+            out.slab_offsets[-1] = 0
+        else:
+            axis0_idx = slice(None)
+            axis0_rest_idx = None
+
         for chunk_idx in itertools.product(*[list(range(c)) for c in n_chunks[1:]]):
-            view_idx = (slice(None),) + tuple(
+            view_idx = (axis0_idx,) + tuple(
                 slice(start := c * s, start + s)
                 for c, s in zip(chunk_idx, chunk_size[1:])
             )
             # Note: if the backend of arr doesn't support views
             # (e.g. h5py.Dataset), this is a deep-copy
-            view = arr[view_idx]
-            if isinstance(view, np.ndarray):
-                view.flags.writeable = False
-            out.slabs.append(view)
+            slab = arr[view_idx]
+            if as_base_slabs:
+                # Base slabs don't need to be numpy arrays but, if they are, mark them
+                # as read-only. This is just a matter of hygene; we should never try
+                # writing to them anyway.
+                if isinstance(slab, np.ndarray):
+                    slab.flags.writeable = False
+            elif slab.shape[1:] != chunk_size[1:]:
+                # staged slab is not exactly divisible by chunk_size along axes 1+.
+                # See matching code for axis 0 above.
+                assert slab.shape[0] % chunk_size[0] == 0  # See axis0_idx above
+                new_shape = (slab.shape[0], *chunk_size[1:])
+                new_slab = np.empty(new_shape, dtype=out.dtype)
+                new_slab[tuple(slice(i) for i in slab.shape)] = slab
+                slab = new_slab
+            elif not isinstance(slab, np.ndarray):
+                # Staged slabs must be numpy arrays.
+                slab = np.asarray(slab)
+            out.slabs.append(slab)
 
-        out.n_base_slabs = out.n_slabs - 1
+        if as_base_slabs:
+            out.n_base_slabs = out.n_slabs - 1
+        elif axis0_rest_idx is not None:
+            # Add one more staged slab to hold the partial chunks along axis 0
+            out[axis0_rest_idx] = arr[axis0_rest_idx]
         return out
 
 
