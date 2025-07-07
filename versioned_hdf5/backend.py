@@ -193,16 +193,16 @@ def write_dataset(
             f"Current filters: {ds._filters}\n"
             f"Available hdf5 compression types:\n{available_filters}"
         )
-    if fillvalue is not None and fillvalue != ds.fillvalue:
-        dtype = ds.dtype
-        if dtype.metadata and (
-            "vlen" in dtype.metadata or "h5py_encoding" in dtype.metadata
-        ):
-            # Variable length string dtype. The ds.fillvalue will be None in
-            # this case (see create_virtual_dataset() below)
-            pass
-        else:
-            raise ValueError(f"fillvalues do not match ({fillvalue} != {ds.fillvalue})")
+
+    if (
+        fillvalue is not None
+        and fillvalue != ds.fillvalue
+        # For variable length string dtypes, ds.fillvalue will be None in
+        # this case (see create_virtual_dataset() below)
+        and not is_vstring_dtype(ds.dtype)
+    ):
+        raise ValueError(f"fillvalues do not match ({fillvalue} != {ds.fillvalue})")
+
     check_compatible_dtypes(data.dtype, ds.dtype)
     # TODO: Handle more than one dimension
     old_shape = ds.shape
