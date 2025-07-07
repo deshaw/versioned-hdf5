@@ -14,6 +14,7 @@ from h5py._selector import Selector
 from ndindex import ChunkSize, Slice, Tuple, ndindex
 from numpy.testing import assert_array_equal
 
+from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS
 from versioned_hdf5.hashtable import Hashtable
 
 DEFAULT_CHUNK_SIZE = 2**12
@@ -22,6 +23,37 @@ DATA_VERSION = 4
 # data_version 3 hash collisions for string arrays which, when concatenated,
 # give the same string
 CORRUPT_DATA_VERSIONS = frozenset([2, 3])
+
+
+def is_vstring_dtype(dtype: np.dtype) -> bool:
+    """Return True if the dtype is a variable length string dtype,
+    either a NpyString (a.k.a. StringDType) or an h5py object string;
+    False otherwise.
+    """
+    metadata = dtype.metadata or ()
+    return (
+        # NpyStrings
+        HAS_NPYSTRINGS
+        and dtype.kind == "T"
+        # h5py object strings
+        or "vlen" in metadata
+        or "h5py_encoding" in metadata
+    )
+
+
+def are_compatible_dtypes(a: np.dtype, b: np.dtype) -> bool:
+    """Return True if the dtypes are compatible.
+    Compatible dtypes are those that are either equal or both variable length strings.
+    """
+    return a == b or is_vstring_dtype(a) and is_vstring_dtype(b)
+
+
+def check_compatible_dtypes(a: np.dtype, b: np.dtype) -> None:
+    """Raise if the dtypes are not compatible.
+    Compatible dtypes are those that are either equal or both variable length strings.
+    """
+    if not are_compatible_dtypes(a, b):
+        raise ValueError(f"dtypes are not compatible ({a} != {b})")
 
 
 def initialize(f):
@@ -142,8 +174,8 @@ def write_dataset(
                 "Chunk size specified but doesn't match already existing chunk size"
             )
 
-    if dtype is not None and dtype != ds.dtype:
-        raise ValueError("dtype specified but doesn't match already existing dtype")
+    if dtype is not None:
+        check_compatible_dtypes(dtype, ds.dtype)
 
     if (
         compression
@@ -161,18 +193,17 @@ def write_dataset(
             f"Current filters: {ds._filters}\n"
             f"Available hdf5 compression types:\n{available_filters}"
         )
-    if fillvalue is not None and fillvalue != ds.fillvalue:
-        dtype = ds.dtype
-        if dtype.metadata and (
-            "vlen" in dtype.metadata or "h5py_encoding" in dtype.metadata
-        ):
-            # Variable length string dtype. The ds.fillvalue will be None in
-            # this case (see create_virtual_dataset() below)
-            pass
-        else:
-            raise ValueError(f"fillvalues do not match ({fillvalue} != {ds.fillvalue})")
-    if data.dtype != ds.dtype:
-        raise ValueError(f"dtypes do not match ({data.dtype} != {ds.dtype})")
+
+    if (
+        fillvalue is not None
+        and fillvalue != ds.fillvalue
+        # For variable length string dtypes, ds.fillvalue will be None in
+        # this case (see create_virtual_dataset() below)
+        and not is_vstring_dtype(ds.dtype)
+    ):
+        raise ValueError(f"fillvalues do not match ({fillvalue} != {ds.fillvalue})")
+
+    check_compatible_dtypes(data.dtype, ds.dtype)
     # TODO: Handle more than one dimension
     old_shape = ds.shape
     slices = {}
@@ -302,6 +333,10 @@ def _verify_new_chunk_reuse(
     # the data that gets written is bytes. So in certain cases, just calling
     # assert_array_equal doesn't work. Instead, we encode each element to bytes first.
     def normalize_chunk(chunk):
+        # TODO object dtype and StringDType can be accelerated in C/Cython
+        # See also hashtable.Hashtable.hash()
+        if chunk.dtype.kind == "T":
+            return _convert_to_bytes(chunk.astype("O"))
         if chunk.dtype.kind == "O":
             return _convert_to_bytes(chunk)
         return chunk
@@ -371,10 +406,7 @@ def write_dataset_chunks(f, name, data_dict):
             if isinstance(data_s, (slice, tuple, Tuple, Slice)):
                 slices[chunk] = ndindex(data_s)
             else:
-                if data_s.dtype != raw_data.dtype:
-                    raise ValueError(
-                        f"dtypes do not match ({data_s.dtype} != {raw_data.dtype})"
-                    )
+                check_compatible_dtypes(data_s.dtype, raw_data.dtype)
 
                 data_hash = hashtable.hash(data_s)
 

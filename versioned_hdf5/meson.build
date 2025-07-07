@@ -3,6 +3,7 @@ py.install_sources(
         '__init__.py',
         'api.py',
         'backend.py',
+        'h5py_compat.py',
         'hashtable.py',
         'replay.py',
         'tools.py',

@@ -124,6 +124,17 @@ class Hashtable(MutableMapping):
         # reused, making it unsuitable for hashing. Instead, we need to make a combined
         # hash with the value of each element.
         hash_value = self.hash_function()  # type: ignore
+
+        if data.dtype.kind == "T":
+            # Ensure that StringDType and object type strings produce the same hash.
+            # TODO this can be accelerated in C/Cython
+            # See also backend._verify_new_chunk_reuse()
+            #
+            # DO NOT use hash_value.update(data)!
+            # Besides producing a different hash, it also suffers from hash collisions
+            # for long strings: https://github.com/numpy/numpy/issues/29226
+            data = data.astype(object)
+
         if data.dtype == object:
             for value in data.flat:
                 if isinstance(value, str):
