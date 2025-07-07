@@ -721,6 +721,7 @@ class StagedChangesArray(MutableMapping[Any, T]):
     @staticmethod
     def full(
         shape: tuple[int, ...],
+        *,
         chunk_size: tuple[int, ...],
         fill_value: Any | None = None,
         dtype: DTypeLike | None = None,
@@ -755,6 +756,7 @@ class StagedChangesArray(MutableMapping[Any, T]):
     @staticmethod
     def from_array(
         arr: ArrayLike,
+        *,
         chunk_size: tuple[int, ...],
         fill_value: Any | None = None,
         as_base_slabs: bool = True,
@@ -763,13 +765,11 @@ class StagedChangesArray(MutableMapping[Any, T]):
 
         :param as_base_slabs:
             True (default)
-                The base slabs are read-only views if supported, otherwise deep-copies)
-                of an existing array-like. This is mostly useful for debugging and
-                testing.
+                Set the base slabs as read-only views of ``arr``. This is mostly useful
+                for debugging and testing.
             False
-                There are no base slabs; set the staged slabs as writeable views (if
-                possible; otherwise read-only views; otherwise deep copies) of the
-                previous array data.
+                Set the staged slabs as writeable views of ``arr`` if possible;
+                otherwise as read-only views; otherwise as deep copies.
         """
         # Don't deep-copy array-like objects, as long as they allow for views
         arr = cast(np.ndarray, asarray(arr))
@@ -781,15 +781,19 @@ class StagedChangesArray(MutableMapping[Any, T]):
             # edge chunks.
             shape_round_down = tuple(s // c * c for s, c in zip(arr.shape, chunk_size))
             if shape_round_down != arr.shape:
-                view_round_down = arr[tuple(slice(s) for s in shape_round_down)]
                 out = StagedChangesArray.from_array(
-                    view_round_down, chunk_size, fill_value, as_base_slabs=False
+                    arr[tuple(slice(s) for s in shape_round_down)],
+                    chunk_size=chunk_size,
+                    fill_value=fill_value,
+                    as_base_slabs=False,
                 )
                 out.resize(arr.shape)
                 _set_edges(out, arr, shape_round_down)
                 return out
 
-        out = StagedChangesArray.full(arr.shape, chunk_size, fill_value, arr.dtype)
+        out = StagedChangesArray.full(
+            arr.shape, chunk_size=chunk_size, fill_value=fill_value, dtype=arr.dtype
+        )
         if out.size == 0:
             return out
 
