@@ -763,11 +763,14 @@ class StagedChangesArray(MutableMapping[Any, T]):
     ) -> StagedChangesArray:
         """Create a new StagedChangesArray from an array.
 
-        :param as_base_slabs:
+        Parameters
+        ----------
+        as_base_slabs:
             True (default)
-                Set the base slabs as read-only views of ``arr``. This is mostly useful
-                for debugging and testing.
+                Set the base slabs as read-only views of ``arr``.
+                This is mostly useful for debugging and testing.
             False
+                Do not create any base slabs.
                 Set the staged slabs as writeable views of ``arr`` if possible;
                 otherwise as read-only views; otherwise as deep copies.
         """

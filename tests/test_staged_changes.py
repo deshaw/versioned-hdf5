@@ -970,7 +970,9 @@ def test_readonly():
 
 
 def test_from_array_as_staged_slabs_1():
-    """from_array(..., as_base_slabs=False); arr is exactly divisible by chunk_size.
+    """from_array(..., as_base_slabs=False)
+
+    Input array is exactly divisible by chunk_size.
     Slabs are writeable views of the original array.
     """
     arr = np.arange(4).reshape((2, 2))
@@ -981,13 +983,17 @@ def test_from_array_as_staged_slabs_1():
 
 
 def test_from_array_as_staged_slabs_2():
-    """from_array(..., as_base_slabs=False); arr is not exactly divisible by chunk_size.
+    """from_array(..., as_base_slabs=False)
+
+    Input array is not exactly divisible by chunk_size.
     Edge slabs are deep-copied; everything else is a writeable view.
     """
     arr = np.arange(15).reshape((3, 5))
     a = StagedChangesArray.from_array(arr, chunk_size=(2, 2), as_base_slabs=False)
+    assert_array_equal(a, arr)
     # Test that non-edge chunks are views
     a[:, :] = -1
+    assert_array_equal(a, np.full((3, 5), -1))
     assert_array_equal(
         arr,
         np.array(
@@ -1016,10 +1022,55 @@ def test_from_array_as_staged_slabs_2():
 
 
 def test_from_array_as_staged_slabs_3():
-    """from_array(..., as_base_slabs=False);
+    """from_array(..., as_base_slabs=False)
+
     Only some axes are not exactly divisible by chunk_size.
     """
     arr = np.arange(6).reshape((2, 3))
     a = StagedChangesArray.from_array(arr, chunk_size=(2, 2), as_base_slabs=False)
+    assert_array_equal(a, arr)
     a[:, :] = -1
+    assert_array_equal(a, np.array([[-1, -1, -1], [-1, -1, -1]]))
     assert_array_equal(arr, np.array([[-1, -1, 2], [-1, -1, 5]]))
+
+
+def test_from_array_as_staged_slabs_4():
+    """from_array(..., as_base_slabs=False)
+
+    Input array is too small to fully cover even a single chunk;
+    all slabs are deep-copied.
+    """
+    arr = np.asarray([1, 2])
+    a = StagedChangesArray.from_array(arr, chunk_size=(3,), as_base_slabs=False)
+    assert_array_equal(a, arr)
+    a[:] = -1
+    assert_array_equal(a, np.array([-1, -1]))
+    assert_array_equal(arr, np.array([1, 2]))
+
+
+def test_from_array_as_staged_slabs_5():
+    """from_array(..., as_base_slabs=False)
+
+    Input array is a read-only NumPy array. It is CoW-copied on first write.
+    """
+    arr = np.arange(3)
+    arr.flags.writeable = False
+    a = StagedChangesArray.from_array(arr, chunk_size=(2,), as_base_slabs=False)
+    assert_array_equal(a, arr)
+    assert a.slabs[1].base is arr
+    a[:] = -1
+    assert_array_equal(a, [-1, -1, -1])
+    assert_array_equal(arr, [0, 1, 2])
+
+
+def test_from_array_as_staged_slabs_6():
+    """from_array(..., as_base_slabs=False)
+
+    Input array is an ArrayProtocol.
+    """
+    arr = MinimalArray(np.arange(3))
+    a = StagedChangesArray.from_array(arr, chunk_size=(2,), as_base_slabs=False)
+    assert_array_equal(a, arr)
+    a[:] = -1
+    assert_array_equal(a, [-1, -1, -1])
+    assert_array_equal(arr, [0, 1, 2])

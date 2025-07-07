@@ -1008,7 +1008,8 @@ class InMemoryArrayDataset(BufferMixin, DatasetLike):
         if any(new > old for new, old in zip(new_shape, self.shape)):
             raise AssertionError(  # pragma: nocover
                 "Enlarging an InMemoryArrayDataset directly. "
-                "This should be unreachable; see DatasetWrapper.resize()."
+                "This should be unreachable outside of artificial unit tests; "
+                "see DatasetWrapper.resize()."
             )
         new_idx = tuple(slice(i) for i in new_shape)
         self._buffer = self._buffer[new_idx]
