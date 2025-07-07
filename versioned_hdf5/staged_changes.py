@@ -26,6 +26,7 @@ from versioned_hdf5.subchunk_map import (
     read_many_slices_params_nd,
 )
 from versioned_hdf5.tools import asarray, format_ndindex, ix_with_slices
+from versioned_hdf5.typing_ import ArrayProtocol, MutableArrayProtocol
 
 if cython.compiled:  # pragma: nocover
     from cython.cimports.versioned_hdf5.cytools import (  # type: ignore
@@ -773,6 +774,21 @@ class StagedChangesArray(MutableMapping[Any, T]):
         # Don't deep-copy array-like objects, as long as they allow for views
         arr = cast(np.ndarray, asarray(arr))
 
+        if not as_base_slabs:
+            # If a staged slab is not exactly divisible by chunk_size, it is going to be
+            # problematic down the line if we call resize() to enlarge the array.
+            # Use views of the array for all complete chunks and deep-copy the partial
+            # edge chunks.
+            shape_round_down = tuple(s // c * c for s, c in zip(arr.shape, chunk_size))
+            if shape_round_down != arr.shape:
+                view_round_down = arr[tuple(slice(s) for s in shape_round_down)]
+                out = StagedChangesArray.from_array(
+                    view_round_down, chunk_size, fill_value, as_base_slabs=False
+                )
+                out.resize(arr.shape)
+                _set_edges(out, arr, shape_round_down)
+                return out
+
         out = StagedChangesArray.full(arr.shape, chunk_size, fill_value, arr.dtype)
         if out.size == 0:
             return out
@@ -786,22 +802,8 @@ class StagedChangesArray(MutableMapping[Any, T]):
         slab_offsets = np.arange(0, arr.shape[0], step=chunk_size[0])
         out.slab_offsets[()] = slab_offsets[(slice(None),) + (None,) * (out.ndim - 1)]
 
-        if not as_base_slabs and arr.shape[0] % chunk_size[0]:
-            # staged slab is not exactly divisible by chunk_size along axis 0.
-            # This is going to be problematic later if we call resize() to
-            # enlarge the array. Use views of the array where possible and deep-copy
-            # the chunks along the edge of axis 0.
-            # See below for equivalent treatment along axes 1+.
-            axis0_idx = slice(0, (n_chunks[0] - 1) * chunk_size[0])
-            axis0_rest_idx = slice(axis0_idx.stop, arr.shape[0])
-            out.slab_indices[-1] = 0  # Set last row as full of fill_value
-            out.slab_offsets[-1] = 0
-        else:
-            axis0_idx = slice(None)
-            axis0_rest_idx = None
-
         for chunk_idx in itertools.product(*[list(range(c)) for c in n_chunks[1:]]):
-            view_idx = (axis0_idx,) + tuple(
+            view_idx = (slice(None),) + tuple(
                 slice(start := c * s, start + s)
                 for c, s in zip(chunk_idx, chunk_size[1:])
             )
@@ -814,24 +816,17 @@ class StagedChangesArray(MutableMapping[Any, T]):
                 # writing to them anyway.
                 if isinstance(slab, np.ndarray):
                     slab.flags.writeable = False
-            elif slab.shape[1:] != chunk_size[1:]:
-                # staged slab is not exactly divisible by chunk_size along axes 1+.
-                # See matching code for axis 0 above.
-                assert slab.shape[0] % chunk_size[0] == 0  # See axis0_idx above
-                new_shape = (slab.shape[0], *chunk_size[1:])
-                new_slab = np.empty(new_shape, dtype=out.dtype)
-                new_slab[tuple(slice(i) for i in slab.shape)] = slab
-                slab = new_slab
-            elif not isinstance(slab, np.ndarray):
-                # Staged slabs must be numpy arrays.
-                slab = np.asarray(slab)
+            else:
+                assert slab.shape[0] % chunk_size[0] == 0
+                assert slab.shape[1:] == chunk_size[1:]
+                if not isinstance(slab, np.ndarray):
+                    # Staged slabs must be numpy arrays.
+                    slab = np.asarray(slab)
+
             out.slabs.append(slab)
 
         if as_base_slabs:
             out.n_base_slabs = out.n_slabs - 1
-        elif axis0_rest_idx is not None:
-            # Add one more staged slab to hold the partial chunks along axis 0
-            out[axis0_rest_idx] = arr[axis0_rest_idx]
         return out
 
 
@@ -1981,3 +1976,25 @@ def _make_transfer_plans(
             slab_indices=slab_indices,
             slab_offsets=slab_offsets,
         )
+
+
+def _set_edges(
+    dst: MutableArrayProtocol, src: ArrayProtocol, shape: tuple[int, ...]
+) -> None:
+    """Copy src into dst, but only for the edge area outside the given shape
+    (aligned to the top left corner).
+
+    This is equivalent to::
+
+        mask = np.ones(dst.shape, dtype=bool)
+        mask[*(slice(s) for s in shape)] = False
+        dst[mask] = src[mask]
+
+    except that the above would be ~O(dst.size) whereas this function is ~O(edge size).
+    """
+    assert src.shape == dst.shape
+    assert len(shape) == dst.ndim
+    for i, (start, stop) in enumerate(zip(shape, dst.shape)):
+        if stop > start:
+            idx = tuple(slice(s) for s in shape[:i]) + (slice(start, stop),)
+            dst[idx] = src[idx]
