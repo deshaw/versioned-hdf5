@@ -1641,12 +1641,12 @@ def test_check_committed(vfile):
     # Incorrectly uses g from the previous version (InMemoryArrayDataset)
     with pytest.raises(ValueError, match="committed"):
         with vfile.stage_version("version2"):
-            assert isinstance(g["test_data"], InMemoryArrayDataset)
+            assert isinstance(g["test_data"].dataset, InMemoryArrayDataset)
             g["test_data"][0] = 1
 
     with pytest.raises(ValueError, match="committed"):
         with vfile.stage_version("version2"):
-            assert isinstance(g["test_data"], InMemoryArrayDataset)
+            assert isinstance(g["test_data"].dataset, InMemoryArrayDataset)
             g["test_data"].resize((100,))
 
     with vfile.stage_version("version2") as g2:
@@ -1688,7 +1688,7 @@ def test_InMemoryArrayDataset_chunks(vfile):
             compression="gzip",
             compression_opts=3,
         )
-        assert isinstance(data_group["g/bar"], InMemoryArrayDataset)
+        assert isinstance(data_group["g/bar"].dataset, InMemoryArrayDataset)
         assert data_group["g/bar"].chunks == (100,)
         assert data_group["g/bar"].compression == "gzip"
         assert data_group["g/bar"].compression_opts == 3
@@ -1712,7 +1712,7 @@ def test_string_dtypes(setup_vfile, dt):
         file = VersionedHDF5File(f)
         with file.stage_version("0") as sv:
             sv.create_dataset("name", shape=(10,), dtype=dt, data=data)
-            assert isinstance(sv["name"], InMemoryArrayDataset)
+            assert isinstance(sv["name"].dataset, InMemoryArrayDataset)
             sv["name"].resize((11,))
 
         assert file["0"]["name"].dtype == dt
@@ -2070,7 +2070,7 @@ def test_datasetwrapper(vfile):
     with vfile.stage_version("r0") as sv:
         sv.create_dataset("bar", data=[1, 2, 3], chunks=(2,))
         sv["bar"].attrs["key"] = 0
-        assert isinstance(sv["bar"], InMemoryArrayDataset)
+        assert isinstance(sv["bar"].dataset, InMemoryArrayDataset)
         assert dict(sv["bar"].attrs) == {"key": 0}
         assert sv["bar"].chunks == (2,)
 

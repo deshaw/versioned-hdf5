@@ -54,12 +54,16 @@ def test_InMemoryArrayDataset(h5file):
     assert dataset.size == 100
 
 
-def test_InMemoryArrayDataset_resize(h5file):
+def test_InMemoryArrayDataset_enlarge(h5file):
     group = h5file.create_group("group")
     parent = InMemoryGroup(group.id)
+
     a = np.arange(100)
-    dataset = InMemoryArrayDataset("data", a, parent=parent)
+    dataset = DatasetWrapper(  # Can't enlarge an InMemoryArrayDataset directly
+        InMemoryArrayDataset("data", a, parent=parent, chunks=(50,))
+    )
     dataset.resize((110,))
+    assert isinstance(dataset.dataset, InMemorySparseDataset)
 
     assert len(dataset) == 110
     assert_equal(dataset[:100], dataset._buffer[:100])
@@ -68,9 +72,15 @@ def test_InMemoryArrayDataset_resize(h5file):
     assert_equal(dataset[100:], 0)
     assert dataset.shape == dataset._buffer.shape == (110,)
 
+
+def test_InMemoryArrayDataset_shrink(h5file):
+    group = h5file.create_group("group")
+    parent = InMemoryGroup(group.id)
+
     a = np.arange(100)
-    dataset = InMemoryArrayDataset("data", a, parent=parent)
+    dataset = DatasetWrapper(InMemoryArrayDataset("data", a, parent=parent))
     dataset.resize((90,))
+    assert isinstance(dataset.dataset, InMemoryArrayDataset)
 
     assert len(dataset) == 90
     assert_equal(dataset, dataset._buffer)
@@ -134,7 +144,9 @@ def test_InMemoryArrayDataset_resize_multidimension(oldshape, newshape, h5file):
     group = h5file.create_group("group")
     parent = InMemoryGroup(group.id)
 
-    dataset = InMemoryArrayDataset("data", a, parent=parent, fillvalue=-1)
+    dataset = DatasetWrapper(  # Can't enlarge an InMemoryArrayDataset directly
+        InMemoryArrayDataset("data", a, parent=parent, fillvalue=-1, chunks=(7, 4, 11))
+    )
     dataset.resize(newshape)
 
     h5file.create_dataset(
@@ -206,7 +218,7 @@ def test_readonly_data(vfile):
 def test_astype_dense(vfile, dtype):
     with vfile.stage_version("r0") as group:
         dset = group.create_dataset("x", data=np.array([0, 1, 2], dtype="i1"))
-        assert isinstance(dset, InMemoryArrayDataset)
+        assert isinstance(dset.dataset, InMemoryArrayDataset)
 
         a = dset.astype(dtype)
         assert isinstance(a, ArrayProtocol)

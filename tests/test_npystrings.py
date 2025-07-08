@@ -69,7 +69,7 @@ def any_dataset(h5file, request):
         if request.param == "InMemoryArrayDataset":
             with vfile.stage_version("a0") as v:
                 ds = v.create_dataset("x", data=["foo", ""], dtype=h5py.string_dtype())
-                assert isinstance(ds, InMemoryArrayDataset)
+                assert isinstance(ds.dataset, InMemoryArrayDataset)
                 yield ds
 
         elif request.param == "InMemorySparseDataset":
@@ -142,8 +142,8 @@ def test_commit_doesnt_swap_buffer(vfile):
     with vfile.stage_version("v0") as v:
         x = v.create_dataset("x", data=["foo"], dtype="T")
         y = v.create_dataset("y", data=["foo"], dtype=h5py.string_dtype())
-        assert isinstance(x, InMemoryArrayDataset)
-        assert isinstance(y, InMemoryArrayDataset)
+        assert isinstance(x.dataset, InMemoryArrayDataset)
+        assert isinstance(y.dataset, InMemoryArrayDataset)
         assert x.dtype.kind == "O"
         assert y.dtype.kind == "O"
         assert x._buffer.dtype.kind == "T"
@@ -270,8 +270,8 @@ def test_tight_iteration_big_O_performance(h5file):
     with vfile.stage_version("v0") as v:
         small = create_dataset(v, "small", NSMALL)
         large = create_dataset(v, "large", NLARGE)
-        assert isinstance(small, InMemoryArrayDataset)
-        assert isinstance(large, InMemoryArrayDataset)
+        assert isinstance(small.dataset, InMemoryArrayDataset)
+        assert isinstance(large.dataset, InMemoryArrayDataset)
         benchmark(small, large)
         assert_swaps_counter(large, 0)
 
@@ -300,7 +300,7 @@ def test_multiple_swaps_warning(vfile):
 
     with vfile.stage_version("v0") as v:
         ds = v.create_dataset("x", data=["foo"], dtype="T")
-        assert isinstance(ds, InMemoryArrayDataset)
+        assert isinstance(ds.dataset, InMemoryArrayDataset)
         assert ds._buffer.dtype.kind == "T"
         assert_swaps_counter(ds, 0)
 
@@ -369,7 +369,7 @@ def test_hash_native(vfile, monkeypatch):
         ds = v.create_dataset(
             "dense", data=["ab", "cd", "ef", "gh"], chunks=(2,), dtype="T"
         )
-        assert isinstance(ds, InMemoryArrayDataset)
+        assert isinstance(ds.dataset, InMemoryArrayDataset)
         assert ds._buffer.dtype.kind == "T"
 
     # Hash from InMemoryDataset
@@ -457,3 +457,49 @@ def test_hash_arena_strings(vfile):
         v["x"][1] = data[2]
     with vfile.stage_version("v2") as v:
         assert_slab_offsets(v, "x", [1, 2])
+
+
+def test_datasetwrapper_setitem(vfile):
+    """DatasetWrapper.__setitem__() hot-swaps a InMemoryDataset for a
+    InMemoryArrayDataset when the whole dataset is updated.
+    Test that this doesn't flip the buffer dtype.
+    """
+    with vfile.stage_version("v0") as v:
+        ds = v.create_dataset("x", data=["foo", "bar"], dtype="T")
+
+    with vfile.stage_version("v1") as v:
+        ds = v["x"]
+        # swap buffers
+        _ = ds.astype("T")
+        assert isinstance(ds.dataset, InMemoryDataset)
+        assert ds.dataset._buffer.dtype.kind == "T"
+        assert ds.dtype.kind == "O"
+
+        ds[:] = ["baz", "qux"]
+        assert isinstance(ds.dataset, InMemoryArrayDataset)
+        assert ds.dataset._buffer.dtype.kind == "T"
+        assert ds.dtype.kind == "O"
+
+
+def test_datasetwrapper_resize(vfile):
+    """DatasetWrapper.resize() hot-swaps a InMemoryArrayDataset for a
+    InMemorySparseDataset when enlarging.
+    Test that this doesn't flip the buffer dtype.
+    """
+    with vfile.stage_version("v0") as v:
+        ds = v.create_dataset(
+            "x",
+            data=["foo", "bar"],
+            dtype="T",
+            chunks=(2,),
+            maxshape=(None,),
+        )
+        _ = ds.astype("T")
+        assert isinstance(ds.dataset, InMemoryArrayDataset)
+        assert ds.dataset._buffer.dtype.kind == "T"
+        assert ds.dtype.kind == "O"
+
+        ds.resize((3,))
+        assert isinstance(ds.dataset, InMemorySparseDataset)
+        assert ds.dataset._buffer.dtype.kind == "T"
+        assert ds.dtype.kind == "O"

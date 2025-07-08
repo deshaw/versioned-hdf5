@@ -95,6 +95,6 @@ def test_array_protocol_h5_astypeview_compat(h5file):
 
 
 def array_protocol_staged_changes():
-    arr = StagedChangesArray.full((3, 3), (3, 1), dtype="f4")
+    arr = StagedChangesArray.full((3, 3), chunk_size=(3, 1), dtype="f4")
     assert isinstance(arr, ArrayProtocol)
     assert isinstance(arr, MutableArrayProtocol)

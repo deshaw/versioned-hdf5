@@ -69,13 +69,17 @@ def test_staged_array(args):
 
     if base == "full":
         base = np.full(shape, fill_value, dtype="u4")
-        arr = StagedChangesArray.full(shape, chunks, fill_value, dtype=base.dtype)
+        arr = StagedChangesArray.full(
+            shape, chunk_size=chunks, fill_value=fill_value, dtype=base.dtype
+        )
         assert arr.n_base_slabs == 0
     elif base == "from_array":
         base = rng.integers(2**32, size=shape, dtype="u4")
         # copy base to detect bugs where the StagedChangesArray
         # accidentally writes back to the base slabs
-        arr = StagedChangesArray.from_array(base.copy(), chunks, fill_value)
+        arr = StagedChangesArray.from_array(
+            base.copy(), chunk_size=chunks, fill_value=fill_value
+        )
         if base.size == 0:
             assert arr.n_base_slabs == 0
         else:
@@ -162,7 +166,7 @@ def test_array_protocol_setitem():
     """Test that the value of __setitem__ can be anything that implements
     ArrayProtocol
     """
-    arr = StagedChangesArray.full((3, 3), (3, 1), dtype="f4")
+    arr = StagedChangesArray.full((3, 3), chunk_size=(3, 1), dtype="f4")
     arr[:2, :2] = MinimalArray([[1, 2], [3, 4]])
     assert all(isinstance(slab, np.ndarray) for slab in arr.slabs)
     assert_array_equal(arr, np.array([[1, 2, 0], [3, 4, 0], [0, 0, 0]], dtype="f4"))
@@ -173,7 +177,7 @@ def test_array_protocol_from_array():
     and that it does not coerce it to a numpy array.
     """
     orig = MinimalArray(np.arange(9).reshape(3, 3))
-    arr = StagedChangesArray.from_array(orig, (2, 2))
+    arr = StagedChangesArray.from_array(orig, chunk_size=(2, 2))
     assert isinstance(arr.full_slab, np.ndarray)
     assert arr.n_base_slabs == 2
 
@@ -243,7 +247,7 @@ def test_array_protocol_from_slabs():
 
 
 def test_asarray():
-    arr = StagedChangesArray.full((2, 2), (2, 2))
+    arr = StagedChangesArray.full((2, 2), chunk_size=(2, 2))
     assert isinstance(np.asarray(arr), np.ndarray)
     assert_array_equal(np.asarray(arr), arr)
 
@@ -259,7 +263,9 @@ def test_asarray():
 
 
 def test_load():
-    arr = StagedChangesArray.from_array(np.arange(4).reshape(2, 2), (2, 1), 42)
+    arr = StagedChangesArray.from_array(
+        np.arange(4).reshape(2, 2), chunk_size=(2, 1), fill_value=42
+    )
     arr.resize((3, 2))
     assert len(arr.slabs) == 3
     assert_array_equal(arr.slab_indices, [[1, 2], [0, 0]])
@@ -284,7 +290,7 @@ def test_load():
     # Edge case where __setitem__ stops using a base slab but doesn't dereference it for
     # performance reasons, so there are no transfers to do but you still should drop
     # the base slab
-    arr = StagedChangesArray.from_array(np.arange(2), (2,))
+    arr = StagedChangesArray.from_array(np.arange(2), chunk_size=(2,))
     arr[0] = 2
     assert_array_equal(arr.slab_indices, [2])
     assert arr.slabs[1] is not None
@@ -298,7 +304,9 @@ def test_shrinking_dereferences_slabs():
     """Test that shrinking a StagedChangesArray dereferences the slabs that are no
     longer referenced by any chunks.
     """
-    arr = StagedChangesArray.from_array([[1, 2, 3, 4, 5, 6, 7]], (1, 2), fill_value=42)
+    arr = StagedChangesArray.from_array(
+        [[1, 2, 3, 4, 5, 6, 7]], chunk_size=(1, 2), fill_value=42
+    )
     arr[0, -1] = 8
     arr.resize((1, 10))
     assert_array_equal(arr.slab_indices, [[1, 2, 3, 5, 0]])
@@ -373,7 +381,7 @@ def test_copy():
 
 
 def test_astype():
-    a = StagedChangesArray.full((2, 2), (2, 2), dtype="i1")
+    a = StagedChangesArray.full((2, 2), chunk_size=(2, 2), dtype="i1")
     a[0, 0] = 1
 
     # astype() with no type change deep-copies
@@ -469,7 +477,7 @@ class TestAsTypeLazy:
     """
 
     def setup_method(self):
-        a = StagedChangesArray.full((6,), (2,), dtype="i1")
+        a = StagedChangesArray.full((6,), chunk_size=(2,), dtype="i1")
         a[0:2] = [0, 1]
         a[2:4] = [2, 3]
         a = a.astype("i2")
@@ -561,7 +569,7 @@ def test_big_O_performance():
     """
 
     def benchmark(shape):
-        arr = StagedChangesArray.full(shape, (1, 2))
+        arr = StagedChangesArray.full(shape, chunk_size=(1, 2))
         # Don't measure page faults on first access to slab_indices and slab_offsets.
         # In the 10 chunks use case, it's almost certainly reused memory.
         _ = arr[0, -3:]
@@ -631,18 +639,18 @@ def test_weird_dtypes():
     for slab in a.slabs:
         assert slab.dtype == "U3"
 
-    a = StagedChangesArray.full((3,), (2,), fill_value="zzz", dtype="U3")
+    a = StagedChangesArray.full((3,), chunk_size=(2,), fill_value="zzz", dtype="U3")
     assert a.dtype == "U3"
     a[0] = "aaa"
     assert_array_equal(a, ["aaa", "zzz", "zzz"], strict=True)
     for slab in a.slabs:
         assert slab.dtype == "U3"
 
-    a = StagedChangesArray.full((1,), (1,), dtype="U3")
+    a = StagedChangesArray.full((1,), chunk_size=(1,), dtype="U3")
     assert a.dtype == "U3"
     assert_array_equal(a, np.array([""], dtype="U3"), strict=True)
 
-    a = StagedChangesArray.full((1,), (1,), dtype="|V3")
+    a = StagedChangesArray.full((1,), chunk_size=(1,), dtype="|V3")
     assert a.dtype == "|V3"
     assert_array_equal(a, np.array([b""], dtype="|V3"), strict=True)
 
@@ -716,7 +724,7 @@ def test_dtype_priority_full():
 
 
 def test_setitem_broadcast():
-    a = StagedChangesArray.full((2, 2), (2, 2), fill_value=42)
+    a = StagedChangesArray.full((2, 2), chunk_size=(2, 2), fill_value=42)
     a[()] = 1
     assert_array_equal(a, [[1, 1], [1, 1]])
     a[0] = [2, 3]
@@ -725,7 +733,7 @@ def test_setitem_broadcast():
 
 def test_repr():
     a = StagedChangesArray.from_array(
-        np.array([[1, 2], [3, 4]], dtype="u4"), (2, 1), fill_value=42
+        np.array([[1, 2], [3, 4]], dtype="u4"), chunk_size=(2, 1), fill_value=42
     )
     a.resize((2, 3))
     a[0, 0] = 5
@@ -752,7 +760,7 @@ def test_repr():
     assert "[[3 2 4]]" in r, r  # updated slab_indices
 
     a = StagedChangesArray.from_array(
-        np.array([[1, 2], [3, 4]], dtype="u4"), (1, 4), fill_value=42
+        np.array([[1, 2], [3, 4]], dtype="u4"), chunk_size=(1, 4), fill_value=42
     )
     r = repr(a._resize_plan((1, 5)))
     assert "2 slice transfers among 2 slab pairs" in r, r
@@ -792,7 +800,7 @@ def test_invalid_parameters():
             slab_offsets=[0],
         )
     with pytest.raises(ValueError, match="shape"):
-        StagedChangesArray.full((-1,), (2,))
+        StagedChangesArray.full((-1,), chunk_size=(2,))
     with pytest.raises(ValueError, match="chunk_size"):
         StagedChangesArray(
             shape=(2,),
@@ -802,7 +810,7 @@ def test_invalid_parameters():
             slab_offsets=[0],
         )
     with pytest.raises(ValueError, match="chunk_size"):
-        StagedChangesArray.full((2,), (0,))
+        StagedChangesArray.full((2,), chunk_size=(0,))
     with pytest.raises(ValueError, match="fill_value"):
         StagedChangesArray(
             shape=(2,),
@@ -861,7 +869,7 @@ def test_invalid_parameters():
             slab_offsets=[0, 0],
         )
 
-    a = StagedChangesArray.full((2,), (2,))
+    a = StagedChangesArray.full((2,), chunk_size=(2,))
     with pytest.raises(ValueError, match="Cannot delete"):
         del a[0]
     with pytest.raises(ValueError, match="scalar"):
@@ -913,7 +921,7 @@ def test_numpy_ints_constructors():
 
 def test_numpy_ints_methods():
     """Test when input parameters are numpy.int types instead of plain python ints"""
-    arr = StagedChangesArray.from_array(np.arange(10), (5,))
+    arr = StagedChangesArray.from_array(np.arange(10), chunk_size=(5,))
     arr[np.int64(7)] = np.int8(42)  # __setitem__
     arr[np.int64(8) : np.int64(9)] = [np.int8(43)]  # __setitem__
     assert arr[np.int64(7)] == 42  # __getitem__
@@ -931,7 +939,7 @@ def test_numpy_ints_methods():
 
 
 def test_readonly():
-    a = StagedChangesArray.from_array(np.arange(10), (5,))
+    a = StagedChangesArray.from_array(np.arange(10), chunk_size=(5,))
     a.writeable = False
     assert a.slab_indices.tolist() == [1, 1]
     with pytest.raises(ValueError, match="read-only"):
@@ -959,3 +967,110 @@ def test_readonly():
     b = a.refill(42)
     assert b.writeable
     assert not a.writeable
+
+
+def test_from_array_as_staged_slabs_1():
+    """from_array(..., as_base_slabs=False)
+
+    Input array is exactly divisible by chunk_size.
+    Slabs are writeable views of the original array.
+    """
+    arr = np.arange(4).reshape((2, 2))
+    a = StagedChangesArray.from_array(arr, chunk_size=(2, 2), as_base_slabs=False)
+    # Test that all chunks are views
+    a[:, :] = -1
+    assert_array_equal(arr, np.array([[-1, -1], [-1, -1]]))
+
+
+def test_from_array_as_staged_slabs_2():
+    """from_array(..., as_base_slabs=False)
+
+    Input array is not exactly divisible by chunk_size.
+    Edge slabs are deep-copied; everything else is a writeable view.
+    """
+    arr = np.arange(15).reshape((3, 5))
+    a = StagedChangesArray.from_array(arr, chunk_size=(2, 2), as_base_slabs=False)
+    assert_array_equal(a, arr)
+    # Test that non-edge chunks are views
+    a[:, :] = -1
+    assert_array_equal(a, np.full((3, 5), -1))
+    assert_array_equal(
+        arr,
+        np.array(
+            [
+                [-1, -1, -1, -1, 4],
+                [-1, -1, -1, -1, 9],
+                [10, 11, 12, 13, 14],
+            ]
+        ),
+    )
+    # Enlarging at a later time is OK
+    a.resize((4, 6))
+    a[0, -1] = 22
+    a[-1, 0] = 33
+    assert_array_equal(
+        a,
+        np.array(
+            [
+                [-1, -1, -1, -1, -1, 22],
+                [-1, -1, -1, -1, -1, 0],
+                [-1, -1, -1, -1, -1, 0],
+                [33, 0, 0, 0, 0, 0],
+            ]
+        ),
+    )
+
+
+def test_from_array_as_staged_slabs_3():
+    """from_array(..., as_base_slabs=False)
+
+    Only some axes are not exactly divisible by chunk_size.
+    """
+    arr = np.arange(6).reshape((2, 3))
+    a = StagedChangesArray.from_array(arr, chunk_size=(2, 2), as_base_slabs=False)
+    assert_array_equal(a, arr)
+    a[:, :] = -1
+    assert_array_equal(a, np.array([[-1, -1, -1], [-1, -1, -1]]))
+    assert_array_equal(arr, np.array([[-1, -1, 2], [-1, -1, 5]]))
+
+
+def test_from_array_as_staged_slabs_4():
+    """from_array(..., as_base_slabs=False)
+
+    Input array is too small to fully cover even a single chunk;
+    all slabs are deep-copied.
+    """
+    arr = np.asarray([1, 2])
+    a = StagedChangesArray.from_array(arr, chunk_size=(3,), as_base_slabs=False)
+    assert_array_equal(a, arr)
+    a[:] = -1
+    assert_array_equal(a, np.array([-1, -1]))
+    assert_array_equal(arr, np.array([1, 2]))
+
+
+def test_from_array_as_staged_slabs_5():
+    """from_array(..., as_base_slabs=False)
+
+    Input array is a read-only NumPy array. It is CoW-copied on first write.
+    """
+    arr = np.arange(3)
+    arr.flags.writeable = False
+    a = StagedChangesArray.from_array(arr, chunk_size=(2,), as_base_slabs=False)
+    assert_array_equal(a, arr)
+    assert a.slabs[1].base is arr
+    a[:] = -1
+    assert_array_equal(a, [-1, -1, -1])
+    assert_array_equal(arr, [0, 1, 2])
+
+
+def test_from_array_as_staged_slabs_6():
+    """from_array(..., as_base_slabs=False)
+
+    Input array is an ArrayProtocol.
+    """
+    arr = MinimalArray(np.arange(3))
+    a = StagedChangesArray.from_array(arr, chunk_size=(2,), as_base_slabs=False)
+    assert_array_equal(a, arr)
+    a[:] = -1
+    assert_array_equal(a, [-1, -1, -1])
+    assert_array_equal(arr, [0, 1, 2])

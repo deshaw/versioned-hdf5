@@ -157,7 +157,9 @@ class InMemoryGroup(Group):
             self.set_compression(name, obj.compression)
             self.set_compression_opts(name, obj.compression_opts)
         else:
-            self._data[name] = InMemoryArrayDataset(name, np.asarray(obj), parent=self)
+            self._data[name] = DatasetWrapper(
+                InMemoryArrayDataset(name, np.asarray(obj), parent=self)
+            )
 
     def __delitem__(self, name):
         self._check_committed()
@@ -289,6 +291,7 @@ class InMemoryGroup(Group):
                 # ds._buffer.dtype.kind == "T" but outwards dtype must be object.
                 dtype=dtype,
             )
+            ds = DatasetWrapper(ds)
         else:
             ds = InMemorySparseDataset(
                 name,
@@ -1002,18 +1005,14 @@ class InMemoryArrayDataset(BufferMixin, DatasetLike):
     def resize(self, size, axis=None):
         self.parent._check_committed()
         new_shape = _normalize_resize_args(self.shape, size, axis)
-        if all(new <= old for new, old in zip(new_shape, self.shape)):
-            new_idx = tuple(slice(i) for i in new_shape)
-            self._buffer = self._buffer[new_idx]
-        else:
-            # FIXME this can be very problematic if the user is not going to fill
-            # the new area afterwards!
-            # https://github.com/deshaw/versioned-hdf5/issues/440
-            old_idx = tuple(slice(i) for i in self.shape)
-            new_idx = tuple(slice(i) for i in new_shape)
-            new_array = np.full(new_shape, self.fillvalue, dtype=self.dtype)
-            new_array[old_idx] = self._buffer[new_idx]
-            self._buffer = new_array
+        if any(new > old for new, old in zip(new_shape, self.shape)):
+            raise AssertionError(  # pragma: nocover
+                "Enlarging an InMemoryArrayDataset directly. "
+                "This should be unreachable outside of artificial unit tests; "
+                "see DatasetWrapper.resize()."
+            )
+        new_idx = tuple(slice(i) for i in new_shape)
+        self._buffer = self._buffer[new_idx]
 
 
 class InMemorySparseDataset(BufferMixin, DatasetLike):
@@ -1185,6 +1184,39 @@ class DatasetWrapper(DatasetLike):
 
     def __getitem__(self, index):
         return self.dataset.__getitem__(index)
+
+    def resize(self, size, axis=None):
+        new_shape = _normalize_resize_args(self.dataset.shape, size, axis)
+        if not isinstance(self.dataset, InMemoryArrayDataset) or all(
+            new <= old for new, old in zip(new_shape, self.dataset.shape)
+        ):
+            self.dataset.resize(new_shape)
+            return
+
+        # Enlarge an InMemoryArrayDataset.
+        # Prevent a potentially very expensive use case where the user calls
+        # resize() but then does not completely fill it up with data before they commit,
+        # resulting in empty chunks that needlessly occupy RAM until the time they are
+        # committed and all need to go through hashing.
+        new_ds = InMemorySparseDataset(
+            name=self.dataset.name,
+            shape=self.dataset.shape,
+            dtype=self.dataset.dtype,
+            parent=self.dataset.parent,
+            chunks=self.dataset.chunks,
+            fillvalue=self.dataset.fillvalue,
+        )
+        # Use a writeable view of old buffer as the slabs, if geometry allows
+        new_ds.staged_changes = StagedChangesArray.from_array(
+            # Note: in case of variable-width strings, _buffer.dtype may be different
+            # from dataset.dtype
+            self.dataset._buffer,
+            chunk_size=self.dataset.chunks,
+            fill_value=self.dataset.fillvalue,
+            as_base_slabs=False,
+        )
+        new_ds.resize(new_shape)
+        self.dataset = new_ds
 
 
 class InMemoryDatasetID(h5d.DatasetID):
