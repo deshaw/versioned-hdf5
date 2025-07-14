@@ -6,6 +6,7 @@ This is a hack to convince Meson to compile .py files with Cython.
 .. note::
     Don't use the 'cp' shell command, as it fails on conda-forge Windows CI.
 """
+
 import pathlib
 import shutil
 
