@@ -60,6 +60,8 @@ class TimeWrappers(Benchmark):
         self.assert_clean_setup()
         self.ds[:, 0, 0:6] = -1
         if kind != "h5py.Dataset":
+            # Include commit in the benchmark.
+            # Otherwise, it makes no sense to compare versioned_hdf5 vs. h5py.
             self.ctx.__exit__(None, None, None)  # commit
             del self.ctx
 
@@ -155,4 +157,3 @@ class TimeCommit(Benchmark):
     def time_commit(self, kind, chunks):
         self.assert_clean_setup()
         self.ctx.__exit__(None, None, None)
-        self.file.close()
