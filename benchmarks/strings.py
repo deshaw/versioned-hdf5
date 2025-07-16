@@ -82,7 +82,8 @@ class TimeStrings(Benchmark):
     def time_read_write_loop_fast_astype(self, library, dtype, max_nchars):
         self.assert_clean_setup()
         for i in range(0, self.ds.shape[0], 2):
-            self.ds[i + 1, :] = self.ds.astype("T")[i, :][::-1]
+            view = self.ds.astype("T") if dtype == "T" else self.ds
+            self.ds[i + 1, :] = view[i, :][::-1]
 
     def teardown(self, library, dtype, max_nchars):
         if hasattr(self, "ctx"):
