@@ -18,21 +18,29 @@
     // of the repository.
     // "repo_subdir": "",
 
-    // Customizable commands for building, installing, and
-    // uninstalling the project. See asv.conf.json documentation.
-    //
-    // "install_command": [
-    //   "in-dir={env_dir} python {conf_dir}/benchmarks_install.py {commit} {env_dir} {build_dir}"
-    // ],
-    // "uninstall_command": ["return-code=any python -mpip uninstall -y {project}"],
+    // Customizable commands for building the project.
+    // See asv.conf.json documentation.
+    // To build the package using pyproject.toml (PEP518), uncomment the following lines
     "build_command": [
-      "python -m pip install build",
-      "python -m build --wheel -o {build_cache_dir} {build_dir}",
+        "python -m pip install build",
+        "python -m build",
+        "python -mpip wheel -w {build_cache_dir} {build_dir}"
     ],
+    // To build the package using setuptools and a setup.py file, uncomment the following lines
+    // "build_command": [
+    //     "python setup.py build",
+    //     "python -mpip wheel -w {build_cache_dir} {build_dir}"
+    // ],
 
-    // List of branches to benchmark. If not provided, defaults to "master"
+    // Customizable commands for installing and uninstalling the project.
+    // See asv.conf.json documentation.
+    // "install_command": ["in-dir={env_dir} python -mpip install {wheel_file}"],
+    // "uninstall_command": ["return-code=any python -mpip uninstall -y {project}"],
+
+    // List of branches to benchmark. If not provided, defaults to "main"
     // (for git) or "default" (for mercurial).
     "branches": ["master"], // for git
+    // "branches": ["default"],    // for mercurial
 
     // The DVCS being used.  If not set, it will be automatically
     // determined from "repo" by looking at the protocol in the URL
@@ -41,11 +49,12 @@
     // "dvcs": "git",
 
     // The tool to use to create environments.  May be "conda",
-    // "virtualenv" or other value depending on the plugins in use.
+    // "virtualenv", "mamba" (above 3.8)
+    // or other value depending on the plugins in use.
     // If missing or the empty string, the tool will be automatically
     // determined by looking for tools on the PATH environment
     // variable.
-    "environment_type": "virtualenv",
+    "environment_type": "conda",
 
     // timeout in seconds for installing any dependencies in environment
     // defaults to 10 min
@@ -56,27 +65,45 @@
 
     // The Pythons you'd like to test against.  If not provided, defaults
     // to the current version of Python used to run `asv`.
-    // "pythons": ["2.7", "3.6"],
+    "pythons": ["3.9", "3.13"],
 
     // The list of conda channel names to be searched for benchmark
     // dependency packages in the specified order
-    // "conda_channels": ["conda-forge"],
+    "conda_channels": ["conda-forge"],
 
-    // The matrix of dependencies to test.  Each key is the name of a
-    // package (in PyPI) and the values are version numbers.  An empty
-    // list or empty string indicates to just test against the default
-    // (latest) version. null indicates that the package is to not be
+    // A conda environment file that is used for environment creation.
+    // "conda_environment_file": "environment.yml",
+
+    // The matrix of dependencies to test.  Each key of the "req"
+    // requirements dictionary is the name of a package (in PyPI) and
+    // the values are version numbers.  An empty list or empty string
+    // indicates to just test against the default (latest)
+    // version. null indicates that the package is to not be
     // installed. If the package to be tested is only available from
     // PyPi, and the 'environment_type' is conda, then you can preface
-    // the package name by 'pip+', and the package will be installed via
-    // pip (with all the conda available packages installed first,
+    // the package name by 'pip+', and the package will be installed
+    // via pip (with all the conda available packages installed first,
     // followed by the pip installed packages).
     //
-    // "matrix": {
-    //     "numpy": ["1.6", "1.7"],
-    //     "six": ["", null],        // test with and without six installed
-    //     "pip+emcee": [""],   // emcee is only available for install with pip.
-    // },
+    // The ``@env`` and ``@env_nobuild`` keys contain the matrix of
+    // environment variables to pass to build and benchmark commands.
+    // An environment will be created for every combination of the
+    // cartesian product of the "@env" variables in this matrix.
+    // Variables in "@env_nobuild" will be passed to every environment
+    // during the benchmark phase, but will not trigger creation of
+    // new environments.  A value of ``null`` means that the variable
+    // will not be set for the current combination.
+    //
+    "matrix": {
+        "req": {
+            "numpy": [],
+            "h5py": [],
+            "hdf5": [],
+            "ndindex": [],
+        },
+        // "env": {"ENV_VAR_1": ["val1", "val2"]},
+        // "env_nobuild": {"ENV_VAR_2": ["val3", null]},
+    },
 
     // Combinations of libraries/python versions can be excluded/included
     // from the set to test. Each entry is a dictionary containing additional
@@ -98,17 +125,24 @@
     // - sys_platform
     //     Platform, as in sys.platform. Possible values for the common
     //     cases: 'linux2', 'win32', 'cygwin', 'darwin'.
+    // - req
+    //     Required packages
+    // - env
+    //     Environment variables
+    // - env_nobuild
+    //     Non-build environment variables
     //
     // "exclude": [
     //     {"python": "3.2", "sys_platform": "win32"}, // skip py3.2 on windows
-    //     {"environment_type": "conda", "six": null}, // don't run without six on conda
+    //     {"environment_type": "conda", "req": {"six": null}}, // don't run without six on conda
+    //     {"env": {"ENV_VAR_1": "val2"}}, // skip val2 for ENV_VAR_1
     // ],
     //
     // "include": [
-    //     // additional env for python2.7
-    //     {"python": "2.7", "numpy": "1.8"},
+    //     // additional env for python3.12
+    //     {"python": "3.12", "req": {"numpy": "1.26"}, "env_nobuild": {"FOO": "123"}},
     //     // additional env if run on windows+conda
-    //     {"platform": "win32", "environment_type": "conda", "python": "2.7", "libpython": ""},
+    //     {"platform": "win32", "environment_type": "conda", "python": "3.12", "req": {"libpython": ""}},
     // ],
 
     // The directory (relative to the current directory) that benchmarks are

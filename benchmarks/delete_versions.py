@@ -1,75 +1,47 @@
-import os
-import shutil
-import tempfile
-
-import h5py
 import numpy
 
-from versioned_hdf5 import VersionedHDF5File, delete_versions
+from versioned_hdf5 import delete_versions
 
-filename = "delete_versions_bench.h5"
+from .common import Benchmark
 
 
-class TimeDeleting:
+class TimeDeleteVersions(Benchmark):
     params = [10, 30, 50]
-    timeout = 1000
+    param_names = ["n"]
 
     def setup(self, n):
-        if not os.path.exists(filename):
-            with h5py.File(filename, "w") as f:
-                vf = VersionedHDF5File(f)
-                with vf.stage_version("init") as sv:
-                    sv.create_dataset(
-                        "values",
-                        shape=(0, 0),
-                        dtype="float",
-                        fillvalue=numpy.nan,
-                        chunks=(22, 100),
-                        maxshape=(None, None),
-                        compression="lzf",
-                    )
+        super().setup()
 
-            # generate some test data with around 1000 versions
-            v = 1
-            with h5py.File(filename, "r+") as f:
-                vf = VersionedHDF5File(f)
-                for d in range(3):
-                    with vf.stage_version(str(v)) as sv:
-                        values_ds = sv["values"]
-                        values_ds.resize(
-                            (values_ds.shape[0] + 1, values_ds.shape[1] + 5000)
-                        )
-                        values_ds[-1, -5000] = numpy.random.rand()
-                        v += 1
-                    for c in range(n):
-                        with vf.stage_version(str(v)) as sv:
-                            values_ds = sv["values"]
-                            idxs = numpy.random.choice(
-                                values_ds.shape[1], 50, replace=False
-                            )
-                            values_ds[-1, idxs] = numpy.random.rand(50)
-                            v += 1
+        with self.vfile.stage_version("init") as sv:
+            sv.create_dataset(
+                "values",
+                shape=(0, 0),
+                dtype="float",
+                fillvalue=numpy.nan,
+                chunks=(22, 100),
+                maxshape=(None, None),
+                compression="lzf",
+            )
 
-    def teardown(self, n):
-        os.remove(filename)
+        # generate some test data with 30~150 versions
+        v = 1
+        for _ in range(3):
+            with self.vfile.stage_version(str(v)) as sv:
+                values_ds = sv["values"]
+                values_ds.resize((values_ds.shape[0] + 1, values_ds.shape[1] + 5000))
+                values_ds[-1, -5000] = self.rng.random()
+                v += 1
+            for _ in range(n):
+                with self.vfile.stage_version(str(v)) as sv:
+                    values_ds = sv["values"]
+                    idxs = self.rng.choice(values_ds.shape[1], 50, replace=False)
+                    values_ds[-1, idxs] = self.rng.random(50)
+                    v += 1
 
-    def time_delete(self, n):
-        tmp_name = tempfile.mktemp(".h5")
-        shutil.copy2(filename, tmp_name)
-        try:
-            # want to keep only every 10th version
-            versions_to_delete = []
-            with h5py.File(tmp_name, "r") as f:
-                vf = VersionedHDF5File(f)
-                versions = sorted(
-                    [(v, vf._versions[v].attrs["timestamp"]) for v in vf._versions],
-                    key=lambda t: t[1],
-                )
-                for i, v in enumerate(versions):
-                    if i % 10 != 0:
-                        versions_to_delete.append(v[0])
+        # Keep only every 10th version
+        self.versions_to_delete = [str(i) for i in range(1, v) if i % 10 != 0]
+        self.reopen()
 
-            with h5py.File(tmp_name, "r+") as f:
-                delete_versions(f, versions_to_delete)
-        finally:
-            os.remove(tmp_name)
+    def time_delete_versions(self, n):
+        self.assert_clean_setup()
+        delete_versions(self.vfile, self.versions_to_delete)
