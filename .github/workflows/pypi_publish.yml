@@ -3,7 +3,7 @@ name: Release Python Bindings to PyPI
 on:
   release:
     types: [published]
-  # pull_request:
+  pull_request:  # Binary wheels are only built for PRs with the 'wheels' label
   workflow_dispatch:
     inputs:
       test_pypi:
@@ -31,7 +31,7 @@ jobs:
           sudo apt install -y libhdf5-dev
           pip install build twine
 
-      - name: 📦 Build the sdist and wheel
+      - name: 📦 Build the source tarball
         run: python -m build --sdist -o wheelhouse
 
       - name: List and check sdist
@@ -46,6 +46,7 @@ jobs:
           path: ./wheelhouse/*.tar.gz
 
   build-wheels:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'wheels')
     name: 'Build wheels: ${{ matrix.os }} ${{ matrix.arch }} ${{ matrix.python-version }}'
     uses: ./.github/workflows/wheels.yml
     with:
@@ -55,7 +56,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-13, macos-14]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-13, macos-latest]
         python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
         include:
           - os: ubuntu-latest
@@ -64,7 +65,7 @@ jobs:
             arch: aarch64
           - os: macos-13
             arch: x86_64
-          - os: macos-14
+          - os: macos-latest
             arch: arm64
 
   publish:
