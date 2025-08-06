@@ -1,5 +1,58 @@
-Versioned HDF5 Change Log
-=========================
+Changelog
+=========
+
+## 2.1.0 (2025-08-07)
+
+### Major Changes
+
+- Binaries are now available:
+  - conda-forge packages for Linux, MacOSX, and Windows;
+  - pip wheels for Linux and MacOSX (but not Windows).
+
+  See [Installation](installation).
+- Added support for StringDType, a.k.a. NpyStrings.
+  Requires h5py >=3.14.0 and NumPy >=2.0.
+  [Like in h5py](https://docs.h5py.org/en/stable/strings.html#numpy-variable-width-strings),
+  StringDType is completely opt-in. [Read more](strings).
+- The `astype()` method is now functional; it returns a lazy read-only accessor just
+  like in h5py.
+- Fixed breakage in `delete_versions()` after upgrading to h5py 3.14.0.
+
+### Minor Changes
+
+- Fixed crash when handling empty multidimensional datasets.
+- Fixed bugs where `InMemoryArrayDataset.__getitem__()` and `__array__()`
+  would return the wrong dtype.
+- The `.chunks` property of a Dataset would occasionally return an unnecessary
+  `ndindex.ChunkType`; it now always returns a tuple of ints like in h5py.
+- Fixed bug where the `ENABLE_CHUNK_REUSE_VALIDATION` environment variable would incur
+  in a false positive when the first element of an object array is bytes, but then later
+  on there are str elements.
+- Overhauled ASV benchmarks support.
+
+- `resize()`:
+  - Fixed crash in `InMemorySparseDataset.resize()`.
+  - Fixed issue where calling `InMemoryArrayDataset.resize()` to enlarge a dataset was
+    slow and caused huge memory usage.
+
+- `create_dataset()`:
+  - The `dtype=` parameter now accepts any DTypeLike, e.g. `"i4"` or `int`, in
+    addition to actual `numpy.dtype` objects.
+  - Fixed bug that could lead to overflow/underflow/loss of definition after calling
+    `__setitem__` on the initial version of a dataset.
+  - Avoid unnecessary double dtype conversions when passing a list to the `data=`
+    parameter with an explicit `dtype=` parameter.
+  - Fixed crashes when `chunks=` parameter was either a bare integer or True.
+  - `chunks=False` is now explicitly disallowed
+    (before it would lead to an uncontrolled crash).
+  - Warn for all ignored kwargs, not just for `maxshape`.
+
+- `modify_metadata()`:
+  - Fixed bug where setting `fillvalue=0` would retain the previous fillvalue.
+  - Speed up when the fillvalue doesn't change.
+  - Fixed bug when changing dtype and fillvalue at the same time, which could cause the
+    new fillvalue to be transitorily cast to the old dtype and overflow, underflow,
+    or lose definition.
 
 ## 2.0.2 (2025-01-23)
 
