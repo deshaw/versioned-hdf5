@@ -269,3 +269,92 @@ def test_astype_sparse(vfile, dtype):
 
     dset = vfile[None]["x"]
     assert_array_equal(dset, np.array([1, 2, 0], dtype="i1"), strict=True)
+
+
+@pytest.mark.parametrize(
+    "group_name,name",
+    [
+        (None, "x"),
+        (None, "a/x"),
+        (None, "a/b/x"),
+        ("a", "x"),
+        ("a/b", "x"),
+    ],
+)
+@pytest.mark.parametrize("sparse", [False, True])
+def test_compression(vfile, group_name, name, sparse):
+    """Test .compression and .compression_opts properties.
+    Also test that compression and compression_opts parameters are preserved
+    when calling create_dataset with a path like "a/b/x".
+    """
+    with vfile.stage_version("r0") as v:
+        # New InMemoryArrayDataset
+        group = v.create_group(group_name) if group_name else v
+        kwargs = {"shape": (2,)} if sparse else {"data": [1, 2]}
+        ds = group.create_dataset(
+            name, **kwargs, compression="gzip", compression_opts=5
+        )
+        assert ds.compression == "gzip"
+        assert ds.compression_opts == 5
+
+    with vfile.stage_version("r1") as v:
+        group = v[group_name] if group_name else v
+        # InMemoryDataset
+        ds = group[name]
+        # Test commit of InMemoryArrayDataset
+        assert ds.compression == "gzip"
+        assert ds.compression_opts == 5
+
+
+def test_compression_hotswap_to_inmemoryarraydataset(vfile):
+    """Test .compression and .compression_opts properties after DatasetWrapper hot-swaps
+    InMemoryDataset -> InMemoryArrayDataset -> InMemorySparseDataset.
+    """
+    with vfile.stage_version("r0") as v:
+        ds = v.create_dataset(
+            "x", data=[1, 2], chunks=(2,), compression="gzip", compression_opts=5
+        )
+        assert ds.compression == "gzip"
+        assert ds.compression_opts == 5
+
+    with vfile.stage_version("r1") as v:
+        ds = v["x"]
+        assert isinstance(ds.dataset, InMemoryDataset)
+        assert ds.compression == "gzip"
+        assert ds.compression_opts == 5
+
+        ds[:] = [3, 4]
+        assert isinstance(ds.dataset, InMemoryArrayDataset)
+        assert ds.compression == "gzip"
+        assert ds.compression_opts == 5
+
+        ds.resize((3,))
+        assert isinstance(ds.dataset, InMemorySparseDataset)
+        assert ds.compression == "gzip"
+        assert ds.compression_opts == 5
+
+
+@pytest.mark.parametrize(
+    "group_name,name",
+    [
+        (None, "x"),
+        (None, "a/x"),
+        (None, "a/b/x"),
+        ("a", "x"),
+        ("a/b", "x"),
+    ],
+)
+@pytest.mark.parametrize("sparse", [False, True])
+def test_chunks_with_path(vfile, group_name, name, sparse):
+    """Test that `create_dataset("a/b/x", chunks=(2,))`
+    does not discard the chunks= parameter
+    """
+    with vfile.stage_version("r0") as v:
+        group = v.create_group(group_name) if group_name else v
+        kwargs = {"shape": (4,)} if sparse else {"data": [1, 2, 3, 4]}
+        ds = group.create_dataset(name, **kwargs, chunks=(2,))
+        assert ds.chunks == (2,)
+    with vfile.stage_version("r1") as v:
+        group = v[group_name] if group_name else v
+        ds = group[name]
+        assert ds.chunks == (2,)
