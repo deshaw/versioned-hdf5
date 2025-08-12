@@ -1,5 +1,4 @@
 import datetime
-import importlib.metadata
 import itertools
 import logging
 import os
@@ -11,7 +10,6 @@ import numpy as np
 import pytest
 from h5py._hl.filters import guess_chunk
 from numpy.testing import assert_equal
-from packaging.version import Version
 
 from versioned_hdf5 import VersionedHDF5File
 from versioned_hdf5.backend import DATA_VERSION, DEFAULT_CHUNK_SIZE
@@ -2968,67 +2966,46 @@ def test_verify_string_chunk_reuse_bytes_one_dimensional(tmp_path):
         )
 
 
-@pytest.mark.parametrize(
-    ("library"),
-    [
-        "hdf5plugin",
-        "tables",
-    ],
-)
-def test_other_compression_bad_value(tmp_path, library):
+def test_other_compression_bad_value(vfile):
     """Test that invalid compression types do not validate."""
-    if library == "tables" and Version(importlib.metadata.version("numpy")) >= Version(
-        "2"
-    ):
-        pytest.skip("Skipping test; pytables is incompatible with numpy>=2")
-    pytest.importorskip(library)
-    path = tmp_path / "tmp.h5"
-    with h5py.File(path, "w") as f:
-        vf = VersionedHDF5File(f)
-        with pytest.raises(ValueError, match="invalid"), vf.stage_version("r0") as sv:
-            sv.create_dataset(
-                "values",
-                data=np.arange(10),
-                compression=-1,
-                compression_opts=(0, 0, 0, 0, 7, 1, 2),
-            )
+    with pytest.raises(ValueError, match="invalid"), vfile.stage_version("r0") as sv:
+        sv.create_dataset(
+            "values",
+            data=np.arange(10),
+            compression=-1,
+            compression_opts=(0, 0, 0, 0, 7, 1, 2),
+        )
 
 
-@pytest.mark.parametrize(
-    ("library"),
-    [
-        "hdf5plugin",
-        "tables",
-    ],
-)
-def test_other_compression_validates(tmp_path, library):
+@pytest.mark.parametrize("raw", [True, False])
+def test_other_compression_validates(h5file, raw):
     """Test that other compression types validate correctly."""
-    if library == "tables" and Version(importlib.metadata.version("numpy")) >= Version(
-        "2"
-    ):
-        pytest.skip("Skipping test; pytables is incompatible with numpy>=2")
-    pytest.importorskip(library)
+    hdf5plugin = pytest.importorskip("hdf5plugin")
 
-    path = tmp_path / "tmp.h5"
-    with h5py.File(path, "w") as f:
-        vf = VersionedHDF5File(f)
-        with vf.stage_version("r0") as sv:
-            sv.create_dataset(
-                "values",
-                data=np.arange(10),
-                compression=32001,
-                compression_opts=(0, 0, 0, 0, 7, 1, 2),
-            )
+    if raw:
+        kwargs = {  # Note: this also works with pytables
+            "compression": 32001,
+            "compression_opts": (0, 0, 0, 0, 7, 1, 2),
+        }
+    else:
+        kwargs = {
+            "compression": hdf5plugin.Blosc(
+                cname="lz4hc", clevel=7, shuffle=hdf5plugin.Blosc.SHUFFLE
+            ),
+        }
 
-    with h5py.File(path, "r+") as f:
-        assert f["_version_data/versions/r0/values"].compression is None
-        raw_data = f["_version_data/values/raw_data"]
-        assert raw_data.compression is None
-        assert "32001" in raw_data._filters
+    vf = VersionedHDF5File(h5file)
+    with vf.stage_version("r0") as sv:
+        sv.create_dataset("values", data=np.arange(10), **kwargs)
 
-        # First four numbers are reserved for blosc compression;
-        # others are actual compression options
-        assert raw_data._filters["32001"][4:] == (7, 1, 2)
+    assert h5file["_version_data/versions/r0/values"].compression is None
+    raw_data = h5file["_version_data/values/raw_data"]
+    assert raw_data.compression is None
+    assert "32001" in raw_data._filters
+
+    # First four numbers are reserved for blosc compression;
+    # others are actual compression options
+    assert raw_data._filters["32001"][4:] == (7, 1, 2)
 
 
 @pytest.mark.parametrize("dtype", ["i2", int, float, np.uint8])
