@@ -224,7 +224,7 @@ class InMemoryGroup(Group):
         **kwds: Any,
     ):
         self._check_committed()
-        dirname, _ = posixpath.split(name)
+        dirname = posixpath.dirname(name)
         if dirname and dirname not in self:
             self.create_group(dirname)
 
@@ -324,9 +324,9 @@ class InMemoryGroup(Group):
             if not item.rstrip("/"):
                 return self == self.versioned_root
         item = item.rstrip("/")
-        dirname, data_name = posixpath.split(item)
+        dirname, basename = posixpath.split(item)
         if dirname not in ["", "/"]:
-            return dirname in self and data_name in self[dirname]
+            return dirname in self and basename in self[dirname]
         return any(i == item for i in self)
 
     def datasets(self):
@@ -360,8 +360,8 @@ class InMemoryGroup(Group):
         p = self
         while p._parent:
             p._chunks[full_name] = value
-            _, basename = posixpath.split(p.name)
-            full_name = basename + "/" + full_name
+            parent_basename = posixpath.basename(p.name)
+            full_name = parent_basename + "/" + full_name
             p = p._parent
         self.versioned_root._chunks[full_name] = value
 
@@ -376,13 +376,13 @@ class InMemoryGroup(Group):
         return self._compression
 
     def set_compression(self, name, value):
-        _, basename = posixpath.split(name)
+        basename = posixpath.basename(name)
         full_name = basename
         p = self
         while p:
             p._compression[full_name] = value
-            _, dirname = posixpath.split(p.name)
-            full_name = dirname + "/" + full_name
+            parent_basename = posixpath.basename(p.name)
+            full_name = parent_basename + "/" + full_name
             p = p._parent
         self.versioned_root._compression[full_name] = value
 
@@ -391,13 +391,13 @@ class InMemoryGroup(Group):
         return self._compression_opts
 
     def set_compression_opts(self, name, value):
-        _, basename = posixpath.split(name)
+        basename = posixpath.basename(name)
         full_name = basename
         p = self
         while p:
             p._compression_opts[full_name] = value
-            _, dirname = posixpath.split(p.name)
-            full_name = dirname + "/" + full_name
+            parent_basename = posixpath.basename(p.name)
+            full_name = parent_basename + "/" + full_name
             p = p._parent
         self.versioned_root._compression_opts[full_name] = value
 
@@ -526,12 +526,12 @@ class CompressionMixin:
 
     @property
     def compression(self):
-        _, basename = posixpath.split(self.name)
+        basename = posixpath.basename(self.name)
         return self.parent.compression[basename]
 
     @property
     def compression_opts(self):
-        _, basename = posixpath.split(self.name)
+        basename = posixpath.basename(self.name)
         return self.parent.compression_opts[basename]
 
     # Property setters, used exclusively by modify_metadata
