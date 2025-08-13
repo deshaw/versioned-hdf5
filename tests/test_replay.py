@@ -1,4 +1,3 @@
-import importlib.metadata
 import pathlib
 import shutil
 import subprocess
@@ -11,7 +10,6 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 from ndindex import Slice
-from packaging.version import Version
 
 from versioned_hdf5 import VersionedHDF5File
 from versioned_hdf5.hashtable import Hashtable
@@ -1241,37 +1239,25 @@ def test_modify_metadata_compression_default_compression(vfile, obj, metadata_op
     assert set(f["_version_data"]["group"]) == {"test_data4"}
 
 
-@pytest.mark.parametrize(
-    ("obj", "metadata_opts"),
-    [
-        (
-            "test_data2",
-            {"compression": 32001, "compression_opts": (0, 0, 0, 0, 7, 1, 2)},
-        ),
-        (
-            "group/test_data4",
-            {"compression": 32001, "compression_opts": (0, 0, 0, 0, 7, 1, 2)},
-        ),
-    ],
-)
-@pytest.mark.parametrize(
-    ("library"),
-    [
-        "hdf5plugin",
-        "tables",
-    ],
-)
-def test_modify_metadata_compression_nondefault_compression(
-    vfile, obj, metadata_opts, library
-):
+@pytest.mark.parametrize("obj", ["test_data2", "group/test_data4"])
+@pytest.mark.parametrize("raw", [True, False])
+def test_modify_metadata_compression_nondefault_compression(vfile, obj, raw):
     """Test that setting compression via modify_metadata works for nondefault
     compression.
     """
-    if library == "tables" and Version(importlib.metadata.version("numpy")) >= Version(
-        "2"
-    ):
-        pytest.skip("Skipping test; pytables is incompatible with numpy>=2")
-    pytest.importorskip(library)
+    hdf5plugin = pytest.importorskip("hdf5plugin")
+
+    if raw:
+        kwargs = {  # Note: this also works with pytables
+            "compression": 32001,
+            "compression_opts": (0, 0, 0, 0, 7, 1, 2),
+        }
+    else:
+        kwargs = {
+            "compression": hdf5plugin.Blosc(
+                cname="lz4hc", clevel=7, shuffle=hdf5plugin.Blosc.SHUFFLE
+            ),
+        }
 
     setup_vfile(vfile)
 
@@ -1287,7 +1273,7 @@ def test_modify_metadata_compression_nondefault_compression(
         assert raw_data.compression is None
         assert raw_data.compression_opts is None
 
-    modify_metadata(f, obj, **metadata_opts)
+    modify_metadata(f, obj, **kwargs)
     check_data(vfile)
 
     # Check that the compression is not set for the group that had its metadata
@@ -1306,11 +1292,9 @@ def test_modify_metadata_compression_nondefault_compression(
             assert raw_data.compression is None
             assert raw_data.compression_opts is None
 
-            # Ignore the first four values; for blosc (id 32001) they are reserved
-            assert (
-                raw_data._filters[str(metadata_opts["compression"])][4:]
-                == metadata_opts["compression_opts"][4:]
-            )
+            # First four numbers are reserved for blosc compression;
+            # others are actual compression options
+            assert raw_data._filters["32001"][4:] == (7, 1, 2)
         else:
             assert raw_data.compression is None
             assert raw_data.compression_opts is None
