@@ -728,12 +728,7 @@ def test_resize_int_types_grow(tmp_path):
 
 def test_resize_sparse(vfile):
     with vfile.stage_version("version1") as group:
-        ds = group.create_dataset(
-            "data",
-            shape=(5, 5),
-            chunks=(3, 3),
-            maxshape=(None,),
-        )
+        ds = group.create_dataset("data", shape=(5, 5), chunks=(3, 3))
         ds[0, 0] = 1
         ds[4, 4] = 2
 
@@ -2978,8 +2973,10 @@ def test_other_compression_bad_value(vfile):
 
 
 @pytest.mark.parametrize("raw", [True, False])
-def test_other_compression_validates(h5file, raw):
-    """Test that other compression types validate correctly."""
+def test_blosc_compression_validates(h5file, raw):
+    """Test that third-party compression filters from hdf5plugin or pytables
+    such as Blosc validate correctly.
+    """
     hdf5plugin = pytest.importorskip("hdf5plugin")
 
     if raw:
@@ -3027,3 +3024,28 @@ def test_create_dataset_dtype_arg(vfile, dtype):
         dset = sv["y"]
         assert isinstance(dset.dtype, np.dtype)
         assert dset.dtype == np.dtype(dtype)
+
+
+@pytest.mark.parametrize(
+    "name,value",
+    [
+        ("fletcher32", True),
+        ("scaleoffset", 5),
+        ("shuffle", True),
+    ],
+)
+@pytest.mark.parametrize("sparse", [False, True])
+def test_create_dataset_other_filters(vfile, name, value, sparse):
+    kwargs = {"shape": (2,)} if sparse else {"data": [1, 2]}
+    kwargs[name] = value
+
+    with vfile.stage_version("r0") as sv:
+        x = sv.create_dataset("x", **kwargs)
+        assert getattr(x, name) == value
+
+    raw_data = vfile.f["_version_data"]["x"]["raw_data"]
+    assert getattr(raw_data, name) == value
+
+    with vfile.stage_version("r1") as sv:
+        x = sv["x"]
+        assert getattr(x, name) == value

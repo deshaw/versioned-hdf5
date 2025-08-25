@@ -19,6 +19,7 @@ from ndindex.ndindex import NDIndex
 
 from versioned_hdf5.api import VersionedHDF5File
 from versioned_hdf5.backend import (
+    Filters,
     create_base_dataset,
     create_virtual_dataset,
     initialize,
@@ -27,6 +28,7 @@ from versioned_hdf5.backend import (
 )
 from versioned_hdf5.hashtable import Hashtable
 from versioned_hdf5.slicetools import spaceid_to_slice
+from versioned_hdf5.typing_ import DEFAULT, Default
 from versioned_hdf5.versions import all_versions
 from versioned_hdf5.wrappers import (
     DatasetWrapper,
@@ -74,8 +76,6 @@ def recreate_dataset(f, name, newf, callback=None):
 
     dtype = raw_data.dtype
     chunks = raw_data.chunks
-    compression = raw_data.compression
-    compression_opts = raw_data.compression_opts
     fillvalue = raw_data.fillvalue
 
     first = True
@@ -94,22 +94,8 @@ def recreate_dataset(f, name, newf, callback=None):
             dtype = dataset.dtype
             shape = dataset.shape
             chunks = dataset.chunks
-            compression = dataset.compression
-            compression_opts = dataset.compression_opts
 
-            if compression is None and getattr(dataset, "_filters", None):
-                # If we're using nondefault compression, there's no way of knowing
-                # whether the first filter is a valid compression or some other
-                # kind of filter, so we issue a warning about assuming that it is
-                # the dataset's compression.
-                compression = list(dataset._filters)[0]
-                compression_opts = dataset._filters[compression]
-                logger.warning(
-                    "No default compression detected in this dataset. "
-                    f"Using first filter {compression} and options "
-                    f"{compression_opts} for compression."
-                )
-
+            filters = Filters.from_dataset(dataset)
             fillvalue = dataset.fillvalue
             attrs = dataset.attrs
             if first:
@@ -119,9 +105,8 @@ def recreate_dataset(f, name, newf, callback=None):
                     data=np.empty((0,) * len(dataset.shape), dtype=dtype),
                     dtype=dtype,
                     chunks=chunks,
-                    compression=compression,
-                    compression_opts=compression_opts,
                     fillvalue=fillvalue,
+                    filters=filters,
                 )
                 first = False
             # Read in all the chunks of the dataset (we can't assume the new
@@ -606,10 +591,14 @@ def modify_metadata(
     dataset_name,
     *,
     chunks=None,
-    compression=None,
-    compression_opts=None,
     dtype=None,
     fillvalue=None,
+    # Filters
+    compression: Any | None | Default = DEFAULT,
+    compression_opts: Any | None | Default = DEFAULT,
+    scaleoffset: int | None | Default = DEFAULT,
+    shuffle: bool | Default = DEFAULT,
+    fletcher32: bool | Default = DEFAULT,
 ):
     """
     Modify metadata for a versioned dataset in-place.
@@ -623,19 +612,29 @@ def modify_metadata(
     Metadata that may be modified are
 
     - `chunks`: must be compatible with the dataset shape
-    - `compression`: see `h5py.Group.create_dataset()`
-    - `compression_opts`: see `h5py.Group.create_dataset()`
     - `dtype`: all data in the dataset is cast to the new dtype
     - `fillvalue`: see the note below
+    - Filter settings (see `h5py.Group.create_dataset()`):
+      - `compression`
+      - `compression_opts`
+      - `scaleoffset`
+      - `shuffle`
+      - `fletcher32`
 
-    If set to `None` (the default), the given metadata is not modified.
+    If omitted, the given metadata is not modified.
 
-    Note for `fillvalue`, all values equal to the old fillvalue are updated to
+    Notes
+    -----
+    For `fillvalue`, all values equal to the old fillvalue are updated to
     be the new fillvalue, regardless of whether they are explicitly stored or
     represented sparsely in the underlying HDF5 dataset. Also note that
     datasets without an explicitly set fillvalue have a default fillvalue
     equal to the default value of the dtype (e.g., 0. for float dtypes).
 
+    For filters, passing a value of None is not the same as omitting the argument.
+    For example, `compression=None` will decompress a dataset if it was compressed,
+    and `compression_opts=None` will revert to the default options for the compression
+    plugin, whereas omitting them will retain the previous preferences.
     """
     if isinstance(f, VersionedHDF5File):
         f = f.f
@@ -680,10 +679,23 @@ def modify_metadata(
         else:
             raise NotImplementedError(type(dataset))
 
-        if compression:
-            new_dataset.compression = compression
-        if compression_opts:
-            new_dataset.compression_opts = compression_opts
+        filters = Filters.from_dataset(dataset)
+        if compression is not DEFAULT:
+            filters.compression = compression
+        if compression_opts is not DEFAULT:
+            filters.compression_opts = compression_opts
+        # compression_opts are implicitly set by create_dataset.
+        # Undo them  if user calls modify_metadata(compression=None).
+        elif filters.compression is None:
+            filters.compression_opts = None
+
+        if scaleoffset is not DEFAULT:
+            filters.scaleoffset = scaleoffset
+        if shuffle is not DEFAULT:
+            filters.shuffle = shuffle
+        if fletcher32 is not DEFAULT:
+            filters.fletcher32 = fletcher32
+        new_dataset.parent._set_filters(new_dataset.name, filters)
 
         return new_dataset
 
