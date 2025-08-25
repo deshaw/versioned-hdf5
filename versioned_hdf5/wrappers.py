@@ -16,7 +16,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from contextlib import suppress
 from functools import cached_property
-from typing import Any
+from typing import Any, ClassVar
 from weakref import WeakValueDictionary
 
 import numpy as np
@@ -37,8 +37,6 @@ from versioned_hdf5.staged_changes import StagedChangesArray
 from versioned_hdf5.tools import NP_VERSION, asarray
 from versioned_hdf5.typing_ import MutableArrayProtocol
 
-_groups = WeakValueDictionary({})
-
 try:
     from numpy.exceptions import AxisError  # numpy >=1.25
 except ModuleNotFoundError:
@@ -46,15 +44,19 @@ except ModuleNotFoundError:
 
 
 class InMemoryGroup(Group):
+    _instances: ClassVar[WeakValueDictionary[h5g.GroupID, InMemoryGroup]] = (
+        WeakValueDictionary({})
+    )
+
     def __new__(cls, bind: h5g.GroupID, _committed: bool = False):
         # Make sure each group only corresponds to one InMemoryGroup instance.
         # Otherwise a new instance would lose track of any datasets or
         # subgroups created in the old one.
-        if bind in _groups:
-            return _groups[bind]
+        if bind in cls._instances:
+            return cls._instances[bind]
         obj = super().__new__(cls)
         obj._initialized = False
-        _groups[bind] = obj
+        cls._instances[bind] = obj
         return obj
 
     def __init__(self, bind: h5g.GroupID, _committed: bool = False):

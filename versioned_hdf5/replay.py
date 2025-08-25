@@ -34,7 +34,6 @@ from versioned_hdf5.wrappers import (
     InMemoryDataset,
     InMemoryGroup,
     InMemorySparseDataset,
-    _groups,
 )
 
 logger = logging.getLogger(__name__)
@@ -768,14 +767,14 @@ def swap(old, new):
         else:
             # Invalidate any InMemoryGroups that point to these groups
             delete = []
-            for bind in _groups:
+            for bind in InMemoryGroup._instances:
                 if get_name(bind) and (
                     get_name(bind).startswith(get_name(old.id))
                     or get_name(bind).startswith(get_name(new.id))
                 ):
                     delete.append(bind)
             for d in delete:
-                del _groups[d]
+                del InMemoryGroup._instances[d]
             old.move(name, posixpath.join(new.name, name + "__tmp"))
             new.move(name, posixpath.join(old.name, name))
             new.move(name + "__tmp", name)
