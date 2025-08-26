@@ -8,6 +8,7 @@ from numpy.testing import assert_equal
 
 from versioned_hdf5.backend import (
     DEFAULT_CHUNK_SIZE,
+    Filters,
     create_base_dataset,
     create_virtual_dataset,
     write_dataset,
@@ -742,12 +743,18 @@ def test_write_dataset_compression(h5file):
     nchunks = int(np.ceil(data.size / chunksize))
 
     slices1 = write_dataset(
-        h5file, "test_data", data, compression="gzip", compression_opts=3
+        h5file,
+        "test_data",
+        data,
+        filters=Filters(compression="gzip", compression_opts=3),
     )
 
     with pytest.raises(ValueError):
         write_dataset(
-            h5file, "test_data", np.ones((DEFAULT_CHUNK_SIZE,)), compression="lzf"
+            h5file,
+            "test_data",
+            np.ones((DEFAULT_CHUNK_SIZE,)),
+            filters=Filters(compression="lzf"),
         )
 
     with pytest.raises(ValueError):
@@ -755,8 +762,7 @@ def test_write_dataset_compression(h5file):
             h5file,
             "test_data",
             np.ones((DEFAULT_CHUNK_SIZE,)),
-            compression="gzip",
-            compression_opts=4,
+            filters=Filters(compression="gzip", compression_opts=4),
         )
 
     expected = {}

@@ -322,9 +322,8 @@ class VersionedHDF5File:
                 group,
                 group.datasets(),
                 make_current=make_current,
-                chunks=group.chunks,
-                compression=group.compression,
-                compression_opts=group.compression_opts,
+                chunks=group._chunks,
+                filters=group._filters,
                 timestamp=timestamp,
             )
         except:

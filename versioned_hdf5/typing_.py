@@ -7,6 +7,7 @@ collision in Cython with the standard library 'typing' and 'types' modules.
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
@@ -66,3 +67,12 @@ class MutableArrayProtocol(Protocol):
     ) -> NDArray: ...
 
     def __setitem__(self, index: Any, value: ArrayLike) -> None: ...
+
+
+class Default(Enum):
+    """Sentinel for default argument values."""
+
+    DEFAULT = "default"
+
+
+DEFAULT = Default.DEFAULT

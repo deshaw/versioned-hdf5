@@ -1,12 +1,16 @@
+from __future__ import annotations
+
 import datetime
 import posixpath
 from collections import defaultdict
+from collections.abc import Mapping
 from uuid import uuid4
 
 import numpy as np
 from h5py import Dataset, Group
 
 from versioned_hdf5.backend import (
+    Filters,
     create_virtual_dataset,
     write_dataset,
     write_dataset_chunks,
@@ -77,9 +81,8 @@ def commit_version(
     datasets,
     *,
     make_current=True,
-    chunks=None,
-    compression=None,
-    compression_opts=None,
+    chunks: Mapping[str, tuple[int, ...] | bool | None] | None = None,
+    filters: Mapping[str, Filters] | None = None,
     timestamp=None,
 ):
     """
@@ -108,9 +111,10 @@ def commit_version(
     f = versions.parent.parent
     prev_version = versions[version_group.attrs["prev_version"]]
 
-    chunks = chunks or defaultdict(type(None))
-    compression = compression or defaultdict(type(None))
-    compression_opts = compression_opts or defaultdict(type(None))
+    if not isinstance(chunks, defaultdict):
+        chunks = defaultdict(type(None), **(chunks or {}))
+    if not isinstance(filters, defaultdict):
+        filters = defaultdict(Filters, **(filters or {}))
 
     if make_current:
         versions.attrs["current_version"] = version_name
@@ -159,8 +163,7 @@ def commit_version(
                 name,
                 np.empty((0,) * len(data.shape), dtype=data._buffer.dtype),
                 chunks=chunks[name],
-                compression=compression[name],
-                compression_opts=compression_opts[name],
+                filters=filters[name],
                 fillvalue=fillvalue,
             )
             slices = write_dataset_chunks(f, name, data.data_dict)
@@ -176,8 +179,7 @@ def commit_version(
                 name,
                 data,
                 chunks=chunks[name],
-                compression=compression[name],
-                compression_opts=compression_opts[name],
+                filters=filters[name],
                 fillvalue=fillvalue,
             )
         if shape is None:

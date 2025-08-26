@@ -3,7 +3,7 @@ import pytest
 from ndindex import Slice, Tuple
 from numpy.testing import assert_equal
 
-from versioned_hdf5.backend import DEFAULT_CHUNK_SIZE
+from versioned_hdf5.backend import DEFAULT_CHUNK_SIZE, Filters
 from versioned_hdf5.versions import (
     all_versions,
     commit_version,
@@ -26,8 +26,7 @@ def test_create_version(h5file):
         version1,
         {"test_data": data},
         chunks={"test_data": chunks},
-        compression={"test_data": "gzip"},
-        compression_opts={"test_data": 3},
+        filters={"test_data": Filters(compression="gzip", compression_opts=3)},
     )
 
     version_bad = create_version_group(h5file, "version_bad", "")
@@ -38,14 +37,18 @@ def test_create_version(h5file):
     version_bad = create_version_group(h5file, "version_bad", "")
     with pytest.raises(ValueError):
         commit_version(
-            version_bad, {"test_data": data}, compression={"test_data": "lzf"}
+            version_bad,
+            {"test_data": data},
+            filters={"test_data": Filters(compression="lzf")},
         )
     delete_version(h5file, "version_bad", "version1")
 
     version_bad = create_version_group(h5file, "version_bad", "")
     with pytest.raises(ValueError):
         commit_version(
-            version_bad, {"test_data": data}, compression_opts={"test_data": 4}
+            version_bad,
+            {"test_data": data},
+            filters={"test_data": Filters(compression_opts=4)},
         )
     delete_version(h5file, "version_bad", "version1")
 
@@ -104,8 +107,7 @@ def test_create_version_chunks(h5file):
         version1,
         {"test_data": data},
         chunks={"test_data": chunks},
-        compression={"test_data": "gzip"},
-        compression_opts={"test_data": 3},
+        filters={"test_data": Filters(compression="gzip", compression_opts=3)},
     )
     version_bad = create_version_group(h5file, "version_bad", "")
     with pytest.raises(ValueError):
@@ -115,14 +117,18 @@ def test_create_version_chunks(h5file):
     version_bad = create_version_group(h5file, "version_bad", "")
     with pytest.raises(ValueError):
         commit_version(
-            version_bad, {"test_data": data}, compression={"test_data": "lzf"}
+            version_bad,
+            {"test_data": data},
+            filters={"test_data": Filters(compression="lzf")},
         )
     delete_version(h5file, "version_bad", "version1")
 
     version_bad = create_version_group(h5file, "version_bad", "")
     with pytest.raises(ValueError):
         commit_version(
-            version_bad, {"test_data": data}, compression_opts={"test_data": 4}
+            version_bad,
+            {"test_data": data},
+            filters={"test_data": Filters(compression_opts=4)},
         )
     delete_version(h5file, "version_bad", "version1")
 

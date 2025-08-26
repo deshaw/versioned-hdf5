@@ -16,7 +16,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from contextlib import suppress
 from functools import cached_property
-from typing import Any, ClassVar
+from typing import Any, Callable, ClassVar, Generic, TypeVar
 from weakref import WeakValueDictionary
 
 import numpy as np
@@ -28,6 +28,7 @@ from numpy.typing import ArrayLike, DTypeLike
 
 from versioned_hdf5.backend import (
     DEFAULT_CHUNK_SIZE,
+    Filters,
     are_compatible_dtypes,
     is_vstring_dtype,
 )
@@ -35,18 +36,28 @@ from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS, h5py_astype
 from versioned_hdf5.slicetools import build_slab_indices_and_offsets
 from versioned_hdf5.staged_changes import StagedChangesArray
 from versioned_hdf5.tools import NP_VERSION, asarray
-from versioned_hdf5.typing_ import MutableArrayProtocol
+from versioned_hdf5.typing_ import DEFAULT, Default, MutableArrayProtocol
 
 try:
     from numpy.exceptions import AxisError  # numpy >=1.25
 except ModuleNotFoundError:
     from numpy import AxisError  # numpy 1.24
 
+T = TypeVar("T")
+
 
 class InMemoryGroup(Group):
     _instances: ClassVar[WeakValueDictionary[h5g.GroupID, InMemoryGroup]] = (
         WeakValueDictionary({})
     )
+
+    _subgroups: dict[str, InMemoryGroup]
+    _data: dict[str, DatasetLike]
+    _chunks: defaultdict[str, tuple[int, ...] | None]
+    _filters: defaultdict[str, Filters]
+    _parent: InMemoryGroup | None
+    _initialized: bool
+    _committed: bool
 
     def __new__(cls, bind: h5g.GroupID, _committed: bool = False):
         # Make sure each group only corresponds to one InMemoryGroup instance.
@@ -71,11 +82,10 @@ class InMemoryGroup(Group):
         """
         if self._initialized:
             return
-        self._data = {}
         self._subgroups = {}
+        self._data = {}
         self._chunks = defaultdict(type(None))
-        self._compression = defaultdict(type(None))
-        self._compression_opts = defaultdict(type(None))
+        self._filters = defaultdict(Filters)
         self._parent = None
         self._initialized = True
         self._committed = _committed
@@ -107,10 +117,12 @@ class InMemoryGroup(Group):
             namestr = f'"{self.name}"' if self.name is not None else "(anonymous)"
             raise ValueError(f"InMemoryGroup {namestr} has already been committed")
 
-    def __getitem__(self, name):
+    def __getitem__(self, name: str) -> InMemoryGroup | DatasetLike:
         dirname, basename = posixpath.split(name)
         if dirname:
-            return self.__getitem__(dirname)[basename]
+            group = self[dirname]
+            assert isinstance(group, InMemoryGroup)
+            return group[basename]
 
         if name in self._data:
             return self._data[name]
@@ -124,11 +136,10 @@ class InMemoryGroup(Group):
         if isinstance(res, Group):
             self._subgroups[name] = self.__class__(res.id)
             return self._subgroups[name]
-        elif isinstance(res, Dataset):
+        if isinstance(res, Dataset):
             self._add_to_data(name, res)
             return self._data[name]
-        else:
-            raise NotImplementedError(f"Cannot handle {type(res)!r}")
+        raise NotImplementedError(f"Cannot handle {type(res)!r}")
 
     def __setitem__(self, name, obj):
         self._check_committed()
@@ -147,16 +158,16 @@ class InMemoryGroup(Group):
                 InMemoryDataset(obj.id, parent=self)
             )
             raw_data = wrapped_dataset.dataset.id.raw_data
-            self.set_compression(name, raw_data.compression)
-            self.set_compression_opts(name, raw_data.compression_opts)
+            self._set_filters(name, Filters.from_dataset(raw_data))
         elif isinstance(obj, Group):
             self._subgroups[name] = InMemoryGroup(obj.id)
         elif isinstance(obj, InMemoryGroup):
             self._subgroups[name] = obj
         elif isinstance(obj, DatasetLike):
             self._data[name] = obj
-            self.set_compression(name, obj.compression)
-            self.set_compression_opts(name, obj.compression_opts)
+            if isinstance(obj, DatasetWrapper) and isinstance(obj.dataset, Dataset):
+                raw_data = obj.dataset.id.raw_data
+                self._set_filters(name, Filters.from_dataset(raw_data))
         else:
             self._data[name] = DatasetWrapper(
                 InMemoryArrayDataset(name, np.asarray(obj), parent=self)
@@ -221,21 +232,50 @@ class InMemoryGroup(Group):
         data: ArrayLike | None = None,
         fillvalue: Any | None = None,
         chunks: tuple[int, ...] | int | bool | None = None,
-        compression=None,
-        compression_opts=None,
+        # Filters
+        compression: Any | None | Default = DEFAULT,
+        compression_opts: Any | None | Default = DEFAULT,
+        scaleoffset: int | None | Default = DEFAULT,
+        shuffle: bool | Default = DEFAULT,
+        fletcher32: bool | Default = DEFAULT,
+        # Ignored (with a warning)
         **kwds: Any,
     ):
         self._check_committed()
-        dirname = posixpath.dirname(name)
-        if dirname and dirname not in self:
-            self.create_group(dirname)
 
+        # Disregard ignored parameters with a warning
         for k, v in kwds.items():
-            if v is not None and not (k == "maxshape" and all(i is None for i in v)):
+            if v is not None:
+                if k == "maxshape" and isinstance(v, tuple) and set(v) == {None}:
+                    continue
                 warnings.warn(
                     f"The {k} parameter is currently ignored for versioned datasets.",
                     stacklevel=2,
                 )
+        del kwds
+
+        # In case of a nested path, call create_dataset on the leaf group
+        dirname, basename = posixpath.split(name)
+        if dirname:
+            if dirname in self:
+                group = self[dirname]
+                assert isinstance(group, InMemoryGroup)
+            else:
+                group = self.create_group(dirname)
+            return group.create_dataset(
+                basename,
+                shape=shape,
+                dtype=dtype,
+                data=data,
+                fillvalue=fillvalue,
+                chunks=chunks,
+                compression=compression,
+                compression_opts=compression_opts,
+                scaleoffset=scaleoffset,
+                shuffle=shuffle,
+                fletcher32=fletcher32,
+            )
+        del name, dirname
 
         if dtype is not None and not isinstance(dtype, np.dtype):
             dtype = np.dtype(dtype)
@@ -283,7 +323,7 @@ class InMemoryGroup(Group):
         ds: DatasetLike
         if data is not None:
             ds = InMemoryArrayDataset(
-                name,
+                basename,
                 data,
                 parent=self,
                 fillvalue=fillvalue,
@@ -295,7 +335,7 @@ class InMemoryGroup(Group):
             ds = DatasetWrapper(ds)
         else:
             ds = InMemorySparseDataset(
-                name,
+                basename,
                 shape=shape,
                 dtype=dtype,
                 parent=self,
@@ -303,10 +343,17 @@ class InMemoryGroup(Group):
                 chunks=chunks,
             )
 
-        self.set_chunks(name, chunks)
-        self.set_compression(name, compression)
-        self.set_compression_opts(name, compression_opts)
-        self[name] = ds
+        filters = Filters(
+            compression=compression,
+            compression_opts=compression_opts,
+            scaleoffset=scaleoffset,
+            shuffle=shuffle,
+            fletcher32=fletcher32,
+        )
+        self._set_chunks(basename, chunks)
+        self._set_filters(basename, filters)
+
+        self[basename] = ds
         return ds
 
     def __iter__(self):
@@ -345,63 +392,41 @@ class InMemoryGroup(Group):
         return res
 
     @property
-    def versioned_root(self):
+    def versioned_root(self) -> InMemoryGroup:
         p = self
         while p._parent is not None:
             p = p._parent
         return p
 
-    @property
-    def chunks(self):
-        return self._chunks
-
-    # TODO: Can we generalize this, set_compression, and set_compression_opts
-    # into a single method? Descriptors?
-    def set_chunks(self, item, value):
-        full_name = item
-        p = self
-        while p._parent:
-            p._chunks[full_name] = value
-            parent_basename = posixpath.basename(p.name)
-            full_name = parent_basename + "/" + full_name
-            p = p._parent
-        self.versioned_root._chunks[full_name] = value
-
-        dirname, basename = posixpath.split(item)
-        while dirname:
-            self[dirname]._chunks[basename] = value
-            dirname, b = posixpath.split(dirname)
-            basename = posixpath.join(b, basename)
-
-    @property
-    def compression(self):
-        return self._compression
-
-    def set_compression(self, name, value):
-        basename = posixpath.basename(name)
+    def _recursion_to_root(
+        self,
+        dataset_name: str,
+        cb: Callable[[InMemoryGroup, str], None],
+    ) -> None:
+        """Call `cb` on self and recursively on all parents up to the root.
+        The callable must accept the node being currently visited and the name of the
+        dataset relative to that node.
+        """
+        basename = posixpath.basename(dataset_name)
         full_name = basename
-        p = self
-        while p:
-            p._compression[full_name] = value
+        p: InMemoryGroup | Group | None = self
+        while isinstance(p, InMemoryGroup):
+            cb(p, full_name)
             parent_basename = posixpath.basename(p.name)
             full_name = parent_basename + "/" + full_name
             p = p._parent
-        self.versioned_root._compression[full_name] = value
 
-    @property
-    def compression_opts(self):
-        return self._compression_opts
+    def _set_chunks(self, dataset_name: str, value: tuple[int, ...] | None) -> None:
+        def cb(node: InMemoryGroup, name: str) -> None:
+            node._chunks[name] = value
 
-    def set_compression_opts(self, name, value):
-        basename = posixpath.basename(name)
-        full_name = basename
-        p = self
-        while p:
-            p._compression_opts[full_name] = value
-            parent_basename = posixpath.basename(p.name)
-            full_name = parent_basename + "/" + full_name
-            p = p._parent
-        self.versioned_root._compression_opts[full_name] = value
+        self._recursion_to_root(dataset_name, cb)
+
+    def _set_filters(self, dataset_name: str, filters: Filters) -> None:
+        def cb(node: InMemoryGroup, full_name: str) -> None:
+            node._filters[full_name] = filters
+
+        self._recursion_to_root(dataset_name, cb)
 
     def visititems(self, func):
         self._visit("", func)
@@ -522,32 +547,47 @@ class BufferMixin(abc.ABC):
         """Return self._buffer as a new dtype. Return a view if possible."""
 
 
-class CompressionMixin:
+class FilterDescriptor(Generic[T]):
+    """Compression or other filter property of a dataset.
+
+    The data is stored on the parent MemoryGroup.
+    """
+
+    default: T
+    name: str
+    __slots__ = ("default", "name")
+
+    def __init__(self, default: T):
+        self.default = default
+
+    def __set_name__(self, owner: type, name: str):
+        self.name = name
+
+    def __get__(self, instance: FiltersMixin | None, owner: type) -> T:
+        if instance is None:
+            return self  # type: ignore  # getattr on class. Called by Sphinx.
+        basename = posixpath.basename(instance.name)
+        filters = instance.parent._filters[basename]
+        res = getattr(filters, self.name)
+        return self.default if res is DEFAULT else res
+
+
+class FiltersMixin:
+    """Add properties for compression and other filters to datasets."""
+
+    # See matching class backend.Filters
     name: str
     parent: InMemoryGroup
 
-    @property
-    def compression(self):
-        basename = posixpath.basename(self.name)
-        return self.parent.compression[basename]
-
-    @property
-    def compression_opts(self):
-        basename = posixpath.basename(self.name)
-        return self.parent.compression_opts[basename]
-
-    # Property setters, used exclusively by modify_metadata
-    @compression.setter
-    def compression(self, value):
-        self.parent.set_compression(self.name, value)
-
-    @compression_opts.setter
-    def compression_opts(self, value):
-        self.parent.set_compression_opts(self.name, value)
+    compression: FilterDescriptor[Any | None] = FilterDescriptor(None)
+    compression_opts: FilterDescriptor[Any | None] = FilterDescriptor(None)
+    scaleoffset: FilterDescriptor[int | None] = FilterDescriptor(None)
+    shuffle: FilterDescriptor[bool] = FilterDescriptor(False)
+    fletcher32: FilterDescriptor[bool] = FilterDescriptor(False)
 
 
 # Note: mixin methods override those from Dataset
-class InMemoryDataset(BufferMixin, CompressionMixin, Dataset):
+class InMemoryDataset(BufferMixin, FiltersMixin, Dataset):
     """
     Class that looks like a h5py.Dataset but is backed by a versioned dataset
 
@@ -628,7 +668,7 @@ class InMemoryDataset(BufferMixin, CompressionMixin, Dataset):
         return math.prod(self.shape)
 
     @property
-    def chunks(self):
+    def chunks(self) -> tuple[int, ...]:
         return self.id.chunks
 
     @property
@@ -636,7 +676,7 @@ class InMemoryDataset(BufferMixin, CompressionMixin, Dataset):
         return self._attrs
 
     @property
-    def parent(self) -> InMemoryGroup:
+    def parent(self) -> InMemoryGroup:  # type: ignore[override]
         return self._parent
 
     def resize(self, size, axis=None):
@@ -922,7 +962,7 @@ class DatasetLike:
             yield self[i]
 
 
-class InMemoryArrayDataset(BufferMixin, CompressionMixin, DatasetLike):
+class InMemoryArrayDataset(BufferMixin, FiltersMixin, DatasetLike):
     """
     Class that looks like a h5py.Dataset but is backed by an array
     """
@@ -947,7 +987,7 @@ class InMemoryArrayDataset(BufferMixin, CompressionMixin, DatasetLike):
         self.parent = parent
         self._fillvalue = fillvalue
         if chunks is None:
-            chunks = parent.chunks[name]
+            chunks = parent._chunks[name]
         self.chunks = chunks
 
     @property
@@ -980,7 +1020,7 @@ class InMemoryArrayDataset(BufferMixin, CompressionMixin, DatasetLike):
         self._buffer = self._buffer[new_idx]
 
 
-class InMemorySparseDataset(BufferMixin, CompressionMixin, DatasetLike):
+class InMemorySparseDataset(BufferMixin, FiltersMixin, DatasetLike):
     """
     Class that looks like a Dataset that has no data (only the fillvalue)
     """
@@ -1017,7 +1057,7 @@ class InMemorySparseDataset(BufferMixin, CompressionMixin, DatasetLike):
         return self.staged_changes.shape
 
     @property
-    def chunks(self):
+    def chunks(self) -> tuple[int, ...]:
         return self.staged_changes.chunk_size
 
     def _astype_impl(self, dtype: np.dtype, writeable: bool) -> MutableArrayProtocol:

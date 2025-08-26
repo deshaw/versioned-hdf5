@@ -306,32 +306,47 @@ def test_compression(vfile, group_name, name, sparse):
         assert ds.compression_opts == 5
 
 
-def test_compression_hotswap_to_inmemoryarraydataset(vfile):
-    """Test .compression and .compression_opts properties after DatasetWrapper hot-swaps
+def test_filters_hotswap_to_inmemoryarraydataset(vfile):
+    """Test .compression, .compression_opts, .shuffle, and .fletcher32 after
+    DatasetWrapper hot-swaps
     InMemoryDataset -> InMemoryArrayDataset -> InMemorySparseDataset.
     """
     with vfile.stage_version("r0") as v:
         ds = v.create_dataset(
-            "x", data=[1, 2], chunks=(2,), compression="gzip", compression_opts=5
+            "x",
+            data=[1, 2],
+            chunks=(2,),
+            compression="gzip",
+            compression_opts=5,
+            shuffle=True,
+            fletcher32=True,
         )
         assert ds.compression == "gzip"
         assert ds.compression_opts == 5
+        assert ds.shuffle
+        assert ds.fletcher32
 
     with vfile.stage_version("r1") as v:
         ds = v["x"]
         assert isinstance(ds.dataset, InMemoryDataset)
         assert ds.compression == "gzip"
         assert ds.compression_opts == 5
+        assert ds.shuffle
+        assert ds.fletcher32
 
         ds[:] = [3, 4]
         assert isinstance(ds.dataset, InMemoryArrayDataset)
         assert ds.compression == "gzip"
         assert ds.compression_opts == 5
+        assert ds.shuffle
+        assert ds.fletcher32
 
         ds.resize((3,))
         assert isinstance(ds.dataset, InMemorySparseDataset)
         assert ds.compression == "gzip"
         assert ds.compression_opts == 5
+        assert ds.shuffle
+        assert ds.fletcher32
 
 
 @pytest.mark.parametrize(

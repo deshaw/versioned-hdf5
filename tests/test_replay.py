@@ -1241,9 +1241,9 @@ def test_modify_metadata_compression_default_compression(vfile, obj, metadata_op
 
 @pytest.mark.parametrize("obj", ["test_data2", "group/test_data4"])
 @pytest.mark.parametrize("raw", [True, False])
-def test_modify_metadata_compression_nondefault_compression(vfile, obj, raw):
-    """Test that setting compression via modify_metadata works for nondefault
-    compression.
+def test_modify_metadata_blosc_compression(vfile, obj, raw):
+    """Test that setting compression via modify_metadata works for third-party
+    compression filters from hdf5plugin or pytables, such as Blosc.
     """
     hdf5plugin = pytest.importorskip("hdf5plugin")
 
@@ -1276,13 +1276,13 @@ def test_modify_metadata_compression_nondefault_compression(vfile, obj, raw):
     modify_metadata(f, obj, **kwargs)
     check_data(vfile)
 
-    # Check that the compression is not set for the group that had its metadata
-    # modified; the compression of a virtual dataset does not get set from its parent.
     for dataset in ["test_data", "test_data2", "group/test_data4"]:
         for version in ["version1", "version2"]:
             if dataset == obj:
-                assert vfile[version][dataset].compression is None
-                assert vfile[version][dataset].compression_opts is None
+                assert vfile[version][dataset].compression == 32001
+                # First four numbers are reserved for blosc compression;
+                # others are actual compression options
+                assert vfile[version][dataset].compression_opts[4:] == (7, 1, 2)
             else:
                 assert vfile[version][dataset].compression is None
                 assert vfile[version][dataset].compression_opts is None
@@ -1291,9 +1291,6 @@ def test_modify_metadata_compression_nondefault_compression(vfile, obj, raw):
         if dataset == obj:
             assert raw_data.compression is None
             assert raw_data.compression_opts is None
-
-            # First four numbers are reserved for blosc compression;
-            # others are actual compression options
             assert raw_data._filters["32001"][4:] == (7, 1, 2)
         else:
             assert raw_data.compression is None
@@ -1308,3 +1305,103 @@ def test_modify_metadata_compression_nondefault_compression(vfile, obj, raw):
         "versions",
     }
     assert set(f["_version_data"]["group"]) == {"test_data4"}
+
+
+@pytest.mark.parametrize("raw", [True, False])
+def test_modify_metadata_blosc_compression_opts(vfile, raw):
+    """Test changing compression options of a custom compression filter,
+    using hdf5plugin API.
+    """
+    hdf5plugin = pytest.importorskip("hdf5plugin")
+
+    if raw:
+        kwargs1 = {"compression": 32001, "compression_opts": (0, 0, 0, 0, 1, 1, 1)}
+        kwargs2 = {"compression": 32001, "compression_opts": (0, 0, 0, 0, 9, 1, 1)}
+    else:
+        kwargs1 = {"compression": hdf5plugin.Blosc(clevel=1)}
+        kwargs2 = {"compression": hdf5plugin.Blosc(clevel=9)}
+
+    with vfile.stage_version("r0") as g:
+        g.create_dataset("x", data=[1, 2, 3], **kwargs1)
+
+    f = vfile.f
+    raw_data = f["_version_data"]["x"]["raw_data"]
+    assert raw_data._filters["32001"][4:] == (1, 1, 1)
+
+    modify_metadata(f, "x", **kwargs2)
+    raw_data = f["_version_data"]["x"]["raw_data"]
+    assert raw_data._filters["32001"][4:] == (9, 1, 1)
+
+
+def test_modify_metadata_decompress_gzip(vfile):
+    """Use modify metadata to undo all compression."""
+    with vfile.stage_version("r0") as g:
+        g.create_dataset("x", data=[1, 2, 3], compression="gzip")
+
+    f = vfile.f
+    # No-op: omitting compression is not the same as setting compression=None
+    modify_metadata(f, "x")
+    raw_data = f["_version_data"]["x"]["raw_data"]
+    assert raw_data.compression == "gzip"
+    assert raw_data.compression_opts == 4  # Default
+
+    modify_metadata(f, "x", compression=None)
+    raw_data = f["_version_data"]["x"]["raw_data"]
+    assert raw_data.compression is None
+    assert raw_data.compression_opts is None
+
+
+def test_modify_metadata_decompress_blosc(vfile):
+    """Use modify metadata to undo all compression.
+    This uses a third-party compression filter, which adds nuance because
+    h5py.Dataset.compression returns None for third-party filters.
+    """
+    hdf5plugin = pytest.importorskip("hdf5plugin")
+    with vfile.stage_version("r0") as g:
+        g.create_dataset("x", data=[1, 2, 3], compression=hdf5plugin.Blosc())
+
+    f = vfile.f
+    raw_data = f["_version_data"]["x"]["raw_data"]
+    # First four numbers are reserved for blosc compression;
+    # others are the default compression options
+    assert raw_data._filters["32001"][4:] == (5, 1, 1)
+
+    # No-op: omitting compression is not the same as setting compression=None
+    modify_metadata(f, "x")
+    raw_data = f["_version_data"]["x"]["raw_data"]
+    assert raw_data._filters["32001"][4:] == (5, 1, 1)
+
+    modify_metadata(f, "x", compression=None)
+    raw_data = f["_version_data"]["x"]["raw_data"]
+    assert raw_data._filters == {}
+
+
+@pytest.mark.parametrize(
+    "name,default_value,new_value",
+    [
+        ("fletcher32", False, True),
+        ("scaleoffset", None, 5),
+        ("shuffle", False, True),
+    ],
+)
+def test_modify_metadata_other_filters(vfile, name, default_value, new_value):
+    """Test changing fletcher32, scaleoffset, shuffle parameters."""
+    with vfile.stage_version("r0") as g:
+        g.create_dataset("x", data=[1, 2, 3])
+
+    f = vfile.f
+    raw_data = f["_version_data"]["x"]["raw_data"]
+    assert getattr(raw_data, name) == default_value
+
+    modify_metadata(f, "x", **{name: new_value})
+    raw_data = f["_version_data"]["x"]["raw_data"]
+    assert getattr(raw_data, name) == new_value
+
+    # Take care not to confuse default and False
+    modify_metadata(f, "x")  # No-op: no value != False
+    raw_data = f["_version_data"]["x"]["raw_data"]
+    assert getattr(raw_data, name) == new_value
+
+    modify_metadata(f, "x", **{name: default_value})
+    raw_data = f["_version_data"]["x"]["raw_data"]
+    assert getattr(raw_data, name) == default_value
