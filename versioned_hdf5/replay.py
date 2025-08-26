@@ -3,7 +3,6 @@ from __future__ import annotations
 import gc
 import logging
 import posixpath
-import sys
 from collections.abc import Iterable
 from typing import Any
 
@@ -38,11 +37,6 @@ from versioned_hdf5.wrappers import (
 
 logger = logging.getLogger(__name__)
 
-if "sphinx-build" in sys.argv[0]:
-
-    class File:  # type: ignore[no-redef]
-        """Stub vs. incomplete h5py documentation"""
-
 
 def recreate_dataset(f, name, newf, callback=None):
     """
@@ -64,7 +58,9 @@ def recreate_dataset(f, name, newf, callback=None):
     `recreate_dataset()` is done. The callback may also return None, in which
     case the dataset is deleted for the given version.
 
-    Note: this function is only for advanced usage. Typical use-cases should
+    Notes
+    -----
+    This function is only for advanced usage. Typical use-cases should
     use :func:`delete_version()` or :func:`modify_metadata()`.
     """
     if isinstance(f, VersionedHDF5File):
@@ -630,12 +626,13 @@ def modify_metadata(
 
     If set to `None` (the default), the given metadata is not modified.
 
-    Note for `fillvalue`, all values equal to the old fillvalue are updated to
+    Notes
+    -----
+    For `fillvalue`, all values equal to the old fillvalue are updated to
     be the new fillvalue, regardless of whether they are explicitly stored or
     represented sparsely in the underlying HDF5 dataset. Also note that
     datasets without an explicitly set fillvalue have a default fillvalue
     equal to the default value of the dtype (e.g., 0. for float dtypes).
-
     """
     if isinstance(f, VersionedHDF5File):
         f = f.f
