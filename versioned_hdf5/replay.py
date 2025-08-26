@@ -614,7 +614,7 @@ def modify_metadata(
     - `chunks`: must be compatible with the dataset shape
     - `dtype`: all data in the dataset is cast to the new dtype
     - `fillvalue`: see the note below
-    - Filter settings (see `h5py.Group.create_dataset()`):
+    - Filter settings (see :meth:`h5py.Group.create_dataset`):
       - `compression`
       - `compression_opts`
       - `scaleoffset`
@@ -632,8 +632,8 @@ def modify_metadata(
     equal to the default value of the dtype (e.g., 0. for float dtypes).
 
     For filters, passing a value of None is not the same as omitting the argument.
-    For example, `compression=None` will decompress a dataset if it was compressed,
-    and `compression_opts=None` will revert to the default options for the compression
+    For example, ``compression=None`` will decompress a dataset if it was compressed,
+    and ``compression_opts=None`` will revert to the default options for the compression
     plugin, whereas omitting them will retain the previous preferences.
     """
     if isinstance(f, VersionedHDF5File):
@@ -695,6 +695,7 @@ def modify_metadata(
             filters.shuffle = shuffle
         if fletcher32 is not DEFAULT:
             filters.fletcher32 = fletcher32
+
         new_dataset.parent._set_filters(new_dataset.name, filters)
 
         return new_dataset

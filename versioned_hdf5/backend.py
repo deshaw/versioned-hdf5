@@ -76,15 +76,15 @@ def initialize(f):
 
 @dataclass
 class Filters:
-    """Filters keyword arguments for create_dataset.
+    """Filters keyword arguments for create_dataset and modify_metadata.
 
     Not to be confused with h5py.Dataset._filters, which is a dict in the format
 
     {
-        <compression name>: <compression_opts>,  # compression=None if missing
-        scaleoffset: <mangled>,  # scaleoffset=None if missing
-        shuffle: <mangled>,  # True if present; False if missing
-        fletcher32: None,  # True if present; False if missing
+        <compression name>: <compression_opts>,  # compression=None if key is missing
+        scaleoffset: <mangled>,  # scaleoffset=None if key is missing
+        shuffle: <mangled>,  # shuffle=True if present; False if key is missing
+        fletcher32: None,  # fletcher32=True if present; False if key is missing
     }
 
     Note: you should not assume that the above is the complete content
@@ -92,6 +92,7 @@ class Filters:
     """
 
     # See matching class wrappers.FiltersMixin
+    # compression will typically be str, int (for raw filter ID), or a hdf5plugin object
     compression: Any | None | Default = DEFAULT
     compression_opts: Any | None | Default = DEFAULT
     scaleoffset: int | None | Default = DEFAULT
@@ -104,19 +105,18 @@ class Filters:
 
     @staticmethod
     def from_dataset(ds: Dataset | FiltersMixin) -> Filters:
-        """Reverse engineer create_dataset kwargs for the filters from an existing
-        h5py.Dataset.
-        """
+        """Reverse engineer create_dataset kwargs from an h5py.Dataset."""
         compression = ds.compression
         compression_opts = ds.compression_opts
+
+        # Hack for custom compression filters.
         # FIXME This should be fixable upstream. h5py would need to expose a hook for
         # hdf5plugin / pytables to let them declare that a filter ID is a
         # compression filter.
-
         if compression is None and isinstance(ds, Dataset):
             # From hdf5plugin._filters. Can't just try-import hdf5plugin because the same
             # filter IDs are also defined by pytables.
-            CUSTOM_COMPRESSION_FILTERS = {
+            CUSTOM_COMPRESSION_FILTERS = (
                 32001,  # Blosc
                 32026,  # Blosc2
                 307,  # Bzip2
@@ -128,7 +128,7 @@ class Filters:
                 32024,  # SZ3
                 32018,  # FCIDECOMP
                 32028,  # SPERR
-            }
+            )
 
             for filter_id in CUSTOM_COMPRESSION_FILTERS:
                 try:
@@ -165,7 +165,7 @@ class Filters:
         )
 
     def overrides(self, other: Filters) -> bool:
-        """Return True if there are any filters that are explicitly set in self and
+        """Return True if there are any filters that are explicitly set and
         differ between self and other; False otherwise.
         """
         for k, v1 in self.__dict__.items():
@@ -265,7 +265,7 @@ def write_dataset(
             dtype=dtype,
             chunks=chunks,
             fillvalue=fillvalue,
-            filters=filters or Filters(),
+            filters=filters,
         )
 
     ds = f["_version_data"][name]["raw_data"]
