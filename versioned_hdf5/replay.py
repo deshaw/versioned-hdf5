@@ -3,7 +3,6 @@ from __future__ import annotations
 import gc
 import logging
 import posixpath
-import sys
 from collections.abc import Iterable
 from typing import Any
 
@@ -40,11 +39,6 @@ from versioned_hdf5.wrappers import (
 
 logger = logging.getLogger(__name__)
 
-if "sphinx-build" in sys.argv[0]:
-
-    class File:  # type: ignore[no-redef]
-        """Stub vs. incomplete h5py documentation"""
-
 
 def recreate_dataset(f, name, newf, callback=None):
     """
@@ -66,7 +60,9 @@ def recreate_dataset(f, name, newf, callback=None):
     `recreate_dataset()` is done. The callback may also return None, in which
     case the dataset is deleted for the given version.
 
-    Note: this function is only for advanced usage. Typical use-cases should
+    Notes
+    -----
+    This function is only for advanced usage. Typical use-cases should
     use :func:`delete_version()` or :func:`modify_metadata()`.
     """
     if isinstance(f, VersionedHDF5File):
