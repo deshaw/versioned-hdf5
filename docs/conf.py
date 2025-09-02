@@ -104,3 +104,5 @@ html_static_path = ["_static"]
 
 # Lets us use single backticks for code
 default_role = "code"
+
+autodoc_typehints = "none"
