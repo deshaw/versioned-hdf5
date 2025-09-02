@@ -5,6 +5,8 @@ import logging
 import os
 import textwrap
 from collections.abc import Iterator
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from h5py import Dataset, VirtualLayout, h5s, h5z
@@ -16,6 +18,10 @@ from numpy.testing import assert_array_equal
 
 from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS
 from versioned_hdf5.hashtable import Hashtable
+from versioned_hdf5.typing_ import DEFAULT, Default
+
+if TYPE_CHECKING:
+    from versioned_hdf5.wrappers import FiltersMixin
 
 DEFAULT_CHUNK_SIZE = 2**12
 DATA_VERSION = 4
@@ -68,6 +74,107 @@ def initialize(f):
     versions.attrs["data_version"] = DATA_VERSION
 
 
+@dataclass
+class Filters:
+    """Filters keyword arguments for create_dataset and modify_metadata.
+
+    Not to be confused with h5py.Dataset._filters, which is a dict in the format
+
+    {
+        <compression name>: <compression_opts>,  # compression=None if key is missing
+        scaleoffset: <mangled>,  # scaleoffset=None if key is missing
+        shuffle: <mangled>,  # shuffle=True if present; False if key is missing
+        fletcher32: None,  # fletcher32=True if present; False if key is missing
+    }
+
+    Note: you should not assume that the above is the complete content
+    of _dataset._filters. There may be custom/unknown filters present.
+    """
+
+    # See matching class wrappers.FiltersMixin
+    # compression will typically be str, int (for raw filter ID), or a hdf5plugin object
+    compression: Any | None | Default = DEFAULT
+    compression_opts: Any | None | Default = DEFAULT
+    scaleoffset: int | None | Default = DEFAULT
+    shuffle: bool | Default = DEFAULT
+    fletcher32: bool | Default = DEFAULT
+
+    def as_kwargs(self) -> dict[str, Any]:
+        """Convert to kwargs for create_dataset."""
+        return {k: v for k, v in self.__dict__.items() if v is not DEFAULT}
+
+    @staticmethod
+    def from_dataset(ds: Dataset | FiltersMixin) -> Filters:
+        """Reverse engineer create_dataset kwargs from an h5py.Dataset."""
+        compression = ds.compression
+        compression_opts = ds.compression_opts
+
+        # Hack for custom compression filters.
+        # FIXME This should be fixable upstream. h5py would need to expose a hook for
+        # hdf5plugin / pytables to let them declare that a filter ID is a
+        # compression filter.
+        if compression is None and isinstance(ds, Dataset):
+            # From hdf5plugin._filters. Can't just try-import hdf5plugin because the same
+            # filter IDs are also defined by pytables.
+            CUSTOM_COMPRESSION_FILTERS = (
+                32001,  # Blosc
+                32026,  # Blosc2
+                307,  # Bzip2
+                32004,  # LZ4
+                32008,  # Bitshuffle
+                32013,  # ZFP
+                32015,  # Zstandard
+                32017,  # SZ
+                32024,  # SZ3
+                32018,  # FCIDECOMP
+                32028,  # SPERR
+            )
+
+            for filter_id in CUSTOM_COMPRESSION_FILTERS:
+                try:
+                    compression_opts = ds._filters[str(filter_id)]
+                    compression = filter_id
+                    break
+                except KeyError:
+                    pass
+
+            if compression is None:
+                # If we're using a bespoke compression, there's no way of knowing
+                # whether an unknown filter is a valid compression or some other
+                # kind of filter, so we issue a warning about assuming that it is
+                # the dataset's compression.
+                for k, v in ds._filters.items():
+                    try:
+                        k = int(k)
+                    except ValueError:
+                        continue
+                    compression, compression_opts = k, v
+                    logging.warning(
+                        "No default compression detected in this dataset. "
+                        f"Guessed {compression=} {compression_opts=} "
+                        f"from {ds._filters=}."
+                    )
+                    break
+
+        return Filters(
+            compression=compression,
+            compression_opts=compression_opts,
+            scaleoffset=ds.scaleoffset,
+            shuffle=ds.shuffle,
+            fletcher32=ds.fletcher32,
+        )
+
+    def overrides(self, other: Filters) -> bool:
+        """Return True if there are any filters that are explicitly set and
+        differ between self and other; False otherwise.
+        """
+        for k, v1 in self.__dict__.items():
+            v2 = getattr(other, k)
+            if v1 is not DEFAULT and v2 is not DEFAULT and v1 != v2:
+                return True
+        return False
+
+
 def create_base_dataset(
     f,
     name,
@@ -75,10 +182,9 @@ def create_base_dataset(
     shape=None,
     data=None,
     dtype=None,
-    chunks=True,
-    compression=None,
-    compression_opts=None,
+    chunks=None,
     fillvalue=None,
+    filters: Filters | None = None,
 ):
     # Validate shape (based on h5py._hl.dataset.make_new_dset)
     if shape is None:
@@ -96,6 +202,7 @@ def create_base_dataset(
             raise ValueError("Shape tuple is incompatible with data")
 
     ndims = len(shape)
+
     if isinstance(chunks, int) and not isinstance(chunks, bool):
         chunks = (chunks,)
     if chunks in [True, None]:
@@ -127,15 +234,15 @@ def create_base_dataset(
                 "Non-default fillvalue not supported for variable length strings"
             )
         fillvalue = None
+    kwargs = filters.as_kwargs() if filters is not None else {}
     dataset = group.create_dataset(
         "raw_data",
         shape=(0,) + chunks[1:],
         chunks=tuple(chunks),
         maxshape=(None,) + chunks[1:],
         dtype=dtype,
-        compression=compression,
-        compression_opts=compression_opts,
         fillvalue=fillvalue,
+        **kwargs,
     )
     dataset.attrs["chunks"] = chunks
     return write_dataset(f, name, data, chunks=chunks)
@@ -147,9 +254,8 @@ def write_dataset(
     data,
     chunks=None,
     dtype=None,
-    compression=None,
-    compression_opts=None,
     fillvalue=None,
+    filters: Filters | None = None,
 ):
     if name not in f["_version_data"]:
         return create_base_dataset(
@@ -158,9 +264,8 @@ def write_dataset(
             data=data,
             dtype=dtype,
             chunks=chunks,
-            compression=compression,
-            compression_opts=compression_opts,
             fillvalue=fillvalue,
+            filters=filters,
         )
 
     ds = f["_version_data"][name]["raw_data"]
@@ -177,20 +282,16 @@ def write_dataset(
     if dtype is not None:
         check_compatible_dtypes(dtype, ds.dtype)
 
-    if (
-        compression
-        and compression not in ds._filters
-        or compression_opts
-        and compression_opts != ds._filters[ds.compression]
-    ):
+    if filters is not None and filters.overrides(Filters.from_dataset(ds)):
         available_filters = textwrap.indent(
             "\n".join(str(filter) for filter in get_available_filters()), "  "
         )
         raise ValueError(
-            "Compression options can only be specified for the first version of a "
-            "dataset.\n"
+            "Compression options and other filters can only be specified for the first "
+            "version of a dataset.\n"
             f"Dataset: {name}\n"
             f"Current filters: {ds._filters}\n"
+            f"New filters: {filters}\n"
             f"Available hdf5 compression types:\n{available_filters}"
         )
 
