@@ -1,4 +1,4 @@
-def pytest_report_header(config):
+def pytest_report_header(config):  # noqa: ARG001
     import h5py
     import ndindex
 

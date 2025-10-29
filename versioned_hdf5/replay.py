@@ -7,9 +7,8 @@ from collections.abc import Iterable
 from typing import Any
 
 import numpy as np
-from h5py import Dataset, File, Group, HLObject, VirtualLayout
+from h5py import Dataset, File, Group, HLObject, VirtualLayout, h5s
 from h5py import __version__ as h5py_version
-from h5py import h5s
 from h5py._hl.selections import select
 from h5py._selector import Selector
 from h5py.h5i import get_name
@@ -635,7 +634,7 @@ def modify_metadata(
     if isinstance(f, VersionedHDF5File):
         f = f.f
 
-    def callback(dataset, version_name):
+    def callback(dataset, version_name):  # noqa: ARG001
         _chunks = chunks or dataset.chunks
         _fillvalue = fillvalue if fillvalue is not None else dataset.fillvalue
 

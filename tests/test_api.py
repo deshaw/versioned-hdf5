@@ -88,9 +88,8 @@ def test_stage_version_chunk_size(vfile):
     with vfile.stage_version("version1", "") as group:
         group.create_dataset("test_data", data=test_data, chunks=(chunk_size,))
 
-    with pytest.raises(ValueError):
-        with vfile.stage_version("version_bad") as group:
-            group.create_dataset("test_data", data=test_data, chunks=(2**9,))
+    with pytest.raises(ValueError), vfile.stage_version("version_bad") as group:
+        group.create_dataset("test_data", data=test_data, chunks=(2**9,))
 
     version1 = vfile["version1"]
     assert version1.attrs["prev_version"] == "__first_version__"
@@ -133,15 +132,13 @@ def test_stage_version_compression(vfile):
             "test_data", data=test_data, compression="gzip", compression_opts=3
         )
 
-    with pytest.raises(ValueError):
-        with vfile.stage_version("version_bad") as group:
-            group.create_dataset("test_data", data=test_data, compression="lzf")
+    with pytest.raises(ValueError), vfile.stage_version("version_bad") as group:
+        group.create_dataset("test_data", data=test_data, compression="lzf")
 
-    with pytest.raises(ValueError):
-        with vfile.stage_version("version_bad") as group:
-            group.create_dataset(
-                "test_data", data=test_data, compression="gzip", compression_opts=4
-            )
+    with pytest.raises(ValueError), vfile.stage_version("version_bad") as group:
+        group.create_dataset(
+            "test_data", data=test_data, compression="gzip", compression_opts=4
+        )
 
     version1 = vfile["version1"]
     assert version1.attrs["prev_version"] == "__first_version__"
@@ -854,13 +851,17 @@ def test_timestamp_manual(vfile):
 
     assert vfile["version1"].attrs["timestamp"] == ts1.strftime(TIMESTAMP_FMT)
 
-    with pytest.raises(ValueError):
-        with vfile.stage_version("version2", timestamp=ts2) as group:
-            group["test_data_2"] = data2
+    with (
+        pytest.raises(ValueError),
+        vfile.stage_version("version2", timestamp=ts2) as group,
+    ):
+        group["test_data_2"] = data2
 
-    with pytest.raises(TypeError):
-        with vfile.stage_version("version3", timestamp="2020-6-29") as group:
-            group["test_data_3"] = data1
+    with (
+        pytest.raises(TypeError),
+        vfile.stage_version("version3", timestamp="2020-6-29") as group,
+    ):
+        group["test_data_3"] = data1
 
 
 def test_timestamp_manual_datetime64(vfile):
@@ -948,7 +949,7 @@ def test_getitem_by_timestamp(vfile):
     dt0 = np.datetime64(ts0.replace(tzinfo=None))
 
     with pytest.raises(KeyError):
-        vfile[ts0] == v1
+        vfile[ts0]
     with pytest.raises(KeyError):
         vfile.get_version_by_timestamp(ts0)
     with pytest.raises(KeyError):
@@ -1565,7 +1566,7 @@ def test_closes(vfile):
 
 
 @pytest.mark.parametrize(
-    "data1,data2",
+    ("data1", "data2"),
     [
         (b"baz", b"foo"),
         (np.asarray("baz", dtype="S"), np.asarray("foo", dtype="S")),
@@ -1632,31 +1633,39 @@ def test_check_committed(vfile):
         del g["test_data"]
 
     # Incorrectly uses g from the previous version (InMemoryArrayDataset)
-    with pytest.raises(ValueError, match="committed"):
-        with vfile.stage_version("version2"):
-            assert isinstance(g["test_data"].dataset, InMemoryArrayDataset)
-            g["test_data"][0] = 1
+    with (  # noqa: PT012
+        pytest.raises(ValueError, match="committed"),
+        vfile.stage_version("version2"),
+    ):
+        assert isinstance(g["test_data"].dataset, InMemoryArrayDataset)
+        g["test_data"][0] = 1
 
-    with pytest.raises(ValueError, match="committed"):
-        with vfile.stage_version("version2"):
-            assert isinstance(g["test_data"].dataset, InMemoryArrayDataset)
-            g["test_data"].resize((100,))
+    with (  # noqa: PT012
+        pytest.raises(ValueError, match="committed"),
+        vfile.stage_version("version2"),
+    ):
+        assert isinstance(g["test_data"].dataset, InMemoryArrayDataset)
+        g["test_data"].resize((100,))
 
     with vfile.stage_version("version2") as g2:
         pass
 
     # Incorrectly uses g from the previous version (InMemoryDataset)
-    with pytest.raises(ValueError, match="committed"):
-        with vfile.stage_version("version3"):
-            assert isinstance(g2["test_data"], DatasetWrapper)
-            assert isinstance(g2["test_data"].dataset, InMemoryDataset)
-            g2["test_data"][0] = 1
+    with (  # noqa: PT012
+        pytest.raises(ValueError, match="committed"),
+        vfile.stage_version("version3"),
+    ):
+        assert isinstance(g2["test_data"], DatasetWrapper)
+        assert isinstance(g2["test_data"].dataset, InMemoryDataset)
+        g2["test_data"][0] = 1
 
-    with pytest.raises(ValueError, match="committed"):
-        with vfile.stage_version("version3"):
-            assert isinstance(g2["test_data"], DatasetWrapper)
-            assert isinstance(g2["test_data"].dataset, InMemoryDataset)
-            g2["test_data"].resize((100,))
+    with (  # noqa: PT012
+        pytest.raises(ValueError, match="committed"),
+        vfile.stage_version("version3"),
+    ):
+        assert isinstance(g2["test_data"], DatasetWrapper)
+        assert isinstance(g2["test_data"].dataset, InMemoryDataset)
+        g2["test_data"].resize((100,))
 
     assert repr(g) == '<Committed InMemoryGroup "/_version_data/versions/version1">'
 
@@ -3027,7 +3036,7 @@ def test_create_dataset_dtype_arg(vfile, dtype):
 
 
 @pytest.mark.parametrize(
-    "name,value",
+    ("name", "value"),
     [
         ("fletcher32", True),
         ("scaleoffset", 5),

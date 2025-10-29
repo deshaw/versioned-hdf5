@@ -1377,7 +1377,7 @@ def test_modify_metadata_decompress_blosc(vfile):
 
 
 @pytest.mark.parametrize(
-    "name,default_value,new_value",
+    ("name", "default_value", "new_value"),
     [
         ("fletcher32", False, True),
         ("scaleoffset", None, 5),

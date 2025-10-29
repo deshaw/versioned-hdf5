@@ -290,8 +290,6 @@ def generate_bad_data_version_2():
             )
         with vf.stage_version("r1") as group:
             group["values"] = np.array([b"ab", b"", b"cd"], dtype=object)
-        # with vf.stage_version("r2") as group:
-        #     group["values"] = np.array([b"ab", b"c", b"d"], dtype=object)
 
 
 def generate_bad_data_version_3():
@@ -323,8 +321,6 @@ def generate_bad_data_version_3():
             )
         with vf.stage_version("r1") as group:
             group["values"] = np.array([b"ab", b"", b"cd"], dtype=object)
-        # with vf.stage_version("r2") as group:
-        #     group["values"] = np.array([b"ab", b"c", b"d"], dtype=object)
 
 
 def _check_running_version(target):

@@ -185,9 +185,8 @@ def test_verify_chunk_reuse_data_version_2(tmp_path, monkeypatch):
                     chunks=(2,),
                 )
 
-            with pytest.raises(ValueError):
-                with vf.stage_version("r1") as group:
-                    group["values"] = np.concatenate((data2, data2))
+            with pytest.raises(ValueError), vf.stage_version("r1") as group:
+                group["values"] = np.concatenate((data2, data2))
 
 
 def test_verify_chunk_reuse_data_version_3(tmp_path, monkeypatch):
@@ -238,11 +237,10 @@ def test_verify_chunk_reuse_data_version_3(tmp_path, monkeypatch):
                     chunks=(100,),
                 )
 
-            with pytest.raises(ValueError):
-                with vf.stage_version("r1") as group:
-                    group["values"] = np.array([b"ab", b"", b"cd"], dtype=object)
-                with vf.stage_version("r2") as group:
-                    group["values"] = np.array([b"ab", b"c", b"d"], dtype=object)
+            with pytest.raises(ValueError), vf.stage_version("r1") as group:
+                group["values"] = np.array([b"ab", b"", b"cd"], dtype=object)
+            with pytest.raises(ValueError), vf.stage_version("r2") as group:
+                group["values"] = np.array([b"ab", b"c", b"d"], dtype=object)
 
 
 def test_chunk_reuse_nan(vfile):

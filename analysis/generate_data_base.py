@@ -1,5 +1,3 @@
-from __future__ import absolute_import, division, print_function, with_statement
-
 import abc
 import random
 from unittest import TestCase
@@ -10,24 +8,21 @@ import scipy.stats
 
 class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
     """
-    Test cases for the most common use cases where we encounter when we write data to HDF5.
+    Test cases for the most common use cases where we encounter when we write data to
+    HDF5.
 
-    In general all data has multiple columns which are divided into "keys" and "values". The keys
-    determine the identity of the row (this stock, this time) and the values are the associated
-    values (the price, ...).
+    In general all data has multiple columns which are divided into "keys" and "values".
+    The keys determine the identity of the row (this stock, this time) and the values
+    are the associated values (the price, ...).
 
-
-    We have two different implementation methods:
-    - "sparse": key and value columns are stored as arrays of equal length and to get the i-th
-      "row" you read key0[i], key1[i], ..., val0[i], val1[i], ...
-    - "dense": key columns are the labels of the axes of the data and the length of the value
-      column is the product of the length of the key columns:
-      len(val0) == len(key0) * len(key1) * ...
-      To get the i-th row you retrieve
-        key0[i // len(key1) // len(key2) // ...],
-        key1[(i // len(key2) // len(key3) // ...) % len(key1)],
-        key2[(i // len(key3) // len(key4) // ...) % len(key2)],
-        ...,
+    We have two different implementation methods: - "sparse": key and value columns are
+    stored as arrays of equal length and to get
+      the i-th "row" you read key0[i], key1[i], ..., val0[i], val1[i], ...
+    - "dense": key columns are the labels of the axes of the data and the length of the
+      value column is the product of the length of the key columns: len(val0) ==
+      len(key0) * len(key1) * ... To get the i-th row you retrieve
+        key0[i // len(key1) // len(key2) // ...], key1[(i // len(key2) // len(key3) //
+        ...) % len(key1)], key2[(i // len(key3) // len(key4) // ...) % len(key2)], ...,
         val0[i], val1[i], ...
       TODO: check the math!
     """
@@ -61,7 +56,7 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
         num_deletes = 10
         num_changes = 10
 
-        times = self._write_transactions_sparse(
+        return self._write_transactions_sparse(
             filename,
             chunk_size,
             compression,
@@ -77,7 +72,6 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
             pct_inserts,
             num_inserts,
         )
-        return times
 
     @classmethod
     @abc.abstractmethod
@@ -130,7 +124,7 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
         if random.randrange(0, 100) <= pct_changes:
             r_num_chgs = int(np.random.randn() + num_changes)
             rand_fn = cls._get_rand_fn(val_ds.dtype)
-            for b in range(r_num_chgs):
+            for _ in range(r_num_chgs):
                 r = random.randrange(0, n)
                 val_ds[r] = rand_fn()
         # delete rows
@@ -198,7 +192,7 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
         num_deletes = 10
         num_changes = 1000
 
-        times = self._write_transactions_sparse(
+        return self._write_transactions_sparse(
             filename,
             chunk_size,
             compression,
@@ -214,7 +208,6 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
             pct_inserts,
             num_inserts,
         )
-        return times
 
     def test_small_fraction_changes_sparse(
         self,
@@ -242,7 +235,7 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
         num_deletes = 10
         num_changes = 10
 
-        times = self._write_transactions_sparse(
+        return self._write_transactions_sparse(
             filename,
             chunk_size,
             compression,
@@ -258,7 +251,6 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
             pct_inserts,
             num_inserts,
         )
-        return times
 
     def test_large_fraction_constant_sparse(
         self,
@@ -268,7 +260,7 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
         compression=None,
         versions=True,
         print_transactions=False,
-        deterministic=False,
+        deterministic=False,  # noqa: ARG002
     ):
         num_rows_initial = 5000
         num_rows_per_append = 0  # triggers the constant size test (FIXME)
@@ -281,7 +273,7 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
         num_deletes = 10
         num_changes = 1000
 
-        times = self._write_transactions_sparse(
+        return self._write_transactions_sparse(
             filename,
             chunk_size,
             compression,
@@ -297,7 +289,6 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
             pct_inserts,
             num_inserts,
         )
-        return times
 
     def test_mostly_appends_dense(
         self,
@@ -328,7 +319,7 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
         num_deletes_1 = 1
         num_changes = 10
 
-        times = self._write_transactions_dense(
+        return self._write_transactions_dense(
             filename,
             chunk_size,
             compression,
@@ -347,7 +338,6 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
             num_inserts_0,
             num_inserts_1,
         )
-        return times
 
     @classmethod
     @abc.abstractmethod
@@ -396,7 +386,7 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
         # change values
         if random.randrange(0, 100) <= pct_changes:
             r_num_chgs = int(np.random.randn() + num_changes)
-            for b in range(r_num_chgs):
+            for _ in range(r_num_chgs):
                 r = (random.randrange(0, n_key0), random.randrange(0, n_key1))
                 val_ds[r] = np.random.rand()
         # delete rows
