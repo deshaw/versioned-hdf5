@@ -20,10 +20,10 @@ from versioned_hdf5 import VersionedHDF5File
 try:
     from versioned_hdf5.backend import DATA_VERSION  # noqa: F401
 except ImportError:
-    DATA_VERSION = None
+    DATA_VERSION = 1
 
 
-def generate_bad_data():
+def generate_bad_data_version_1():
     """Generate versioned-hdf5 files in cwd with bad object dtype hash tables in them.
 
     See https://github.com/deshaw/versioned-hdf5/issues/256 for more information.
@@ -222,7 +222,7 @@ def generate_bad_data_version_2():
         with vf.stage_version("r1") as group:
             group["values"] = np.array([b"ab", b"", b"cd"], dtype=object)
         # with vf.stage_version("r2") as group:
-        #     group["values"] = np.array([b"ab", b"c", b"d"], dtype=object)
+        #     group["values"] = np.array([b"ab", b"c", b"d"], dtype=object)  # noqa: ERA001,E501
 
 
 def generate_bad_data_version_3():
@@ -244,21 +244,20 @@ def generate_bad_data_version_3():
         with vf.stage_version("r1") as group:
             group["values"] = np.array([b"ab", b"", b"cd"], dtype=object)
         # with vf.stage_version("r2") as group:
-        #     group["values"] = np.array([b"ab", b"c", b"d"], dtype=object)
+        #     group["values"] = np.array([b"ab", b"c", b"d"], dtype=object)  # noqa: ERA001,E501
 
 
 def run_on_version(func, target):
-    print(f"{func.__name__}: DATA_VERSION={DATA_VERSION}, target={target}... ", end="")
+    msg = f"{func.__name__}: DATA_VERSION={DATA_VERSION}, target={target}..."
     if DATA_VERSION != target:
-        print("SKIP")
-        return False
+        print(msg, "SKIP")
     else:
-        print("RUN")
+        print(msg, "RUN")
         func()
 
 
 if __name__ == "__main__":
     os.chdir(os.path.dirname(__file__))
-    run_on_version(generate_bad_data, None)
+    run_on_version(generate_bad_data_version_1, 1)
     run_on_version(generate_bad_data_version_2, 2)
     run_on_version(generate_bad_data_version_3, 3)
