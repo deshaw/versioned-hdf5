@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import os
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from pathlib import Path
 
 import h5py
+import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
 
@@ -23,28 +24,13 @@ def pytest_collection_modifyitems(items):
 
 
 @pytest.fixture
-def filepath(tmp_path, request):
-    file_name = os.path.join(tmp_path, "file.hdf5")
+def h5file(
+    setup_vfile: Callable[..., h5py.File], request: pytest.FixtureRequest
+) -> Generator[h5py.File]:
     m = request.node.get_closest_marker("setup_args")
-    if m is not None and "file_name" in m.kwargs:
-        file_name = m.kwargs["file_name"]
-    return file_name
-
-
-@pytest.fixture
-def h5file(setup_vfile, tmp_path, request):
-    file_name = os.path.join(tmp_path, "file.hdf5")
-    version_name = None
-    m = request.node.get_closest_marker("setup_args")
-    if m is not None:
-        if "file_name" in m.kwargs:
-            file_name = m.kwargs["file_name"]
-        if "name" in m.kwargs:
-            raise ValueError("The name argument is no longer used")
-        if "version_name" in m.kwargs:
-            version_name = m.kwargs["version_name"]
-
-    f = setup_vfile(file_name=file_name, version_name=version_name)
+    kwargs = m.kwargs if m is not None else {}
+    version_name = kwargs.get("version_name", None)
+    f = setup_vfile(version_name=version_name)
     yield f
     try:
         f.close()
@@ -64,14 +50,14 @@ def h5file(setup_vfile, tmp_path, request):
 
 
 @pytest.fixture
-def vfile(h5file):
+def vfile(h5file: h5py.File) -> Generator[VersionedHDF5File]:
     file = VersionedHDF5File(h5file)
     yield file
     file.close()
 
 
 def generate_bad_data():
-    """Generate versioned-hdf5 files with bad object dtype hash tables in them.
+    """Generate versioned-hdf5 files in cwd with bad object dtype hash tables in them.
 
     See https://github.com/deshaw/versioned-hdf5/issues/256 for more information.
 
@@ -79,11 +65,6 @@ def generate_bad_data():
         ImportError: Raised if the user tries to generate bad data with newer versions
         of the library; you need an old version to replicate the hash table issue.
     """
-    import h5py
-    import numpy as np
-
-    from versioned_hdf5 import VersionedHDF5File
-
     _check_running_version(None)
 
     filename = "object_dtype_bad_hashtable_data.h5"
@@ -262,7 +243,7 @@ def generate_bad_data():
 
 
 def generate_bad_data_version_2():
-    """Generate versioned-hdf5 files with bad object dtype hash tables in them.
+    """Generate versioned-hdf5 files in cwd with bad object dtype hash tables in them.
 
     See https://github.com/deshaw/versioned-hdf5/issues/256 for more information.
 
@@ -270,11 +251,6 @@ def generate_bad_data_version_2():
         ImportError: Raised if the user tries to generate bad data with newer versions
         of the library; you need an old version to replicate the hash table issue.
     """
-    import h5py
-    import numpy as np
-
-    from versioned_hdf5 import VersionedHDF5File
-
     _check_running_version(2)
 
     filename = "bad_hashtable_data_version_2.h5"
@@ -295,7 +271,7 @@ def generate_bad_data_version_2():
 
 
 def generate_bad_data_version_3():
-    """Generate versioned-hdf5 files with bad object dtype hash tables in them.
+    """Generate versioned-hdf5 files in cwd with bad object dtype hash tables in them.
 
     See https://github.com/deshaw/versioned-hdf5/issues/256 for more information.
 
@@ -303,11 +279,6 @@ def generate_bad_data_version_3():
         ImportError: Raised if the user tries to generate bad data with newer versions
         of the library; you need an old version to replicate the hash table issue.
     """
-    import h5py
-    import numpy as np
-
-    from versioned_hdf5 import VersionedHDF5File
-
     _check_running_version(3)
 
     filename = "bad_hashtable_data_version_3.h5"
@@ -341,13 +312,13 @@ def _check_running_version(target):
 
 
 @pytest.fixture
-def setup_vfile(tmp_path: str) -> Callable[[str | None, str | None], h5py.File]:
+def setup_vfile(tmp_path: Path) -> Callable[..., h5py.File]:
     """Fixture which provides a function that creates an hdf5 file, optionally
     with groups.
     """
 
-    def _setup_vfile(file_name="file.hdf5", *, version_name=None):
-        f = h5py.File(tmp_path / file_name, "w")
+    def _setup_vfile(*, version_name: str | list[str] | None = None) -> h5py.File:
+        f = h5py.File(tmp_path / "file.h5", "w")
         initialize(f)
         if version_name:
             if isinstance(version_name, str):

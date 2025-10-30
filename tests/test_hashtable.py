@@ -34,7 +34,7 @@ def test_hashtable(h5file):
 
 
 def test_from_raw_data(setup_vfile):
-    with setup_vfile("test.h5") as f:
+    with setup_vfile() as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version("0") as sv:
             sv.create_dataset("test_data", data=np.arange(100), chunks=(10,))

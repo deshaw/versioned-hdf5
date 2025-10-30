@@ -705,15 +705,16 @@ def test_resize_int_types_shrink(tmp_path):
 
 
 def test_resize_int_types_grow(tmp_path):
+    filename = tmp_path / "data.h5"
     # Test that resizing with numpy int types works
-    with h5py.File(tmp_path / "data.h5", "w") as f:
+    with h5py.File(filename, "w") as f:
         vfile = VersionedHDF5File(f)
         with vfile.stage_version("r0") as sv:
             sv.create_dataset(
                 "values", data=np.arange(17), maxshape=(None,), chunks=(3,)
             )
     # Test growing repeatedly:
-    with h5py.File(tmp_path / "data.h5", "r+") as f:
+    with h5py.File(filename, "r+") as f:
         vfile = VersionedHDF5File(f)
         with vfile.stage_version("r1") as sv:
             old_size = sv["values"].size
@@ -1329,7 +1330,6 @@ def test_moved_file(setup_vfile):
         assert_equal(file["version1"]["dataset"][:], data)
         file.close()
 
-    # XXX: os.replace
     new_path = path.parent / "test2.hdf5"
     os.rename(path, new_path)
 
@@ -2085,10 +2085,10 @@ def test_datasetwrapper(vfile):
 def test_mask_reading(tmp_path):
     # Reading a virtual dataset with a mask does not work in HDF5, so make
     # sure it still works for versioned datasets.
-    file_name = os.path.join(tmp_path, "file.hdf5")
+    filename = tmp_path / "file.hdf5"
     mask = np.array([True, True, False], dtype="bool")
 
-    with h5py.File(file_name, "w") as f:
+    with h5py.File(filename, "w") as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version("r0") as sv:
             sv.create_dataset("bar", data=[1, 2, 3], chunks=(2,))
@@ -2098,7 +2098,7 @@ def test_mask_reading(tmp_path):
         b = vf["r0"]["bar"][mask]
         assert_equal(b, [1, 2])
 
-    with h5py.File(file_name, "r+") as f:
+    with h5py.File(filename, "r+") as f:
         vf = VersionedHDF5File(f)
         sv = vf["r0"]
         b = sv["bar"][mask]
@@ -2108,10 +2108,10 @@ def test_mask_reading(tmp_path):
 def test_mask_reading_read_only(tmp_path):
     # Reading a virtual dataset with a mask does not work in HDF5, so make
     # sure it still works for versioned datasets.
-    file_name = os.path.join(tmp_path, "file.hdf5")
+    filename = tmp_path / "file.hdf5"
     mask = np.array([True, True, False], dtype="bool")
 
-    with h5py.File(file_name, "w") as f:
+    with h5py.File(filename, "w") as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version("r0") as sv:
             sv.create_dataset("bar", data=[1, 2, 3], chunks=(2,))
@@ -2121,7 +2121,7 @@ def test_mask_reading_read_only(tmp_path):
         b = vf["r0"]["bar"][mask]
         assert_equal(b, [1, 2])
 
-    with h5py.File(file_name, "r") as f:
+    with h5py.File(filename, "r") as f:
         vf = VersionedHDF5File(f)
         sv = vf["r0"]
         b = sv["bar"][mask]
@@ -2152,9 +2152,9 @@ def test_read_only_no_wrappers(setup_vfile):
 def test_stage_version_log_stats(tmp_path, caplog):
     """Test that stage_version logs stats after writing data."""
     caplog.set_level(logging.DEBUG)
-    file_name = os.path.join(tmp_path, "file.hdf5")
+    filename = tmp_path / "file.hdf5"
 
-    with h5py.File(file_name, "w") as f:
+    with h5py.File(filename, "w") as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version("r0") as sv:
             bar_shape_r0 = (2, 15220, 2)
@@ -2205,7 +2205,7 @@ def test_stage_version_log_stats(tmp_path, caplog):
 def test_data_version_identifier_valid(tmp_path, caplog):
     """Test that a file with valid data version id opens without a log message."""
     caplog.set_level(logging.INFO)
-    filename = pathlib.Path(tmp_path) / "file.h5"
+    filename = tmp_path / "file.h5"
     with h5py.File(filename, "w") as f:
         VersionedHDF5File(f)
         assert f["_version_data"]["versions"].attrs["data_version"] == DATA_VERSION
@@ -2220,7 +2220,7 @@ def test_data_version_identifier_valid(tmp_path, caplog):
 def test_data_version_identifier_missing(tmp_path, caplog):
     """Test that a file with no data version identifier logs a message when opened."""
     caplog.set_level(logging.INFO)
-    filename = pathlib.Path(tmp_path) / "file.h5"
+    filename = tmp_path / "file.h5"
     with h5py.File(filename, "w") as f:
         vf = VersionedHDF5File(f)
         assert f["_version_data"]["versions"].attrs["data_version"] == DATA_VERSION
@@ -2256,8 +2256,8 @@ def test_rebuild_hashtable(tmp_path, caplog):
     caplog.set_level(logging.INFO)
 
     bad_file = TEST_DATA / "object_dtype_bad_hashtable_data.h5"
-    filename = pathlib.Path(tmp_path) / "file.h5"
-    shutil.copy(str(bad_file), str(filename))
+    filename = tmp_path / "file.h5"
+    shutil.copy(bad_file, filename)
 
     with h5py.File(filename, mode="r+") as f:
         assert f["_version_data"]["versions"].attrs.get("data_version") is None
@@ -2353,8 +2353,8 @@ def test_rebuild_hashtable_multiple_datasets(tmp_path, caplog):
     caplog.set_level(logging.INFO)
 
     bad_file = TEST_DATA / "object_dtype_bad_hashtable_data2.h5"
-    filename = pathlib.Path(tmp_path) / "file.h5"
-    shutil.copy(str(bad_file), str(filename))
+    filename = tmp_path / "file.h5"
+    shutil.copy(bad_file, filename)
 
     with h5py.File(filename, mode="r+") as f:
         assert f["_version_data"]["versions"].attrs.get("data_version") is None
@@ -2438,8 +2438,8 @@ def test_rebuild_hashtable_nested_dataset(tmp_path, caplog):
     caplog.set_level(logging.INFO)
 
     bad_file = TEST_DATA / "nested_data_old_data_version.h5"
-    filename = pathlib.Path(tmp_path) / "file.h5"
-    shutil.copy(str(bad_file), str(filename))
+    filename = tmp_path / "file.h5"
+    shutil.copy(bad_file, filename)
 
     with h5py.File(filename, mode="r+") as f:
         VersionedHDF5File(f)
@@ -2465,8 +2465,8 @@ def test_rebuild_hashtable_multiple_nested_dataset(tmp_path, caplog):
     caplog.set_level(logging.INFO)
 
     bad_file = TEST_DATA / "multiple_nested_data_old_data_version.h5"
-    filename = pathlib.Path(tmp_path) / "file.h5"
-    shutil.copy(str(bad_file), str(filename))
+    filename = tmp_path / "file.h5"
+    shutil.copy(bad_file, filename)
 
     with h5py.File(filename, mode="r+") as f:
         old_hashtable = f["_version_data/foo/bar/baz/foo/bar/baz/values/hash_table"][:]
@@ -2498,8 +2498,8 @@ def test_rebuild_hashtable_chunk_reuse(tmp_path, caplog):
     caplog.set_level(logging.INFO)
 
     bad_file = TEST_DATA / "object_dtype_bad_hashtable_chunk_reuse.h5"
-    filename = pathlib.Path(tmp_path) / "file.h5"
-    shutil.copy(str(bad_file), str(filename))
+    filename = tmp_path / "file.h5"
+    shutil.copy(bad_file, filename)
 
     with h5py.File(filename, mode="r+") as f:
         old_hashtable = f["_version_data/values/hash_table"][:]
@@ -2559,8 +2559,8 @@ def test_rebuild_hashtable_chunk_reuse_unicode(tmp_path, caplog):
     caplog.set_level(logging.INFO)
 
     bad_file = TEST_DATA / "object_dtype_bad_hashtable_chunk_reuse_unicode.h5"
-    filename = pathlib.Path(tmp_path) / "file.h5"
-    shutil.copy(str(bad_file), str(filename))
+    filename = tmp_path / "file.h5"
+    shutil.copy(bad_file, filename)
 
     with h5py.File(filename, mode="r+") as f:
         old_hashtable = f["_version_data/values/hash_table"][:]
@@ -2634,8 +2634,8 @@ def test_rebuild_hashtable_chunk_reuse_multi_dim(tmp_path, caplog):
     caplog.set_level(logging.INFO)
 
     bad_file = TEST_DATA / "object_dtype_bad_hashtable_chunk_reuse_multi_dim.h5"
-    filename = pathlib.Path(tmp_path) / "file.h5"
-    shutil.copy(str(bad_file), str(filename))
+    filename = tmp_path / "file.h5"
+    shutil.copy(bad_file, filename)
 
     with h5py.File(filename, mode="r+") as f:
         old_hashtable = f["_version_data/values/hash_table"][:]
@@ -2793,26 +2793,26 @@ def test_make_empty_dataset(tmp_path):
 
     See https://github.com/deshaw/versioned-hdf5/issues/314 for context.
     """
-    path = tmp_path / "tmp.h5"
-    with h5py.File(path, "w") as f:
+    filename = tmp_path / "tmp.h5"
+    with h5py.File(filename, "w") as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version("r0") as sv:
             sv.create_dataset("values", data=np.array([1, 2, 3]))
 
-    with h5py.File(path, "r+") as f:
+    with h5py.File(filename, "r+") as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version("r1") as sv:
             sv["values"].resize((0,))
 
-    with h5py.File(path, "r+") as f:
+    with h5py.File(filename, "r+") as f:
         delete_versions(f, ["r0"])
 
-    with h5py.File(path, "r+") as f:
+    with h5py.File(filename, "r+") as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version("r2") as sv:
             sv["values"].resize((0,))
 
-    with h5py.File(path, "r+") as f:
+    with h5py.File(filename, "r+") as f:
         vf = VersionedHDF5File(f)
         cv = vf[vf.current_version]
         assert_equal(cv["values"][:], np.array([]))
@@ -2824,28 +2824,28 @@ def test_make_empty_multidimensional_dataset(tmp_path):
 
     See https://github.com/deshaw/versioned-hdf5/issues/430 for context.
     """
-    path = tmp_path / "tmp.h5"
-    with h5py.File(path, "w") as f:
+    filename = tmp_path / "tmp.h5"
+    with h5py.File(filename, "w") as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version("r0") as sv:
             sv.create_dataset(
                 "values", data=np.array([[1, 2, 3], [4, 5, 6]]), chunks=(100, 100)
             )
 
-    with h5py.File(path, "r+") as f:
+    with h5py.File(filename, "r+") as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version("r1") as sv:
             sv["values"].resize((0, 0))
 
-    with h5py.File(path, "r+") as f:
+    with h5py.File(filename, "r+") as f:
         delete_versions(f, ["r0"])
 
-    with h5py.File(path, "r+") as f:
+    with h5py.File(filename, "r+") as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version("r2") as sv:
             sv["values"].resize((0, 0))
 
-    with h5py.File(path, "r+") as f:
+    with h5py.File(filename, "r+") as f:
         vf = VersionedHDF5File(f)
         cv = vf[vf.current_version]
         assert_equal(cv["values"][:], np.zeros((0, 0), dtype="int64"))
@@ -2858,9 +2858,9 @@ def test_insert_in_middle_multi_dim(tmp_path):
     """
     rs = np.random.RandomState(0)
     dims = 3
-    path = tmp_path / "tmp.h5"
+    filename = tmp_path / "tmp.h5"
 
-    with h5py.File(path, "w") as f:
+    with h5py.File(filename, "w") as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version("v0") as sv:
             for i in range(dims):
@@ -2888,7 +2888,7 @@ def test_insert_in_middle_multi_dim(tmp_path):
                 fillvalue=2,
             )
     for i in range(1, 101):
-        with h5py.File(path, "r+") as f:
+        with h5py.File(filename, "r+") as f:
             vf = VersionedHDF5File(f)
             with vf.stage_version(f"v{i}") as sv:
                 new_axes = tuple(np.unique(rs.randint(30, size=5)) for _ in range(dims))
@@ -2932,7 +2932,7 @@ def test_insert_in_middle_multi_dim(tmp_path):
                 mask_ds.resize(new_shape)
                 mask_ds[:] = all_mask
 
-        with h5py.File(path, "r") as f:
+        with h5py.File(filename, "r") as f:
             vf = VersionedHDF5File(f)
             cv = vf[vf.current_version]
             assert_equal(cv["value"], all_data)
@@ -2941,9 +2941,9 @@ def test_insert_in_middle_multi_dim(tmp_path):
 
 def test_verify_string_chunk_reuse_bytes_one_dimensional(tmp_path):
     """Test that string chunk reuse works as intended."""
-    path = tmp_path / "tmp.h5"
+    filename = tmp_path / "tmp.h5"
 
-    with h5py.File(path, mode="w") as f:
+    with h5py.File(filename, mode="w") as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version("r0") as group:
             group.create_dataset(
