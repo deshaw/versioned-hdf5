@@ -13,7 +13,7 @@ import posixpath
 import textwrap
 import warnings
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 from contextlib import suppress
 from functools import cached_property
 from typing import Any, Callable, ClassVar, Generic, TypeVar
@@ -737,10 +737,8 @@ class InMemoryDataset(BufferMixin, FiltersMixin, Dataset):
 
         if names:
             # Read a subset of the fields in this structured dtype
-            if len(names) == 1:
-                names = names[0]  # Read with simpler dtype of this field
             args = tuple(x for x in args if not isinstance(x, str))
-            return self.fields(names)[args]
+            return self.fields(names[0] if len(names) == 1 else names)[args]
 
         # === Special-case region references ====
 
@@ -959,7 +957,7 @@ class DatasetLike:
         if len(shape) == 0:
             raise TypeError("Can't iterate over a scalar dataset")
         for i in range(shape[0]):
-            yield self[i]
+            yield self[i]  # type: ignore[index]
 
 
 class InMemoryArrayDataset(BufferMixin, FiltersMixin, DatasetLike):
@@ -1118,7 +1116,9 @@ def _staged_changes_to_data_dict(
 
 
 def _normalize_resize_args(
-    shape: tuple[int, ...], size: int | Sequence[int], axis: int | None
+    shape: tuple[int, ...],
+    size: int | list[int] | tuple[int, ...] | np.ndarray,
+    axis: int | None,
 ) -> tuple[int, ...]:
     """Normalize the parameters of Dataset.resize()"""
     ndim = len(shape)
