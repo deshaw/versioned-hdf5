@@ -1,4 +1,3 @@
-import pathlib
 import shutil
 import subprocess
 from unittest import mock
@@ -996,7 +995,7 @@ def test_delete_empty_dataset(vfile):
 
 
 @pytest.mark.skipif(shutil.which("h5repack") is None, reason="Requires h5repack to run")
-def test_delete_string_dataset(filepath):
+def test_delete_string_dataset(tmp_path):
     """Test that delete_versions + h5repack works correctly for variable length string
     dtypes.
 
@@ -1009,9 +1008,12 @@ def test_delete_string_dataset(filepath):
     https://github.com/deshaw/versioned-hdf5/issues/238 for the versioned-hdf5
     discussion.
     """
+    fname1 = tmp_path / "file1.h5"
+    fname2 = tmp_path / "file2.h5"
+
     # Create two versions of variable-length string data, then delete the first,
     # forcing a reconstruction of the data
-    with h5py.File(filepath, "w") as f:
+    with h5py.File(fname1, "w") as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version("r0") as sv:
             sv.create_dataset(
@@ -1027,17 +1029,13 @@ def test_delete_string_dataset(filepath):
         delete_versions(f, "r0")
 
     # Repack the data; the RuntimeError only appears if you do this
-    tmp_path = pathlib.Path(filepath + ".tmp")
-    subprocess.run(["h5repack", filepath, tmp_path], stdout=subprocess.PIPE)
+    subprocess.check_call(["h5repack", fname1, fname2])
 
     # Check that staging a new version after delete_versions + h5repack works
-    with h5py.File(tmp_path, "r+") as f:
+    with h5py.File(fname2, "r+") as f:
         vf = VersionedHDF5File(f)
         with vf.stage_version("r3") as sv:
             pass
-
-    # Delete the tmp file to avoid leaving around stale file
-    tmp_path.unlink(missing_ok=True)
 
 
 def test_delete_versions_speed(vfile):
