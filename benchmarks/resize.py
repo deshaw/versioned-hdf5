@@ -27,7 +27,7 @@ def time_resize():
             bar.resize((3, 15222, 2))
 
 
-time_resize.timeout = 1200
+time_resize.timeout = 1200  # type: ignore[attr-defined]
 
 
 # Pure HDF5 for comparison
@@ -68,7 +68,7 @@ def time_resize_and_write():
                 bar[:, -10:, :] = np.full((1, 10, 2), i, dtype=dt)
 
 
-time_resize_and_write.timeout = 1200
+time_resize_and_write.timeout = 1200  # type: ignore[attr-defined]
 
 
 def time_resize_and_write_hdf5_no_copy():
