@@ -28,10 +28,10 @@ repos:
         files: 'docs/'
         types_or: [javascript, ts, tsx, html, css]
 
-  # - repo: https://github.com/pre-commit/mirrors-mypy
-  #   rev: v1.17.1
-  #   hooks:
-  #     - id: mypy
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.18.2
+    hooks:
+      - id: mypy
 
   - repo: https://github.com/pycqa/isort
     rev: 6.0.1

@@ -22,6 +22,8 @@ def format_size(size):
 
 
 class PerformanceTests:
+    testname: str
+
     def __init__(self, **kwargs):
         pass
 
