@@ -307,8 +307,8 @@ def write_dataset(
     check_compatible_dtypes(data.dtype, ds.dtype)
     # TODO: Handle more than one dimension
     old_shape = ds.shape
-    slices = {}
-    slices_to_write = {}
+    slices: dict[Slice, Tuple] = {}
+    slices_to_write: dict[Tuple, Slice] = {}
     chunk_size = chunks[0]
 
     validate_reused_chunks = os.environ.get(

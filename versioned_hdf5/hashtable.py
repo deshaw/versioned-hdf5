@@ -43,7 +43,7 @@ class Hashtable(MutableMapping):
     # This is done here because putting @lru_cache on the class breaks the
     # classmethods. Warning: This does not normalize kwargs, so it is possible
     # to have multiple hashtable instances for the same hashtable.
-    @lru_cache
+    @lru_cache  # type: ignore[misc]
     def __new__(cls, *args, **kwargs):  # noqa: ARG004
         return super().__new__(cls)
 
