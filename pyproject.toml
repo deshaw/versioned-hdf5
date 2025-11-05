@@ -74,7 +74,6 @@ ignore = [
     "D104", # Missing docstring in public package
     "D100", # Missing docstring in public module
     "D213", # Multiline summary second line
-    "PD901", # Avoid using 'df' for pandas dataframes. Perfectly fine in functions with limited scope
     "ANN204", # Missing return type annotation for special method
     "ANN002", # Missing type annotation for `*args`
     "ANN003", # Missing type annotation for `**kwargs`
@@ -87,13 +86,24 @@ ignore = [
     "SIM300", # Yoda condition `a < var`; clearer in `a < var and var < b`
     "RET505", # Unnecessary elif after return statement; not always clearer
     "UP032", # Use f-string instead of `format` call; not always clearer
+
+    # FIXME these need to be fixed in the code
+    "PT011",  # `pytest.raises(ValueError)` is too broad, set the `match` parameter
+    "NPY002",  # Replace np.random legacy functions with np.random.Generator
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]
 "test_*.py" = [
-    "ANN001",
     "N802",  # Function name should be lowercase
+]
+"analysis/*.ipynb" = [
+    "ERA001",  # Commented out code
+]
+"analysis/generate_*.py" = [
+    "PT028",  # Test function parameter has default argument
+]
+"benchmarks/**.py" = [
+    "ARG002",  # Unused argument - needed by asv for parameterization
 ]
 
 

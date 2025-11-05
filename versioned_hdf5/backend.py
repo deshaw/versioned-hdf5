@@ -114,8 +114,8 @@ class Filters:
         # hdf5plugin / pytables to let them declare that a filter ID is a
         # compression filter.
         if compression is None and isinstance(ds, Dataset):
-            # From hdf5plugin._filters. Can't just try-import hdf5plugin because the same
-            # filter IDs are also defined by pytables.
+            # From hdf5plugin._filters. Can't just try-import hdf5plugin because the
+            # same filter IDs are also defined by pytables.
             CUSTOM_COMPRESSION_FILTERS = (
                 32001,  # Blosc
                 32026,  # Blosc2

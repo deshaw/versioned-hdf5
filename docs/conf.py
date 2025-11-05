@@ -10,8 +10,6 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 
-# sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 # -- Project information -----------------------------------------------------
 
 project = "Versioned HDF5"
@@ -73,7 +71,6 @@ html_theme_options = {
     "github_repo": "versioned-hdf5",
     "github_banner": False,  # https://github.com/bitprophet/alabaster/issues/166
     "github_button": False,
-    # 'logo_name': True,
     "travis_button": False,
     "show_related": True,
     # Remove gray background from inline code
@@ -81,9 +78,14 @@ html_theme_options = {
     # Originally 940px
     "page_width": "1000px",
     # Fonts
-    "font_family": "Palatino, 'goudy old style', 'minion pro', 'bell mt', Georgia, 'Hiragino Mincho Pro', serif",
+    "font_family": (
+        "Palatino, 'goudy old style', 'minion pro', 'bell mt', Georgia, "
+        "'Hiragino Mincho Pro', serif",
+    ),
     "font_size": "18px",
-    "code_font_family": "'Menlo', 'DejaVu Sans Mono', 'Consolas', 'Bitstream Vera Sans Mono', monospace",
+    "code_font_family": (
+        "'Menlo', 'DejaVu Sans Mono', 'Consolas', 'Bitstream Vera Sans Mono', monospace"
+    ),
     "code_font_size": "0.85em",
 }
 

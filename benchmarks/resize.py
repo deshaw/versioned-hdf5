@@ -103,10 +103,10 @@ def time_resize_and_write_hdf5():
     for i in range(1, 100):
         with h5py.File("foo.h5", "r+") as f:
             bar = f.create_dataset(
-                "bar%d" % i,
+                f"bar{i}",
                 chunks=(600, 2, 4),
                 dtype=dt,
-                data=f["bar%d" % (i - 1)],
+                data=f[f"bar{i - 1}"],
                 maxshape=(None, None, None),
             )
             bar.resize((1, (i + 1) * 10, 2))

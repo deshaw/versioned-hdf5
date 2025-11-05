@@ -1,5 +1,3 @@
-from __future__ import absolute_import, division, print_function, with_statement
-
 import datetime
 import logging
 import random
@@ -47,8 +45,6 @@ class TestVersionedDatasetPerformance(TestDatasetPerformanceBase):
     ):
         logger = logging.getLogger(__name__)
 
-        # with temp_dir_ctx() as tmp_dir:
-        # filename = tmp_dir + f'/{name}.h5'
         filename = f"{name}.h5"
         tts = []
         f = h5py.File(filename, "w")
@@ -374,7 +370,7 @@ class TestVersionedDatasetPerformance(TestDatasetPerformanceBase):
         # change values
         if random.randrange(0, 100) <= pct_changes:
             r_num_chgs = int(np.random.randn() + num_changes)
-            for b in range(r_num_chgs):
+            for _ in range(r_num_chgs):
                 r = random.randrange(0, n_val)
                 val_ds[r] = np.random.rand()
         # delete rows
@@ -493,7 +489,7 @@ class TestVersionedDatasetPerformance(TestDatasetPerformanceBase):
         num_deletes_1 = 1
         num_changes = 10
 
-        times = self._write_transactions_dense_old(
+        return self._write_transactions_dense_old(
             filename,
             chunk_size,
             compression,
@@ -512,7 +508,6 @@ class TestVersionedDatasetPerformance(TestDatasetPerformanceBase):
             num_inserts_0,
             num_inserts_1,
         )
-        return times
 
 
 if __name__ == "__main__":

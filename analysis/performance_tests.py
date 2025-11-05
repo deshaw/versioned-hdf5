@@ -2,7 +2,7 @@ import json
 import os
 
 import h5py
-from generate_data import TestVersionedDatasetPerformance as TVDP
+from generate_data import TestVersionedDatasetPerformance as TVDP  # noqa: N817
 
 from versioned_hdf5 import VersionedHDF5File
 
@@ -72,7 +72,6 @@ class PerformanceTests:
                         t = 0
                     except Exception:
                         msg += " not available. Creating new file.\n"
-                        # t0 = time.time()
                         t = self.testfun(
                             n,
                             name,
@@ -81,7 +80,6 @@ class PerformanceTests:
                             versions=versions,
                             deterministic=True,
                         )
-                        # t = time.time()-t0
                         h5pyfile = h5py.File(filename, "r")
                     if versions:
                         data = VersionedHDF5File(h5pyfile)
@@ -152,7 +150,7 @@ class PerformanceTests:
             json.dump(summary, json_out)
 
 
-class test_large_fraction_changes_sparse(PerformanceTests):
+class TestLargeFractionChangesSparse(PerformanceTests):
     def __init__(self, **kwargs):
         self.testname = "test_large_fraction_changes_sparse"
         self.testfun = TVDP().test_large_fraction_changes_sparse
@@ -165,7 +163,7 @@ class test_large_fraction_changes_sparse(PerformanceTests):
         super().save(summary, filename)
 
 
-class test_small_fraction_changes_sparse(PerformanceTests):
+class TestSmallFractionChangesSparse(PerformanceTests):
     def __init__(self, **kwargs):
         self.testname = "test_small_fraction_changes_sparse"
         self.testfun = TVDP().test_small_fraction_changes_sparse
@@ -178,7 +176,7 @@ class test_small_fraction_changes_sparse(PerformanceTests):
         super().save(summary, filename)
 
 
-class test_mostly_appends_sparse(PerformanceTests):
+class TestMostlyAppendsSparse(PerformanceTests):
     def __init__(self, **kwargs):
         self.testname = "test_mostly_appends_sparse"
         self.testfun = TVDP().test_mostly_appends_sparse
@@ -191,7 +189,7 @@ class test_mostly_appends_sparse(PerformanceTests):
         super().save(summary, filename)
 
 
-class test_mostly_appends_dense(PerformanceTests):
+class TestMostlyAppendsDense(PerformanceTests):
     def __init__(self, **kwargs):
         self.testname = "test_mostly_appends_dense"
         self.testfun = TVDP().test_mostly_appends_dense
@@ -204,7 +202,7 @@ class test_mostly_appends_dense(PerformanceTests):
         super().save(summary, filename)
 
 
-class test_large_fraction_constant_sparse(PerformanceTests):
+class TestLargeFractionConstantSparse(PerformanceTests):
     def __init__(self, **kwargs):
         self.testname = "test_large_fraction_constant_sparse"
         self.testfun = TVDP().test_large_fraction_constant_sparse
@@ -219,11 +217,11 @@ class test_large_fraction_constant_sparse(PerformanceTests):
 
 if __name__ == "__main__":
     tests = [
-        test_mostly_appends_dense,
-        test_small_fraction_changes_sparse,
-        test_large_fraction_changes_sparse,
-        test_large_fraction_constant_sparse,
-        test_mostly_appends_sparse,
+        TestMostlyAppendsDense,
+        TestSmallFractionChangesSparse,
+        TestLargeFractionChangesSparse,
+        TestLargeFractionConstantSparse,
+        TestMostlyAppendsSparse,
     ]
 
     for test in tests:

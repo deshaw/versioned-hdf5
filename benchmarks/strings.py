@@ -42,12 +42,12 @@ class TimeStrings(Benchmark):
 
     def time_getitem(self, library, dtype, max_nchars):
         if dtype == "T":
-            res = self.ds.astype("T")[:]
+            _ = self.ds.astype("T")[:]
         elif dtype == "S":
-            res = self.ds[:].astype("U")
+            _ = self.ds[:].astype("U")
         else:
             assert dtype == "O"
-            res = self.ds.asstr()[:]
+            _ = self.ds.asstr()[:]
 
     def time_setitem(self, library, dtype, max_nchars):
         self.assert_clean_setup()

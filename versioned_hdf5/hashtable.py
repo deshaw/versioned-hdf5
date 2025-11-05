@@ -44,7 +44,7 @@ class Hashtable(MutableMapping):
     # classmethods. Warning: This does not normalize kwargs, so it is possible
     # to have multiple hashtable instances for the same hashtable.
     @lru_cache  # type: ignore[misc]
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args, **kwargs):  # noqa: ARG004
         return super().__new__(cls)
 
     def __init__(self, f, name, *, chunk_size=None, hash_table_name="hash_table"):

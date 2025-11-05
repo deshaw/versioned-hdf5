@@ -1,7 +1,4 @@
-import string
-
 import h5py
-import numpy as np
 
 from versioned_hdf5.hashtable import Hashtable
 

@@ -272,7 +272,7 @@ def test_astype_sparse(vfile, dtype):
 
 
 @pytest.mark.parametrize(
-    "group_name,name",
+    ("group_name", "name"),
     [
         (None, "x"),
         (None, "a/x"),
@@ -350,7 +350,7 @@ def test_filters_hotswap_to_inmemoryarraydataset(vfile):
 
 
 @pytest.mark.parametrize(
-    "group_name,name",
+    ("group_name", "name"),
     [
         (None, "x"),
         (None, "a/x"),

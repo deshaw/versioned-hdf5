@@ -353,9 +353,11 @@ class NpyStringsHashtable(Hashtable):
 def test_hashtable_monkeypatch(vfile, monkeypatch):
     """Test monkey-patching of the hash table"""
     monkeypatch.setattr("versioned_hdf5.backend.Hashtable", BadHashtable)
-    with pytest.raises(AssertionError, match="monkeypatch OK"):
-        with vfile.stage_version("v0") as v:
-            v.create_dataset("bad", data=["foo"], dtype="T")
+    with (
+        pytest.raises(AssertionError, match="monkeypatch OK"),
+        vfile.stage_version("v0") as v,
+    ):
+        v.create_dataset("bad", data=["foo"], dtype="T")
 
 
 def test_hash_native(vfile, monkeypatch):
