@@ -15,14 +15,17 @@ class TestDatasetPerformanceBase(TestCase, metaclass=abc.ABCMeta):
     The keys determine the identity of the row (this stock, this time) and the values
     are the associated values (the price, ...).
 
-    We have two different implementation methods: - "sparse": key and value columns are
-    stored as arrays of equal length and to get
+    We have two different implementation methods:
+    - "sparse": key and value columns are stored as arrays of equal length and to get
       the i-th "row" you read key0[i], key1[i], ..., val0[i], val1[i], ...
     - "dense": key columns are the labels of the axes of the data and the length of the
-      value column is the product of the length of the key columns: len(val0) ==
-      len(key0) * len(key1) * ... To get the i-th row you retrieve
-        key0[i // len(key1) // len(key2) // ...], key1[(i // len(key2) // len(key3) //
-        ...) % len(key1)], key2[(i // len(key3) // len(key4) // ...) % len(key2)], ...,
+      value column is the product of the length of the key columns:
+      len(val0) == len(key0) * len(key1) * ...
+      To get the i-th row you retrieve
+        key0[i // len(key1) // len(key2) // ...],
+        key1[(i // len(key2) // len(key3) // ...) % len(key1)],
+        key2[(i // len(key3) // len(key4) // ...) % len(key2)],
+        ...,
         val0[i], val1[i], ...
       TODO: check the math!
     """
