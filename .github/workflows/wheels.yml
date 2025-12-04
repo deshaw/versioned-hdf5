@@ -39,12 +39,17 @@ jobs:
       if: runner.os == 'macOS'
       run: bash ./ci/cibw_before_all_macos.sh "${{ github.workspace }}"
 
+    - name: Increase minimum h5py version for Linux wheels
+      if: runner.os == 'Linux'
+      # See https://github.com/deshaw/versioned-hdf5/issues/466
+      run: sed -i 's/h5py>=3.8.0/h5py>=3.15.0/' pyproject.toml
+
     # Build the wheels
     - name: Triage the build
       run: bash ./ci/triage_build.sh "${{ inputs.arch }}" "${{ github.event.pull_request.head.sha || github.sha }}" "${{ inputs.python-version }}"
 
     - name: Run cibuildwheel
-      uses: pypa/cibuildwheel@v2.22.0
+      uses: pypa/cibuildwheel@v3.3.0
       env:
         # Note that tool.cibuildwheel "skip" in pyproject.toml also limits what gets built
         CIBW_ARCHS: ${{ inputs.arch }}
@@ -90,6 +95,8 @@ jobs:
 
   # Start again from a clean environment.
   # pip install the wheel and run a subset of the unit tests.
+  # DO NOT use the 'test' step in cibuildwheel, because it runs on a manylinux image
+  # which includes libhdf5.
   smoke-test:
     name: 'Smoke test'
     needs: [build-wheels]

@@ -13,6 +13,11 @@ or via pip on Linux and MacOSX with
 
    $ pip install versioned-hdf5
 
+.. note::
+
+   Linux wheels on PyPi depend on h5py>=3.15.0. If you need an older version of
+   h5py, please either install via conda or build from sources.
+
 In order to install from sources, you will need libhdf5 headers and shared libraries
 to be installed, either locally with conda (``conda install -c conda-forge hdf5``) or
 system wide.
