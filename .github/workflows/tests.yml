@@ -5,12 +5,12 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
         numpy-version: ['latest']
         ndindex-version: ['latest']
         h5py-version: ['latest']
         include:
-        - python-version: '3.9'
+        - python-version: '3.10'
           numpy-version: '1.24.4'
           ndindex-version: '1.5.1'
           h5py-version: '3.8.0'

@@ -14,7 +14,7 @@ jobs:
         hdf5-version: ['latest']
         h5py-version: ['latest']
         include:
-        - python-version: '3.9'
+        - python-version: '3.10'
           numpy-version: '1.24.4'
           ndindex-version: '1.5.1'
           hdf5-version: '1.12.2'
