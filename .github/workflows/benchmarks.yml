@@ -8,67 +8,35 @@ jobs:
         shell: bash -el {0}
     strategy:
       matrix:
-        python-version: ['3.14']
-        numpy-version: ['latest']
-        ndindex-version: ['latest']
-        hdf5-version: ['latest']
-        h5py-version: ['latest']
-        include:
-        - python-version: '3.10'
-          numpy-version: '1.24.4'
-          ndindex-version: '1.5.1'
-          hdf5-version: '1.12.2'
-          h5py-version: '3.8.0'
+        env: ['mindeps', 'bench']
       fail-fast: false
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0  # get the non-merge commit for PRs
-          fetch-tags: true # include tags to get correct version in setuptools_scm and asv
+          # get correct version from setuptools_scm
+          fetch-depth: 0
+          fetch-tags: true
 
-      - name: Generate environment.yml
-        run: |
-          echo """
-            name: benchmarks
-            channels:
-              - conda-forge
-            dependencies:
-              - python=${{ matrix.python-version }}
-              - numpy=${{ matrix.numpy-version }}
-              - ndindex=${{ matrix.ndindex-version }}
-              - hdf5=${{ matrix.hdf5-version }}
-              - h5py=${{ matrix.h5py-version }}
-              - asv
-              - pip
-          """ | sed 's/=latest//g' > environment.yml
-
-          cat environment.yml
-
-      - name: Setup Conda Environment
-        uses: conda-incubator/setup-miniconda@v3
+      - uses: prefix-dev/setup-pixi@v0
         with:
-          mamba-version: "*"
-          activate-environment: benchmarks
-          environment-file: environment.yml
-          auto-activate-base: false
+          pixi-version: v0.62.2
+          cache: true
+          environments: ${{ matrix.env }}
 
-      - name: Install versioned-hdf5
-        run: pip install .
-
-      - name: Dump conda environment
-        run: mamba env export
+      - name: Compile, install, and print versions
+        run: pixi r -e ${{ matrix.env }} smoke
 
       - name: Setup asv
         run: |
           # Work around https://github.com/airspeed-velocity/asv/issues/1508
           sed -i "s/master/$(git rev-parse --abbrev-ref HEAD)/" asv.conf.json
-          asv machine --yes
+          pixi r -e ${{ matrix.env }} asv-machine
 
       - name: Run Benchmarks
-        run: asv run --python=same --quick --set-commit-hash $(git rev-parse HEAD)
+        run: pixi r -e ${{ matrix.env }} asv-run
 
       - name: Upload asv results
         uses: actions/upload-artifact@v5
         with:
-          name: asv-results-${{ matrix.python-version }}
+          name: asv-results-${{ matrix.env }}
           path: .asv/results
