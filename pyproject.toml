@@ -125,6 +125,7 @@ ENABLE_CHUNK_REUSE_VALIDATION = 1
 [tool.pytest.ini_options]
 addopts = "--doctest-modules --ignore=ci/ --ignore=analysis/ --import-mode=importlib"
 doctest_optionflags = "NORMALIZE_WHITESPACE"
+xfail_strict = true
 markers = [
     "setup_args : kwargs for setup fixture.",
     "slow: slow tests",
