@@ -815,7 +815,7 @@ def test_getitem(vfile):
         test_data = group["test_data"]
         assert test_data.shape == (2 * DEFAULT_CHUNK_SIZE,)
         assert_equal(test_data[0], 0)
-        assert test_data[0].dtype == np.int64
+        assert test_data[0].dtype == data.dtype
         assert_equal(test_data[:], data)
         assert_equal(
             test_data[: DEFAULT_CHUNK_SIZE + 1], data[: DEFAULT_CHUNK_SIZE + 1]
@@ -825,7 +825,7 @@ def test_getitem(vfile):
         test_data = group["test_data"]
         assert test_data.shape == (2 * DEFAULT_CHUNK_SIZE,)
         assert_equal(test_data[0], 0)
-        assert test_data[0].dtype == np.int64
+        assert test_data[0].dtype == data.dtype
         assert_equal(test_data[:], data)
         assert_equal(
             test_data[: DEFAULT_CHUNK_SIZE + 1], data[: DEFAULT_CHUNK_SIZE + 1]
@@ -1316,28 +1316,25 @@ def test_group_contains(vfile):
 
 
 def test_moved_file(setup_vfile):
-    h5file = setup_vfile()
-    path = pathlib.Path(h5file.filename)
+    """Make sure the virtual datasets do not hard-code the filename"""
+    with setup_vfile() as h5file:
+        fname = pathlib.Path(h5file.filename)
 
-    # See issue #28. Make sure the virtual datasets do not hard-code the filename.
-    file = VersionedHDF5File(h5file)
-    data = np.ones(2 * DEFAULT_CHUNK_SIZE)
-    with file.stage_version("version1") as group:
-        group["dataset"] = data
-    file.close()
+        vfile = VersionedHDF5File(h5file)
+        data = np.ones(2 * DEFAULT_CHUNK_SIZE)
+        with vfile.stage_version("version1") as group:
+            group["dataset"] = data
 
-    with h5py.File(h5file.filename, "r") as f:
-        file = VersionedHDF5File(f)
-        assert_equal(file["version1"]["dataset"][:], data)
-        file.close()
+    with h5py.File(fname, "r") as h5file:
+        vfile = VersionedHDF5File(h5file)
+        assert_equal(vfile["version1"]["dataset"][:], data)
 
-    new_path = path.parent / "test2.hdf5"
-    os.rename(path, new_path)
+    new_fname = fname.parent / "test2.hdf5"
+    os.rename(fname, new_fname)
 
-    with h5py.File(new_path, "r") as f:
-        file = VersionedHDF5File(f)
-        assert_equal(file["version1"]["dataset"][:], data)
-        file.close()
+    with h5py.File(new_fname, "r") as h5file:
+        vfile = VersionedHDF5File(h5file)
+        assert_equal(vfile["version1"]["dataset"][:], data)
 
 
 def test_list_assign(vfile):
@@ -2114,6 +2111,7 @@ def test_mask_reading(tmp_path):
         assert_equal(b, [1, 2])
 
 
+@pytest.mark.xfail(h5py.h5.get_libversion() < (1, 10, 7), reason="#465")
 def test_mask_reading_read_only(tmp_path):
     # Reading a virtual dataset with a mask does not work in HDF5, so make
     # sure it still works for versioned datasets.

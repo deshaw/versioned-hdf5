@@ -1,4 +1,3 @@
-import shutil
 import subprocess
 from unittest import mock
 
@@ -29,13 +28,17 @@ def setup_vfile(file):
             "test_data", data=None, fillvalue=1.0, shape=(10000,), chunks=(1000,)
         )
         data[0] = 0.0
-        g.create_dataset("test_data2", data=[1, 2, 3], chunks=(1000,))
+        g.create_dataset("test_data2", data=[1, 2, 3], dtype=np.int64, chunks=(1000,))
         group = g.create_group("group")
-        group.create_dataset("test_data4", data=[1, 2, 3, 4], chunks=(1000,))
+        group.create_dataset(
+            "test_data4", data=[1, 2, 3, 4], dtype=np.int64, chunks=(1000,)
+        )
 
     with file.stage_version("version2") as g:
         g["test_data"][2000] = 2.0
-        g.create_dataset("test_data3", data=[1, 2, 3, 4], chunks=(1000,))
+        g.create_dataset(
+            "test_data3", data=[1, 2, 3, 4], dtype=np.int64, chunks=(1000,)
+        )
         g["group"]["test_data4"][0] = 5
 
 
@@ -913,7 +916,7 @@ def test_delete_versions_fillvalue_only_dataset(vfile):
         )
 
     with vfile.stage_version("r1") as sv:
-        sv["has_data"] = np.arange(5, -1, -1)
+        sv["has_data"] = np.arange(5, -1, -1, dtype=np.int64)
 
     delete_versions(vfile, ["r0"])
 
@@ -925,10 +928,14 @@ def test_delete_versions_fillvalue_only_dataset(vfile):
     assert set(vfile["r2"]) == {"fillvalue_only", "has_data"}
     np.testing.assert_equal(vfile["r1"]["fillvalue_only"][:], 0)
     np.testing.assert_equal(
-        vfile["r2"]["fillvalue_only"][:], np.array([1, 0, 0, 0, 0, 0])
+        vfile["r2"]["fillvalue_only"][:], np.array([1, 0, 0, 0, 0, 0], dtype=np.int64)
     )
-    np.testing.assert_equal(vfile["r1"]["has_data"][:], np.arange(5, -1, -1))
-    np.testing.assert_equal(vfile["r2"]["has_data"][:], np.arange(5, -1, -1))
+    np.testing.assert_equal(
+        vfile["r1"]["has_data"][:], np.arange(5, -1, -1, dtype=np.int64)
+    )
+    np.testing.assert_equal(
+        vfile["r2"]["has_data"][:], np.arange(5, -1, -1, dtype=np.int64)
+    )
 
 
 def test_delete_versions_current_version(vfile):
@@ -994,7 +1001,7 @@ def test_delete_empty_dataset(vfile):
     assert vfile[vfile.current_version]["key0"][:].size == 0
 
 
-@pytest.mark.skipif(shutil.which("h5repack") is None, reason="Requires h5repack to run")
+@pytest.mark.xfail(h5py.h5.get_libversion() >= (1, 14, 2), reason="#463")
 def test_delete_string_dataset(tmp_path):
     """Test that delete_versions + h5repack works correctly for variable length string
     dtypes.
