@@ -21,7 +21,7 @@ jobs:
           h5py-version: '3.8.0'
       fail-fast: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0  # get the non-merge commit for PRs
           fetch-tags: true # include tags to get correct version in setuptools_scm and asv
@@ -68,7 +68,7 @@ jobs:
         run: asv run --python=same --quick --set-commit-hash $(git rev-parse HEAD)
 
       - name: Upload asv results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: asv-results-${{ matrix.python-version }}
           path: .asv/results

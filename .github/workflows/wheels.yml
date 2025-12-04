@@ -19,13 +19,13 @@ jobs:
     runs-on: ${{ inputs.os }}
     steps:
     - name: Check out the repo
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         fetch-depth: 0  # get the non-merge commit for PRs
         fetch-tags: true # include tags to get correct version from setuptools_scm
 
     - name: 🐍 Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ inputs.python-version }}
 
@@ -83,7 +83,7 @@ jobs:
         zip *.whl */RECORD
 
     - name: Upload wheels
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: wheels-${{ inputs.os }}-${{inputs.arch}}-${{ inputs.python-version }}
         path: ./wheelhouse/*.whl
@@ -97,7 +97,7 @@ jobs:
     steps:
 
     - name: Check out the repo
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         fetch-depth: 0  # get the non-merge commit for PRs
         fetch-tags: true # include tags to get correct version from setuptools_scm
@@ -106,14 +106,14 @@ jobs:
       run: rm -r versioned_hdf5
 
     - name: Retrieve wheel
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v6
       with:
         name: wheels-${{ inputs.os }}-${{inputs.arch}}-${{ inputs.python-version }}
         merge-multiple: true  # Don't unzip into subdirectory
         path: wheels/
 
     - name: 🐍 Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ inputs.python-version }}
 
