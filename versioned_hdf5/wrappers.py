@@ -1008,7 +1008,7 @@ class InMemoryArrayDataset(BufferMixin, FiltersMixin, DatasetLike):
     def resize(self, size, axis=None):
         self.parent._check_committed()
         new_shape = _normalize_resize_args(self.shape, size, axis)
-        if any(new > old for new, old in zip(new_shape, self.shape)):
+        if any(new > old for new, old in zip(new_shape, self.shape, strict=True)):
             raise AssertionError(  # pragma: nocover
                 "Enlarging an InMemoryArrayDataset directly. "
                 "This should be unreachable outside of artificial unit tests; "
@@ -1193,7 +1193,7 @@ class DatasetWrapper(DatasetLike):
     def resize(self, size, axis=None):
         new_shape = _normalize_resize_args(self.dataset.shape, size, axis)
         if not isinstance(self.dataset, InMemoryArrayDataset) or all(
-            new <= old for new, old in zip(new_shape, self.dataset.shape)
+            new <= old for new, old in zip(new_shape, self.dataset.shape, strict=True)
         ):
             self.dataset.resize(new_shape)
             return

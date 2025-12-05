@@ -269,7 +269,10 @@ class StagedChangesArray(MutableMapping[Any, T]):
     @property
     def n_chunks(self) -> tuple[int, ...]:
         """Number of chunks on each axis"""
-        return tuple(ceil_a_over_b(s, c) for s, c in zip(self.shape, self.chunk_size))
+        return tuple(
+            ceil_a_over_b(s, c)
+            for s, c in zip(self.shape, self.chunk_size, strict=True)
+        )
 
     @property
     def n_slabs(self) -> int:
@@ -736,7 +739,9 @@ class StagedChangesArray(MutableMapping[Any, T]):
             raise ValueError("shape must be non-negative")
         if any(c <= 0 for c in chunk_size):
             raise ValueError("chunk_size must be strictly positive")
-        n_chunks = tuple(ceil_a_over_b(s, c) for s, c in zip(shape, chunk_size))
+        n_chunks = tuple(
+            ceil_a_over_b(s, c) for s, c in zip(shape, chunk_size, strict=True)
+        )
 
         # StagedChangesArray.__init__ reads the dtype from fill_value
         if fill_value is not None:
@@ -782,7 +787,9 @@ class StagedChangesArray(MutableMapping[Any, T]):
             # problematic down the line if we call resize() to enlarge the array.
             # Use views of the array for all complete chunks and deep-copy the partial
             # edge chunks.
-            shape_round_down = tuple(s // c * c for s, c in zip(arr.shape, chunk_size))
+            shape_round_down = tuple(
+                s // c * c for s, c in zip(arr.shape, chunk_size, strict=True)
+            )
             if shape_round_down != arr.shape:
                 out = StagedChangesArray.from_array(
                     arr[tuple(slice(s) for s in shape_round_down)],
@@ -812,7 +819,7 @@ class StagedChangesArray(MutableMapping[Any, T]):
         for chunk_idx in itertools.product(*[list(range(c)) for c in n_chunks[1:]]):
             view_idx = (slice(None),) + tuple(
                 slice(start := c * s, start + s)
-                for c, s in zip(chunk_idx, chunk_size[1:])
+                for c, s in zip(chunk_idx, chunk_size[1:], strict=True)
             )
             # Note: if the backend of arr doesn't support views
             # (e.g. h5py.Dataset), this is a deep-copy
@@ -1471,10 +1478,13 @@ class ResizePlan(MutatingPlan):
         # It can also reduce the amount of chunks impacted if we are also enlarging
         # along other axes, so it should be done first.
         # Finally, it can cause slabs to drop.
-        shrunk_shape = tuple(min(o, n) for o, n in zip(old_shape, new_shape))
+        shrunk_shape = tuple(
+            min(o, n) for o, n in zip(old_shape, new_shape, strict=True)
+        )
         if shrunk_shape != old_shape:
             chunks_slice = tuple(
-                slice(ceil_a_over_b(s, c)) for s, c in zip(shrunk_shape, chunk_size)
+                slice(ceil_a_over_b(s, c))
+                for s, c in zip(shrunk_shape, chunk_size, strict=True)
             )
             # Just a view. This won't change the shape of the arrays when shrinking the
             # edge chunks without reducing the number of chunks.
@@ -1484,7 +1494,7 @@ class ResizePlan(MutatingPlan):
             # Load partial edge chunks into memory to avoid ending up with partially
             # overlapping chunks on disk, e.g. [10:19] vs. [10:17].
             for axis, (old_size, shrunk_size, c) in enumerate(
-                zip(old_shape, shrunk_shape, chunk_size)
+                zip(old_shape, shrunk_shape, chunk_size, strict=True)
             ):
                 if old_size > shrunk_size and shrunk_size % c != 0:
                     self._shrink_along_axis(
@@ -1505,7 +1515,9 @@ class ResizePlan(MutatingPlan):
             # we need to enlarge slab_indices and slab_offsets too.
             pad_width = [
                 (0, ceil_a_over_b(s, c) - n)
-                for s, c, n in zip(new_shape, chunk_size, self.slab_indices.shape)
+                for s, c, n in zip(
+                    new_shape, chunk_size, self.slab_indices.shape, strict=True
+                )
             ]
             # np.pad is a deep-copy; skip if unnecessary.
             if any(p != (0, 0) for p in pad_width):
@@ -1853,7 +1865,8 @@ def _chunks_in_selection(
         columns = [asarray(nz_i, dtype=np_hsize_t) for nz_i in nz]
     else:
         columns = [
-            np.asarray(mapper.chunk_indices)[nz_i] for mapper, nz_i in zip(mappers, nz)
+            np.asarray(mapper.chunk_indices)[nz_i]
+            for mapper, nz_i in zip(mappers, nz, strict=True)
         ]
     columns += [slab_indices, slab_offsets]
 
@@ -2001,7 +2014,7 @@ def _set_edges(
     """
     assert src.shape == dst.shape
     assert len(shape) == dst.ndim
-    for i, (start, stop) in enumerate(zip(shape, dst.shape)):
+    for i, (start, stop) in enumerate(zip(shape, dst.shape, strict=True)):
         if stop > start:
             idx = tuple(slice(s) for s in shape[:i]) + (slice(start, stop),)
             dst[idx] = src[idx]

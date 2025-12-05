@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 import time
 from typing import Any, Literal
 
@@ -101,7 +100,7 @@ def test_staged_array(args):
     assert arr.ndim == len(shape)
     assert arr.chunk_size == chunks
     assert len(arr.n_chunks) == len(shape)
-    for n, s, c in zip(arr.n_chunks, shape, chunks):
+    for n, s, c in zip(arr.n_chunks, shape, chunks, strict=True):
         assert n == s // c + (s % c > 0)
     assert arr.n_staged_slabs == 0
     assert arr.n_base_slabs + 1 == arr.n_slabs == len(arr.slabs)
@@ -122,7 +121,9 @@ def test_staged_array(args):
         elif label == "resize":
             # Can't use np.resize(), which works differently as it reflows the data
             new = np.full(arg, fill_value, dtype="u4")
-            common_idx = tuple(slice(min(o, n)) for o, n in zip(arr.shape, arg))
+            common_idx = tuple(
+                slice(min(o, n)) for o, n in zip(arr.shape, arg, strict=True)
+            )
             new[common_idx] = expect[common_idx]
             expect = new
             arr.resize(arg)
@@ -150,7 +151,7 @@ def test_staged_array(args):
     # Reconstruct the array starting from the base + changes
     final = np.full(expect.shape, fill_value, dtype=base.dtype)
     shapes = [base.shape] + [arg for label, arg in actions if label == "resize"]
-    common_idx = tuple(slice(min(sizes)) for sizes in zip(*shapes))
+    common_idx = tuple(slice(min(sizes)) for sizes in zip(*shapes, strict=True))
     final[common_idx] = base[common_idx]
     for value_idx, _, chunk in arr.changes():
         if not isinstance(chunk, tuple):
@@ -358,10 +359,9 @@ def test_copy():
     b = a.copy()
     # All slabs are shared
     # staged slabs have been changed to read-only views on both sides
-    kwargs = {"strict": True} if sys.version_info >= (3, 10) else {}
     assert a.slab_indices is b.slab_indices
     assert a.slab_offsets is b.slab_offsets
-    for a_slab, b_slab in zip(a.slabs, b.slabs, **kwargs):
+    for a_slab, b_slab in zip(a.slabs, b.slabs, strict=True):
         assert a_slab is b_slab
     assert not a.slabs[3].flags.writeable
 

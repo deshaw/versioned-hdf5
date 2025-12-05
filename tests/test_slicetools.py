@@ -209,7 +209,7 @@ def many_slices_st(
     for _ in range(nslices):
         src_idx = []
         dst_idx = []
-        for src_size, dst_size in zip(src_shape, dst_shape):
+        for src_size, dst_size in zip(src_shape, dst_shape, strict=True):
             src_slice, dst_slice = draw(matching_slices_st(src_size, dst_size))
             src_idx.append(src_slice)
             dst_idx.append(dst_slice)
@@ -238,7 +238,7 @@ def test_read_many_slices(h5file, args):
     count = []
     src_step = []
     dst_step = []
-    for idx_from, idx_to in zip(indices_from, indices_to):
+    for idx_from, idx_to in zip(indices_from, indices_to, strict=True):
         expect[idx_to] = src[idx_from]
 
         src_start.append([s.start for s in idx_from])

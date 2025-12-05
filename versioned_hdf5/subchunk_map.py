@@ -777,7 +777,7 @@ def index_chunk_mappers(
     mappers = []
 
     # Process the prefix of the axes which idx selects on
-    for i, d, n in zip(idx.args, shape[:idx_len], chunk_size[:idx_len]):
+    for i, d, n in zip(idx.args, shape[:idx_len], chunk_size[:idx_len], strict=True):
         i = i.reduce((d,)).raw
 
         # _index_to_mapper tentatively simplifies fancy indices to slices.
@@ -792,7 +792,7 @@ def index_chunk_mappers(
 
     # Handle the remaining suffix axes on which we did not select, we still need to
     # break them up into chunks.
-    for d, n in zip(shape[idx_len:], chunk_size[idx_len:]):
+    for d, n in zip(shape[idx_len:], chunk_size[idx_len:], strict=True):
         mappers.append(SliceMapper(slice(0, d, 1), d, n))
 
     return idx, mappers

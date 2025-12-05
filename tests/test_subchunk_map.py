@@ -332,7 +332,9 @@ def test_read_many_slices_param_nd(args):
         size=len(chunk_idxidx),
         replace=False,
     )
-    for chunk_idxidx_i, slab_offset_i in zip(chunk_idxidx, slab_offsets.tolist()):
+    for chunk_idxidx_i, slab_offset_i in zip(
+        chunk_idxidx, slab_offsets.tolist(), strict=True
+    ):
         source_idx = []
         for j, chunk_idxidx_ij in enumerate(chunk_idxidx_i):
             chunk_idx_ij = int(mappers[j].chunk_indices[chunk_idxidx_ij])
