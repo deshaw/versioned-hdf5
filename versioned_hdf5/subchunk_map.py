@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import abc
 import enum
-from typing import TYPE_CHECKING, Any
+from typing import Any, TypeAlias
 
 import cython
 import numpy as np
@@ -21,13 +21,9 @@ from versioned_hdf5.cytools import (
 )
 from versioned_hdf5.tools import asarray
 
-if TYPE_CHECKING:  # pragma: nocover
-    # TODO import from typing and remove quotes (requires Python 3.10)
-    # TODO use type <name> = ... (requires Python 3.12)
-    from typing_extensions import TypeAlias
-
-    AnySlicer: TypeAlias = "slice | NDArray[np_hsize_t] | int"
-    AnySlicerND: TypeAlias = tuple[AnySlicer, ...]
+# TODO use type <name> = ... (requires Python 3.12)
+AnySlicer: TypeAlias = slice | NDArray[np_hsize_t] | int
+AnySlicerND: TypeAlias = tuple[AnySlicer, ...]
 
 if cython.compiled:  # pragma: nocover
     from cython.cimports.versioned_hdf5.cytools import (  # type: ignore
