@@ -13,10 +13,10 @@ import posixpath
 import textwrap
 import warnings
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from contextlib import suppress
 from functools import cached_property
-from typing import Any, Callable, ClassVar, Generic, TypeVar
+from typing import Any, ClassVar, Generic, TypeVar
 from weakref import WeakValueDictionary
 
 import numpy as np
