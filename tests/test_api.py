@@ -2417,7 +2417,9 @@ def test_rebuild_hashtable_multiple_datasets(tmp_path, caplog):
     # another log message issued when rebuilding hash table
     assert len(caplog.records) == 2
 
-    for original_hash_arr, new_hash_arr in zip(original_hashes, new_hashes):
+    for original_hash_arr, new_hash_arr in zip(
+        original_hashes, new_hashes, strict=True
+    ):
         # When data is written originally, if all chunks are unique the number of
         # entries in the hash table should be the number of writes that were made. The
         # new hash table should follow the same rule.
@@ -2427,18 +2429,18 @@ def test_rebuild_hashtable_multiple_datasets(tmp_path, caplog):
         # chunk. In this case, each of these arrays fits in a single chunk. Here, we
         # check the slices into the raw data to make sure they are identical for the
         # rebuilt hash table.
-        for arr_hash, new_hash in zip(original_hash_arr, new_hash_arr):
+        for arr_hash, new_hash in zip(original_hash_arr, new_hash_arr, strict=True):
             assert np.all(arr_hash[1] == new_hash[1])
 
-    for arr_hash, new_hash in zip(original_hashes_arr1, new_hashes_arr1):
+    for arr_hash, new_hash in zip(original_hashes_arr1, new_hashes_arr1, strict=True):
         assert not np.all(arr_hash[0] == new_hash[0])
 
-    for arr_hash, new_hash in zip(original_hashes_arr2, new_hashes_arr2):
+    for arr_hash, new_hash in zip(original_hashes_arr2, new_hashes_arr2, strict=True):
         assert not np.all(arr_hash[0] == new_hash[0])
 
     # This is an integer array, it should have been correctly hashed originally.
     # Check that the new hashes match.
-    for arr_hash, new_hash in zip(original_hashes_arr3, new_hashes_arr3):
+    for arr_hash, new_hash in zip(original_hashes_arr3, new_hashes_arr3, strict=True):
         assert np.all(arr_hash[0] == new_hash[0])
 
 

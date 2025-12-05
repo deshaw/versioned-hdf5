@@ -34,7 +34,7 @@ def assert_object_array_equal(actual, expect):
     assert actual.dtype.kind == "O"
     assert actual.shape == expect.shape
 
-    for a, b in zip(actual.flat, expect.flat):
+    for a, b in zip(actual.flat, expect.flat, strict=True):
         if isinstance(a, bytes):
             a = a.decode("utf-8")
         assert a == b, (actual, expect)

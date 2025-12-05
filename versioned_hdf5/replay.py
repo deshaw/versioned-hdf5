@@ -224,7 +224,9 @@ def _recreate_raw_data(
     sorted_chunks_to_keep = sorted(chunks_to_keep, key=lambda i: i.args[0].args[0])
 
     raw_data_chunks_map = {}
-    for new_chunk, chunk in zip(chunks.indices(new_shape), sorted_chunks_to_keep):
+    for new_chunk, chunk in zip(
+        chunks.indices(new_shape), sorted_chunks_to_keep, strict=False
+    ):
         # Truncate the new slice if it isn't a full chunk
         to_set_fillvalue = []
         new_truncated = []
