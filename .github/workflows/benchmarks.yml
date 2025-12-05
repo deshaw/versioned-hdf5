@@ -8,7 +8,7 @@ jobs:
         shell: bash -el {0}
     strategy:
       matrix:
-        python-version: ['3.13']
+        python-version: ['3.14']
         numpy-version: ['latest']
         ndindex-version: ['latest']
         hdf5-version: ['latest']
