@@ -17,13 +17,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 💻 Checkout the repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           fetch-tags: true # include tags to get correct version from setuptools_scm
 
       - name: 🐍 Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
 
       - name: 🚀 Install build dependencies
         run: |
@@ -40,7 +40,7 @@ jobs:
           twine check wheelhouse/*
 
       - name: Upload sdist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: sdist
           path: ./wheelhouse/*.tar.gz
@@ -80,7 +80,7 @@ jobs:
       id-token: write
     steps:
       - name: Retrieve wheels and sdist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           merge-multiple: true
           path: wheels/
