@@ -52,13 +52,13 @@ jobs:
         if: matrix.h5py-version == 'latest'
         run: |
           # Build against system-wide libhdf5
-          pip install h5py --no-binary :all:
+          pip install h5py --no-binary h5py
 
       - name: Install target h5py version
         if: matrix.h5py-version != 'latest' && matrix.h5py-version != 'dev'
         run: |
           # Build against system-wide libhdf5
-          pip install h5py~=${{ matrix.h5py-version }} --no-binary :all:
+          pip install h5py~=${{ matrix.h5py-version }} --no-binary h5py
 
       - name: Install development h5py version
         if: matrix.h5py-version == 'dev'
