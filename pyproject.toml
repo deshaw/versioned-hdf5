@@ -23,6 +23,7 @@ classifiers = [
 ]
 dependencies = [
     "numpy>=1.24.4",
+    # Note: Linux binary wheels depend on h5py>=3.15.0.
     "h5py>=3.8.0",
     "ndindex>=1.5.1",
 ]
@@ -149,8 +150,16 @@ allow_untyped_defs = true
 [tool.cibuildwheel]
 build-verbosity = 1
 build-frontend = { name = "pip", args = ["--only-binary", "numpy"] }
-manylinux-x86_64-image = "ghcr.io/h5py/manylinux2014_x86_64-hdf5"
-manylinux-aarch64-image = "ghcr.io/h5py/manylinux2014_aarch64-hdf5"
+# This must be kept in sync with h5py/pyproject.toml
+# h5py <=3.14.0 used manylinux2014, which shipped a different version of libhdf5.
+# As such,
+#   versioned-hdf5 built from sources (any platform) requires h5py >=3.8.0
+#   versioned-hdf5 conda-forge binary packages (any platform) require h5py >=3.8.0
+#   versioned-hdf5 MacOSX wheels require h5py >=3.8.0
+#   versioned-hdf5==2.1.0 Linux wheels require h5py wheels >=3.8.0,<3.15.0
+#   versioned-hdf5>=2.2.0 Linux wheels require h5py wheels >=3.15.0
+manylinux-x86_64-image = "ghcr.io/h5py/manylinux_2_28_x86_64-hdf5"
+manylinux-aarch64-image = "ghcr.io/h5py/manylinux_2_28_aarch64-hdf5"
 
 [tool.cibuildwheel.linux]
 environment-pass = ["GITHUB_ACTIONS"]
