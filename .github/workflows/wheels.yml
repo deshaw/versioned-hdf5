@@ -42,7 +42,15 @@ jobs:
     - name: Increase minimum h5py version for Linux wheels
       if: runner.os == 'Linux'
       # See https://github.com/deshaw/versioned-hdf5/issues/466
-      run: sed -i 's/h5py>=3.8.0/h5py>=3.15.0/' pyproject.toml
+      run: |
+        sed -i 's/h5py>=3.8.0/h5py>=3.15.0/' pyproject.toml
+        git commit -a -m 'Increase minimum h5py version'
+        # Move tag from previous commit if it exists
+        if git describe --tags --exact-match HEAD~1 2>/dev/null; then
+          TAG=$(git describe --tags --exact-match HEAD~1)
+          git tag -d "$TAG"
+          git tag "$TAG"
+        fi
 
     # Build the wheels
     - name: Triage the build
