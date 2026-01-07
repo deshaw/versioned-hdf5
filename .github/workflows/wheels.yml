@@ -43,14 +43,15 @@ jobs:
       if: runner.os == 'Linux'
       # See https://github.com/deshaw/versioned-hdf5/issues/466
       run: |
+        # Modifying any files checked in git will update the setuptools-scm version;
+        # force setuptools-scm to return the previous version with a tag.
+        pip install setuptools-scm
+        TAG=$(python -m setuptools_scm)
         sed -i 's/h5py>=3.8.0/h5py>=3.15.0/' pyproject.toml
+        git config --global user.email "bot@deshaw.com"
+        git config --global user.name "Release bot"
         git commit -a -m 'Increase minimum h5py version'
-        # Move tag from previous commit if it exists
-        if git describe --tags --exact-match HEAD~1 2>/dev/null; then
-          TAG=$(git describe --tags --exact-match HEAD~1)
-          git tag -d "$TAG"
-          git tag "$TAG"
-        fi
+        git tag -f "$TAG"
 
     # Build the wheels
     - name: Triage the build
