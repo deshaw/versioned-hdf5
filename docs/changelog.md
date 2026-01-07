@@ -7,7 +7,7 @@ Changelog
 
 - Fixed binary incompatibility of versioned-hdf5 Linux wheels vs. the wheels for
   h5py >=3.15.0. Starting from this release, versioned-hdf5 wheels for Linux on PyPi
-  require h5py>=3.15.0 wheels. MacOSX wheels, conda-forge packages, and builds from
+  require h5py >=3.15.0 wheels. MacOSX wheels, conda-forge packages, and builds from
   source still require h5py >=3.8.0.
 - Added wheels for Python 3.14
 - Dropped support for Python 3.9
