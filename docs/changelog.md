@@ -1,6 +1,10 @@
 Changelog
 =========
 
+## 2.2.1 (2026-01-07)
+
+Fix wheels publishing issue on Linux.
+
 ## 2.2.0 (2026-01-07)
 
 ### Major Changes
