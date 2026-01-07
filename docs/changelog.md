@@ -1,6 +1,34 @@
 Changelog
 =========
 
+## 2.2.0 (2026-01-07)
+
+### Major Changes
+
+- Fixed binary incompatibility of versioned-hdf5 Linux wheels vs. the wheels for
+  h5py >=3.15.0. Starting from this release, versioned-hdf5 wheels for Linux on PyPi
+  require h5py >=3.15.0 wheels. MacOSX wheels, conda-forge packages, and builds from
+  source still require h5py >=3.8.0.
+- Added wheels for Python 3.14
+- Dropped support for Python 3.9
+
+### Minor Changes
+
+Filters have been overhauled:
+- Added `shuffle`, `fletcher32`, and `scaleoffset` parameters to `create_dataset` and
+  `modify_metadata`
+- Fixed bug where `modify_metadata` would revert `compression` and `compression_opts` to
+  their default value when they are not explicitly listed. For example,
+  `modify_metadata(ds, fillvalue=123)` would decompress a dataset. You now have to
+  explicitly pass `modify_metadata(ds, compression=None)`.
+- `.compression` and `.compression_opts`  properties now return the numerical IDs for
+  custom compression filters (e.g. Blosc, Blosc2) in staged datasets. Note that this is
+  unlike `h5py.Dataset.compression`, which incorrectly returns None.
+- Fixed bug where the `.compression` and `.compression_opts` properties of staged datasets
+  would incorrectly return `None`
+- Fixed bug where passing a path to `create_dataset` would silently disregard the
+  `compression` and `compression_opts` parameters
+
 ## 2.1.0 (2025-08-12)
 
 ### Major Changes
