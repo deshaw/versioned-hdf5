@@ -32,6 +32,8 @@ repos:
     rev: v1.18.2
     hooks:
       - id: mypy
+        additional_dependencies:
+          - types-requests
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.2
