@@ -1,10 +1,9 @@
 project(
   'versioned-hdf5',
   'c',
-  'cpp',
   'cython',
-  version: run_command(['python', '-m', 'setuptools_scm'], check: true).stdout().strip(),
-  meson_version: '>=1.1',
+  version: run_command([find_program('python'), '-m', 'setuptools_scm'], check: true).stdout().strip(),
+  meson_version: '>=1.2',
 )
 
 py = import('python').find_installation(pure: false)

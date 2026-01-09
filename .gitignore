@@ -126,10 +126,14 @@ rever/
 
 # Cython byproducts
 versioned_hdf5/*.c
-versioned_hdf5/*.cpp
 versioned_hdf5/*.html
 versioned_hdf5/*.so
+# Meson temporary build files
+.mesonpy*
 # These are temporary copies created by meson.build
 versioned_hdf5/cytools.pyx
 versioned_hdf5/staged_changes.pyx
 versioned_hdf5/subchunk_map.pyx
+# pixi environments
+.pixi/*
+!.pixi/config.toml

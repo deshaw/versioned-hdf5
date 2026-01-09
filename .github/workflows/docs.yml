@@ -8,30 +8,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-
-      - uses: actions/setup-python@v6
         with:
-          python-version: 3.11
+          # get correct version from setuptools_scm
+          fetch-depth: 0
+          fetch-tags: true
 
-      - name: Install dependencies
-        run: |
-          set -xe
-          sudo apt update -y
-          sudo apt install -y graphviz libhdf5-dev
+      - uses: prefix-dev/setup-pixi@v0
+        with:
+          pixi-version: v0.62.2
+          cache: true
+          environments: docs
 
-      - name: Install versioned-hdf5
-        run: |
-          set -xe
-          pip install .
-
-      - name: Install versioned-hdf5 doc
-        run: |
-          pip install .[doc]
+      - name: Compile, install, and print versions
+        run: pixi r -e docs smoke
 
       - name: Build docs
-        working-directory: docs
-        run: |
-          # Need to set timezone to avoid a sphinx/babel issue
-          # when using act to run locally:
-          # https://github.com/nektos/act/issues/1853
-          TZ=UTC make html
+        run: pixi r -e docs docs
