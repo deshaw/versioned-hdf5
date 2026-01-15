@@ -930,6 +930,44 @@ def test_delete_versions_fillvalue_only_dataset(vfile):
     np.testing.assert_equal(vfile["r1"]["has_data"][:], np.arange(5, -1, -1))
     np.testing.assert_equal(vfile["r2"]["has_data"][:], np.arange(5, -1, -1))
 
+def test_delete_versions_fillvalue_only_dataset_raw_data_shape(tmp_path):
+    with h5py.File(tmp_path / "test.h5", "w") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r0") as sv:
+            sv.create_dataset(
+                "fillvalue_only_raw_data_shape",
+                shape=(16,),
+                dtype=np.dtype("int64"),
+                data=None,
+                maxshape=(None,),
+                chunks=(10,),
+                fillvalue=0,
+            )
+        assert f["_version_data/fillvalue_only_raw_data_shape/raw_data"].shape == (10,)
+
+        with vf.stage_version("r1") as sv:
+            sv["fillvalue_only_raw_data_shape"].resize((16,))
+
+        # after delete_versions, the raw_data shape should still be non-empty and have a chunk
+        delete_versions(vf, ["r0"])
+
+    with h5py.File(tmp_path / "test.h5", "r") as f:
+        vf = VersionedHDF5File(f)
+        assert f["_version_data/fillvalue_only_raw_data_shape/raw_data"].shape == (10,)
+        cv = vf[vf.current_version]
+        assert cv["fillvalue_only_raw_data_shape"].shape == (16,)
+
+    # writing to the dataset should still not create a corrupted empty dataset
+    with h5py.File(tmp_path / "test.h5", "r+") as f:
+        vf = VersionedHDF5File(f)
+        with vf.stage_version("r2") as sv:
+            sv["fillvalue_only_raw_data_shape"].resize((16,))
+
+    with h5py.File(tmp_path / "test.h5", "r") as f:
+        vf = VersionedHDF5File(f)
+        cv = vf[vf.current_version]
+        assert cv["fillvalue_only_raw_data_shape"].shape == (16,)
+        np.testing.assert_equal(cv["fillvalue_only_raw_data_shape"], np.full(16, 0))
 
 def test_delete_versions_current_version(vfile):
     with vfile.stage_version("r0") as sv:

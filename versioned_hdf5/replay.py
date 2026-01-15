@@ -215,7 +215,9 @@ def _recreate_raw_data(
 
     raw_data = f["_version_data"][name]["raw_data"]
     chunks = ChunkSize(raw_data.chunks)
-    new_shape = (len(chunks_to_keep) * chunks[0], *chunks[1:])
+    # Ensure that we always have at least one chunk even if none of the versions
+    # references any of the chunks.
+    new_shape = (max(len(chunks_to_keep), 1) * chunks[0], *chunks[1:])
 
     fillvalue = _get_np_fillvalue(raw_data)
     # Guard against existing _tmp_raw_data
