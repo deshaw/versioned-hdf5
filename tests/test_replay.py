@@ -930,6 +930,7 @@ def test_delete_versions_fillvalue_only_dataset(vfile):
     np.testing.assert_equal(vfile["r1"]["has_data"][:], np.arange(5, -1, -1))
     np.testing.assert_equal(vfile["r2"]["has_data"][:], np.arange(5, -1, -1))
 
+
 def test_delete_versions_fillvalue_only_dataset_raw_data_shape(tmp_path):
     with h5py.File(tmp_path / "test.h5", "w") as f:
         vf = VersionedHDF5File(f)
@@ -968,6 +969,7 @@ def test_delete_versions_fillvalue_only_dataset_raw_data_shape(tmp_path):
         cv = vf[vf.current_version]
         assert cv["fillvalue_only_raw_data_shape"].shape == (16,)
         np.testing.assert_equal(cv["fillvalue_only_raw_data_shape"], np.full(16, 0))
+
 
 def test_delete_versions_current_version(vfile):
     with vfile.stage_version("r0") as sv:
