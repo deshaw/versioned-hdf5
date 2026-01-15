@@ -47,7 +47,7 @@ _version_regex = re.compile(
 )
 _np_version_match = _version_regex.match(np.__version__)
 assert _np_version_match is not None, "failed to match numpy version"
-NP_VERSION = tuple(int(i) for i in _np_version_match.group('release').split(".")[:3])
+NP_VERSION = tuple(int(i) for i in _np_version_match.group("release").split(".")[:3])
 
 
 def asarray(a: ArrayLike, /, *, dtype: DTypeLike | None = None):
