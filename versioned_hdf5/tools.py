@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from typing import Any
 
 import ndindex
@@ -9,45 +8,8 @@ from numpy.typing import ArrayLike, DTypeLike
 
 from versioned_hdf5.typing_ import ArrayProtocol
 
-# version regex from https://packaging.python.org/en/latest/specifications/version-specifiers/#version-specifiers-regex
-_VERSION_PATTERN = r"""
-    v?
-    (?:
-        (?:(?P<epoch>[0-9]+)!)?                           # epoch
-        (?P<release>[0-9]+(?:\.[0-9]+)*)                  # release segment
-        (?P<pre>                                          # pre-release
-            [-_\.]?
-            (?P<pre_l>(a|b|c|rc|alpha|beta|pre|preview))
-            [-_\.]?
-            (?P<pre_n>[0-9]+)?
-        )?
-        (?P<post>                                         # post release
-            (?:-(?P<post_n1>[0-9]+))
-            |
-            (?:
-                [-_\.]?
-                (?P<post_l>post|rev|r)
-                [-_\.]?
-                (?P<post_n2>[0-9]+)?
-            )
-        )?
-        (?P<dev>                                          # dev release
-            [-_\.]?
-            (?P<dev_l>dev)
-            [-_\.]?
-            (?P<dev_n>[0-9]+)?
-        )?
-    )
-    (?:\+(?P<local>[a-z0-9]+(?:[-_\.][a-z0-9]+)*))?       # local version
-"""
-
-_version_regex = re.compile(
-    r"^\s*" + _VERSION_PATTERN + r"\s*$",
-    re.VERBOSE | re.IGNORECASE,
-)
-_np_version_match = _version_regex.match(np.__version__)
-assert _np_version_match is not None, "failed to match numpy version"
-NP_VERSION = tuple(int(i) for i in _np_version_match.group("release").split(".")[:3])
+_NP_VERSION = np.lib.NumpyVersion(np.__version__)
+NP_VERSION = (_NP_VERSION.major, _NP_VERSION.minor, _NP_VERSION.bugfix)
 
 
 def asarray(a: ArrayLike, /, *, dtype: DTypeLike | None = None):
