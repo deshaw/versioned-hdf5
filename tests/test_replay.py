@@ -949,7 +949,8 @@ def test_delete_versions_fillvalue_only_dataset_raw_data_shape(tmp_path):
         with vf.stage_version("r1") as sv:
             sv["fillvalue_only_raw_data_shape"].resize((16,))
 
-        # after delete_versions, the raw_data shape should still be non-empty and have a chunk
+        # after delete_versions, the raw_data shape should still be non-empty
+        # and have a chunk
         delete_versions(vf, ["r0"])
 
     with h5py.File(tmp_path / "test.h5", "r") as f:
