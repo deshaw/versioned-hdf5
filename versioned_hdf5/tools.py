@@ -8,7 +8,8 @@ from numpy.typing import ArrayLike, DTypeLike
 
 from versioned_hdf5.typing_ import ArrayProtocol
 
-NP_VERSION = tuple(int(i) for i in np.__version__.split(".")[:3])
+_NP_VERSION = np.lib.NumpyVersion(np.__version__)
+NP_VERSION = (_NP_VERSION.major, _NP_VERSION.minor, _NP_VERSION.bugfix)
 
 
 def asarray(a: ArrayLike, /, *, dtype: DTypeLike | None = None):
