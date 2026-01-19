@@ -524,7 +524,7 @@ class BufferMixin(abc.ABC):
         if copy and out is not self._buffer:
             copy = None
         if not NP_GE_200:
-            copy = bool(copy)  # NumPy 1.x does not support copy=None
+            return np.array(out, copy=bool(copy))
         return np.asarray(out, copy=copy)
 
     def __getitem__(self, index) -> MutableArrayProtocol:
