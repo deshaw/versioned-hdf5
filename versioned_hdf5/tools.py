@@ -10,6 +10,9 @@ from versioned_hdf5.typing_ import ArrayProtocol
 
 _NP_VERSION = np.lib.NumpyVersion(np.__version__)
 NP_VERSION = (_NP_VERSION.major, _NP_VERSION.minor, _NP_VERSION.bugfix)
+# Don't use NumpyVersion.__ge__ as it can't tell pre- and post-release suffixes apart
+del _NP_VERSION
+NP_GE_200 = NP_VERSION >= (2, 0, 0)
 
 
 def asarray(a: ArrayLike, /, *, dtype: DTypeLike | None = None):
