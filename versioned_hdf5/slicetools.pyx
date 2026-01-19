@@ -20,7 +20,7 @@ from libc.stdio cimport FILE, fclose
 
 from versioned_hdf5.cytools import np_hsize_t
 from versioned_hdf5.cytools cimport ceil_a_over_b, count2stop, hsize_t, stop2count
-from versioned_hdf5.tools import asarray
+from versioned_hdf5.tools import asarray, NP_GE_200
 from versioned_hdf5.typing_ import ArrayProtocol
 
 
@@ -114,8 +114,6 @@ cdef enum:
     NPY_MAXDIMS = 32
 
 np.import_array()
-
-NP_GE_200 = np.lib.NumpyVersion(np.__version__) >= "2.0.0"
 
 
 def spaceid_to_slice(space) -> Tuple:
