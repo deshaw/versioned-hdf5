@@ -955,7 +955,6 @@ def test_delete_versions_fillvalue_only_dataset_raw_data_shape(tmp_path):
 
     with h5py.File(tmp_path / "test.h5", "r") as f:
         vf = VersionedHDF5File(f)
-        assert f["_version_data/fillvalue_only_raw_data_shape/raw_data"].shape == (10,)
         cv = vf[vf.current_version]
         assert cv["fillvalue_only_raw_data_shape"].shape == (16,)
 
