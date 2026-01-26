@@ -570,11 +570,7 @@ def create_virtual_dataset(
     raw_data_name = raw_data.name.encode("utf-8")
 
     if len(raw_data) == 0:
-        if not all(c.isempty() for c in slices):
-            raise ValueError(
-                "Cannot create virtual dataset with non-empty chunks "
-                "when raw dataset is of length 0"
-            )
+        assert all(c.isempty() for c in slices)
         layout = VirtualLayout(shape=shape, dtype=raw_data.dtype)
     else:
         layout = VirtualLayout(shape, dtype=raw_data.dtype)
