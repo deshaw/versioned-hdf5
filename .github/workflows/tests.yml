@@ -2,84 +2,73 @@ name: Tests
 on: [push, pull_request]
 jobs:
   tests:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
-        numpy-version: ['latest']
-        ndindex-version: ['latest']
-        h5py-version: ['latest']
+        os: [ubuntu-latest]
+        env:
+          - mindeps   # Python 3.10, NumPy 1.24.4, libhdf5 1.10, h5py 3.8, ndindex 1.5.1,
+                      # pinned build stack
+          - hdf5-112  # Python 3.10, NumPy 1.24.4, libhdf5 1.12, h5py 3.8, latest ndindex
+          - np126     # Python 3.10, NumPy 1.26, latest versions of other dependencies
+          - np200     # Python 3.10, NumPy 2.0, latest versions of other dependencies
+                      # (Note: NumPy 2.0 has special cases not present in other versions)
+          - py310     # Python 3.10, NumPy 2.2, latest versions of other dependencies
+          - py311     # Python 3.11, latest versions of all dependencies
+          - py312     # Python 3.12, latest versions of all dependencies
+          - py313     # Python 3.13, latest versions of all dependencies
+          - py314     # Python 3.14, latest versions of all dependencies
+          - h5py-dev  # Python 3.14, h5py git tip
         include:
-        - python-version: '3.10'
-          numpy-version: '1.24.4'
-          ndindex-version: '1.5.1'
-          h5py-version: '3.8.0'
-        - python-version: '3.12'  # NumPy 1.26 has wheels up to Python 3.12
-          numpy-version: '1.26'
-          ndindex-version: 'latest'
-          h5py-version: 'latest'
-        - python-version: '3.12'  # NumPy 2.0 has wheels up to Python 3.12
-          numpy-version: '2.0'  # NumPy >=2.0,<2.2.2 has special cases (numpy#28269)
-          ndindex-version: 'latest'
-          h5py-version: 'latest'
-        - python-version: '3.14'
-          numpy-version: 'latest'
-          ndindex-version: 'latest'
-          h5py-version: 'dev'
+          # Minimum dependencies on other platforms. The versions of libhdf5 and h5py
+          # vary due to brokennes of the binaries available for such an old stack.
+          - os: ubuntu-24.04-arm
+            env: mindeps  # hdf5 1.12, h5py 3.8
+          - os: macos-15-intel
+            env: mindeps  # hdf5 1.12, h5py 3.8
+          - os: macos-latest  # ARM
+            env: mindeps  # hdf5 1.12, h5py 3.8
+          - os: windows-latest  # x64
+            env: mindeps  # hdf5 1.14, h5py 3.9
+          # Latest version of all dependencies on other platforms
+          - os: ubuntu-24.04-arm
+            env: py314
+          - os: macos-15-intel
+            env: py314
+          - os: macos-latest  # ARM
+            env: py314
+          - os: windows-latest  # x64
+            env: py314
 
       fail-fast: false
     steps:
       - uses: actions/checkout@v6
-
-      - uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python-version }}
+          # get correct version from setuptools_scm
+          fetch-depth: 0
+          fetch-tags: true
 
-      - name: Install native dependencies
+      - uses: prefix-dev/setup-pixi@v0
+        with:
+          pixi-version: v0.63.2
+          cache: true
+          locked: ${{ matrix.env != 'h5py-dev' }}
+          environments: ${{ matrix.env }}
+
+      - name: Update h5py to current git tip
+        # This causes h5py to be compiled twice, but only in case of pixi cache miss.
+        if: matrix.env == 'h5py-dev'
         run: |
-          sudo apt update -y
-          sudo apt install -y libhdf5-dev hdf5-tools
+          pixi update -e h5py-dev h5py
+          pixi ls -e h5py-dev h5py
 
-      - name: Install target numpy version
-        if: matrix.numpy-version != 'latest'
-        run: pip install numpy~=${{ matrix.numpy-version }}
-
-      - name: Install target ndindex version
-        if: matrix.ndindex-version != 'latest'
-        run: pip install ndindex~=${{ matrix.ndindex-version }}
-
-      - name: Install latest h5py version
-        if: matrix.h5py-version == 'latest'
-        run: |
-          # Build against system-wide libhdf5
-          pip install h5py --no-binary h5py
-
-      - name: Install target h5py version
-        if: matrix.h5py-version != 'latest' && matrix.h5py-version != 'dev'
-        run: |
-          # Build against system-wide libhdf5
-          pip install h5py~=${{ matrix.h5py-version }} --no-binary h5py
-
-      - name: Install development h5py version
-        if: matrix.h5py-version == 'dev'
-        run: pip install git+https://github.com/h5py/h5py
-
-      - name: Install versioned-hdf5
-        run: pip install .
-
-      - name: Install versioned-hdf5 test packages and extra h5py compression types
-        run: |
-          pip install .[test]
-          pip install hdf5plugin psutil
-
-      - name: Dump pip environment
-        run: pip list
-
-      - name: Print hdf5 configuration
-        run: |
-          python utils/debug_libhdf5_so.py h5py
-          python utils/debug_libhdf5_so.py versioned_hdf5
-          h5cc -showconfig
+      - name: Compile, install, and print versions
+        # Trigger environment activation, which in turn performs an editable install
+        # of versioned-hdf5.
+        # This step is not strictly necessary: we could just run `pixi r test`.
+        # We're running it to clearly separate compilation and testing steps.
+        # In case of h5py-dev and mindeps, this step also (re)compiles h5py from sources.
+        run: pixi r -e ${{ matrix.env }} smoke
 
       - name: Run Tests
-        run: pytest -v .
+        run: pixi r -e ${{ matrix.env }} test -v

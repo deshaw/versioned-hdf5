@@ -15,6 +15,7 @@ Versioned HDF5 provides a versioned abstraction on top of `h5py <https://www.h5p
    design
    staged_changes
    changelog
+   development
    releasing
 
 Benchmarks

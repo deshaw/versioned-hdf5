@@ -19,31 +19,27 @@ jobs:
       - name: 💻 Checkout the repo
         uses: actions/checkout@v6
         with:
+          # get correct version from setuptools_scm
           fetch-depth: 0
-          fetch-tags: true # include tags to get correct version from setuptools_scm
+          fetch-tags: true
 
-      - name: 🐍 Set up Python
-        uses: actions/setup-python@v6
-
-      - name: 🚀 Install build dependencies
-        run: |
-          sudo apt update -y
-          sudo apt install -y libhdf5-dev
-          pip install build twine
+      - uses: prefix-dev/setup-pixi@v0
+        with:
+          pixi-version: v0.63.2
+          cache: true
+          environments: py314
 
       - name: 📦 Build the source tarball
-        run: python -m build --sdist -o wheelhouse
+        run: pixi r -e py314 sdist
 
-      - name: List and check sdist
-        run: |
-          ls -lh wheelhouse/
-          twine check wheelhouse/*
+      - name: Check source package
+        run: pixi r -e py314 twine-check
 
       - name: Upload sdist
         uses: actions/upload-artifact@v5
         with:
           name: sdist
-          path: ./wheelhouse/*.tar.gz
+          path: ./dist/*.tar.gz
 
   build-wheels:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'wheels')
