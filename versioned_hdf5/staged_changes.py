@@ -107,7 +107,7 @@ class StagedChangesArray(MutableMapping[Any, T]):
     base_slabs:
         Sequence of zero or more read-only numpy-like objects containing the baseline
         data, with the chunks concatenated along axis 0. They will typically be shaped
-        (n*chunk_size[0], *chunk_size[1:]), with n sufficiently large to accomodate all
+        (n*chunk_size[0], *chunk_size[1:]), with n sufficiently large to accommodate all
         unique chunks, but may be larger than  that.
     slab_indices:
         Numpy array of integers with shape equal to the number of chunks along each
@@ -826,7 +826,7 @@ class StagedChangesArray(MutableMapping[Any, T]):
             slab = arr[view_idx]
             if as_base_slabs:
                 # Base slabs don't need to be numpy arrays but, if they are, mark them
-                # as read-only. This is just a matter of hygene; we should never try
+                # as read-only. This is just a matter of hygiene; we should never try
                 # writing to them anyway.
                 if isinstance(slab, np.ndarray):
                     slab.flags.writeable = False

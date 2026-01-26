@@ -8,7 +8,7 @@ jobs:
         shell: bash -el {0}
     strategy:
       matrix:
-        env: ['mindeps', 'bench']
+        env: ["mindeps", "bench"]
       fail-fast: false
     steps:
       - uses: actions/checkout@v6

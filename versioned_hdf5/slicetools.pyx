@@ -422,7 +422,7 @@ cpdef void read_many_slices(
 
     if bfast and not dst.flags.c_contiguous:
         # TODO we could support non-C-contiguous arrays by doing
-        # arithmetics with starts and strides
+        # arithmetic with starts and strides
         raise NotImplementedError("dst must be C-contiguous for fast mode")
 
     src_start = _preproc_many_slices_idx(src_start, ndim, bfast)
