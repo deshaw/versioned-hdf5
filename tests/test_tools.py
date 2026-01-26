@@ -7,7 +7,7 @@ from hypothesis import strategies as st
 from hypothesis.extra import numpy as stnp
 from numpy.testing import assert_array_equal
 
-from versioned_hdf5.tools import asarray, ix_with_slices
+from versioned_hdf5.tools import NP_GE_200, asarray, ix_with_slices
 
 from .test_typing import MinimalArray
 
@@ -68,7 +68,7 @@ def test_asarray():
     assert b is a
 
 
-@pytest.mark.skipif(np.__version__ < "2", reason="StringDType requires NumPy >=2.0")
+@pytest.mark.skipif(not NP_GE_200, reason="StringDType requires NumPy >=2.0")
 def test_asarray_np2_strings():
     """Test workaround to bug when converting from object array of bytes to NpyStrings
     This issue affected NumPy >=2.0.0,<2.2.3

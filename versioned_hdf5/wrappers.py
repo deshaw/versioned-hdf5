@@ -35,7 +35,7 @@ from versioned_hdf5.backend import (
 from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS, h5py_astype
 from versioned_hdf5.slicetools import build_slab_indices_and_offsets
 from versioned_hdf5.staged_changes import StagedChangesArray
-from versioned_hdf5.tools import NP_VERSION, asarray
+from versioned_hdf5.tools import NP_GE_200, asarray
 from versioned_hdf5.typing_ import DEFAULT, Default, MutableArrayProtocol
 
 try:
@@ -523,7 +523,7 @@ class BufferMixin(abc.ABC):
         out = self.astype(dtype or self.dtype)
         if copy and out is not self._buffer:
             copy = None
-        if NP_VERSION < (2,):
+        if not NP_GE_200:
             return np.array(out, copy=bool(copy))
         return np.asarray(out, copy=copy)
 

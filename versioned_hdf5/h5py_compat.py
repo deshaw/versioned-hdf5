@@ -4,11 +4,12 @@ import h5py
 import numpy as np
 from numpy.typing import DTypeLike
 
-from versioned_hdf5.tools import NP_VERSION
+from versioned_hdf5.tools import NP_GE_200
 from versioned_hdf5.typing_ import ArrayProtocol
 
 H5PY_VERSION = tuple(int(i) for i in h5py.__version__.split(".")[:2])
-HAS_NPYSTRINGS = H5PY_VERSION >= (3, 14) and NP_VERSION >= (2,)  # a.k.a StringDType
+# Native variable-width strings support (NpyStrings a.k.a StringDType)
+HAS_NPYSTRINGS = H5PY_VERSION >= (3, 14) and NP_GE_200
 
 
 if H5PY_VERSION >= (3, 13):

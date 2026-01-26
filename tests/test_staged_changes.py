@@ -12,13 +12,12 @@ from hypothesis import strategies as st
 from numpy.testing import assert_array_equal
 
 from versioned_hdf5.staged_changes import StagedChangesArray
+from versioned_hdf5.tools import NP_GE_200
 
 from .test_subchunk_map import idx_st, shape_chunks_st
 from .test_typing import MinimalArray
 
 max_examples = 10_000
-
-NP_GE_200 = np.lib.NumpyVersion(np.__version__) >= "2.0.0"
 
 
 def action_st(shape: tuple[int, ...], max_size: int = 20):
