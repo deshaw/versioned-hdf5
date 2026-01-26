@@ -116,7 +116,7 @@ class VersionedHDF5File:
                 else:
                     if f.mode == "r+":
                         logger.info(
-                            "Ugprading data_version to %d, no action required.",
+                            "Upgrading data_version to %d, no action required.",
                             DATA_VERSION,
                         )
                         versions = self.f["_version_data"]["versions"]

@@ -2716,7 +2716,7 @@ def test_rebuild_hashtable_chunk_reuse_multi_dim(tmp_path, caplog):
 
 
 def test_get_diff(tmp_path):
-    """Check that the diff betwen two versions returns the expected chunks."""
+    """Check that the diff between two versions returns the expected chunks."""
     test_data = np.concatenate(
         (
             np.ones((2 * DEFAULT_CHUNK_SIZE,)),
