@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import time
 from typing import Any, Literal
 
@@ -558,6 +559,11 @@ def test_refill():
     assert_array_equal(b.slab_indices, [[3, 0, 2]])
 
 
+@pytest.mark.xfail(
+    sys.platform == "darwin",
+    reason="MacOS github actions runners show CPU contention between VMs",
+    strict=False,
+)
 def test_big_O_performance():
     """Test that __getitem__ and __setitem__ performance is
     O(selected number of chunks) and not O(total number of chunks).
@@ -575,7 +581,7 @@ def test_big_O_performance():
 
         # Don't use wall time. The hypervisor on CI hosts can occasionally
         # steal the CPU for multiple seconds away from the VM.
-        t0 = time.thread_time()
+        t0 = time.perf_counter()
         # Let's access the end, just in case there's something that
         # performs a full scan which stops when the selection ends.
 
@@ -584,7 +590,7 @@ def test_big_O_performance():
         arr[0, -1] = 42
         assert arr[0, -1] == 42
         assert arr[0, -2] == 0
-        t1 = time.thread_time()
+        t1 = time.perf_counter()
         return t1 - t0
 
     # trivially sized baseline: 5 chunks
