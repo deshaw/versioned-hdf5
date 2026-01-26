@@ -134,3 +134,6 @@ versioned_hdf5/*.so
 versioned_hdf5/cytools.pyx
 versioned_hdf5/staged_changes.pyx
 versioned_hdf5/subchunk_map.pyx
+# pixi environments
+.pixi/*
+!.pixi/config.toml

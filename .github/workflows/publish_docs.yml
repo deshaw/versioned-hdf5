@@ -31,31 +31,19 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: master
+          fetch-tags: true  # needed by sphinx-multiversion
 
-      - uses: actions/setup-python@v6
+      - uses: prefix-dev/setup-pixi@v0
         with:
-          python-version: 3.11
+          pixi-version: v0.63.2
+          cache: true
+          environments: docs
 
-      - name: Setup Graphviz
-        run: |
-          sudo apt update -y
-          sudo apt install -y graphviz libhdf5-dev
-
-      - name: Install versioned-hdf5
-        run: |
-          pip install '.[doc]'
-
-      - name: Update git tags for sphinx-multiversion
-        run: |
-          git fetch --tags
+      - name: Compile, install, and print versions
+        run: pixi r -e docs smoke
 
       - name: Build docs
-        working-directory: docs
-        run: |
-          # Need to set timezone to avoid a sphinx/babel issue
-          # when using act to run locally:
-          # https://github.com/nektos/act/issues/1853
-          TZ=UTC sphinx-multiversion . _build/html
+        run: pixi r -e docs docs-multiversion
 
       # sphinx-multiversion only builds docs for every tag;
       # this redirects users who visit ./index.html ->
