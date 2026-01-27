@@ -332,7 +332,7 @@ In this case, we can see that the increase in the time required to read
 the datasets from the VersionedHDF5File grows quadratically with the
 number of transactions stored in the file. This is consistent with the
 increase in the size of the dataset, which also grows quickly with each
-new version commited to file.
+new version committed to file.
 
 Reading specific version
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -440,7 +440,7 @@ For the latest version, the results are as follows.
 Note that here we can see the impact of storing all versions of the
 growing datasets on the VersionedHDF5File. While the unversioned file
 can be read in constant time, irrespective of the number of transactions
-commited, the versioned file suffers a slight drop in read performance
+committed, the versioned file suffers a slight drop in read performance
 (for 500 transactions, this amounts to an average difference of ~10x in
 seconds.)
 
@@ -486,7 +486,7 @@ Reading all versions in a file sequentially gives the following result.
 
 
 In this test, the sequential read times grow linearly with respect to
-the number of transactions commited to file.
+the number of transactions committed to file.
 
 Reading specific version
 ~~~~~~~~~~~~~~~~~~~~~~~~

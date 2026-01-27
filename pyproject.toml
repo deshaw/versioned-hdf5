@@ -1,9 +1,9 @@
 [build-system]
 requires = [
-    "meson-python >=0.15.0",
-    "setuptools_scm >=8.1",
-    "Cython >= 3.0.10",
-    "numpy >= 1.24.4",
+  "meson-python >=0.15.0",
+  "setuptools_scm >=8.1",
+  "Cython >= 3.0.10",
+  "numpy >= 1.24.4",
 ]
 build-backend = "mesonpy"
 
@@ -11,21 +11,21 @@ build-backend = "mesonpy"
 name = "versioned-hdf5"
 dynamic = ["version"]
 authors = [
-  { name="Quansight" },
+  { name = "Quansight" },
 ]
 description = "Versioned HDF5 provides a versioned abstraction on top of h5py"
 readme = "README.md"
 requires-python = ">=3.10"
 classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: BSD License",
-    "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: BSD License",
+  "Operating System :: OS Independent",
 ]
 dependencies = [
-    "numpy>=1.24.4",
-    # Note: Linux binary wheels depend on h5py>=3.15.0.
-    "h5py>=3.8.0",
-    "ndindex>=1.5.1",
+  "numpy>=1.24.4",
+  # Note: Linux binary wheels depend on h5py>=3.15.0.
+  "h5py>=3.8.0",
+  "ndindex>=1.5.1",
 ]
 urls = { Homepage = "https://github.com/deshaw/versioned-hdf5" }
 license = { file = 'LICENSE' }
@@ -35,76 +35,76 @@ line-length = 88
 
 [tool.ruff.lint]
 select = [
-    # pycodestyle
-    "E",
-    "W",
-    # Pyflakes
-    "F",
-    # pyupgrade
-    "UP",
-    # flake8-bugbear
-    "B",
-    # flake8-simplify
-    "SIM",
-    # isort
-    "I",
-    # pep8 naming
-    "N",
-    # pydocstyle
-    # "D",  # TODO review and fix errors
-    # annotations
-    # "ANN",  # TODO review and fix errors
-    # debugger
-    "T10",
-    # flake8-pytest
-    "PT",
-    # flake8-return
-    "RET",
-    # flake8-unused-arguments
-    "ARG",
-    # flake8-fixme
-    # "FIX",  # Typically this should be uncommented in one-off reviews
-    # flake8-eradicate
-    "ERA",
-    # pandas-vet
-    "PD",
-    # numpy-specific rules
-    "NPY",
+  # pycodestyle
+  "E",
+  "W",
+  # Pyflakes
+  "F",
+  # pyupgrade
+  "UP",
+  # flake8-bugbear
+  "B",
+  # flake8-simplify
+  "SIM",
+  # isort
+  "I",
+  # pep8 naming
+  "N",
+  # pydocstyle
+  # "D",  # TODO review and fix errors
+  # annotations
+  # "ANN",  # TODO review and fix errors
+  # debugger
+  "T10",
+  # flake8-pytest
+  "PT",
+  # flake8-return
+  "RET",
+  # flake8-unused-arguments
+  "ARG",
+  # flake8-fixme
+  # "FIX",  # Typically this should be uncommented in one-off reviews
+  # flake8-eradicate
+  "ERA",
+  # pandas-vet
+  "PD",
+  # numpy-specific rules
+  "NPY",
 ]
 ignore = [
-    "D104", # Missing docstring in public package
-    "D100", # Missing docstring in public module
-    "D213", # Multiline summary second line
-    "ANN204", # Missing return type annotation for special method
-    "ANN002", # Missing type annotation for `*args`
-    "ANN003", # Missing type annotation for `**kwargs`
-    "D105", # Missing docstring in magic method
-    "D203", # 1 blank line before after class docstring
-    "D413", # 1 black line after parameters
-    "N806", # Variable name should be lowercase; uppercase indicates constants
-    "SIM108", # Simplify if/else to one line; not always clearer
-    "SIM114", # Combine `if` branches using logical `or` operator; not always clearer
-    "SIM300", # Yoda condition `a < var`; clearer in `a < var and var < b`
-    "RET505", # Unnecessary elif after return statement; not always clearer
-    "UP032", # Use f-string instead of `format` call; not always clearer
+  "D104", # Missing docstring in public package
+  "D100", # Missing docstring in public module
+  "D213", # Multiline summary second line
+  "ANN204", # Missing return type annotation for special method
+  "ANN002", # Missing type annotation for `*args`
+  "ANN003", # Missing type annotation for `**kwargs`
+  "D105", # Missing docstring in magic method
+  "D203", # 1 blank line before after class docstring
+  "D413", # 1 black line after parameters
+  "N806", # Variable name should be lowercase; uppercase indicates constants
+  "SIM108", # Simplify if/else to one line; not always clearer
+  "SIM114", # Combine `if` branches using logical `or` operator; not always clearer
+  "SIM300", # Yoda condition `a < var`; clearer in `a < var and var < b`
+  "RET505", # Unnecessary elif after return statement; not always clearer
+  "UP032", # Use f-string instead of `format` call; not always clearer
 
-    # FIXME these need to be fixed in the code
-    "PT011",  # `pytest.raises(ValueError)` is too broad, set the `match` parameter
-    "NPY002",  # Replace np.random legacy functions with np.random.Generator
+  # FIXME these need to be fixed in the code
+  "PT011", # `pytest.raises(ValueError)` is too broad, set the `match` parameter
+  "NPY002", # Replace np.random legacy functions with np.random.Generator
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "test_*.py" = [
-    "N802",  # Function name should be lowercase
+  "N802", # Function name should be lowercase
 ]
 "analysis/*.ipynb" = [
-    "ERA001",  # Commented out code
+  "ERA001", # Commented out code
 ]
 "analysis/generate_*.py" = [
-    "PT028",  # Test function parameter has default argument
+  "PT028", # Test function parameter has default argument
 ]
 "benchmarks/**.py" = [
-    "ARG002",  # Unused argument - needed by asv for parameterization
+  "ARG002", # Unused argument - needed by asv for parameterization
 ]
 
 [tool.isort]
@@ -118,16 +118,18 @@ addopts = "--doctest-modules --ignore=ci/ --ignore=analysis/ --import-mode=impor
 doctest_optionflags = "NORMALIZE_WHITESPACE"
 strict_xfail = true
 markers = [
-    "setup_args : kwargs for setup fixture.",
-    "slow: slow tests",
-    "api: api smoke tests",
+  "setup_args : kwargs for setup fixture.",
+  "slow: slow tests",
+  "api: api smoke tests",
 ]
-filterwarnings = ["error"]  # Fail on all unhandled warnings
+filterwarnings = ["error"] # Fail on all unhandled warnings
 
 [tool.mypy]
-allow_incomplete_defs = true  # FIXME
-allow_untyped_decorators = true  # FIXME
-allow_untyped_defs = true  # FIXME
+files = ["."]
+python_version = "3.10"
+allow_incomplete_defs = true # FIXME
+allow_untyped_decorators = true # FIXME
+allow_untyped_defs = true # FIXME
 ignore_missing_imports = true
 no_implicit_optional = true
 show_error_codes = true
@@ -137,7 +139,11 @@ warn_unreachable = true
 
 [[tool.mypy.overrides]]
 module = ["*.tests.*"]
-allow_untyped_defs = true
+disallow_untyped_defs = false
+
+[tool.codespell]
+skip = "./docs/_build,./pixi.lock"
+ignore-words-list = "COO"
 
 [tool.cibuildwheel]
 build-verbosity = 1
@@ -200,7 +206,7 @@ patchelf = "*"
 [tool.pixi.feature.build.target.win.dependencies]
 clang = "*"
 llvm-tools = "*"
-pkg-config = "*"  # Needed to find hdf5
+pkg-config = "*" # Needed to find hdf5
 
 [tool.pixi.feature.build.target.win.activation.env]
 CC = "clang"
@@ -235,7 +241,7 @@ cython = "=3.0.10"
 numpy = "=1.24.4"
 ndindex = "=1.5.1"
 
-[tool.pixi.feature.mindeps.target.linux-64.dependencies]  # Intel
+[tool.pixi.feature.mindeps.target.linux-64.dependencies] # Intel
 # Note: apt on Ubuntu 24.04 (ubuntu-latest github runner) installs
 # hdf5=1.10.10, which however is not available on conda
 hdf5 = "=1.10.6"
@@ -255,14 +261,14 @@ hdf5 = "=1.12.2"
 h5py = "=3.8.0"
 gcc = "=10"
 
-[tool.pixi.feature.mindeps.target.osx.dependencies]  # Both ARM and Intel
+[tool.pixi.feature.mindeps.target.osx.dependencies] # Both ARM and Intel
 # No binaries available for very old versions on MacOS ARM
 # MacOS Intel fails to compile h5py 3.8.0 from sources
 hdf5 = "=1.12.2"
 h5py = "=3.8.0"
 clang = "=14"
 
-[tool.pixi.feature.mindeps.target.win-64.dependencies]  # Intel
+[tool.pixi.feature.mindeps.target.win-64.dependencies] # Intel
 # Meson fails to detect hdf5 1.10
 # hdf5 1.12 shows double-linking issues at runtime
 hdf5 = "=1.14.0"
@@ -276,7 +282,7 @@ llvm-tools = "=14"
 platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
 
 [tool.pixi.feature.hdf5-112.dependencies]
-numpy = "=1.24.4"  # Old versions of h5py trigger DeprecationWarning in newer NumPy
+numpy = "=1.24.4" # Old versions of h5py trigger DeprecationWarning in newer NumPy
 h5py = "=3.8.0"
 hdf5 = "=1.12.2"
 
@@ -323,11 +329,22 @@ ipython = "*"
 ipython = { cmd = "ipython", depends-on = ["editable-install"] }
 
 [tool.pixi.feature.lint.dependencies]
-pre-commit = "*"
+lefthook = "*"
+ruff = "*"
+mypy = "*"
+dprint = "*"
+actionlint = "*"
+shellcheck = "*" # Runs inside actionlint
+pyflakes = "*" # Runs inside actionlint
+codespell = "*"
+blacken-docs = "*"
+validate-pyproject = "*"
+cython-lint = "*"
+sphinx-lint = "*"
 
 [tool.pixi.feature.lint.tasks]
-lint = "pre-commit run --all-files"
-install-git-hooks = "pre-commit install"
+install-git-hooks = { cmd = "lefthook install", description = "Install pre-commit hooks" }
+lint = { cmd = "lefthook run pre-commit --all-files --force", description = "Run all linters" }
 
 [tool.pixi.feature.bench.dependencies]
 asv = "*"

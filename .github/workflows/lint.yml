@@ -1,0 +1,18 @@
+name: Linting
+
+on: [push, pull_request]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: prefix-dev/setup-pixi@v0
+        with:
+          pixi-version: v0.63.2
+          cache: true
+          environments: lint
+      - name: Run linters
+        run: pixi run lint
+      - name: Check for changed files after linting
+        run: git diff --exit-code

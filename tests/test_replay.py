@@ -1049,7 +1049,7 @@ def test_delete_string_dataset(tmp_path):
     When calling delete_versions, the dataset must be reconstructed from the remaining
     versions using a NoneType fillvalue. However, because we can't store a NoneType for
     the fillvalue of the dataset in the h5 file, it is instead stored as b''. Previously
-    a bug in delete_versions would recreate the datset using the file's fillvalue of
+    a bug in delete_versions would recreate the dataset using the file's fillvalue of
     b'' rather than None, corrupting the data. See https://github.com/h5py/h5py/issues/941
     for more information about the bug in h5py responsible for this, and
     https://github.com/deshaw/versioned-hdf5/issues/238 for the versioned-hdf5
