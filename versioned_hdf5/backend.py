@@ -569,10 +569,10 @@ def create_virtual_dataset(
     raw_data_shape = raw_data.shape
     raw_data_name = raw_data.name.encode("utf-8")
 
+    layout = VirtualLayout(shape=shape, dtype=raw_data.dtype)
     if len(raw_data) == 0:
-        layout = VirtualLayout(shape=tuple([0 for _ in shape]), dtype=raw_data.dtype)
+        assert all(c.isempty() for c in slices)
     else:
-        layout = VirtualLayout(shape, dtype=raw_data.dtype)
         layout._src_filenames.add(b".")
         space = h5s.create_simple(shape)
         selector = Selector(space)
