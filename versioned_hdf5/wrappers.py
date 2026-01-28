@@ -996,7 +996,8 @@ class InMemoryArrayDataset(BufferMixin, FiltersMixin, DatasetLike):
             and is_vstring_dtype(self.dtype)
             and not is_vstring_dtype(self._buffer.dtype)
         ):
-            self._buffer = self._buffer.astype(self.dtype)
+            self._buffer = np.asarray(self._buffer, self.dtype)
+            self._buffer.flags.writeable = True
 
     @property
     def shape(self) -> tuple[int, ...]:  # type: ignore[override]

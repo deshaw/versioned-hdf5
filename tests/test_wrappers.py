@@ -396,5 +396,6 @@ def test_string_dtype(vfile):
         sv["strs"][:] = np.array(["foo", "bar"], dtype="O")
     cv = vfile[vfile.current_version]
     assert h5py.check_string_dtype(cv["strs"][:].dtype) is not None, (
-        f"fails for r1: {cv['strs'].dtype.metadata=} vs. {cv['strs'][:].dtype.metadata=}"
+        f"fails for r1: {cv['strs'].dtype.metadata=} "
+        f"vs. {cv['strs'][:].dtype.metadata=}"
     )
