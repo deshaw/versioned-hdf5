@@ -6,6 +6,7 @@ import pytest
 from numpy.testing import assert_array_equal, assert_equal
 
 from versioned_hdf5 import VersionedHDF5File
+from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS
 from versioned_hdf5.typing_ import ArrayProtocol
 from versioned_hdf5.wrappers import (
     DatasetWrapper,
@@ -373,3 +374,27 @@ def test_chunks_with_path(vfile, group_name, name, sparse):
         group = v[group_name] if group_name else v
         ds = group[name]
         assert ds.chunks == (2,)
+
+
+@pytest.mark.skipif(
+    HAS_NPYSTRINGS,
+    reason="Test is for old numpy versions where NpyStrings didn't exist",
+)
+def test_string_dtype(vfile):
+    """
+    Test that writing an array of strings without metadata correctly
+    preserves metadata on the Dataset.
+    """
+    with vfile.stage_version("r0") as sv:
+        h5_dtype = h5py.string_dtype()
+        sv.create_dataset("strs", (2,), dtype=h5_dtype, chunks=(10,), maxshape=(None,))
+        sv["strs"][:] = np.array(["foo", "bar"], dtype="O")
+    cv = vfile[vfile.current_version]
+    assert h5py.check_string_dtype(cv["strs"][:].dtype) is not None, "passes for r0"
+    with vfile.stage_version("r1") as sv:
+        sv["strs"].resize((2,))
+        sv["strs"][:] = np.array(["foo", "bar"], dtype="O")
+    cv = vfile[vfile.current_version]
+    assert h5py.check_string_dtype(cv["strs"][:].dtype) is not None, (
+        f"fails for r1: {cv['strs'].dtype.metadata=} vs. {cv['strs'][:].dtype.metadata=}"
+    )

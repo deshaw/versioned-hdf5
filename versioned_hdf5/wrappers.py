@@ -988,6 +988,16 @@ class InMemoryArrayDataset(BufferMixin, FiltersMixin, DatasetLike):
             chunks = parent._chunks[name]
         self.chunks = chunks
 
+        # If dtype was explicitly provided and has the string metadata
+        # and differs from buffer dtype, cast to the dtype with vstring
+        # dtype metadata.
+        if (
+            not HAS_NPYSTRINGS
+            and is_vstring_dtype(self.dtype)
+            and not is_vstring_dtype(self._buffer.dtype)
+        ):
+            self._buffer = self._buffer.astype(self.dtype)
+
     @property
     def shape(self) -> tuple[int, ...]:  # type: ignore[override]
         return self._buffer.shape
