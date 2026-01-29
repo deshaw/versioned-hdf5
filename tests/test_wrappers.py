@@ -373,3 +373,22 @@ def test_chunks_with_path(vfile, group_name, name, sparse):
         group = v[group_name] if group_name else v
         ds = group[name]
         assert ds.chunks == (2,)
+
+
+def test_string_dtype(vfile):
+    """Test that writing an array of object strings without metadata correctly preserves
+    metadata on the Dataset.
+    """
+    with vfile.stage_version("r0") as sv:
+        h5_dtype = h5py.string_dtype()
+        sv.create_dataset("strs", (2,), dtype=h5_dtype)
+        sv["strs"][:] = np.array(["foo", "bar"], dtype="O")
+    cv = vfile[vfile.current_version]
+    assert h5py.check_string_dtype(cv["strs"][:].dtype) is not None
+    with vfile.stage_version("r1") as sv:
+        sv["strs"][:] = np.array(["bar", "baz"], dtype="O")
+    cv = vfile[vfile.current_version]
+    assert h5py.check_string_dtype(cv["strs"][:].dtype) is not None, (
+        f"fails for r1: {cv['strs'].dtype.metadata=} "
+        f"vs. {cv['strs'][:].dtype.metadata=}"
+    )
