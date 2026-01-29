@@ -1,0 +1,23 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - run: actionlint
+    - run: blacken-docs
+    - run: codespell
+    - name: dprint
+      run: dprint fmt
+    - run: mypy
+    - name: ruff
+      group:
+        piped: true
+        jobs:
+          - name: ruff format
+            run: ruff format
+          - name: ruff check
+            run: ruff check --fix --show-fixes
+    - name: cython-lint
+      run: cython-lint versioned_hdf5/**/*.pyx versioned_hdf5/**/*.pxd
+    - name: sphinx-lint
+      run: sphinx-lint docs
+    - name: validate-pyproject
+      run: validate-pyproject pyproject.toml

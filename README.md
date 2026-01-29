@@ -5,6 +5,7 @@ Versioned HDF5 provides a versioned abstraction on top of `h5py`.
 See the documentation at https://deshaw.github.io/versioned-hdf5/ and [learn more about Versioned HDF5](https://www.deshaw.com/library/desco-quansight-introducing-versioned-hdf5) in our introductory blog post.
 
 ## History
+
 This was created by the [D. E. Shaw group](https://www.deshaw.com/) in conjunction with [Quansight](https://www.quansight.com/).
 
 <p align="center">
@@ -14,6 +15,7 @@ This was created by the [D. E. Shaw group](https://www.deshaw.com/) in conjuncti
 </p>
 
 ## License
+
 This project is released under a [BSD-3-Clause license](https://github.com/deshaw/versioned-hdf5/blob/master/LICENSE).
 
 We love contributions! Before you can contribute, please sign and submit this [Contributor License Agreement (CLA)](https://www.deshaw.com/oss/cla).

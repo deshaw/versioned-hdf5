@@ -24,8 +24,8 @@ needing authentication from the maintainer.
 
 ## Updating conda-forge
 
-The bot will make a pull request to the [conda-forge
-feedstock](https://github.com/conda-forge/versioned-hdf5-feedstock/pulls)
+The bot will make a pull request to the
+[conda-forge feedstock](https://github.com/conda-forge/versioned-hdf5-feedstock/pulls)
 automatically. You will need to be listed as a maintainer in the recipe to be
 able to merge it. If you aren't, make a PR adding yourself.
 

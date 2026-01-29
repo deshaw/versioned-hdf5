@@ -15,148 +15,149 @@ on:
 
 jobs:
   build-wheels:
-    name: 'Build wheel'
+    name: "Build wheel"
     runs-on: ${{ inputs.os }}
     steps:
-    - name: Check out the repo
-      uses: actions/checkout@v6
-      with:
-        fetch-depth: 0  # get the non-merge commit for PRs
-        fetch-tags: true # include tags to get correct version from setuptools_scm
+      - name: Check out the repo
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # get the non-merge commit for PRs
+          fetch-tags: true # include tags to get correct version from setuptools_scm
 
-    - name: 🐍 Set up Python
-      uses: actions/setup-python@v6
-      with:
-        python-version: ${{ inputs.python-version }}
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python-version }}
 
-    # MacOS environment setup
-    # libz and libhdf5 require MacOS>=14.0
-    - name: Update env variables on macos
-      if: runner.os == 'macOS'
-      run: |
-        echo "CPATH=$(python -c 'import sysconfig; print(sysconfig.get_path("include"))'):$CPATH" >> $GITHUB_ENV
-    - name: Run cibw_before_all_macos
-      if: runner.os == 'macOS'
-      run: bash ./ci/cibw_before_all_macos.sh "${{ github.workspace }}"
+      # MacOS environment setup
+      # libz and libhdf5 require MacOS>=14.0
+      - name: Update env variables on macos
+        if: runner.os == 'macOS'
+        run: |
+          INCLUDE_PATH=$(python -c 'import sysconfig; print(sysconfig.get_path("include"))')
+          # shellcheck disable=SC2086
+          echo "CPATH=$INCLUDE_PATH:$CPATH" >> $GITHUB_ENV
+      - name: Run cibw_before_all_macos
+        if: runner.os == 'macOS'
+        run: bash ./ci/cibw_before_all_macos.sh "${{ github.workspace }}"
 
-    - name: Increase minimum h5py version for Linux wheels
-      if: runner.os == 'Linux'
-      # See https://github.com/deshaw/versioned-hdf5/issues/466
-      run: |
-        # Modifying any files checked in git will update the setuptools-scm version;
-        # force setuptools-scm to return the previous version with a tag.
-        pip install setuptools-scm
-        TAG=$(python -m setuptools_scm)
-        sed -i 's/h5py>=3.8.0/h5py>=3.15.0/' pyproject.toml
-        git config --global user.email "bot@deshaw.com"
-        git config --global user.name "Release bot"
-        git commit -a -m 'Increase minimum h5py version'
-        git tag -f "$TAG"
+      - name: Increase minimum h5py version for Linux wheels
+        if: runner.os == 'Linux'
+        # See https://github.com/deshaw/versioned-hdf5/issues/466
+        run: |
+          # Modifying any files checked in git will update the setuptools-scm version;
+          # force setuptools-scm to return the previous version with a tag.
+          pip install setuptools-scm
+          TAG=$(python -m setuptools_scm)
+          sed -i 's/h5py>=3.8.0/h5py>=3.15.0/' pyproject.toml
+          git config --global user.email "bot@deshaw.com"
+          git config --global user.name "Release bot"
+          git commit -a -m 'Increase minimum h5py version'
+          git tag -f "$TAG"
 
-    # Build the wheels
-    - name: Triage the build
-      run: bash ./ci/triage_build.sh "${{ inputs.arch }}" "${{ github.event.pull_request.head.sha || github.sha }}" "${{ inputs.python-version }}"
+      # Build the wheels
+      - name: Triage the build
+        run: bash ./ci/triage_build.sh "${{ inputs.arch }}" "${{ github.event.pull_request.head.sha || github.sha }}" "${{ inputs.python-version }}"
 
-    - name: Run cibuildwheel
-      uses: pypa/cibuildwheel@v3.3.0
-      env:
-        # Note that tool.cibuildwheel "skip" in pyproject.toml also limits what gets built
-        CIBW_ARCHS: ${{ inputs.arch }}
-        CIBW_BUILD: ${{ env.CIBW_BUILD }}
-        CIBW_SKIP: ${{ env.CIBW_SKIP }}
-        CIBW_BEFORE_BUILD: ${{ env.CIBW_BEFORE_BUILD }}
-        CIBW_BUILD_FRONTEND: ${{ env.CIBW_BUILD_FRONTEND }}
-        CIBW_PRERELEASE_PYTHONS: ${{ env.CIBW_PRERELEASE_PYTHONS }}
-        CIBW_BEFORE_BUILD_LINUX: yum install -y zlib-devel
-        CIBW_ENVIRONMENT_MACOS: >
-          CPATH="$HDF5_DIR/include:$CPATH"
-          PKG_CONFIG_PATH="$HDF5_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
-        CIBW_REPAIR_WHEEL_COMMAND_LINUX: >
-          auditwheel repair -w {dest_dir} {wheel} -L /../h5py.libs
-        CIBW_REPAIR_WHEEL_COMMAND_MACOS: >
-          delocate-wheel --require-archs {delocate_archs}
-          -w {dest_dir} -v {wheel} -L ../h5py/.dylibs
+      - name: Run cibuildwheel
+        uses: pypa/cibuildwheel@v3.3.0
+        env:
+          # Note that tool.cibuildwheel "skip" in pyproject.toml also limits what gets built
+          CIBW_ARCHS: ${{ inputs.arch }}
+          CIBW_BUILD: ${{ env.CIBW_BUILD }}
+          CIBW_SKIP: ${{ env.CIBW_SKIP }}
+          CIBW_BEFORE_BUILD: ${{ env.CIBW_BEFORE_BUILD }}
+          CIBW_BUILD_FRONTEND: ${{ env.CIBW_BUILD_FRONTEND }}
+          CIBW_PRERELEASE_PYTHONS: ${{ env.CIBW_PRERELEASE_PYTHONS }}
+          CIBW_BEFORE_BUILD_LINUX: yum install -y zlib-devel
+          CIBW_ENVIRONMENT_MACOS: >
+            CPATH="$HDF5_DIR/include:$CPATH"
+            PKG_CONFIG_PATH="$HDF5_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
+          CIBW_REPAIR_WHEEL_COMMAND_LINUX: >
+            auditwheel repair -w {dest_dir} {wheel} -L /../h5py.libs
+          CIBW_REPAIR_WHEEL_COMMAND_MACOS: >
+            delocate-wheel --require-archs {delocate_archs}
+            -w {dest_dir} -v {wheel} -L ../h5py/.dylibs
 
-    # Remove spurious libraries added by auditwheels/delocate in the repair step
-    - name: Remove embedded libhdf5 (Linux)
-      if: runner.os == 'Linux'
-      run: zip -d ./wheelhouse/*.whl 'h5py.libs/*'
-    - name: Remove embedded libhdf5 (MacOS)
-      if: runner.os == 'macOS'
-      run: zip -d ./wheelhouse/*.whl 'h5py/*'
-    - name: Remove h5py DLLs from RECORD
-      if: runner.os == 'Linux' || runner.os == 'macOS'
-      run: |
-        cd wheelhouse
-        unzip *.whl '*/RECORD'
-        echo "Removing lines:"
-        sed -n '/^h5py/p' */RECORD
-        # No sed -i available on MacOS
-        sed '/^h5py/d' */RECORD > RECORD.new
-        mv -v RECORD.new */RECORD
-        zip *.whl */RECORD
+      # Remove spurious libraries added by auditwheels/delocate in the repair step
+      - name: Remove embedded libhdf5 (Linux)
+        if: runner.os == 'Linux'
+        run: zip -d ./wheelhouse/*.whl 'h5py.libs/*'
+      - name: Remove embedded libhdf5 (MacOS)
+        if: runner.os == 'macOS'
+        run: zip -d ./wheelhouse/*.whl 'h5py/*'
+      - name: Remove h5py DLLs from RECORD
+        if: runner.os == 'Linux' || runner.os == 'macOS'
+        run: |
+          cd wheelhouse
+          unzip ./*.whl '*/RECORD'
+          echo "Removing lines:"
+          sed -n '/^h5py/p' ./*/RECORD
+          # No sed -i available on MacOS
+          sed '/^h5py/d' ./*/RECORD > RECORD.new
+          mv -v RECORD.new ./*/RECORD
+          zip ./*.whl ./*/RECORD
 
-    - name: Upload wheels
-      uses: actions/upload-artifact@v5
-      with:
-        name: wheels-${{ inputs.os }}-${{inputs.arch}}-${{ inputs.python-version }}
-        path: ./wheelhouse/*.whl
+      - name: Upload wheels
+        uses: actions/upload-artifact@v5
+        with:
+          name: wheels-${{ inputs.os }}-${{inputs.arch}}-${{ inputs.python-version }}
+          path: ./wheelhouse/*.whl
 
   # Start again from a clean environment.
   # pip install the wheel and run a subset of the unit tests.
   # DO NOT use the 'test' step in cibuildwheel, because it runs on a manylinux image
   # which includes libhdf5.
   smoke-test:
-    name: 'Smoke test'
+    name: "Smoke test"
     needs: [build-wheels]
     runs-on: ${{ inputs.os }}
     steps:
+      - name: Check out the repo
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # get the non-merge commit for PRs
+          fetch-tags: true # include tags to get correct version from setuptools_scm
 
-    - name: Check out the repo
-      uses: actions/checkout@v6
-      with:
-        fetch-depth: 0  # get the non-merge commit for PRs
-        fetch-tags: true # include tags to get correct version from setuptools_scm
+      - name: Prevent accidentally testing repository package
+        run: rm -r versioned_hdf5
 
-    - name: Prevent accidentally testing repository package
-      run: rm -r versioned_hdf5
+      - name: Retrieve wheel
+        uses: actions/download-artifact@v6
+        with:
+          name: wheels-${{ inputs.os }}-${{inputs.arch}}-${{ inputs.python-version }}
+          merge-multiple: true # Don't unzip into subdirectory
+          path: wheels/
 
-    - name: Retrieve wheel
-      uses: actions/download-artifact@v6
-      with:
-        name: wheels-${{ inputs.os }}-${{inputs.arch}}-${{ inputs.python-version }}
-        merge-multiple: true  # Don't unzip into subdirectory
-        path: wheels/
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python-version }}
 
-    - name: 🐍 Set up Python
-      uses: actions/setup-python@v6
-      with:
-        python-version: ${{ inputs.python-version }}
+      - name: Install dependencies for smoke tests
+        run: pip install pytest pytest-env hypothesis packaging psutil
 
-    - name: Install dependencies for smoke tests
-      run: pip install pytest pytest-env hypothesis packaging psutil
+      # Note: this pulls in the h5py wheel from pypi, which embeds libhdf5.
+      - name: Install package for smoke tests
+        shell: bash
+        run: pip install -v ./wheels/*.whl
 
-    # Note: this pulls in the h5py wheel from pypi, which embeds libhdf5.
-    - name: Install package for smoke tests
-      shell: bash
-      run: pip install -v ./wheels/*.whl
+      - name: Test import h5py
+        run: python -c 'import h5py; print(h5py.version.info)'
 
-    - name: Test import h5py
-      run: python -c 'import h5py; print(h5py.version.info)'
+      - name: Test import versioned_hdf5
+        run: python -c 'import versioned_hdf5; print(versioned_hdf5.__version__)'
 
-    - name: Test import versioned_hdf5
-      run: python -c 'import versioned_hdf5; print(versioned_hdf5.__version__)'
+      - name: Print hdf5 install path
+        run: |
+          python utils/debug_libhdf5_so.py h5py
+          python utils/debug_libhdf5_so.py versioned_hdf5
 
-    - name: Print hdf5 install path
-      run: |
-        python utils/debug_libhdf5_so.py h5py
-        python utils/debug_libhdf5_so.py versioned_hdf5
+      - name: Run smoke tests
+        run: pytest -m 'api and not slow'
 
-    - name: Run smoke tests
-      run: pytest -m 'api and not slow'
+      - name: pip uninstall
+        run: pip uninstall -y versioned-hdf5
 
-    - name: pip uninstall
-      run: pip uninstall -y versioned-hdf5
-
-    - name: Retest h5py after uninstalling versioned-hdf5
-      run: python -c 'import h5py; print(h5py.version.info)'
+      - name: Retest h5py after uninstalling versioned-hdf5
+        run: python -c 'import h5py; print(h5py.version.info)'

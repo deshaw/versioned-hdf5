@@ -1,5 +1,4 @@
-Changelog
-=========
+# Changelog
 
 ## 2.2.1 (2026-01-07)
 
@@ -19,13 +18,14 @@ Fix wheels publishing issue on Linux.
 ### Minor Changes
 
 Filters have been overhauled:
+
 - Added `shuffle`, `fletcher32`, and `scaleoffset` parameters to `create_dataset` and
   `modify_metadata`
 - Fixed bug where `modify_metadata` would revert `compression` and `compression_opts` to
   their default value when they are not explicitly listed. For example,
   `modify_metadata(ds, fillvalue=123)` would decompress a dataset. You now have to
   explicitly pass `modify_metadata(ds, compression=None)`.
-- `.compression` and `.compression_opts`  properties now return the numerical IDs for
+- `.compression` and `.compression_opts` properties now return the numerical IDs for
   custom compression filters (e.g. Blosc, Blosc2) in staged datasets. Note that this is
   unlike `h5py.Dataset.compression`, which incorrectly returns None.
 - Fixed bug where the `.compression` and `.compression_opts` properties of staged datasets
@@ -320,6 +320,7 @@ Filters have been overhauled:
 ## 1.3.7 (2022-01-27)
 
 ### Major Changes
+
 - `delete_version` has been renamed to `delete_versions`, and now takes a list
   of versions to delete. The old `delete_version` is kept intact for backwards
   compatibility.
@@ -435,8 +436,8 @@ Filters have been overhauled:
 
 - Many improvements to performance throughout the library.
 
-- Added a benchmarking suite using [airspeed
-  velocity](https://asv.readthedocs.io/en/stable/). Graphs of the benchmarks
+- Added a benchmarking suite using
+  [airspeed velocity](https://asv.readthedocs.io/en/stable/). Graphs of the benchmarks
   can be viewed at <https://deshaw.github.io/versioned-hdf5/benchmarks/>.
 
 - Versioned HDF5 now depends on ndindex version 1.5.1 or greater.
@@ -467,25 +468,25 @@ Filters have been overhauled:
 
 ### Major Changes
 
-* Added support for shape-0 datasets.
-* Fix a memory leak where in-memory datasets would not be garbage collected.
-* Added support for empty datasets (size 0).
-* Make sure versioned data is read-only after closing and reopening the file.
-* Allow deleting groups and datasets between versions. Note that currently
+- Added support for shape-0 datasets.
+- Fix a memory leak where in-memory datasets would not be garbage collected.
+- Added support for empty datasets (size 0).
+- Make sure versioned data is read-only after closing and reopening the file.
+- Allow deleting groups and datasets between versions. Note that currently
   dataset metadata cannot change between versions, even if they are deleted in
   between.
 
 ### Minor Changes
 
-* Most tests now use a temporary directory instead of writing a file in the
+- Most tests now use a temporary directory instead of writing a file in the
   current directory.
-* Fix logic for handling trailing slashes with `in`.
-* Automatically create intermediate groups when creating a dataset.
-* Make indices that should give a scalar object do so instead of giving a
+- Fix logic for handling trailing slashes with `in`.
+- Automatically create intermediate groups when creating a dataset.
+- Make indices that should give a scalar object do so instead of giving a
   shape () array.
 
 ## 1.0 (2020-08-03)
 
 ### Major Changes
 
-* First release of Versioned-HDF5.
+- First release of Versioned-HDF5.
