@@ -376,16 +376,15 @@ def test_chunks_with_path(vfile, group_name, name, sparse):
 
 
 def test_string_dtype(vfile):
-    """
-    Test that writing an array of strings without metadata correctly
-    preserves metadata on the Dataset.
+    """Test that writing an array of object strings without metadata correctly preserves
+    metadata on the Dataset.
     """
     with vfile.stage_version("r0") as sv:
         h5_dtype = h5py.string_dtype()
         sv.create_dataset("strs", (2,), dtype=h5_dtype, chunks=(10,), maxshape=(None,))
         sv["strs"][:] = np.array(["foo", "bar"], dtype="O")
     cv = vfile[vfile.current_version]
-    assert h5py.check_string_dtype(cv["strs"][:].dtype) is not None, "passes for r0"
+    assert h5py.check_string_dtype(cv["strs"][:].dtype) is not None
     with vfile.stage_version("r1") as sv:
         sv["strs"].resize((2,))
         sv["strs"][:] = np.array(["foo", "bar"], dtype="O")
