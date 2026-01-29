@@ -992,8 +992,7 @@ class InMemoryArrayDataset(BufferMixin, FiltersMixin, DatasetLike):
         # and differs from buffer dtype, cast to the dtype with vstring
         # dtype metadata.
         if (
-            not HAS_NPYSTRINGS
-            and is_vstring_dtype(self.dtype)
+            is_vstring_dtype(self.dtype)
             and not is_vstring_dtype(self._buffer.dtype)
         ):
             self._buffer = np.asarray(self._buffer, self.dtype)

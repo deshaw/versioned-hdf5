@@ -6,7 +6,6 @@ import pytest
 from numpy.testing import assert_array_equal, assert_equal
 
 from versioned_hdf5 import VersionedHDF5File
-from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS
 from versioned_hdf5.typing_ import ArrayProtocol
 from versioned_hdf5.wrappers import (
     DatasetWrapper,
@@ -376,10 +375,6 @@ def test_chunks_with_path(vfile, group_name, name, sparse):
         assert ds.chunks == (2,)
 
 
-@pytest.mark.skipif(
-    HAS_NPYSTRINGS,
-    reason="Test is for old numpy versions where NpyStrings didn't exist",
-)
 def test_string_dtype(vfile):
     """
     Test that writing an array of strings without metadata correctly
