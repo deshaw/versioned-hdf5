@@ -976,8 +976,6 @@ class InMemoryArrayDataset(BufferMixin, FiltersMixin, DatasetLike):
         dtype: DTypeLike | None = None,
         attrs: dict[str, Any] | None = None,
     ):
-        if not array.flags.writeable:
-            array = array.copy()
         self.dtype = np.dtype(dtype) if dtype else array.dtype
         self.name = name
         self.attrs = attrs or {}
@@ -992,6 +990,9 @@ class InMemoryArrayDataset(BufferMixin, FiltersMixin, DatasetLike):
         # dtype metadata.
         if is_vstring_dtype(self.dtype) and not is_vstring_dtype(array.dtype):
             array = np.asarray(array, self.dtype)
+
+        if not array.flags.writeable:
+            array = array.copy()
 
         self._buffer = array
 
