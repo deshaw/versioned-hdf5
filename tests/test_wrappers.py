@@ -381,13 +381,12 @@ def test_string_dtype(vfile):
     """
     with vfile.stage_version("r0") as sv:
         h5_dtype = h5py.string_dtype()
-        sv.create_dataset("strs", (2,), dtype=h5_dtype, chunks=(10,), maxshape=(None,))
+        sv.create_dataset("strs", (2,), dtype=h5_dtype)
         sv["strs"][:] = np.array(["foo", "bar"], dtype="O")
     cv = vfile[vfile.current_version]
     assert h5py.check_string_dtype(cv["strs"][:].dtype) is not None
     with vfile.stage_version("r1") as sv:
-        sv["strs"].resize((2,))
-        sv["strs"][:] = np.array(["foo", "bar"], dtype="O")
+        sv["strs"][:] = np.array(["bar", "baz"], dtype="O")
     cv = vfile[vfile.current_version]
     assert h5py.check_string_dtype(cv["strs"][:].dtype) is not None, (
         f"fails for r1: {cv['strs'].dtype.metadata=} "
