@@ -391,7 +391,7 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
 def _is_empty(f: VersionedHDF5File, name: str, version: str) -> bool:
     """Return True if the dataset at the given version is empty, False otherwise.
 
-    Assumes the dataset exists in the given verison.
+    Assumes the dataset exists in the given version.
 
     Parameters
     ----------

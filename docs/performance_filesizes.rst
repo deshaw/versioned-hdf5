@@ -54,9 +54,10 @@ For the number of transactions, chunk sizes and compression algorithms, we tests
 
 (note that chunk sizes are taken as power of 2, so an exponent of :math:`12` means that the chunk size is :math:`2^12` or 4096.)
 
-If you want to generate your own tests, you can modify the appropriate constants
-for the desired tests, and run them on the notebook included in the ``analysis`` directory of the VersionedHDF souces. **Please keep in mind that file sizes can become very large for large numbers of transactions (above 5000
-transactions).**
+If you want to generate your own tests, you can modify the appropriate constants for the
+desired tests, and run them on the notebook included in the ``analysis`` directory of
+the VersionedHDF sources. **Please keep in mind that file sizes can become very large
+for large numbers of transactions (above 5000 transactions).**
 
 Analysis
 ~~~~~~~~

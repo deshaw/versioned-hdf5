@@ -253,7 +253,7 @@ def test_tight_iteration_big_O_performance(h5file):
             small[i + 1, :] = np.strings.capitalize(small.astype("T")[i, :])
         t1 = time.thread_time()
         # large is much larger than small; however we benchmark the iteration on the
-        # same number of eleemnts
+        # same number of elements
         for i in range(0, NSMALL, 2):
             large[i + 1, :] = np.strings.capitalize(large.astype("T")[i, :])
         t2 = time.thread_time()

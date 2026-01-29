@@ -32,7 +32,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 Some code is taken from the h5py project. This is noted in the source code as
-appropiate. Its license is as follows:
+appropriate. Its license is as follows:
 
 Copyright (c) 2008 Andrew Collette and contributors
 All rights reserved.

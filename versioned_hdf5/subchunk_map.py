@@ -102,7 +102,7 @@ class IndexChunkMapper:
         **Basic indexing**
 
         For basic indexing and in simple special cases of fancy indexes, there is a
-        1:1 correlation between selected chunks and slices to tranfer. In this
+        1:1 correlation between selected chunks and slices to transfer. In this
 
         len(slices) == len(self.chunk_indices).
         chunk_to_slices is None
