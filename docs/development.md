@@ -39,9 +39,12 @@ will be immediately reflected in all commands (such as `pixi r test`).
 install from `versioned_hdf5/`) and all dependencies available.
 
 ## Documentation
-- `pixi r docs` builds the documentation for the current version in `docs/_build/html`.
-- `pixi r docs-multiversion` builds the documentation for all versions, present and past,
-  in `docs/_build/html/<version>`. This is what is published to the public documentation page.
+
+- `pixi r -e docs docs` builds the documentation for the current version in
+  `docs/_build/html`.
+- `pixi r -e docs docs-multiversion` builds the documentation for all versions, present
+  and past, in `docs/_build/html/<version>`. This is what is published to the public
+  documentation page.
 
 ## Linting
 versioned-hdf5 uses static type checkers, enforced by CI.

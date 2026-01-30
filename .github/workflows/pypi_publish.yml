@@ -52,13 +52,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15-intel, macos-latest]
+        os:
+          # FIXME Linux wheels are broken until next h5py release
+          # https://github.com/deshaw/versioned-hdf5/issues/477
+          # - ubuntu-latest
+          # - ubuntu-24.04-arm
+          - macos-15-intel
+          - macos-latest
         python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
         include:
-          - os: ubuntu-latest
-            arch: x86_64
-          - os: ubuntu-24.04-arm
-            arch: aarch64
+          # - os: ubuntu-latest
+          #   arch: x86_64
+          # - os: ubuntu-24.04-arm
+          #   arch: aarch64
           - os: macos-15-intel
             arch: x86_64
           - os: macos-latest
