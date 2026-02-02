@@ -338,14 +338,19 @@ asv-run = { cmd = "asv run --python=same --quick --set-commit-hash $(git rev-par
 
 [tool.pixi.feature.docs.dependencies]
 graphviz = "*"
-make = "*"
 myst-parser = "*"
-sphinx = "*"
+# FIXME https://github.com/sphinx-contrib/multiversion/issues/201
+# sphinx-multiversion 0.2.4 is broken with Sphinx 9
+sphinx = "=8"
 sphinx-multiversion = "*"
 
 [tool.pixi.feature.docs.tasks]
-docs = { cmd = "make html", cwd = "docs", depends-on = ["editable-install"] }
-docs-multiversion = { cmd = "sphinx-multiversion . _build/html", cwd = "docs", depends-on = ["editable-install"] }
+docs = { cmd = "sphinx-build -M html . _build -W", cwd = "docs", depends-on = ["editable-install"] }
+docs-multiversion-build = { cmd = "sphinx-multiversion . _build-multiversion/html", cwd = "docs", depends-on = ["editable-install"] }
+# sphinx-multiversion only builds docs for every tag; this redirects users who visit
+# ./index.html -> ./master/index.html, which is the development branch docs.
+docs-multiversion-redirect = "cp docs/multiversion-index.html docs/_build-multiversion/html/index.html"
+docs-multiversion = { depends-on = ["docs-multiversion-build", "docs-multiversion-redirect"] }
 
 [tool.pixi.environments]
 default = { features = ["py314", "ipython", "build", "test", "filters", "bench"] }
