@@ -25,9 +25,8 @@ require reading and writing more chunks, but if it is too large, it would make
 the resulting versioned file unnecessarily large, as changing even a single
 element of a chunk requires rewriting the entire chunk. Versioned-hdf5 does
 not presently contain any logic for automatically picking a chunk size. The
-[pytables
-documentation](https://www.pytables.org/usersguide/optimization.html) has some
-tips on picking an optimal chunk size.
+[pytables documentation](https://www.pytables.org/usersguide/optimization.html)
+has some tips on picking an optimal chunk size.
 
 [Virtual datasets](http://docs.h5py.org/en/stable/vds.html) are a special kind
 of dataset that reference data from other datasets in a seamless way. The data

@@ -3,12 +3,12 @@ name: Release Python Bindings to PyPI
 on:
   release:
     types: [published]
-  pull_request:  # Binary wheels are only built for PRs with the 'wheels' label
+  pull_request: # Binary wheels are only built for PRs with the 'wheels' label
   workflow_dispatch:
     inputs:
       test_pypi:
         type: boolean
-        description: 'Test release: publish on test.pypi.org'
+        description: "Test release: publish on test.pypi.org"
         default: false
 
 jobs:
@@ -43,7 +43,7 @@ jobs:
 
   build-wheels:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'wheels')
-    name: 'Build wheels: ${{ matrix.os }} ${{ matrix.arch }} ${{ matrix.python-version }}'
+    name: "Build wheels: ${{ matrix.os }} ${{ matrix.arch }} ${{ matrix.python-version }}"
     uses: ./.github/workflows/wheels.yml
     with:
       python-version: ${{ matrix.python-version }}
@@ -59,7 +59,7 @@ jobs:
           # - ubuntu-24.04-arm
           - macos-15-intel
           - macos-latest
-        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         include:
           # - os: ubuntu-latest
           #   arch: x86_64

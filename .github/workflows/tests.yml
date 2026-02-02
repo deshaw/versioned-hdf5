@@ -7,37 +7,37 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         env:
-          - mindeps   # Python 3.10, NumPy 1.24.4, libhdf5 1.10, h5py 3.8, ndindex 1.5.1,
-                      # pinned build stack
-          - hdf5-112  # Python 3.10, NumPy 1.24.4, libhdf5 1.12, h5py 3.8, latest ndindex
-          - np126     # Python 3.10, NumPy 1.26, latest versions of other dependencies
-          - np200     # Python 3.10, NumPy 2.0, latest versions of other dependencies
-                      # (Note: NumPy 2.0 has special cases not present in other versions)
-          - py310     # Python 3.10, NumPy 2.2, latest versions of other dependencies
-          - py311     # Python 3.11, latest versions of all dependencies
-          - py312     # Python 3.12, latest versions of all dependencies
-          - py313     # Python 3.13, latest versions of all dependencies
-          - py314     # Python 3.14, latest versions of all dependencies
-          - h5py-dev  # Python 3.14, h5py git tip
+          - mindeps # Python 3.10, NumPy 1.24.4, libhdf5 1.10, h5py 3.8, ndindex 1.5.1,
+          # pinned build stack
+          - hdf5-112 # Python 3.10, NumPy 1.24.4, libhdf5 1.12, h5py 3.8, latest ndindex
+          - np126 # Python 3.10, NumPy 1.26, latest versions of other dependencies
+          - np200 # Python 3.10, NumPy 2.0, latest versions of other dependencies
+          # (Note: NumPy 2.0 has special cases not present in other versions)
+          - py310 # Python 3.10, NumPy 2.2, latest versions of other dependencies
+          - py311 # Python 3.11, latest versions of all dependencies
+          - py312 # Python 3.12, latest versions of all dependencies
+          - py313 # Python 3.13, latest versions of all dependencies
+          - py314 # Python 3.14, latest versions of all dependencies
+          - h5py-dev # Python 3.14, h5py git tip
         include:
           # Minimum dependencies on other platforms. The versions of libhdf5 and h5py
           # vary due to brokennes of the binaries available for such an old stack.
           - os: ubuntu-24.04-arm
-            env: mindeps  # hdf5 1.12, h5py 3.8
+            env: mindeps # hdf5 1.12, h5py 3.8
           - os: macos-15-intel
-            env: mindeps  # hdf5 1.12, h5py 3.8
-          - os: macos-latest  # ARM
-            env: mindeps  # hdf5 1.12, h5py 3.8
-          - os: windows-latest  # x64
-            env: mindeps  # hdf5 1.14, h5py 3.9
+            env: mindeps # hdf5 1.12, h5py 3.8
+          - os: macos-latest # ARM
+            env: mindeps # hdf5 1.12, h5py 3.8
+          - os: windows-latest # x64
+            env: mindeps # hdf5 1.14, h5py 3.9
           # Latest version of all dependencies on other platforms
           - os: ubuntu-24.04-arm
             env: py314
           - os: macos-15-intel
             env: py314
-          - os: macos-latest  # ARM
+          - os: macos-latest # ARM
             env: py314
-          - os: windows-latest  # x64
+          - os: windows-latest # x64
             env: py314
 
       fail-fast: false
