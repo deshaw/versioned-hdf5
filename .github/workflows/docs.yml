@@ -24,3 +24,6 @@ jobs:
 
       - name: Build docs
         run: pixi r -e docs docs
+
+      - name: Build docs (multiversion)
+        run: pixi r -e docs docs-multiversion
