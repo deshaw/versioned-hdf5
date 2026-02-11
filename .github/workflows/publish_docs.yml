@@ -45,28 +45,13 @@ jobs:
       - name: Build docs
         run: pixi r -e docs docs-multiversion
 
-      # sphinx-multiversion only builds docs for every tag;
-      # this redirects users who visit ./index.html ->
-      # ./master/index.html, which is the development branch docs.
-      - name: Write redirect to development branch
-        run: |
-          echo "<!DOCTYPE html>
-                  <html>
-                    <head>
-                      <title>Redirecting to master branch</title>
-                      <meta charset='utf-8'>
-                      <meta http-equiv='refresh' content='0; url=./master/index.html'>
-                      <link rel='canonical' href='./master/index.html'>
-                    </head>
-                  </html>" >> docs/_build/html/index.html
-
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: "docs/_build/html"
+          path: 'docs/_build-multiversion/html'
 
       - name: Deploy to GitHub Pages
         id: deployment
