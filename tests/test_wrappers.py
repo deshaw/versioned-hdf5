@@ -111,9 +111,15 @@ def test_InMemorySparseDataset(h5file):
     group = h5file.create_group("group")
     parent = InMemoryGroup(group.id)
     d = InMemorySparseDataset(
-        "data", shape=(1000,), dtype=np.float64, parent=parent, fillvalue=1.0
+        "data",
+        shape=(1000,),
+        chunks=(500,),
+        dtype=np.float64,
+        parent=parent,
+        fillvalue=1.0,
     )
     assert d.shape == (1000,)
+    assert d.chunks == (500,)
     assert d.name == "data"
     assert d.dtype == np.float64
     assert d.fillvalue == np.float64(1.0)
@@ -123,7 +129,12 @@ def test_InMemorySparseDataset_getitem(h5file):
     group = h5file.create_group("group")
     parent = InMemoryGroup(group.id)
     d = InMemorySparseDataset(
-        "data", shape=(1000,), dtype=np.float64, parent=parent, fillvalue=1.0
+        "data",
+        shape=(1000,),
+        chunks=(500,),
+        dtype=np.float64,
+        parent=parent,
+        fillvalue=1.0,
     )
     assert_equal(d[0], 1.0)
     assert_equal(d[:], np.ones((1000,)))
