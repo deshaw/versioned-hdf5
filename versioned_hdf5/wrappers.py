@@ -141,6 +141,12 @@ class InMemoryGroup(Group):
             return self._data[name]
         raise NotImplementedError(f"Cannot handle {type(res)!r}")
 
+    def get(self, name, default=None):
+        try:
+            return self[name]
+        except KeyError:
+            return default
+
     def __setitem__(self, name, obj):
         self._check_committed()
         self._add_to_data(name, obj)
