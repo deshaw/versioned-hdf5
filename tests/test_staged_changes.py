@@ -559,6 +559,24 @@ def test_refill():
     assert_array_equal(b.slab_indices, [[3, 0, 2]])
 
 
+def test_rechunk():
+    a = StagedChangesArray.from_array([[1, 2], [3, 4]], chunk_size=(3, 1))
+    a.resize((4, 2))  # Create full chunks
+    a[2, 0] = 5  # Create staged slab
+
+    b = a.rechunk((1, 3))
+    assert a.chunk_size == (3, 1)
+    assert b.chunk_size == (1, 3)
+    assert_array_equal(a, b)
+    # Test that there are still full chunks
+    assert (b.slab_indices == 0).any()
+
+    # No-op creates a CoW copy
+    c = b.rechunk((1, 3))
+    c[0, 0] = 99
+    assert b[0, 0] == 1
+
+
 @pytest.mark.xfail(
     sys.platform == "darwin",
     reason="MacOS github actions runners show CPU contention between VMs",
@@ -816,6 +834,8 @@ def test_invalid_parameters():
         )
     with pytest.raises(ValueError, match="chunk_size"):
         StagedChangesArray.full((2,), chunk_size=(0,))
+    with pytest.raises(ValueError, match="shape and chunk_size"):
+        StagedChangesArray.full((4,), chunk_size=(2, 2))
     with pytest.raises(ValueError, match="fill_value"):
         StagedChangesArray(
             shape=(2,),
@@ -970,6 +990,10 @@ def test_readonly():
     assert not a.writeable
 
     b = a.refill(42)
+    assert b.writeable
+    assert not a.writeable
+
+    b = a.rechunk((6,))
     assert b.writeable
     assert not a.writeable
 
