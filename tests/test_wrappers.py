@@ -73,6 +73,15 @@ def test_InMemoryArrayDataset_enlarge(h5file):
     assert dataset.shape == dataset._buffer.shape == (110,)
 
 
+def test_InMemoryArrayDataset_enlarge_retains_attrs(vfile):
+    with vfile.stage_version("r0") as sv:
+        ds = sv.create_dataset("x", data=[1, 2, 3], chunks=(3,), maxshape=(None,))
+        ds.attrs["foo"] = 1
+        assert ds.attrs == {"foo": 1}
+        ds.resize((4,))
+        assert ds.attrs == {"foo": 1}
+
+
 def test_InMemoryArrayDataset_shrink(h5file):
     group = h5file.create_group("group")
     parent = InMemoryGroup(group.id)

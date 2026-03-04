@@ -16,7 +16,7 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable
 from contextlib import suppress
 from functools import cached_property
-from typing import Any, ClassVar, Generic, TypeVar
+from typing import Any, ClassVar, Generic, Literal, TypeVar
 from weakref import WeakValueDictionary
 
 import numpy as np
@@ -1031,11 +1031,19 @@ class InMemorySparseDataset(BufferMixin, FiltersMixin, DatasetLike):
     Class that looks like a Dataset that has no data (only the fillvalue)
     """
 
-    def __init__(self, name, *, shape, dtype, parent, chunks=None, fillvalue=None):
-        if shape is None:
-            raise TypeError("shape must be specified for sparse datasets")
+    def __init__(
+        self,
+        name: str,
+        *,
+        shape: tuple[int, ...],
+        dtype: DTypeLike,
+        parent: InMemoryGroup,
+        chunks: tuple[int, ...] | Literal[True] | None = None,
+        fillvalue: Any | None = None,
+        attrs: dict[str, Any] | None = None,
+    ):
         self.name = name
-        self.attrs = {}
+        self.attrs = attrs or {}
         self._fillvalue = fillvalue
         assert isinstance(chunks, tuple)
         self.parent = parent
@@ -1053,7 +1061,7 @@ class InMemorySparseDataset(BufferMixin, FiltersMixin, DatasetLike):
         return _staged_changes_to_data_dict(self.staged_changes)
 
     @property
-    def shape(self):
+    def shape(self) -> tuple[int, ...]:  # type: ignore[override]
         return self.staged_changes.shape
 
     @property
@@ -1212,6 +1220,7 @@ class DatasetWrapper(DatasetLike):
             parent=self.dataset.parent,
             chunks=self.dataset.chunks,
             fillvalue=self.dataset.fillvalue,
+            attrs=self.dataset.attrs,
         )
         # Use a writeable view of old buffer as the slabs, if geometry allows
         new_ds.staged_changes = StagedChangesArray.from_array(
