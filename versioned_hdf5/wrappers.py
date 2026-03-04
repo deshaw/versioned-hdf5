@@ -1045,19 +1045,11 @@ class InMemorySparseDataset(BufferMixin, FiltersMixin, DatasetLike):
         self.name = name
         self.attrs = attrs or {}
         self._fillvalue = fillvalue
-        if chunks in [True, None]:
-            if len(shape) == 1:
-                chunks = (DEFAULT_CHUNK_SIZE,)
-            else:
-                raise NotImplementedError(
-                    "chunks must be specified for multi-dimensional datasets"
-                )
         assert isinstance(chunks, tuple)
-
         self.parent = parent
         self.staged_changes = StagedChangesArray.full(
             shape=shape,
-            chunk_size=tuple(chunks),
+            chunk_size=chunks,
             dtype=dtype,
             fill_value=fillvalue,
         )

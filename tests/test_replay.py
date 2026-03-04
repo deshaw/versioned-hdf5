@@ -8,8 +8,10 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 from ndindex import Slice
+from numpy.testing import assert_array_equal
 
 from versioned_hdf5 import VersionedHDF5File
+from versioned_hdf5.backend import DEFAULT_CHUNK_SIZE
 from versioned_hdf5.hashtable import Hashtable
 from versioned_hdf5.replay import (
     _get_parent,
@@ -641,6 +643,55 @@ def test_modify_metadata_dtype_fillvalue(vfile):
     assert vfile["version2"]["test_data2"].dtype == np.float32
     np.testing.assert_allclose(vfile["version1"]["test_data2"].fillvalue, 3.14)
     np.testing.assert_allclose(vfile["version2"]["test_data2"].fillvalue, 3.14)
+
+
+@pytest.mark.parametrize(
+    ("chunks", "expect"),
+    [
+        ((2,), (2,)),
+        ((4,), (4,)),
+        ((1,), (1,)),
+        (True, (DEFAULT_CHUNK_SIZE,)),
+    ],
+)
+def test_modify_metadata_sparse_rechunk(vfile, chunks, expect):
+    with vfile.stage_version("v0") as sv:
+        sv.create_dataset("x", shape=(5,), chunks=(2,))
+        sv["x"][:3] = [1.0, 2.0, 3.0]
+
+    modify_metadata(vfile, "x", chunks=chunks)
+    assert vfile["v0"]["x"].chunks == expect
+    assert_array_equal(vfile["v0"]["x"][:], [1.0, 2.0, 3.0, 0.0, 0.0])
+
+
+def test_modify_metadata_sparse_rechunk_bad_chunks(vfile):
+    with vfile.stage_version("v0") as sv:
+        sv.create_dataset("x", shape=(5,), chunks=(2,))
+
+    with pytest.raises(ValueError, match="chunks must be a tuple"):
+        modify_metadata(vfile, "x", chunks=1000)
+    with pytest.raises(ValueError, match="chunks must be a tuple"):
+        modify_metadata(vfile, "x", chunks=False)
+    with pytest.raises(ValueError, match="chunks must be a tuple"):
+        modify_metadata(vfile, "x", chunks=[10])
+    with pytest.raises(
+        ValueError, match="shape and chunk_size must have the same dimensionality"
+    ):
+        modify_metadata(vfile, "x", chunks=(500, 500))
+    with pytest.raises(
+        ValueError, match="shape and chunk_size must have the same dimensionality"
+    ):
+        modify_metadata(vfile, "x", chunks=())
+
+
+def test_modify_metadata_sparse_rechunk_true_nd(vfile):
+    with vfile.stage_version("v0") as sv:
+        sv.create_dataset("x", shape=(5, 5), chunks=(2, 2))
+    with pytest.raises(
+        NotImplementedError,
+        match="chunks must be specified for multi-dimensional datasets",
+    ):
+        modify_metadata(vfile, "x", chunks=True)
 
 
 def test_delete_version(vfile):
