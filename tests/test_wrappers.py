@@ -176,6 +176,33 @@ def test_InMemoryArrayDataset_resize_multidimension(oldshape, newshape, h5file):
     assert_equal(dataset[()], h5file["data"][()], str(newshape))
 
 
+def test_group_get(premade_group):
+    """Test that InMemoryGroup.get() returns the same
+    as __getitem__ for existing keys.
+    """
+    foo = premade_group.create_dataset("foo", data=[1, 2])
+    assert premade_group["foo"] is foo
+    assert premade_group.get("foo") is foo
+    assert premade_group.get("bar") is None
+    assert premade_group.get("bar", 123) == 123
+
+
+def test_group_dict_accessors(premade_group):
+    """Test that InMemoryGroup supports dictionary-like accessors."""
+    foo = premade_group.create_dataset("foo", data=[1, 2])
+    assert list(premade_group) == ["foo"]
+    assert "foo" in premade_group
+
+    assert list(premade_group.keys()) == ["foo"]
+    assert "foo" in premade_group.keys()  # noqa: SIM118
+
+    assert list(premade_group.items()) == [("foo", foo)]
+    assert ("foo", foo) in premade_group.items()
+
+    assert list(premade_group.values()) == [foo]
+    assert foo in premade_group.values()
+
+
 def test_group_repr(premade_group):
     """Test that repr(InMemoryGroup) also shows reprs of child objects."""
     foo = premade_group.create_dataset(
