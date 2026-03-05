@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.3.1 (2026-03-05)
+
+### Minor Changes
+
+- Added support for h5py >=3.16 to `Group` methods `get()`, `items()`, `values()`,
+  and `repr()`
+- Fix issue where calling `resize()` to enlarge an InMemoryArrayDataset would
+  accidentally wipe the `attrs` dictionary
+- Fix issue where `modify_metadata` would not change the chunks of newly-created
+  sparse datasets
+
 ## 2.3.0 (2026-02-02)
 
 ### Major Changes
