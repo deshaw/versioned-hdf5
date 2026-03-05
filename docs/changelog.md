@@ -10,7 +10,6 @@
   accidentally wipe the `attrs` dictionary
 - Fix issue where `modify_metadata` would not change the chunks of newly-created
   sparse datasets
- 
 
 ## 2.3.0 (2026-02-02)
 
