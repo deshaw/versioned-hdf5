@@ -17,6 +17,7 @@ from ndindex.ndindex import NDIndex
 
 from versioned_hdf5.api import VersionedHDF5File
 from versioned_hdf5.backend import (
+    DEFAULT_CHUNK_SIZE,
     Filters,
     create_base_dataset,
     create_virtual_dataset,
@@ -637,7 +638,7 @@ def modify_metadata(
         f = f.f
 
     def callback(dataset, version_name):  # noqa: ARG001
-        _chunks = chunks or dataset.chunks
+        _chunks = chunks if chunks is not None else dataset.chunks
         _fillvalue = fillvalue if fillvalue is not None else dataset.fillvalue
 
         if isinstance(dataset, DatasetWrapper):
@@ -660,6 +661,17 @@ def modify_metadata(
                 staged_changes = staged_changes.astype(dtype)
             if _fillvalue not in (None, dataset.fillvalue):
                 staged_changes = staged_changes.refill(_fillvalue)
+            if _chunks not in (None, dataset.chunks):
+                if _chunks is True:
+                    if staged_changes.ndim == 1:
+                        _chunks = (DEFAULT_CHUNK_SIZE,)
+                    else:
+                        raise NotImplementedError(
+                            "chunks must be specified for multi-dimensional datasets"
+                        )
+                elif not isinstance(chunks, tuple):
+                    raise ValueError("chunks must be a tuple[int, ...] or True")
+                staged_changes = staged_changes.rechunk(_chunks)
             if staged_changes is dataset.staged_changes:
                 staged_changes = staged_changes.copy()
 

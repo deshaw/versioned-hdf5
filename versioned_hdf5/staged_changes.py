@@ -721,6 +721,27 @@ class StagedChangesArray(MutableMapping[Any, T]):
                 slab[mask] = fill_value
         return out
 
+    def rechunk(self, chunk_size: tuple[int, ...]) -> StagedChangesArray[T]:
+        """Create a copy of self with changed chunk_size.
+        This loads all chunks into memory.
+        """
+        inmem = self.copy()
+        if chunk_size == self.chunk_size:
+            return inmem
+
+        out = StagedChangesArray.full(
+            shape=self.shape,
+            chunk_size=chunk_size,
+            fill_value=self.fill_value,
+            dtype=self.dtype,
+        )
+        inmem.load()
+        for idx, _, chunk in inmem.changes():
+            assert isinstance(chunk, np.ndarray)  # Thanks to load()
+            out[idx] = chunk
+
+        return out
+
     @staticmethod
     def full(
         shape: tuple[int, ...],
@@ -739,6 +760,8 @@ class StagedChangesArray(MutableMapping[Any, T]):
             raise ValueError("shape must be non-negative")
         if any(c <= 0 for c in chunk_size):
             raise ValueError("chunk_size must be strictly positive")
+        if len(shape) != len(chunk_size):
+            raise ValueError("shape and chunk_size must have the same dimensionality")
         n_chunks = tuple(
             ceil_a_over_b(s, c) for s, c in zip(shape, chunk_size, strict=True)
         )
