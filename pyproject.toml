@@ -23,7 +23,6 @@ classifiers = [
 ]
 dependencies = [
   "numpy>=1.24.4",
-  # Note: Linux binary wheels depend on h5py>=3.15.0.
   "h5py>=3.8.0",
   "ndindex>=1.5.1",
 ]
@@ -145,37 +144,6 @@ disallow_untyped_defs = false
 skip = "./docs/_build,./pixi.lock"
 ignore-words-list = "COO"
 
-[tool.cibuildwheel]
-build-verbosity = 1
-build-frontend = { name = "pip", args = ["--only-binary", "numpy"] }
-# This must be kept in sync with h5py/pyproject.toml
-# h5py <=3.14.0 used manylinux2014, which shipped a different version of libhdf5.
-# As such,
-#   versioned-hdf5 built from sources (any platform) requires h5py >=3.8.0
-#   versioned-hdf5 conda-forge binary packages (any platform) require h5py >=3.8.0
-#   versioned-hdf5 MacOSX wheels require h5py >=3.8.0
-#   versioned-hdf5==2.1.0 Linux wheels require h5py wheels >=3.8.0,<3.15.0
-#   versioned-hdf5>=2.2.0 Linux wheels require h5py wheels >=3.15.0
-manylinux-x86_64-image = "ghcr.io/h5py/manylinux_2_28_x86_64-hdf5"
-manylinux-aarch64-image = "ghcr.io/h5py/manylinux_2_28_aarch64-hdf5"
-
-[tool.cibuildwheel.linux]
-environment-pass = ["GITHUB_ACTIONS"]
-
-[tool.cibuildwheel.linux.environment]
-CFLAGS = "-g1"
-
-[tool.cibuildwheel.macos]
-# https://cibuildwheel.pypa.io/en/stable/faq/#macos-passing-dyld_library_path-to-delocate
-repair-wheel-command = """\
-DYLD_FALLBACK_LIBRARY_PATH=$HDF5_DIR/lib \
-delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel} \
-"""
-
-[tool.cibuildwheel.macos.environment]
-H5PY_ROS3 = "0"
-H5PY_DIRECT_VFD = "0"
-
 [tool.pixi.workspace]
 channels = ["https://prefix.dev/conda-forge"]
 platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64", "win-64"]
@@ -222,7 +190,8 @@ uninstall = "python -m pip uninstall -y versioned-hdf5"
 editable-install = "python ci/editable_install.py"
 sdist = "python -m build --sdist --no-isolation"
 # Build a wheel for the current platform and python only.
-# For debugging only. Do not use for release; use cibuildwheel instead.
+# For debugging only. Do not use for release! wheels will likely never function
+# for pypi release, as the hdf5 C library is shared with h5py, which embeds it.
 wheel = "python -m build --wheel --no-isolation"
 twine-check = "twine check dist/*"
 smoke = { cmd = "python ci/smoke_test.py", depends-on = ["editable-install"] }

@@ -9,18 +9,18 @@
   minimum supported version of h5py or ndindex has changed.
 
 - It's a good idea to push your changes as a GitHub PR before doing the final release
-  cut so that the CI runs all the tests. Add the `wheels` tag to the PR to retest that
-  binary wheels are still building correctly.
+  cut so that the CI runs all the tests.
 
 ## Doing the release
 
 To do a release, simply create a new release from the GitHub web ui. Click
 `Draft a new release`, then create a new tag containing the version number.
 
-Once the release has been made, the `pypi_publish.yml` workflow will run,
-building wheels and publishing them to PYPI. The workflow uses trusted
-publishing, meaning that github itself uploads the release to PYPI without
-needing authentication from the maintainer.
+Once the release has been made, the `pypi_publish.yml` workflow will run, building the
+sdist package and publishing it to PyPi (binary wheels are not possible due to
+incompatibility with h5py binary wheels). The workflow uses trusted publishing, meaning
+that github itself uploads the release to PYPI without needing authentication from the
+maintainer.
 
 ## Updating conda-forge
 

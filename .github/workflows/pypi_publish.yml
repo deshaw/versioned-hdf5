@@ -3,7 +3,7 @@ name: Release Python Bindings to PyPI
 on:
   release:
     types: [published]
-  pull_request: # Binary wheels are only built for PRs with the 'wheels' label
+  pull_request:
   workflow_dispatch:
     inputs:
       test_pypi:
@@ -38,42 +38,13 @@ jobs:
       - name: Upload sdist
         uses: actions/upload-artifact@v5
         with:
-          name: sdist
+          name: dist
           path: ./dist/*.tar.gz
-
-  build-wheels:
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'wheels')
-    name: "Build wheels: ${{ matrix.os }} ${{ matrix.arch }} ${{ matrix.python-version }}"
-    uses: ./.github/workflows/wheels.yml
-    with:
-      python-version: ${{ matrix.python-version }}
-      os: ${{ matrix.os }}
-      arch: ${{ matrix.arch }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          # FIXME Linux wheels are broken until next h5py release
-          # https://github.com/deshaw/versioned-hdf5/issues/477
-          # - ubuntu-latest
-          # - ubuntu-24.04-arm
-          - macos-15-intel
-          - macos-latest
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
-        include:
-          # - os: ubuntu-latest
-          #   arch: x86_64
-          # - os: ubuntu-24.04-arm
-          #   arch: aarch64
-          - os: macos-15-intel
-            arch: x86_64
-          - os: macos-latest
-            arch: arm64
 
   publish:
     name: Publish Python packages on PyPI
     if: (github.event_name == 'release' && startsWith(github.ref, 'refs/tags')) || (github.event_name == 'workflow_dispatch')
-    needs: [build-sdist, build-wheels]
+    needs: [build-sdist]
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -81,24 +52,24 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - name: Retrieve wheels and sdist
+      - name: Retrieve sdist
         uses: actions/download-artifact@v6
         with:
           merge-multiple: true
-          path: wheels/
+          path: dist/
 
       - name: print artifacts
-        run: ls -l wheels/
+        run: ls -l dist/
 
       - name: 🧪 Publish to PyPI Testing
         uses: pypa/gh-action-pypi-publish@release/v1
         if: ${{ inputs.test_pypi }}
         with:
           repository-url: https://test.pypi.org/legacy/
-          packages-dir: wheels
+          packages-dir: dist
 
       - name: 🎉 Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         if: ${{ !inputs.test_pypi }}
         with:
-          packages-dir: wheels
+          packages-dir: dist
