@@ -5,11 +5,6 @@ on:
     types: [published]
   pull_request:
   workflow_dispatch:
-    inputs:
-      test_pypi:
-        type: boolean
-        description: "Test release: publish on test.pypi.org"
-        default: false
 
 jobs:
   build-sdist:
@@ -61,15 +56,7 @@ jobs:
       - name: print artifacts
         run: ls -l dist/
 
-      - name: 🧪 Publish to PyPI Testing
-        uses: pypa/gh-action-pypi-publish@release/v1
-        if: ${{ inputs.test_pypi }}
-        with:
-          repository-url: https://test.pypi.org/legacy/
-          packages-dir: dist
-
       - name: 🎉 Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        if: ${{ !inputs.test_pypi }}
         with:
           packages-dir: dist
