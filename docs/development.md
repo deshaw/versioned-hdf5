@@ -19,19 +19,20 @@ pixi r -e <environment> test
 
 You can choose among the following:
 
-| Environment | Python | NumPy  | libhdf5     | h5py      | ndindex | notes                                           |
+| Environment | Python | NumPy  | hdf5        | h5py      | ndindex | notes                                           |
 | ----------- | ------ | ------ | ----------- | --------- | ------- | ----------------------------------------------- |
 | `mindeps`   | 3.10   | 1.24.4 | 1.10 ~ 1.14 | 3.8 ~ 3.9 | 1.5.1   | Versions depend on platform; pinned build stack |
 | `hdf5-112`  | 3.10   | 1.24.4 | 1.12        | 3.8       | latest  | Not available on Windows                        |
-| `np126`     | 3.10   | 1.26   | latest      | latest    | latest  |                                                 |
-| `np200`     | 3.10   | 2.0    | latest      | latest    | latest  |                                                 |
-| `py310`     | 3.10   | 2.2    | latest      | latest    | latest  |                                                 |
-| `py311`     | 3.11   | latest | latest      | latest    | latest  |                                                 |
-| `py312`     | 3.12   | latest | latest      | latest    | latest  |                                                 |
-| `py313`     | 3.13   | latest | latest      | latest    | latest  |                                                 |
-| `py314`     | 3.14   | latest | latest      | latest    | latest  |                                                 |
-| `default`   | latest | latest | latest      | latest    | latest  |                                                 |
-| `h5py-dev`  | latest | latest | latest      | git tip   | latest  |                                                 |
+| `hdf5-21`   | 3.14   | latest | 2.1         | latest    | latest  |                                                 |
+| `np126`     | 3.10   | 1.26   | 1.14*       | latest    | latest  | h5py conda package pins hdf5                    |
+| `np200`     | 3.10   | 2.0    | 1.14*       | latest    | latest  | h5py conda package pins hdf5                    |
+| `py310`     | 3.10   | 2.2    | 1.14*       | latest    | latest  | h5py conda package pins hdf5                    |
+| `py311`     | 3.11   | latest | 1.14*       | latest    | latest  | h5py conda package pins hdf5                    |
+| `py312`     | 3.12   | latest | 1.14*       | latest    | latest  | h5py conda package pins hdf5                    |
+| `py313`     | 3.13   | latest | 1.14*       | latest    | latest  | h5py conda package pins hdf5                    |
+| `py314`     | 3.14   | latest | 1.14*       | latest    | latest  | h5py conda package pins hdf5                    |
+| `default`   | latest | latest | 1.14*       | latest    | latest  | h5py conda package pins hdf5                    |
+| `h5py-dev`  | latest | latest | 2.1         | git tip   | latest  |                                                 |
 
 ## Editable install
 

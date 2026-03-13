@@ -7,9 +7,10 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         env:
-          - mindeps # Python 3.10, NumPy 1.24.4, libhdf5 1.10, h5py 3.8, ndindex 1.5.1,
+          - mindeps # Python 3.10, NumPy 1.24.4, hdf5 1.10, h5py 3.8, ndindex 1.5.1,
           # pinned build stack
-          - hdf5-112 # Python 3.10, NumPy 1.24.4, libhdf5 1.12, h5py 3.8, latest ndindex
+          - hdf5-112 # Python 3.10, NumPy 1.24.4, hdf5 1.12, h5py 3.8, latest ndindex
+          - hdf5-21 # Python 3.14, hdf5 2.1, latest versions of other dependencies
           - np126 # Python 3.10, NumPy 1.26, latest versions of other dependencies
           - np200 # Python 3.10, NumPy 2.0, latest versions of other dependencies
           # (Note: NumPy 2.0 has special cases not present in other versions)
@@ -20,7 +21,7 @@ jobs:
           - py314 # Python 3.14, latest versions of all dependencies
           - h5py-dev # Python 3.14, h5py git tip
         include:
-          # Minimum dependencies on other platforms. The versions of libhdf5 and h5py
+          # Minimum dependencies on other platforms. The versions of hdf5 and h5py
           # vary due to brokennes of the binaries available for such an old stack.
           - os: ubuntu-24.04-arm
             env: mindeps # hdf5 1.12, h5py 3.8
@@ -50,7 +51,7 @@ jobs:
 
       - uses: prefix-dev/setup-pixi@v0
         with:
-          pixi-version: v0.63.2
+          pixi-version: v0.66.0
           cache: true
           locked: ${{ matrix.env != 'h5py-dev' }}
           environments: ${{ matrix.env }}
