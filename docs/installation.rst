@@ -1,31 +1,36 @@
 Installation
 ============
 
+With conda (easy)
+-----------------
+
 You can install Versioned HDF5 binaries via conda on Linux, MacOSX and Windows with
 
 .. code-block:: bash
 
    $ conda install -c conda-forge versioned-hdf5
 
-or via pip on Linux and MacOSX with
 
-.. code-block:: bash
+With pip (harder)
+-----------------
 
-   $ pip install versioned-hdf5
+You *cannot* naively install Versioned HDF5 binaries with pip, as there are no pre-built
+wheels on PyPi due to complexity of sharing the libhdf5 C library with h5py.
 
-.. note::
-
-   Linux wheels on PyPi depend on h5py>=3.15.0. If you need an older version of
-   h5py, please either install via conda or build from sources.
-
-In order to install from sources, you will need libhdf5 headers and shared libraries
-to be installed, either locally with conda (``conda install -c conda-forge hdf5``) or
+In order to install from sources, you will need libhdf5 headers and shared libraries to
+be installed, either locally with conda (``conda install -c conda-forge hdf5``) or
 system wide.
-When compiling versioned-hdf5 from sources, it is advised to compile h5py too:
+When compiling versioned-hdf5 from sources, you *must* compile h5py too to guarantee
+that both packages are compiled and linked against the same libhdf5 C library:
 
 .. code-block:: bash
 
    $ pip install h5py versioned-hdf5 --no-binary h5py,versioned-hdf5
+
+.. warning::
+
+   Compiling versioned-hdf5 from sources while h5py is installed from pre-built
+   pypi wheels will cause runtime failures.
 
 
 Dependencies
