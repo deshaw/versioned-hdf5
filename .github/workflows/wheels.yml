@@ -13,6 +13,9 @@ on:
         required: true
         type: string
 
+env:
+  H5PY_VERSION: "3.16.0"
+
 jobs:
   build-wheels:
     name: "Build wheel"
@@ -41,15 +44,17 @@ jobs:
         if: runner.os == 'macOS'
         run: bash ./ci/cibw_before_all_macos.sh "${{ github.workspace }}"
 
-      - name: Increase minimum h5py version for Linux wheels
-        if: runner.os == 'Linux'
-        # See https://github.com/deshaw/versioned-hdf5/issues/466
+      - name: Pin  h5py version
+        # h5py binary wheels ship hdf5 binaries. Updating h5py very frequently
+        # breaks compatibility. The only reasonable way to support wheels is a
+        # hard pin of the h5py version. Users can still use conda-forge packages
+        # if they want more freedom.
         run: |
           # Modifying any files checked in git will update the setuptools-scm version;
           # force setuptools-scm to return the previous version with a tag.
           pip install setuptools-scm
           TAG=$(python -m setuptools_scm)
-          sed -i 's/h5py>=3.8.0/h5py>=3.15.0/' pyproject.toml
+          sed -i "s/h5py>=3.8.0/h5py==$H5PY_VERSION/" pyproject.toml
           git config --global user.email "bot@deshaw.com"
           git config --global user.name "Release bot"
           git commit -a -m 'Increase minimum h5py version'
@@ -60,7 +65,7 @@ jobs:
         run: bash ./ci/triage_build.sh "${{ inputs.arch }}" "${{ github.event.pull_request.head.sha || github.sha }}" "${{ inputs.python-version }}"
 
       - name: Run cibuildwheel
-        uses: pypa/cibuildwheel@v3.3.0
+        uses: pypa/cibuildwheel@v3.4.0
         env:
           # Note that tool.cibuildwheel "skip" in pyproject.toml also limits what gets built
           CIBW_ARCHS: ${{ inputs.arch }}
