@@ -12,6 +12,7 @@ from numpy.testing import assert_array_equal
 
 from versioned_hdf5 import VersionedHDF5File
 from versioned_hdf5.backend import DEFAULT_CHUNK_SIZE
+from versioned_hdf5.h5py_compat import H5PY_VERSION
 from versioned_hdf5.hashtable import Hashtable
 from versioned_hdf5.replay import (
     _get_parent,
@@ -1375,19 +1376,27 @@ def test_modify_metadata_blosc_compression(vfile, obj, raw):
     for dataset in ["test_data", "test_data2", "group/test_data4"]:
         for version in ["version1", "version2"]:
             if dataset == obj:
-                assert vfile[version][dataset].compression == 32001
-                # First four numbers are reserved for blosc compression;
-                # others are actual compression options
-                assert vfile[version][dataset].compression_opts[4:] == (7, 1, 2)
+                if H5PY_VERSION >= (3, 16):
+                    assert vfile[version][dataset].compression == "unknown"
+                    assert vfile[version][dataset].compression_opts is None
+                else:
+                    assert vfile[version][dataset].compression == 32001
+                    # First four numbers are reserved for blosc compression;
+                    # others are actual compression options
+                    assert vfile[version][dataset].compression_opts[4:] == (7, 1, 2)
             else:
                 assert vfile[version][dataset].compression is None
                 assert vfile[version][dataset].compression_opts is None
 
         raw_data = f["_version_data"][dataset]["raw_data"]
         if dataset == obj:
-            assert raw_data.compression is None
+            if H5PY_VERSION >= (3, 16):
+                assert raw_data.compression == "unknown"
+                assert raw_data.compression_opts is None
+            else:
+                assert raw_data.compression is None
+                assert raw_data._filters["32001"][4:] == (7, 1, 2)
             assert raw_data.compression_opts is None
-            assert raw_data._filters["32001"][4:] == (7, 1, 2)
         else:
             assert raw_data.compression is None
             assert raw_data.compression_opts is None

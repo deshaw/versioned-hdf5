@@ -13,6 +13,7 @@ from numpy.testing import assert_equal
 
 from versioned_hdf5 import VersionedHDF5File
 from versioned_hdf5.backend import DATA_VERSION, DEFAULT_CHUNK_SIZE
+from versioned_hdf5.h5py_compat import H5PY_VERSION
 from versioned_hdf5.replay import delete_versions
 from versioned_hdf5.versions import TIMESTAMP_FMT, all_versions
 from versioned_hdf5.wrappers import (
@@ -3006,7 +3007,7 @@ def test_blosc_compression_validates(h5file, raw):
 
     assert h5file["_version_data/versions/r0/values"].compression is None
     raw_data = h5file["_version_data/values/raw_data"]
-    assert raw_data.compression is None
+    assert raw_data.compression == ("unknown" if H5PY_VERSION >= (3, 16) else None)
     assert "32001" in raw_data._filters
 
     # First four numbers are reserved for blosc compression;
