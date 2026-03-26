@@ -1571,6 +1571,10 @@ def test_closes(vfile):
             np.asarray("baz", dtype=h5py.string_dtype()),
             np.asarray("foo", dtype=h5py.string_dtype()),
         ),
+        (
+            np.asarray("baz", dtype=h5py.string_dtype(length=3)),
+            np.asarray("foo", dtype=h5py.string_dtype(length=3)),
+        ),
         (1.5, 2.3),
         (1, 0),
         (np.int16(1), np.int16(2)),
@@ -1700,28 +1704,34 @@ def test_InMemoryArrayDataset_chunks(vfile):
         h5py.string_dtype("ascii"),
         h5py.string_dtype("utf-8", length=20),
         h5py.string_dtype("ascii", length=20),
+        np.dtype("S20"),
     ],
 )
 def test_string_dtypes(setup_vfile, dt):
     # Make sure the fillvalue logic works correctly for custom h5py string
     # dtypes.
+    # Note: see test_npystrings.py for NumPy 2's native vstring dtypes.
     data = np.full(10, b"hello world", dtype=dt)
 
     with setup_vfile() as f:
         file = VersionedHDF5File(f)
         with file.stage_version("0") as sv:
-            sv.create_dataset("name", shape=(10,), dtype=dt, data=data)
-            assert isinstance(sv["name"].dataset, InMemoryArrayDataset)
-            sv["name"].resize((11,))
+            ds = sv.create_dataset("name", shape=(10,), dtype=dt, data=data)
+            assert isinstance(ds, DatasetWrapper)
+            assert isinstance(ds.dataset, InMemoryArrayDataset)
+            assert ds.dtype == dt
+            ds.resize((11,))
 
         assert file["0"]["name"].dtype == dt
         assert_equal(file["0"]["name"][:10], data)
         assert file["0"]["name"][10] == b"", dt.metadata
 
         with file.stage_version("1") as sv:
-            assert isinstance(sv["name"], DatasetWrapper)
-            assert isinstance(sv["name"].dataset, InMemoryDataset)
-            sv["name"].resize((12,))
+            ds = sv["name"]
+            assert isinstance(ds, DatasetWrapper)
+            assert isinstance(ds.dataset, InMemoryDataset)
+            assert ds.dtype == dt
+            ds.resize((12,))
 
         assert file["1"]["name"].dtype == dt
         assert_equal(file["1"]["name"][:10], data, str(dt.metadata))
@@ -1736,6 +1746,32 @@ def test_string_dtypes(setup_vfile, dt):
         assert f["name"].dtype == dt
         assert_equal(f["name"][:10], data)
         assert f["name"][10] == b"", dt.metadata
+
+
+def test_mismatched_fixed_string_dtypes(vfile):
+    dt1 = h5py.string_dtype(length=30)
+    dt2 = h5py.string_dtype(length=20)
+    with vfile.stage_version('r0') as sv:
+        ds = sv.create_dataset('x', data=["a", "b"], chunks=(1, ), dtype=dt1)
+        ds[:1] = np.asarray(["c"], dtype=dt2)
+        assert ds.dtype == dt1
+        assert ds._buffer.dtype == dt1
+        ds[:] = np.asarray(["d", "e"], dtype=dt2)
+        assert ds.dtype == dt1
+        assert ds._buffer.dtype == dt1
+        assert ds[:].dtype == dt1
+
+    with vfile.stage_version('r1') as sv:
+        ds = sv["x"]
+        assert ds.dtype == dt1
+        ds[1:] = np.asarray(["f"], dtype=dt2)
+        assert ds.dtype == dt1
+        assert ds.dataset._buffer.dtype == dt1
+        assert ds[:].dtype == dt1
+        ds[:] = np.asarray(["g", "h"], dtype=dt2)
+        assert ds.dtype == dt1
+        assert ds.dataset._buffer.dtype == dt1
+        assert ds[:].dtype == dt1
 
 
 def test_empty(vfile):

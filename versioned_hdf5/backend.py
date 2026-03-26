@@ -43,7 +43,6 @@ def is_vstring_dtype(dtype: np.dtype) -> bool:
         and dtype.kind == "T"
         # h5py object strings
         or "vlen" in metadata
-        or "h5py_encoding" in metadata
     )
 
 
