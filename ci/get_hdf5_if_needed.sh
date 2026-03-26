@@ -13,7 +13,7 @@ else
         echo "Building serial"
     else
         echo "Building with MPI"
-        EXTRA_MPI_FLAGS="--enable-parallel --enable-shared"
+        EXTRA_MPI_FLAGS=(-D "HDF5_ENABLE_PARALLEL=ON")
     fi
 
     if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -25,7 +25,7 @@ else
         # Test with the direct file driver on Linux. This setting does not
         # affect the HDF5 bundled in Linux wheels - that is built into a Docker
         # image from a separate repository.
-        ENABLE_DIRECT_VFD="--enable-direct-vfd"
+        ENABLE_DIRECT_VFD=(-D "HDF5_ENABLE_DIRECT_VFD=ON")
     fi
 
     if [ -f $HDF5_DIR/lib/$lib_name ]; then
@@ -49,7 +49,16 @@ else
 
         if [[ "$OSTYPE" == "darwin"* ]]; then
             ARCH=$(uname -m)
-            ZLIB_VERSION="1.3.1"
+            ZLIB_VERSION="1.3.2"
+
+            # When compiling HDF5, we should use the minimum across all
+            # Python versions for a given arch.
+            # See cibuildwheel.pypa.io/en/stable/platforms#macos-version-compatibility
+            if [[ "$ARCH" == "arm64" ]]; then
+                export MACOSX_DEPLOYMENT_TARGET="11.0"
+            else
+                export MACOSX_DEPLOYMENT_TARGET="10.9"
+            fi
 
             pushd /tmp
             curl -sLO https://zlib.net/fossils/zlib-$ZLIB_VERSION.tar.gz
@@ -62,24 +71,10 @@ else
 
             export LD_LIBRARY_PATH="$HDF5_DIR/lib:${LD_LIBRARY_PATH}"
             export PKG_CONFIG_PATH="$HDF5_DIR/lib/pkgconfig:${PKG_CONFIG_PATH}"
-            ZLIB_ARG="--with-zlib=$HDF5_DIR"
-
-            # Add an hdf5.pc so that it can be found by meson
-            echo "prefix=${HDF5_DIR}
-            exec_prefix=\${prefix}
-            libdir=\${exec_prefix}/lib
-            includedir=\${prefix}/include
-
-            Name: hdf5
-            Description: HDF5 (Hierarchical Data Format 5) Software Library
-            Version: ${HDF5_VERSION}
-
-            Cflags: -I\${includedir}
-            Libs: -L\${libdir}  -lhdf5
-            Requires:
-            Libs.private:   -lzlib-static
-            Requires.private:" >> ${HDF5_DIR}/lib/pkgconfig/hdf5.pc
-
+            ZLIB_ARGS=(-D "HDF5_ENABLE_ZLIB_SUPPORT=ON"
+                       -D "ZLIB_ROOT=$HDF5_DIR")
+        else
+          ZLIB_ARGS=(-D "HDF5_ENABLE_ZLIB_SUPPORT=ON")
         fi
 
         pushd /tmp
@@ -90,15 +85,20 @@ else
 
         pushd hdf5-$HDF5_VERSION
 
-        ./configure --prefix="$HDF5_DIR" \
-            ${ZLIB_ARG} \
-            ${EXTRA_MPI_FLAGS} \
-            ${BUILD_MODE} \
-            ${ENABLE_DIRECT_VFD} \
-            --enable-tests=no
+        cmake -S . -B build \
+            -D CMAKE_BUILD_TYPE=Release \
+            -D CMAKE_INSTALL_PREFIX="$HDF5_DIR" \
+            -D BUILD_TESTING=OFF \
+            -D BUILD_STATIC_LIBS=OFF \
+            -D HDF5_BUILD_EXAMPLES=OFF \
+            -D HDF5_BUILD_TOOLS=OFF \
+            -D HDF5_BUILD_UTILS=OFF \
+            "${ZLIB_ARGS[@]}" \
+            "${EXTRA_MPI_FLAGS[@]}" \
+            "${ENABLE_DIRECT_VFD[@]}"
 
-        make -j "$NPROC"
-        make install
+        make -C build -j "$NPROC"
+        make -C build install
         popd
         popd
 
