@@ -1751,8 +1751,8 @@ def test_string_dtypes(setup_vfile, dt):
 def test_mismatched_fixed_string_dtypes(vfile):
     dt1 = h5py.string_dtype(length=30)
     dt2 = h5py.string_dtype(length=20)
-    with vfile.stage_version('r0') as sv:
-        ds = sv.create_dataset('x', data=["a", "b"], chunks=(1, ), dtype=dt1)
+    with vfile.stage_version("r0") as sv:
+        ds = sv.create_dataset("x", data=["a", "b"], chunks=(1,), dtype=dt1)
         ds[:1] = np.asarray(["c"], dtype=dt2)
         assert ds.dtype == dt1
         assert ds._buffer.dtype == dt1
@@ -1761,7 +1761,7 @@ def test_mismatched_fixed_string_dtypes(vfile):
         assert ds._buffer.dtype == dt1
         assert ds[:].dtype == dt1
 
-    with vfile.stage_version('r1') as sv:
+    with vfile.stage_version("r1") as sv:
         ds = sv["x"]
         assert ds.dtype == dt1
         ds[1:] = np.asarray(["f"], dtype=dt2)
