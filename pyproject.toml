@@ -151,12 +151,8 @@ build-verbosity = 1
 build-frontend = { name = "pip", args = ["--only-binary", "numpy"] }
 # This must be kept in sync with h5py/pyproject.toml, as of the exact
 # H5PY_VERSION set in .github/workflows/wheels.yml.
-# Note that it points to the fork https://github.com/deshaw/hdf5-manylinux
-# instead of the original repo https://github.com/h5py/hdf5-manylinux.
-# Pushes to the main branch can cause the published images to be overwritten,
-# so we use a fork to prevent the images from breaking overnight.
-manylinux-x86_64-image = "ghcr.io/deshaw/manylinux_2_28_x86_64-hdf5"
-manylinux-aarch64-image = "ghcr.io/deshaw/manylinux_2_28_aarch64-hdf5"
+manylinux-x86_64-image = "ghcr.io/h5py/manylinux_2_28_x86_64-hdf5"
+manylinux-aarch64-image = "ghcr.io/h5py/manylinux_2_28_aarch64-hdf5"
 
 [tool.cibuildwheel.linux]
 repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel} -L /../h5py.libs"
