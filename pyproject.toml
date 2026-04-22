@@ -187,6 +187,7 @@ ndindex = "*"
 # Needed for --no-build-isolation
 cython = "*"
 meson-python = "*"
+pkg-config = "*" # Needed with meson >=1.11
 setuptools-scm = "*"
 pip = "*"
 wheel = "*"
