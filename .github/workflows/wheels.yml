@@ -51,13 +51,6 @@ jobs:
           git commit -a -m 'Increase minimum h5py version'
           git tag -f "$TAG"
 
-      - name: Cache built HDF5 (MacOS / Windows)
-        if: runner.os == 'macOS' || runner.os == 'Windows'
-        uses: actions/cache@v5
-        with:
-          key: ${{ inputs.os }}-${{ inputs.arch }}-0-${{ hashFiles('ci/*') }}
-          path: cache/hdf5
-
       # MacOS environment setup
       - name: Update env variables (MacOS)
         if: runner.os == 'macOS'
