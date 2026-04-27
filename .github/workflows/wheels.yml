@@ -27,28 +27,17 @@ jobs:
           fetch-depth: 0 # get the non-merge commit for PRs
           fetch-tags: true # include tags to get correct version from setuptools_scm
 
-      - name: 🐍 Set up Python
+      - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: ${{ inputs.python-version }}
-
-      # MacOS environment setup
-      # libz and libhdf5 require MacOS>=14.0
-      - name: Update env variables on macos
-        if: runner.os == 'macOS'
-        run: |
-          INCLUDE_PATH=$(python -c 'import sysconfig; print(sysconfig.get_path("include"))')
-          # shellcheck disable=SC2086
-          echo "CPATH=$INCLUDE_PATH:$CPATH" >> $GITHUB_ENV
-      - name: Run cibw_before_all_macos
-        if: runner.os == 'macOS'
-        run: bash ./ci/cibw_before_all_macos.sh "${{ github.workspace }}"
+          python-version: 3.12
 
       - name: Pin h5py version
         # h5py binary wheels ship hdf5 binaries. Updating h5py very frequently
         # breaks compatibility. The only reasonable way to support wheels is a
         # hard pin of the h5py version. Users can still use conda-forge packages
         # if they want more freedom.
+        shell: bash
         run: |
           # Modifying any files checked in git will update the setuptools-scm version;
           # force setuptools-scm to return the previous version with a tag.
@@ -61,6 +50,31 @@ jobs:
           git config --global user.name "Release bot"
           git commit -a -m 'Increase minimum h5py version'
           git tag -f "$TAG"
+
+      # MacOS environment setup
+      - name: Update env variables (MacOS)
+        if: runner.os == 'macOS'
+        run: |
+          INCLUDE_PATH=$(python -c 'import sysconfig; print(sysconfig.get_path("include"))')
+          # shellcheck disable=SC2086
+          echo "CPATH=$INCLUDE_PATH:$CPATH" >> $GITHUB_ENV
+
+      - name: Run cibw_before_all_macos
+        if: runner.os == 'macOS'
+        run: bash ./ci/cibw_before_all_macos.sh "${{ github.workspace }}"
+
+      # Windows environment setup
+      - name: choco install dependencies (Windows)
+        if: runner.os == 'Windows'
+        uses: crazy-max/ghaction-chocolatey@v4
+        with:
+          args: install pkgconfiglite llvm
+
+      - name: Run cibw_before_all_windows
+        if: runner.os == 'Windows'
+        run: bash ./ci/cibw_before_all_windows.sh "${{ github.workspace }}"
+        env:
+          ARCH: ${{ inputs.arch }}
 
       # Build the wheels
       - name: Triage the build
@@ -85,7 +99,7 @@ jobs:
       - name: Remove embedded libhdf5 (MacOS)
         if: runner.os == 'macOS'
         run: zip -d ./wheelhouse/*.whl 'h5py/*'
-      - name: Remove h5py DLLs from RECORD
+      - name: Remove h5py DLLs from RECORD (Linux / MacOS)
         if: runner.os == 'Linux' || runner.os == 'macOS'
         run: |
           cd wheelhouse

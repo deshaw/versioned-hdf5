@@ -7,7 +7,7 @@ You can install Versioned HDF5 binaries via conda on Linux, MacOSX and Windows w
 
    $ conda install -c conda-forge versioned-hdf5
 
-or via pip on Linux and MacOSX with
+or via pip with
 
 .. code-block:: bash
 

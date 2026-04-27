@@ -93,6 +93,10 @@ ignore = [
   "PT011", # `pytest.raises(ValueError)` is too broad, set the `match` parameter
   "NPY002", # Replace np.random legacy functions with np.random.Generator
 ]
+exclude = [
+  # Keep this file as copied verbatim from the h5py project
+  "ci/get_hdf5_win.py",
+]
 
 [tool.ruff.lint.per-file-ignores]
 "test_*.py" = [
@@ -174,6 +178,19 @@ H5PY_ROS3 = "0"
 H5PY_DIRECT_VFD = "0"
 CPATH = "$HDF5_DIR/include:$CPATH"
 PKG_CONFIG_PATH = "$HDF5_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
+
+[tool.cibuildwheel.windows]
+repair-wheel-command = """ \
+pip install delvewheel && \
+delvewheel repair -v {wheel} && \
+mv -v {wheel} {dest_dir}
+"""
+
+[tool.cibuildwheel.windows.environment]
+CC = "clang"
+LD = "llvm-ar"
+PATH = "$HDF5_DIR/lib;$PATH"
+PKG_CONFIG_PATH = "$HDF5_DIR/lib/pkgconfig;$PKG_CONFIG_PATH"
 
 [tool.pixi.workspace]
 channels = ["https://prefix.dev/conda-forge"]
@@ -344,6 +361,7 @@ blacken-docs = "*"
 validate-pyproject = "*"
 cython-lint = "*"
 sphinx-lint = "*"
+types-requests = "*"
 
 [tool.pixi.feature.lint.tasks]
 install-git-hooks = { cmd = "lefthook install", description = "Install pre-commit hooks" }

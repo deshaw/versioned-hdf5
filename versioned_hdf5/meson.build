@@ -20,7 +20,7 @@ py.install_sources(
 # numpy 1.x -> site-packages/numpy/core/include
 npy_include_path = run_command(
     py,
-    ['-c', 'import os, numpy; print(os.path.relpath(numpy.get_include()))'],
+    ['../ci/npy_include_path.py'],
     check: true
 ).stdout().strip()
 
