@@ -295,7 +295,7 @@ llvm-tools = "=14"
 
 [tool.pixi.feature.hdf5-112]
 # hdf5 1.12.2 is the minimum version supported by h5py binaries in conda-forge.
-# On Windows it shows double-linking issues at runtime
+# On Windows it shows double-linking issues at runtime.
 platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
 
 [tool.pixi.feature.hdf5-112.dependencies]
@@ -303,16 +303,8 @@ numpy = "=1.24.4" # Old versions of h5py trigger DeprecationWarning in newer Num
 h5py = "=3.8.0"
 hdf5 = "=1.12.2"
 
-[tool.pixi.feature.hdf5-21.dependencies]
-hdf5 = "=2.1"
-ndindex = "*"
-numpy = "*"
-
-[tool.pixi.feature.hdf5-21.pypi-dependencies]
-h5py = "*"
-
-[tool.pixi.feature.hdf5-21.pypi-options]
-no-binary = ["h5py"]
+[tool.pixi.feature.hdf5-114.dependencies]
+hdf5 = "=1.14"
 
 [tool.pixi.feature.np126.dependencies]
 numpy = "=1.26"
@@ -405,7 +397,7 @@ docs = { features = ["py314", "build", "docs"] }
 lint = { features = ["lint"], no-default-feature = true }
 mindeps = { features = ["py310", "mindeps", "build", "test", "bench"], no-default-feature = true }
 hdf5-112 = { features = ["py310", "hdf5-112", "build", "test", "filters"] }
-hdf5-21 = { features = ["py314", "hdf5-21", "build", "test", "bench"], no-default-feature = true }
+hdf5-114 = { features = ["py310", "hdf5-114", "build", "test", "filters"] }
 np126 = { features = ["py310", "np126", "build", "test", "filters"] }
 np200 = { features = ["py310", "np200", "build", "test", "filters"] }
 py310 = { features = ["py310", "build", "test", "filters"] }
