@@ -1,9 +1,26 @@
 # Changelog
 
+## 2.4.0 (2026-04-28)
+
+### Major Changes
+
+- This release reinstates Linux and MacOS binary wheels and adds Windows wheels. All
+  wheels pin the exact version of h5py they were built against, in order to prevent
+  future breakages due to hdf5 ABI incompatibility. If you want more flexibility on
+  which version of h5py and hdf5 to use, you should install either from conda or
+  sources.
+
+### Minor Changes
+
+- Fix regression where a ArrayDataset of fixed-size strings is incorrectly swapped with
+  a different array of a differently sized strings.
+
 ## 2.3.1 (2026-03-05)
 
 ### Minor Changes
 
+- conda-forge packages are available for both hdf5 1.4 and 2.1.
+  The hdf5=2.1 build pins h5py>=3.16.
 - Added support for h5py >=3.16 to `Group` methods `get()`, `items()`, `values()`,
   and `repr()`
 - Fix issue where calling `resize()` to enlarge an InMemoryArrayDataset would
