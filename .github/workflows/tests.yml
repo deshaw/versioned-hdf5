@@ -7,19 +7,20 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         env:
+          # See full documentation at docs/development.md
           - mindeps # Python 3.10, NumPy 1.24.4, hdf5 1.10, h5py 3.8, ndindex 1.5.1,
           # pinned build stack
-          - hdf5-112 # Python 3.10, NumPy 1.24.4, hdf5 1.12, h5py 3.8, latest ndindex
-          - hdf5-21 # Python 3.14, hdf5 2.1, latest versions of other dependencies
-          - np126 # Python 3.10, NumPy 1.26, latest versions of other dependencies
-          - np200 # Python 3.10, NumPy 2.0, latest versions of other dependencies
+          - hdf5-112 # Python 3.10, NumPy 1.24.4, hdf5 1.12, h5py 3.8
+          - hdf5-114 # Python 3.10, NumPy 2.2, hdf5 1.14
+          - np126 # Python 3.10, NumPy 1.26
+          - np200 # Python 3.10, NumPy 2.0
           # (Note: NumPy 2.0 has special cases not present in other versions)
-          - py310 # Python 3.10, NumPy 2.2, latest versions of other dependencies
-          - py311 # Python 3.11, latest versions of all dependencies
-          - py312 # Python 3.12, latest versions of all dependencies
-          - py313 # Python 3.13, latest versions of all dependencies
-          - py314 # Python 3.14, latest versions of all dependencies
-          - h5py-dev # Python 3.14, h5py git tip
+          - py310 # Python 3.10, NumPy 2.2
+          - py311 # Python 3.11
+          - py312 # Python 3.12
+          - py313 # Python 3.13
+          - py314 # Python 3.14
+          - h5py-dev # Python 3.14, h5py git tip (from sources)
         include:
           # Minimum dependencies on other platforms. The versions of hdf5 and h5py
           # vary due to brokennes of the binaries available for such an old stack.
