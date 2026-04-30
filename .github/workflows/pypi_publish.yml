@@ -1,5 +1,7 @@
 name: Release Python Bindings to PyPI
 
+permissions: {}
+
 on:
   release:
     types: [published]
@@ -17,13 +19,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 💻 Checkout the repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           # get correct version from setuptools_scm
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
 
-      - uses: prefix-dev/setup-pixi@v0
+      - uses: prefix-dev/setup-pixi@1b2de7f3351f171c8b4dfeb558c639cb58ed4ec0 # v0
         with:
           pixi-version: v0.67.2
           cache: true
@@ -36,7 +39,7 @@ jobs:
         run: pixi r -e py314 twine-check
 
       - name: Upload sdist
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: sdist
           path: ./dist/*.tar.gz
@@ -83,7 +86,7 @@ jobs:
       id-token: write
     steps:
       - name: Retrieve wheels and sdist
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           merge-multiple: true
           path: wheels/
@@ -92,14 +95,14 @@ jobs:
         run: ls -l wheels/
 
       - name: 🧪 Publish to PyPI Testing
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
         if: ${{ inputs.test_pypi }}
         with:
           repository-url: https://test.pypi.org/legacy/
           packages-dir: wheels
 
       - name: 🎉 Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
         if: ${{ !inputs.test_pypi }}
         with:
           packages-dir: wheels
