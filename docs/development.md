@@ -72,3 +72,14 @@ At the moment, historical benchmarking is not configured.
 - To run ASV: `pixi r asv-run`
 
 These commands are available in the `default` and `mindeps` environments.
+
+## Automated Contributions and AI Policy
+
+We encourage the use of AI and automated tools to assist in code development,
+documentation, and testing. However, we ask that contributors disclose these tools and
+use them in a way that aligns with our guidelines. In particular:
+
+- Do not use tools to think or speak for you in discussions, code reviews, or any other
+  interactions.
+- Before you open a PR, you (the human) must fully review, understand, and approve
+  everything that the AI agent wrote.
