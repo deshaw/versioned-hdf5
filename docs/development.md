@@ -39,7 +39,7 @@ hdf5 2.0 is not available in conda-forge and is untested.
 
 ## Editable install
 
-All pixi environments use a editable install of versioned-hdf5. This means that after
+All pixi environments use an editable install of versioned-hdf5. This means that after
 changing any file, including Cython ones, in the `versioned_hdf5/` directory, changes
 will be immediately reflected in all commands (such as `pixi r test`).
 

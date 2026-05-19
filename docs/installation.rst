@@ -1,7 +1,7 @@
 Installation
 ============
 
-You can install Versioned HDF5 binaries via conda on Linux, MacOSX and Windows with
+You can install Versioned HDF5 binaries via conda on Linux, macOS and Windows with
 
 .. code-block:: bash
 
@@ -15,7 +15,7 @@ or via pip with
 
 .. note::
 
-   Wheels on PyPi depend on an exact h5py version. This is due to limitations of the
+   Wheels on PyPI depend on an exact h5py version. This is due to limitations of the
    wheel format. If you need a different h5py version, please either install via conda
    or build from sources.
 
@@ -31,7 +31,7 @@ When compiling versioned-hdf5 from sources, it is advised to compile h5py too:
 .. warning::
 
    Compiling versioned-hdf5 from sources while h5py is installed from pre-built
-   pypi wheels will cause runtime failures.
+   PyPI wheels will cause runtime failures.
 
 
 Dependencies

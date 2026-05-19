@@ -29,6 +29,6 @@ The bot will make a pull request to the
 automatically. You will need to be listed as a maintainer in the recipe to be
 able to merge it. If you aren't, make a PR adding yourself.
 
-Before you merge the conda-forge PR, make sure that that the minimum requirements in
+Before you merge the conda-forge PR, make sure that the minimum requirements in
 `versioned-hdf5-feedstock/recipe/meta.yaml` are still aligned to those listed in
 `versioned-hdf5/pyproject.toml`.

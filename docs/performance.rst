@@ -20,7 +20,7 @@ In order to analyze this, we will consider test files created with a variable nu
 With each new version a certain number of rows is added, removed, and modified. For
 these tests, all changes are made to elements chosen according to a `power law
 <https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.powerlaw.html>`__
-which biases the modifications towards the end of the array, simulating a possible use case of modifying more recent results in a given timeseries.
+which biases the modifications towards the end of the array, simulating a possible use case of modifying more recent results in a given time series.
 
 The tests are as follows:
 

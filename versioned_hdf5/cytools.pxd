@@ -3,7 +3,7 @@
 
 from libc.stdint cimport uint64_t
 
-# Centralized definition of hsize_t, in accordance with libhd5:
+# Centralized definition of hsize_t, in accordance with libhdf5:
 # https://github.com/HDFGroup/hdf5/blob/6b43197b0817596f47670c6b55d26ff7f86d6bd9/src/H5public.h#L301
 #
 # versioned_hdf5 uses the same datatype for indexing as libhdf5. Notably, this differs

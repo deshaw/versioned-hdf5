@@ -122,7 +122,7 @@ def commit_version(
     # Check all dataset names for forbidden names before attempting any data writes
     for name in datasets:
         if name in FORBIDDEN_NAMES:
-            raise ValueError(f"{name} is not a forbidden dataset name; aborting.")
+            raise ValueError(f"{name} is a forbidden dataset name; aborting.")
 
     for name, data in datasets.items():
         if isinstance(data, DatasetWrapper):

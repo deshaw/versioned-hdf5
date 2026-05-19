@@ -298,7 +298,7 @@ from versioned_hdf5 import VersionedHDF5File
 f = h5py.File(...)
 file = VersionedHDF5File(f)
 
-# new_version and prev_version are strings corresponding the the version names
+# new_version and prev_version are strings corresponding to the version names
 # for the new and previous versions
 with file.stage_version(new_version, prev_version) as g:
     g['dataset'][0] = 1 # Modify a dataset from prev_version

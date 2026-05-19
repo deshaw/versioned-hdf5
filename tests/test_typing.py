@@ -77,7 +77,7 @@ def test_array_protocol_h5_dataset(h5file):
 
 @pytest.mark.skipif(Version(h5py.__version__) < Version("3.13"), reason="h5py#2550")
 def test_array_protocol_h5_astypeview(h5file):
-    """Test that h5py AsTypeView is a ArrayProtocol"""
+    """Test that h5py AsTypeView is an ArrayProtocol"""
     dset = h5file.create_dataset("x", shape=(10,), dtype="i2")
     view = dset.astype("i4")
     assert isinstance(view, ArrayProtocol)
