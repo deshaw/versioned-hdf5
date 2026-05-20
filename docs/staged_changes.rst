@@ -451,5 +451,5 @@ API interaction
 
 
 .. _H5Sselect_hyperslab: https://support.hdfgroup.org/documentation/hdf5/latest/group___h5_s.html#ga6adfdf1b95dc108a65bf66e97d38536d
-.. _H5DRead: https://support.hdfgroup.org/documentation/hdf5/latest/group___h5_d.html#ga8287d5a7be7b8e55ffeff68f7d26811c
+.. _H5Dread: https://support.hdfgroup.org/documentation/hdf5/latest/group___h5_d.html#ga8287d5a7be7b8e55ffeff68f7d26811c
 .. _h5py.Dataset.astype(): https://docs.h5py.org/en/stable/high/dataset.html#h5py.Dataset.astype

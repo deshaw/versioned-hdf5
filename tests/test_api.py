@@ -1464,7 +1464,7 @@ def test_fillvalue(vfile):
         assert_equal(group["data"][DEFAULT_CHUNK_SIZE + 2 :], fillvalue)
 
 
-def test_multidimsional(vfile):
+def test_multidimensional(vfile):
     data = np.ones((2 * DEFAULT_CHUNK_SIZE, 5))
 
     with vfile.stage_version("version1") as g:

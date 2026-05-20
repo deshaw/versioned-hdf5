@@ -208,7 +208,7 @@ class VersionedHDF5File:
         g = self._versions[version]
         if not g.attrs["committed"]:
             raise ValueError(
-                "Version groups cannot accessed from the VersionedHDF5File object "
+                "Version groups cannot be accessed from the VersionedHDF5File object "
                 "before they are committed."
             )
         if self.f.file.mode == "r":
@@ -220,7 +220,7 @@ class VersionedHDF5File:
         g = self._versions[version]
         if not g.attrs["committed"]:
             raise ValueError(
-                "Version groups cannot accessed from the VersionedHDF5File object "
+                "Version groups cannot be accessed from the VersionedHDF5File object "
                 "before they are committed."
             )
         if self.f.file.mode == "r":
@@ -431,7 +431,7 @@ class VersionedHDF5File:
         -------
         dict[tuple[slice, ...], tuple[np.ndarray, ...]]
             A dictionary where the keys are slices that changed from version1 to
-            version2, the the values are tuples containing
+            version2, the values are tuples containing
 
                 (data_in_version1, data_in_version2)
         """

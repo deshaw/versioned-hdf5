@@ -10,7 +10,7 @@ Script for downloading and building HDF5 on Windows
 This does not support MPI, nor non-Windows OSes
 
 This script may not completely clean up after itself, it is designed to run in a
-CI environment which thrown away each time
+CI environment which is thrown away each time
 """
 
 from os import environ, makedirs, walk, getcwd, chdir
