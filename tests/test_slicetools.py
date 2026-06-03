@@ -255,15 +255,26 @@ def test_read_many_slices(h5file, args):
     # h5file fixture is not reset between hypothesis examples
     if "a" in h5file:
         del h5file["a"]
-    dset = h5file.create_dataset("a", data=src)
+    if "b" in h5file:
+        del h5file["b"]
+    src_dset = h5file.create_dataset("a", data=src)
+    dst_dset = h5file.create_dataset("b", shape=shape_to, dtype=src.dtype, fillvalue=0)
 
-    # Test h5py->numpy
+    # Test h5py->NumPy
     for kwargs in ({}, {"fast": True}, {"fast": False}):
         dst = np.zeros(shape_to, dtype=src.dtype)
         read_many_slices(
-            dset, dst, src_start, dst_start, count, src_step, dst_step, **kwargs
+            src_dset, dst, src_start, dst_start, count, src_step, dst_step, **kwargs
         )
         np.testing.assert_array_equal(dst, expect, strict=True)
+
+    # Test NumPy->h5py
+    for kwargs in ({}, {"fast": True}, {"fast": False}):
+        dst_dset[:] = 0
+        read_many_slices(
+            src, dst_dset, src_start, dst_start, count, src_step, dst_step, **kwargs
+        )
+        np.testing.assert_array_equal(dst_dset[:], expect, strict=True)
 
 
 @pytest.mark.parametrize("step", [1, 2, 3, 4, 5, 6])
@@ -438,14 +449,10 @@ def test_read_many_slices_noncontiguous_dst(h5file):
     np.testing.assert_equal(dst, expect)
 
     # h5py src only works in slow mode
-    with pytest.raises(NotImplementedError, match="contiguous"):
+    with pytest.raises(ValueError, match="fast transfer is not possible"):
         read_many_slices(
             src, dst[::2, ::3], [(0, 0), (2, 0)], [(0, 0), (2, 0)], (2, 4), fast=True
         )
-
-    # For the sake of awareness, user must explicitly pass fast=False
-    with pytest.raises(NotImplementedError, match="contiguous"):
-        read_many_slices(src, dst[::2, ::3], [(0, 0), (2, 0)], [(0, 0), (2, 0)], (2, 4))
 
 
 def test_read_many_slices_not_fast_read_ok(h5file):
@@ -498,11 +505,11 @@ def test_read_many_slices_fail():
         read_many_slices(np.array(0), np.array(0), [[]], [[]], [[]])
 
     # src.ndim != dst.ndim  # noqa: ERA001
-    with pytest.raises(ValueError, match="same dtype and dimensionality"):
+    with pytest.raises(ValueError, match="dimensionality mismatch"):
         read_many_slices(src.reshape(2, 2), dst, [[0]], [[0]], [[1]])
 
     # src.dtype != dst.dtype  # noqa: ERA001
-    with pytest.raises(ValueError, match="same dtype and dimensionality"):
+    with pytest.raises(ValueError, match="dtype mismatch"):
         read_many_slices(src.astype(float), dst, [[0]], [[0]], [[1]])
 
     # Fail to broadcast coordinates
