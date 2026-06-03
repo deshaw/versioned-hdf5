@@ -148,7 +148,7 @@ disallow_untyped_defs = false
 
 [tool.codespell]
 skip = "./docs/_build,./pixi.lock"
-ignore-words-list = "COO"
+ignore-words-list = "COO,nd"
 
 [tool.cibuildwheel]
 build-verbosity = 1
