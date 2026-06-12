@@ -7,6 +7,7 @@ from h5py import h5d
 
 cimport cython
 cimport numpy as np
+from numpy cimport NPY_MAXDIMS
 
 import numpy as np
 from cython import void
@@ -118,10 +119,6 @@ cdef extern from "hdf5.h":
         const hsize_t* count,
         const hsize_t* block,
     ) nogil
-
-# https://github.com/numpy/numpy/blob/b0a52b76c2bebe5c237722589d13bf02affa9c43/numpy/core/include/numpy/ndarraytypes.h#L30
-cdef enum:
-    NPY_MAXDIMS = 32
 
 np.import_array()
 
