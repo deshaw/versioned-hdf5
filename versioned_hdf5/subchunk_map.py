@@ -33,12 +33,6 @@ if cython.compiled:  # pragma: nocover
         stop2count,
     )
 
-if cython.compiled:  # pragma: nocover
-    from cython.cimports.versioned_hdf5.cytools import (  # type: ignore
-        ceil_a_over_b,
-        smallest_step_after,
-    )
-
 
 # This is an abstract class, which should inherit from abc.ABC
 # or have metaclass=abc.ABCMeta. Neither are supported by Cython though.
@@ -951,8 +945,7 @@ def read_many_slices_params_nd(
     # Python object.
     slices_refs = []
     # Can't define module-level constants in pure-python mode
-    # https://github.com/numpy/numpy/blob/b0a52b76c2bebe5c237722589d13bf02affa9c43/numpy/core/include/numpy/ndarraytypes.h#L30
-    # NPY_MAXDIMS = 32  # noqa: ERA001
+    # from numpy cimport NPY_MAXDIMS  # 32
     slices: hsize_t[:, :][32]  # type: ignore
     if not cython.compiled:
         slices = [None] * ndim
