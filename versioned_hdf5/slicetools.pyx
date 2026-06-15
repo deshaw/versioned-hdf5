@@ -648,7 +648,8 @@ cdef void _read_many_slices_h5_np (
                 dst_space_id = file_space_id
                 io_func = cython.cast(
                     # Force const void* buffer to void*
-                    "herr_t (*)(hid_t,  hid_t,  hid_t,  hid_t,  hid_t,  void *) nogil",
+                    "herr_t (*)(hid_t,  hid_t,  hid_t,  hid_t,  hid_t,  void *) "
+                    "noexcept nogil",
                     H5Dwrite,
                 )
             else:
