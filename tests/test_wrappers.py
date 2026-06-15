@@ -152,8 +152,10 @@ def test_InMemorySparseDataset_getitem(h5file):
 
 @pytest.mark.parametrize(
     ("oldshape", "newshape"),
-    itertools.combinations_with_replacement(
-        itertools.product(range(5, 25, 5), repeat=3), 2
+    list(
+        itertools.combinations_with_replacement(
+            itertools.product(range(5, 25, 5), repeat=3), 2
+        )
     ),
 )
 @pytest.mark.slow
