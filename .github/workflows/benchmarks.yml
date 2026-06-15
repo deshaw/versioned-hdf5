@@ -1,7 +1,7 @@
 name: Benchmarks
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
     branches: ["*"]
   workflow_dispatch: # allows you to trigger manually
