@@ -13,6 +13,12 @@ on:
         description: "Test release: publish on test.pypi.org"
         default: false
 
+# When this workflow is queued, automatically cancel any previous running
+# or pending jobs from the same branch
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-sdist:
     name: Build sdist

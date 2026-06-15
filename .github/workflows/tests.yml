@@ -1,5 +1,17 @@
 name: Tests
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: ["*"]
+  workflow_dispatch: # allows you to trigger manually
+
+# When this workflow is queued, automatically cancel any previous running
+# or pending jobs from the same branch
+concurrency:
+  group: pytest-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions: {}
 jobs:
   tests:
