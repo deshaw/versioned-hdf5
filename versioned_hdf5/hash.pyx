@@ -7,8 +7,7 @@ in a single call with an API that closely mirrors
 Output hashes are identical to the legacy :mod:`versioned_hdf5.hashtable`.
 The invariant is enforced by tests/test_hash_legacy_compat.py.
 
-The actual SHA256 is computed by the vendored sha256.c (public-domain B-Con
-implementation), with no dependency on libcrypto or any other external library.
+The actual SHA256 is computed by OpenSSL's ``libcrypto`` through the EVP API.
 """
 import numpy as np
 from numpy cimport npy_intp, NPY_MAXDIMS
@@ -32,13 +31,21 @@ cdef extern from *:
     """
     uint64_t htole64(uint64_t x)
 
-cdef extern from "sha256.h":
-    ctypedef struct SHA256_CTX:
+cdef extern from "openssl/evp.h":
+    # Opaque handle types, defined in the header
+    ctypedef struct EVP_MD_CTX:
+        pass
+    ctypedef struct EVP_MD:
+        pass
+    ctypedef struct ENGINE:
         pass
 
-    void sha256_init(SHA256_CTX* ctx) nogil
-    void sha256_update(SHA256_CTX* ctx, const void* data, size_t cnt) nogil
-    void sha256_final(SHA256_CTX* ctx, unsigned char* hash) nogil
+    EVP_MD_CTX* EVP_MD_CTX_new() nogil
+    void EVP_MD_CTX_free(EVP_MD_CTX* ctx) nogil
+    const EVP_MD* EVP_sha256() nogil
+    int EVP_DigestInit_ex(EVP_MD_CTX* ctx, const EVP_MD* type, ENGINE* impl) nogil
+    int EVP_DigestUpdate(EVP_MD_CTX* ctx, const void* d, size_t cnt) nogil
+    int EVP_DigestFinal_ex(EVP_MD_CTX* ctx, unsigned char* md, unsigned int* s) nogil
 
 
 cpdef void hash_slab(
@@ -138,7 +145,7 @@ cpdef void hash_slab(
             )
 
 
-cdef void _hash_shape(SHA256_CTX* ctx, hsize_t* shape, int ndim) noexcept nogil:
+cdef void _hash_shape(EVP_MD_CTX* ctx, hsize_t* shape, int ndim) noexcept nogil:
     """Hash `str(tuple(shape))`.
 
     This is done with C snprintf to avoid any Python interaction.
@@ -168,10 +175,10 @@ cdef void _hash_shape(SHA256_CTX* ctx, hsize_t* shape, int ndim) noexcept nogil:
             shape[i],
         )
 
-    sha256_update(ctx, shape_buf, nchars)
+    EVP_DigestUpdate(ctx, shape_buf, nchars)
 
 
-cdef void _hash_chunk_from_ptr(
+cdef int _hash_chunk_from_ptr(
     const unsigned char* data_ptr,
     uint64_t* out,
     hsize_t[::1] shape,
@@ -179,12 +186,12 @@ cdef void _hash_chunk_from_ptr(
     hsize_t itemsize,
     npy_intp* strides,
     size_t total_bytes,
-) noexcept nogil:
+) except -1 nogil:
     """Hash a single chunk given a raw pointer and strides.
     The chunk must be not object dtype, not StringDType, not broadcasted, and
     C-contiguous at least along the innermost axis.
     """
-    cdef SHA256_CTX ctx
+    cdef EVP_MD_CTX* ctx
     cdef hsize_t[NPY_MAXDIMS] outer_idx
     cdef hsize_t outer_total
     cdef hsize_t inner_size
@@ -199,41 +206,53 @@ cdef void _hash_chunk_from_ptr(
             is_contiguous = False
             break
 
-    sha256_init(&ctx)
+    ctx = EVP_MD_CTX_new()
+    if ctx == NULL:
+        return -1
+    try:
+        if EVP_DigestInit_ex(ctx, EVP_sha256(), NULL) != 1:
+            return -1
 
-    if is_contiguous:
-        # Single contiguous blob
-        sha256_update(&ctx, data_ptr, total_bytes)
-    else:
-        # Non-contiguous: walk in C-order, hash each row (innermost axis).
-        # The innermost axis is contiguous for C-order arrays,
-        # so each "row" (fixed indices on axes 0..ndim-2, all indices on
-        # axis ndim-1) is a single contiguous run.
-        inner_size = itemsize * shape[ndim - 1]
+        if is_contiguous:
+            # Single contiguous blob
+            if total_bytes and EVP_DigestUpdate(ctx, data_ptr, total_bytes) != 1:
+                return -1
+        else:
+            # Non-contiguous: walk in C-order, hash each row (innermost axis).
+            # The innermost axis is contiguous for C-order arrays,
+            # so each "row" (fixed indices on axes 0..ndim-2, all indices on
+            # axis ndim-1) is a single contiguous run.
+            inner_size = itemsize * shape[ndim - 1]
 
-        # Iterate over outer dimensions (axes 0 .. ndim-2)
-        outer_total = 1
-        for j in range(ndim - 1):
-            outer_idx[j] = 0
-            outer_total *= shape[j]
-
-        for outer in range(outer_total):
-            # Compute byte offset for current outer position
-            offset = 0
+            # Iterate over outer dimensions (axes 0 .. ndim-2)
+            outer_total = 1
             for j in range(ndim - 1):
-                offset += outer_idx[j] * strides[j]
-
-            sha256_update(&ctx, data_ptr + offset, inner_size)
-
-            # Advance outer indices
-            for j in range(ndim - 2, -1, -1):
-                outer_idx[j] += 1
-                if outer_idx[j] < shape[j]:
-                    break
                 outer_idx[j] = 0
+                outer_total *= shape[j]
 
-    _hash_shape(&ctx, &shape[0], ndim)
-    sha256_final(&ctx, <unsigned char*>out)
+            for outer in range(outer_total):
+                # Compute byte offset for current outer position
+                offset = 0
+                for j in range(ndim - 1):
+                    offset += outer_idx[j] * strides[j]
+
+                if EVP_DigestUpdate(ctx, data_ptr + offset, inner_size) != 1:
+                    return -1
+
+                # Advance outer indices
+                for j in range(ndim - 2, -1, -1):
+                    outer_idx[j] += 1
+                    if outer_idx[j] < shape[j]:
+                        break
+                    outer_idx[j] = 0
+
+        _hash_shape(ctx, &shape[0], ndim)
+        if EVP_DigestFinal_ex(ctx, <unsigned char*>out, NULL) != 1:
+            return -1
+    finally:
+        EVP_MD_CTX_free(ctx)
+
+    return 0
 
 
 cdef void _hash_object_chunk(
@@ -246,31 +265,41 @@ cdef void _hash_object_chunk(
 
     Object data forces us to hold the GIL throughout.
     """
-    cdef SHA256_CTX ctx
+    cdef EVP_MD_CTX* ctx = EVP_MD_CTX_new()
+    if ctx == NULL:
+        raise MemoryError("EVP_MD_CTX_new() failed")
+
     cdef bytes value_b
     cdef uint64_t nbytes_he
     cdef uint64_t nbytes_le
 
-    sha256_init(&ctx)
+    try:
+        if EVP_DigestInit_ex(ctx, EVP_sha256(), NULL) != 1:
+            raise RuntimeError("OpenSSL SHA256 failed")
 
-    # Ensure StringDType and object strings produce the same hash
-    # TODO speed this up with native C NumPy APIs
-    if data.dtype.kind == "T":
-        data = data.astype(object)
+        # Ensure StringDType and object strings produce the same hash
+        # TODO speed this up with native C NumPy APIs
+        if data.dtype.kind == "T":
+            data = data.astype(object)
 
-    for value in data.flat:
-        if isinstance(value, str):
-            value_b = value.encode("utf-8")
-        elif isinstance(value, bytes):
-            value_b = value
-        else:
-            raise ValueError(f"Object array contains unsupported type={type(value)}")
+        for value in data.flat:
+            if isinstance(value, str):
+                value_b = value.encode("utf-8")
+            elif isinstance(value, bytes):
+                value_b = value
+            else:
+                raise ValueError(f"Object array contains unsupported type={type(value)}")
 
-        nbytes_he = len(value_b)  # host-endian
-        # On x86 and ARM, this is a no-op. On PowerPC, swap endianness
-        nbytes_le = htole64(nbytes_he)  # little-endian
-        sha256_update(&ctx, &nbytes_le, 8)
-        sha256_update(&ctx, <const char*>value_b, nbytes_he)
+            nbytes_he = len(value_b)  # host-endian
+            # On x86 and ARM, this is a no-op. On PowerPC, swap endianness
+            nbytes_le = htole64(nbytes_he)  # little-endian
+            if EVP_DigestUpdate(ctx, &nbytes_le, 8) != 1:
+                raise RuntimeError("OpenSSL SHA256 failed")
+            if EVP_DigestUpdate(ctx, <const char*>value_b, nbytes_he) != 1:
+                raise RuntimeError("OpenSSL SHA256 failed")
 
-    _hash_shape(&ctx, <hsize_t*>data.shape, data.ndim)
-    sha256_final(&ctx, <unsigned char*>out)
+        _hash_shape(ctx, <hsize_t*>data.shape, data.ndim)
+        if EVP_DigestFinal_ex(ctx, <unsigned char*>out, NULL) != 1:
+            raise RuntimeError("OpenSSL SHA256 failed")
+    finally:
+        EVP_MD_CTX_free(ctx)

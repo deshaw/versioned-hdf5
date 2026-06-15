@@ -176,7 +176,7 @@ CFLAGS = "-g1"
 [tool.cibuildwheel.macos]
 # https://cibuildwheel.pypa.io/en/stable/faq/#macos-passing-dyld_library_path-to-delocate
 repair-wheel-command = """\
-DYLD_FALLBACK_LIBRARY_PATH=$HDF5_DIR/lib \
+DYLD_FALLBACK_LIBRARY_PATH=$HDF5_DIR/lib:$OPENSSL_DIR/lib \
 delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel} \
 -L ../h5py/.dylibs \
 """
@@ -184,21 +184,29 @@ delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel} \
 [tool.cibuildwheel.macos.environment]
 H5PY_ROS3 = "0"
 H5PY_DIRECT_VFD = "0"
-CPATH = "$HDF5_DIR/include:$CPATH"
-PKG_CONFIG_PATH = "$HDF5_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
+CPATH = "$HDF5_DIR/include:$OPENSSL_DIR/include:$CPATH"
+PKG_CONFIG_PATH = "$HDF5_DIR/lib/pkgconfig:$OPENSSL_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
 
 [tool.cibuildwheel.windows]
+# delvewheel vendors libcrypto (OpenSSL) into the wheel so it stays self-contained;
+# h5py does NOT ship libcrypto. hdf5/hdf5_hl are excluded because, like on Linux/macOS,
+# they are provided at runtime by the installed h5py, which prepends its own package
+# directory to the DLL search path (os.add_dll_directory) when imported.
+# NB: the repaired wheel must be written to {dest_dir}; the previous `mv {wheel}` shipped
+# the *unrepaired* wheel, so nothing was ever vendored.
 repair-wheel-command = """ \
 pip install delvewheel && \
-delvewheel repair -v {wheel} && \
-mv -v {wheel} {dest_dir}
+delvewheel repair -v -w {dest_dir} \
+--add-path \"$OPENSSL_DIR/bin\" \
+--exclude hdf5.dll --exclude hdf5_hl.dll \
+{wheel} \
 """
 
 [tool.cibuildwheel.windows.environment]
 CC = "clang"
 LD = "llvm-ar"
-PATH = "$HDF5_DIR/lib;$PATH"
-PKG_CONFIG_PATH = "$HDF5_DIR/lib/pkgconfig;$PKG_CONFIG_PATH"
+PATH = "$HDF5_DIR/lib;$OPENSSL_DIR/bin;$PATH"
+PKG_CONFIG_PATH = "$HDF5_DIR/lib/pkgconfig;$OPENSSL_DIR/lib/pkgconfig;$PKG_CONFIG_PATH"
 
 [tool.pixi.workspace]
 channels = ["https://prefix.dev/conda-forge"]
@@ -207,6 +215,7 @@ platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64", "win-64"]
 [tool.pixi.dependencies]
 h5py = "*"
 ndindex = "*"
+openssl = "*" # libcrypto, for the SHA256 hasher in versioned_hdf5/hash.pyx
 
 [tool.pixi.feature.build.dependencies]
 # Needed for --no-build-isolation
@@ -219,6 +228,7 @@ wheel = "*"
 python-build = "*"
 twine = "*"
 zlib = "*"
+openssl = "*" # libcrypto, for the SHA256 hasher in versioned_hdf5/hash.pyx
 
 [tool.pixi.feature.build.target.linux.dependencies]
 gcc = "*"
@@ -265,6 +275,7 @@ setuptools-scm = "=8.1"
 cython = "=3.0.10"
 numpy = "=1.24.4"
 ndindex = "=1.5.1"
+openssl = "=1.1.1s"
 
 [tool.pixi.feature.mindeps.target.linux-64.dependencies] # Intel
 # Note: apt on Ubuntu 24.04 (ubuntu-latest github runner) installs
@@ -334,6 +345,7 @@ python = "=3.14"
 numpy = "*"
 hdf5 = "*"
 ndindex = "*"
+openssl = "*"
 
 [tool.pixi.feature.h5py-dev.pypi-dependencies]
 h5py = { git = "https://github.com/h5py/h5py.git" }

@@ -126,6 +126,7 @@ rever/
 .asv/
 
 # Cython byproducts
+versioned_hdf5/*.c
 versioned_hdf5/*.html
 versioned_hdf5/*.so
 # Meson temporary build files

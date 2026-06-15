@@ -70,7 +70,7 @@ jobs:
         if: runner.os == 'Windows'
         uses: crazy-max/ghaction-chocolatey@dff3862348493b11fba2fbc49147b6d2dfe09b66 # v4
         with:
-          args: install pkgconfiglite llvm
+          args: install pkgconfiglite llvm openssl
 
       - name: Run cibw_before_all_windows
         if: runner.os == 'Windows'
@@ -97,24 +97,30 @@ jobs:
           CIBW_BEFORE_BUILD: ${{ env.CIBW_BEFORE_BUILD }}
           CIBW_BUILD_FRONTEND: ${{ env.CIBW_BUILD_FRONTEND }}
           CIBW_PRERELEASE_PYTHONS: ${{ env.CIBW_PRERELEASE_PYTHONS }}
-          CIBW_BEFORE_BUILD_LINUX: yum install -y zlib-devel
+          CIBW_BEFORE_BUILD_LINUX: yum install -y zlib-devel openssl-devel
 
-      # Remove spurious libraries added by auditwheels/delocate in the repair step
+      # Remove libhdf5 (and its deps libaec/libsz) embedded by auditwheel/delocate in
+      # the repair step: at runtime these are provided by the installed h5py wheel,
+      # which our extensions' RPATH points at (h5py.libs / h5py/.dylibs).
+      # KEEP libcrypto: h5py does NOT ship it, so the wheel must remain self-contained
+      # for OpenSSL (used by versioned_hdf5/hash.pyx). The repair tools vendor libcrypto
+      # into the same shared directory; it merges harmlessly with h5py's own libs.
       - name: Remove embedded libhdf5 (Linux)
         if: runner.os == 'Linux'
-        run: zip -d ./wheelhouse/*.whl 'h5py.libs/*'
+        run: zip -d ./wheelhouse/*.whl 'h5py.libs/*' -x 'h5py.libs/libcrypto*'
       - name: Remove embedded libhdf5 (MacOS)
         if: runner.os == 'macOS'
-        run: zip -d ./wheelhouse/*.whl 'h5py/*'
+        run: zip -d ./wheelhouse/*.whl 'h5py/*' -x 'h5py/.dylibs/libcrypto*'
       - name: Remove h5py DLLs from RECORD (Linux / MacOS)
         if: runner.os == 'Linux' || runner.os == 'macOS'
         run: |
           cd wheelhouse
           unzip ./*.whl '*/RECORD'
+          # Drop RECORD entries for the libs we deleted above, but keep libcrypto.
+          # awk (not sed) for portability between GNU (Linux) and BSD (macOS).
           echo "Removing lines:"
-          sed -n '/^h5py/p' ./*/RECORD
-          # No sed -i available on MacOS
-          sed '/^h5py/d' ./*/RECORD > RECORD.new
+          awk '/^h5py/ && !/libcrypto/' ./*/RECORD
+          awk '!(/^h5py/ && !/libcrypto/)' ./*/RECORD > RECORD.new
           mv -v RECORD.new ./*/RECORD
           zip ./*.whl ./*/RECORD
 
