@@ -12,10 +12,13 @@ ZLIB_VERSION="1.3.2"
 ZLIB_DIR="zlib-$ZLIB_VERSION"
 
 if [ ! -d "$ZLIB_DIR" ]; then
-  curl -sLO https://zlib.net/fossils/$ZLIB_DIR.tar.gz
-  tar -xzf $ZLIB_DIR.tar.gz && rm $ZLIB_DIR.tar.gz
+  
+  # zlib download is highly flaky; use a copy saved in this repo
+  # curl -sLO https://zlib.net/fossils/$ZLIB_DIR.tar.gz
+  tar -xzf ci/$ZLIB_DIR.tar.gz
 fi
 
+echo "Building zlib..."
 cmake -S "$ZLIB_DIR" -B build -G "Visual Studio 17 2022" \
 -DCMAKE_BUILD_TYPE=Release \
 -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX"
