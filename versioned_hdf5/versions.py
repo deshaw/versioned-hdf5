@@ -274,8 +274,8 @@ def get_version_by_timestamp(f, timestamp, exact=False):
     # possible that all non-first versions have the same timestamp of
     # __first_version__. Do not accidentally discard them.
     # In case of multiple "best match" versions with identical timestamps,
-    # return the first one returned by h5py (typically in alphabetical order;
-    # however that's an implementation detail).
+    # return the first one yielded by iterating the versions group (iteration
+    # order is not guaranteed by HDF5/h5py).
     for version in versions:
         if version == "__first_version__":
             continue
