@@ -60,9 +60,9 @@ else
                 export MACOSX_DEPLOYMENT_TARGET="10.9"
             fi
 
-            pushd /tmp
-            curl -sLO https://zlib.net/fossils/zlib-$ZLIB_VERSION.tar.gz
-            tar xzf zlib-$ZLIB_VERSION.tar.gz
+            # zlib download is highly flaky; use a saved copy in the git repo
+            # curl -sLO https://zlib.net/fossils/zlib-$ZLIB_VERSION.tar.gz
+            tar xzf ci/zlib-$ZLIB_VERSION.tar.gz
             cd zlib-$ZLIB_VERSION
             ./configure --prefix="$HDF5_DIR"
             make
