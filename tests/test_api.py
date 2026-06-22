@@ -2069,7 +2069,14 @@ def test_sparse_large(vfile):
 
 
 def test_no_recursive_version_group_access(vfile):
-    timestamp1 = datetime.datetime.now(datetime.timezone.utc)
+    # Put version1 clearly in the past. Otherwise, on platforms with coarse
+    # datetime.now() resolution (notably Windows + Python 3.10/3.11), version1's
+    # timestamp can collide with the placeholder timestamp of the still-open
+    # version2 group, so the timestamp lookup below resolves to version1 instead
+    # of the uncommitted version2 and the expected ValueError is not raised.
+    timestamp1 = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+        hours=1
+    )
     with vfile.stage_version("version1", timestamp=timestamp1) as g:
         g.create_dataset("test", data=[1, 2, 3])
 
