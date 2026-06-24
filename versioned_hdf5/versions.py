@@ -268,23 +268,25 @@ def get_version_by_timestamp(f, timestamp, exact=False):
         raise TypeError(
             "timestamp must be either a datetime.datetime or numpy.datetime64 object"
         )
-    best_match = "__first_version__"
-    best_ts = versions[best_match].attrs["timestamp"]
+    best_match = None
+    best_ts = None
+    # Note: Due to low time resolution on Windows + Python 3.10/3.11, it is
+    # possible that all non-first versions have the same timestamp of
+    # __first_version__. Do not accidentally discard them.
+    # In case of multiple "best match" versions with identical timestamps,
+    # return the first one yielded by iterating the versions group (iteration
+    # order is not guaranteed by HDF5/h5py).
     for version in versions:
+        if version == "__first_version__":
+            continue
         version_ts = versions[version].attrs["timestamp"]
-        if version != "__first_version__":
-            if exact:
-                if ts == version_ts:
-                    return version
-            else:
-                if ts == version_ts:
-                    return version
-                # Find the version whose timestamp is closest to ts and before
-                # it.
-                if best_ts < version_ts <= ts:
-                    best_match = version
-                    best_ts = version_ts
-    if best_match == "__first_version__":
+        if version_ts == ts:
+            return version
+        # Find the version whose timestamp is closest to ts and before it.
+        if not exact and version_ts < ts and (best_ts is None or best_ts < version_ts):
+            best_match = version
+            best_ts = version_ts
+    if best_match is None:
         if exact:
             raise KeyError(f"Version with timestamp {timestamp} not found")
         raise KeyError(f"Version with timestamp before {timestamp} not found")
