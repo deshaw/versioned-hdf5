@@ -155,8 +155,16 @@ build-verbosity = 1
 build-frontend = { name = "pip", args = ["--only-binary", "numpy"] }
 # This must be kept in sync with h5py/pyproject.toml, as of the exact
 # H5PY_VERSION set in .github/workflows/wheels.yml.
-manylinux-x86_64-image = "ghcr.io/h5py/manylinux_2_28_x86_64-hdf5"
-manylinux-aarch64-image = "ghcr.io/h5py/manylinux_2_28_aarch64-hdf5"
+#
+# Pinned to a digest, NOT :latest. We strip the libhdf5 we link against and rely on
+# the one bundled in the runtime h5py wheel (see wheels.yml). That only works if our
+# extensions are built against a byte-identical libhdf5 to the one published h5py
+# ships, so auditwheel mangles it to the same SONAME. The h5py build image floats on
+# :latest and is rebuilt independently; any rebuild desynchronizes the two and breaks
+# `import versioned_hdf5` with a missing libhdf5-<hash>.so. These digests are the last
+# builds matching h5py==3.16.0; bump them in lockstep with H5PY_VERSION.
+manylinux-x86_64-image = "ghcr.io/h5py/manylinux_2_28_x86_64-hdf5@sha256:41f33b18faa7516c2f1cec0f56e8e59e6c6ff8c6fc96954043501296be4f9b18"
+manylinux-aarch64-image = "ghcr.io/h5py/manylinux_2_28_aarch64-hdf5@sha256:692fd32a307b8d18c0250eb0927fb605beb1532e3113c8da47e93da0d50c6d14"
 
 [tool.cibuildwheel.linux]
 repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel} -L /../h5py.libs"

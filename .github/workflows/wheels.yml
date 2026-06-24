@@ -63,7 +63,7 @@ jobs:
 
       - name: Run cibw_before_all_macos
         if: runner.os == 'macOS'
-        run: bash ./ci/cibw_before_all_macos.sh "${{ github.workspace }}"
+        run: ci/cibw_before_all_macos.sh "${{ github.workspace }}"
 
       # Windows environment setup
       - name: choco install dependencies (Windows)
@@ -74,13 +74,15 @@ jobs:
 
       - name: Run cibw_before_all_windows
         if: runner.os == 'Windows'
-        run: bash ./ci/cibw_before_all_windows.sh "${{ github.workspace }}"
+        shell: bash
+        run: ci/cibw_before_all_windows.sh "${{ github.workspace }}"
         env:
           ARCH: ${{ inputs.arch }}
 
       # Build the wheels
       - name: Triage the build
-        run: bash ./ci/triage_build.sh "$ARCH" "${{ github.event.pull_request.head.sha || github.sha }}" "$PYTHONVERSION"
+        shell: bash
+        run: ci/triage_build.sh "$ARCH" "${{ github.event.pull_request.head.sha || github.sha }}" "$PYTHONVERSION"
         env:
           ARCH: ${{ inputs.arch }}
           PYTHONVERSION: ${{ inputs.python-version }}
