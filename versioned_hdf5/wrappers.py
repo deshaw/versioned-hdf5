@@ -703,18 +703,7 @@ class InMemoryDataset(BufferMixin, FiltersMixin, Dataset):
         self.id.shape = new_shape
 
     @with_phil
-    def __getitem__(
-        self,
-        args: (
-            str
-            | slice
-            | tuple
-            | list[int]
-            | list[bool]
-            | np.ndarray
-            | h5r.RegionReference
-        ),
-    ) -> np.ndarray:
+    def __getitem__(self, args):
         """Read a slice from the HDF5 dataset given by the index.
 
         Takes slices and recarray-style field names (more than one is
