@@ -67,10 +67,30 @@ jobs:
 
       # Windows environment setup
       - name: choco install dependencies (Windows)
+        # The chocolatey community feed (community.chocolatey.org) rate-limits CI traffic
+        # which results in random failures; sometimes choco will even exit 0 with "installed 0/N"
+        # resulting in crashes downstream regarding packages not found. See:
+        #   https://docs.chocolatey.org/en-us/community-repository/community-packages-disclaimer/
+        #   https://github.com/chocolatey/choco/issues/1564
+        #   https://github.com/mandiant/flare-vm/issues/167
+        # Retry the whole batch with backoff; already-installed packages are skipped.
         if: runner.os == 'Windows'
-        uses: crazy-max/ghaction-chocolatey@dff3862348493b11fba2fbc49147b6d2dfe09b66 # v4
-        with:
-          args: install pkgconfiglite llvm
+        shell: pwsh
+        run: |
+          $pkgs = @('pkgconfiglite', 'llvm')
+          $max = 5
+          for ($i = 1; $i -le $max; $i++) {
+            Write-Host "::group::choco install attempt $i/$max"
+            choco install $pkgs --yes --no-progress --allow-unofficial
+            $code = $LASTEXITCODE
+            Write-Host "::endgroup::"
+            # 0 = success, 3010 = success but reboot required
+            if ($code -eq 0 -or $code -eq 3010) { exit 0 }
+            Write-Host "choco install failed (exit $code); retrying in 30s..."
+            Start-Sleep -Seconds 30
+          }
+          Write-Error "choco install failed after $max attempts"
+          exit 1
 
       - name: Run cibw_before_all_windows
         if: runner.os == 'Windows'
