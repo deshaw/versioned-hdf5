@@ -1,7 +1,7 @@
 # Development Guide
 
 versioned-hdf5 workflows are based on [pixi](https://pixi.sh).
-The full list of tasks and environments available can be seen in `pyproject.toml`.
+The full list of tasks and environments available can be seen in `pixi.toml`.
 
 ## Run tests
 
