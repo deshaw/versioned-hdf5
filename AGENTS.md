@@ -13,9 +13,9 @@ The package is a hybrid Python + Cython extension and links against libhdf5.
 
 ## Development workflow (pixi)
 
-All workflows are driven by [pixi](https://pixi.sh); raw `pip` is not used directly.
-The full list of environments and tasks lives in `pyproject.toml` under
-`[tool.pixi.environments]` and the various `[tool.pixi.feature.*.tasks]` tables.
+All workflows are driven by [pixi](https://pixi.sh); raw `pip` is not used directly. The
+full list of environments and tasks lives in `pixi.toml`. The main project configuration
+and all other tools, like ruff and mypy, live in `pyproject.toml`.
 
 Common commands:
 
