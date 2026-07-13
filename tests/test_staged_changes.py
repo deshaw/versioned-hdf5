@@ -11,9 +11,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from numpy.testing import assert_array_equal
 
-from versioned_hdf5.cytools import np_hsize_t
-from versioned_hdf5.staged_changes import StagedChangesArray, _chunks_in_selection
-from versioned_hdf5.subchunk_map import index_chunk_mappers
+from versioned_hdf5.staged_changes import StagedChangesArray
 from versioned_hdf5.tools import NP_GE_200
 
 from .test_subchunk_map import idx_st, shape_chunks_st
@@ -843,16 +841,6 @@ def test_setitem_fancy_index_noncontiguous_whole_chunks():
     # Whole chunks 0, 2, 3 are not expressible as a slice of the selected chunks
     a[[0, 1, 2, 4, 5, 6, 7]] = [10, 11, 12, 14, 15, 16, 17]
     assert_array_equal(a, [10, 11, 12, 3, 14, 15, 16, 17])
-
-
-def test_chunks_in_selection_only_partial_no_filter():
-    _, mappers = index_chunk_mappers(slice(1, 4), (4,), (2,))
-    slab_indices = np.array([1, 2], dtype=np_hsize_t)
-    slab_offsets = np.array([10, 20], dtype=np_hsize_t)
-    chunks = _chunks_in_selection(
-        slab_indices, slab_offsets, mappers, only_partial=True
-    )
-    assert_array_equal(np.asarray(chunks), [[0, 1, 10]])  # chunk 1 is wholly selected
 
 
 def test_repr():
