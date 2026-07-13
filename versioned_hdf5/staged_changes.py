@@ -606,8 +606,9 @@ class StagedChangesArray(MutableMapping[Any, T]):
         # impact any chunks. In such cases, this is a no-op.
         self._apply_mutating_plan(plan)
 
-        self.shape = shape
-        self._resized = True
+        if shape != self.shape:
+            self.shape = shape
+            self._resized = True
 
     def load(self) -> None:
         """Load all chunks that are not yet in memory from the base array."""
@@ -1486,7 +1487,7 @@ class ResizePlan(MutatingPlan):
         """
         if len(new_shape) != len(old_shape):
             raise ValueError(
-                "Can't change dimensionality from {old_shape} to {new_shape}"
+                f"Can't change dimensionality from {old_shape} to {new_shape}"
             )
         if any(s < 0 for s in new_shape):
             raise ValueError("shape must be non-negative")
