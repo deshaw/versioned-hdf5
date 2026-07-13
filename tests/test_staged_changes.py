@@ -327,6 +327,7 @@ def test_has_changes():
 def test_resize_noop():
     a = StagedChangesArray.from_array(np.arange(4), chunk_size=(2,))
     a.resize((4,))
+    assert not a.has_changes
     assert a.n_slabs == 2  # Nothing was appended or dropped
     assert_array_equal(a.slab_indices, [1, 1])
     assert_array_equal(a, np.arange(4))
@@ -1004,7 +1005,7 @@ def test_invalid_parameters():
         del a[0]
     with pytest.raises(ValueError, match="scalar"):
         a.refill(np.zeros(2))
-    with pytest.raises(ValueError, match="dimensionality"):
+    with pytest.raises(ValueError, match=r"dimensionality from \(2,\) to \(2, 2\)"):
         a.resize((2, 2))
     with pytest.raises(ValueError, match="non-negative"):
         a.resize((-1,))
