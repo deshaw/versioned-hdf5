@@ -75,18 +75,19 @@ These commands are available in the `default` and `mindeps` environments.
 
 ## Automated Contributions and AI Policy
 
-We encourage the use of AI and automated tools to assist in code development,
-documentation, and testing. However, we ask that contributors disclose these tools and
-use them in a way that aligns with our guidelines. In particular:
+AI and automated tools may be used to assist in code development, documentation, and
+testing, subject to the same standards that apply to contributions authored entirely by
+humans. In particular:
 
+- You (the human contributor) are responsible for everything you submit.
 - Do not use tools to think or speak for you in discussions, code reviews, or any other
   interactions.
-- The AI agent can exclusively open *draft* PRs that are clearly tagged as being written
-  by unsupervised AI. There is a `open-pr` agent skill that explains how.
-- You (the human) **must fully review, understand, and approve** everything that the AI
-  agent wrote. You must replace all AI-generated prose with your own human thoughts.
-- Only after your personal review and cleanup happened, you can remove the disclaimer and
-  mark the PR as ready to be reviewed.
+- Disclose use of AI and automated tools in accordance with the CLA and in the commit
+  message or PR description.
+- Before you open a PR, fully review, understand, and approve everything AI or other
+  automated tool wrote or otherwise provided as output.
+- The AI agent may open **draft** PRs that are clearly tagged as being written by
+  unsupervised AI. The agent should use the `open-pr` skill to do so.
 
 ### TL;DR version
 
