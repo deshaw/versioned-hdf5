@@ -11,7 +11,9 @@ from hypothesis import given
 from hypothesis import strategies as st
 from numpy.testing import assert_array_equal
 
-from versioned_hdf5.staged_changes import StagedChangesArray
+from versioned_hdf5.cytools import np_hsize_t
+from versioned_hdf5.staged_changes import StagedChangesArray, _chunks_in_selection
+from versioned_hdf5.subchunk_map import index_chunk_mappers
 from versioned_hdf5.tools import NP_GE_200
 
 from .test_subchunk_map import idx_st, shape_chunks_st
@@ -301,6 +303,62 @@ def test_load():
     assert arr.slabs[1] is None
 
 
+def test_load_plan_without_base_slabs():
+    a = StagedChangesArray.full((4,), chunk_size=(2,))
+    assert not a._load_plan().mutates
+
+
+def test_has_changes():
+    a = StagedChangesArray.full((4,), chunk_size=(2,))
+    assert not a.has_changes
+    _ = a[:2]  # __getitem__ doesn't flip has_changes
+    assert not a.has_changes
+    a[2:2] = 1  # __setitem__ with empty selection is a complete no-op
+    assert not a.has_changes
+    assert a[2:2].shape == (0,)
+    a[0] = 1
+    assert a.has_changes
+
+    a = StagedChangesArray.full((4,), chunk_size=(2,))
+    a.resize((6,))
+    assert a.has_changes  # resize() flips it even without data changes
+
+
+def test_resize_noop():
+    a = StagedChangesArray.from_array(np.arange(4), chunk_size=(2,))
+    a.resize((4,))
+    assert a.n_slabs == 2  # Nothing was appended or dropped
+    assert_array_equal(a.slab_indices, [1, 1])
+    assert_array_equal(a, np.arange(4))
+
+
+def test_resize_through_size_zero():
+    """Enlarge or shrink partial edge chunks along an axis while another axis is
+    size 0, so that no chunks are actually transferred.
+    """
+    a = StagedChangesArray.from_array(np.arange(12).reshape(2, 6), chunk_size=(2, 3))
+    a.resize((0, 5))  # Shrink to size 0, leaving a partial edge chunk
+    assert a.slabs[1:] == [None, None]
+    a.resize((0, 8))  # Enlarge the edge chunk and add a new chunk while size stays 0
+    a.resize((2, 8))
+    assert_array_equal(a, np.zeros((2, 8)))
+
+
+def test_size_zero_with_base_slabs():
+    """load() and changes() on a size-0 array that has base slabs"""
+    a = StagedChangesArray(
+        shape=(0,),
+        chunk_size=(2,),
+        base_slabs=[np.arange(2, dtype="i8")],
+        slab_indices=[],
+        slab_offsets=[],
+    )
+    assert list(a.changes()) == []
+    a.load()  # No-op
+    assert a.n_slabs == 2
+    assert_array_equal(a, np.empty((0,), dtype="i8"), strict=True)
+
+
 def test_shrinking_dereferences_slabs():
     """Test that shrinking a StagedChangesArray dereferences the slabs that are no
     longer referenced by any chunks.
@@ -559,6 +617,24 @@ def test_refill():
     assert_array_equal(b.slab_indices, [[3, 0, 2]])
 
 
+def test_refill_noop():
+    a = StagedChangesArray.full((2,), chunk_size=(2,), fill_value=42)
+    a[0] = 1
+    b = a.refill(42)  # Same fill_value: return a plain CoW copy
+    b[1] = 2
+    assert_array_equal(a, [1, 42])
+    assert_array_equal(b, [1, 2])
+
+
+def test_refill_skips_dropped_slabs():
+    a = StagedChangesArray.from_array([1, 42, 5], chunk_size=(1,), fill_value=42)
+    a[2] = 4
+    a.resize((2,))  # Drop the staged slab
+    assert a.slabs[2] is None
+    b = a.refill(99)
+    assert_array_equal(b, [1, 99])
+
+
 def test_rechunk():
     a = StagedChangesArray.from_array([[1, 2], [3, 4]], chunk_size=(3, 1))
     a.resize((4, 2))  # Create full chunks
@@ -758,6 +834,26 @@ def test_setitem_broadcast():
     assert_array_equal(a, [[2, 3], [1, 1]])
 
 
+def test_setitem_fancy_index_noncontiguous_whole_chunks():
+    """__setitem__ with an integer array index where the wholly-selected chunks are
+    not contiguous among the selected chunks
+    """
+    a = StagedChangesArray.from_array(np.arange(8), chunk_size=(2,))
+    # Whole chunks 0, 2, 3 are not expressible as a slice of the selected chunks
+    a[[0, 1, 2, 4, 5, 6, 7]] = [10, 11, 12, 14, 15, 16, 17]
+    assert_array_equal(a, [10, 11, 12, 3, 14, 15, 16, 17])
+
+
+def test_chunks_in_selection_only_partial_no_filter():
+    _, mappers = index_chunk_mappers(slice(1, 4), (4,), (2,))
+    slab_indices = np.array([1, 2], dtype=np_hsize_t)
+    slab_offsets = np.array([10, 20], dtype=np_hsize_t)
+    chunks = _chunks_in_selection(
+        slab_indices, slab_offsets, mappers, only_partial=True
+    )
+    assert_array_equal(np.asarray(chunks), [[0, 1, 10]])  # chunk 1 is wholly selected
+
+
 def test_repr():
     a = StagedChangesArray.from_array(
         np.array([[1, 2], [3, 4]], dtype="u4"), chunk_size=(2, 1), fill_value=42
@@ -807,6 +903,11 @@ def test_repr():
     assert "2 chunks" in r, r
     assert "base[0:1, 0:2] = slabs[2][0:1, 0:2]" in r, r
     assert "base[1:2, 0:2] = slabs[1][1:2, 0:2]" in r, r
+
+    # MutatingPlan.__repr__ with no appended slabs
+    r = repr(a._resize_plan((1, 2)))
+    assert "append 0 empty slabs" in r, r
+    assert "slabs[1] = None" in r, r
 
 
 def test_invalid_parameters():

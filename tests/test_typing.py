@@ -46,6 +46,9 @@ class MinimalArray:
 class MinimalMutableArray(MinimalArray):
     """Minimal writeable NumPy array-like implementing the ArrayProtocol"""
 
+    def __init__(self, arr):
+        self._array = np.asarray(arr)
+
     def __setitem__(self, idx, val):
         self._array[idx] = val
 
