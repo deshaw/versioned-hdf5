@@ -1,7 +1,7 @@
 # Development Guide
 
 versioned-hdf5 workflows are based on [pixi](https://pixi.sh).
-The full list of tasks and environments available can be seen in `pyproject.toml`.
+The full list of tasks and environments available can be seen in `pixi.toml`.
 
 ## Run tests
 
@@ -72,3 +72,24 @@ At the moment, historical benchmarking is not configured.
 - To run ASV: `pixi r asv-run`
 
 These commands are available in the `default` and `mindeps` environments.
+
+## Automated Contributions and AI Policy
+
+AI and automated tools may be used to assist in code development, documentation, and
+testing, subject to the same standards that apply to contributions authored entirely by
+humans. In particular:
+
+- You (the human contributor) are responsible for everything you submit.
+- Do not use tools to think or speak for you in discussions, code reviews, or any other
+  interactions.
+- Disclose use of AI and automated tools in accordance with the CLA and in the commit
+  message or PR description.
+- Before you open a PR, fully review, understand, and approve everything AI or other
+  automated tool wrote or otherwise provided as output.
+- The AI agent may open **draft** PRs that are clearly tagged as being written by
+  unsupervised AI. The agent should use the `open-pr` skill to do so.
+
+### TL;DR version
+
+**Maintainers will close, without reading it, any issue or PR that looks written by AI.**
+First draft written by AI is OK. Final PR is not.
