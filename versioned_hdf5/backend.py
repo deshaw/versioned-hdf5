@@ -16,11 +16,13 @@ from h5py._selector import Selector
 from ndindex import ChunkSize, Slice, Tuple, ndindex
 from numpy.testing import assert_array_equal
 
-from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS
+from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS, h5py_astype
 from versioned_hdf5.hashtable import Hashtable
+from versioned_hdf5.slicetools import RawDataView
 from versioned_hdf5.typing_ import DEFAULT, Default
 
 if TYPE_CHECKING:
+    from versioned_hdf5.staged_changes import StagedChangesArray
     from versioned_hdf5.wrappers import FiltersMixin
 
 DEFAULT_CHUNK_SIZE = 2**12
@@ -318,41 +320,41 @@ def write_dataset(
         old_chunks = hashtable.largest_index
         chunks_reused = 0
 
-        if len(data.shape) != 0:
-            for data_slice in ChunkSize(chunks).indices(data.shape):
-                data_s = data[data_slice.raw]
-                data_hash = hashtable.hash(data_s)
+        if data.ndim == 0 or data.size == 0:
+            return {}
 
-                if data_hash in hashtable:
-                    hashed_slice = hashtable[data_hash]
-                    slices[data_slice] = hashed_slice
+        for data_slice in ChunkSize(chunks).indices(data.shape):
+            data_s = data[data_slice.raw]
+            data_hash = hashtable.hash(data_s)
 
-                    if validate_reused_chunks:
-                        _verify_new_chunk_reuse(
-                            raw_dataset=ds,
-                            new_data=data,
-                            data_hash=data_hash,
-                            hashed_slice=hashed_slice,
-                            chunk_being_written=data_s,
-                            slices_to_write=slices_to_write,
-                        )
+            if data_hash in hashtable:
+                hashed_slice = hashtable[data_hash]
+                slices[data_slice] = hashed_slice
 
-                    chunks_reused += 1
-
-                else:
-                    idx = hashtable.largest_index
-                    raw_slice = Slice(
-                        idx * chunk_size, idx * chunk_size + data_s.shape[0]
+                if validate_reused_chunks:
+                    _verify_new_chunk_reuse(
+                        raw_dataset=ds,
+                        new_data=data,
+                        data_hash=data_hash,
+                        hashed_slice=hashed_slice,
+                        chunk_being_written=data_s,
+                        slices_to_write=slices_to_write,
                     )
-                    slices[data_slice] = raw_slice
-                    hashtable[data_hash] = raw_slice
-                    slices_to_write[raw_slice] = data_slice
 
-            ds.resize((old_shape[0] + len(slices_to_write) * chunk_size,) + chunks[1:])
-            for raw_slice, data_slice in slices_to_write.items():
-                data_s = data[data_slice.raw]
-                idx = Tuple(raw_slice, *[slice(0, i) for i in data_s.shape[1:]])
-                ds[idx.raw] = data[data_slice.raw]
+                chunks_reused += 1
+
+            else:
+                idx = hashtable.largest_index
+                raw_slice = Slice(idx * chunk_size, idx * chunk_size + data_s.shape[0])
+                slices[data_slice] = raw_slice
+                hashtable[data_hash] = raw_slice
+                slices_to_write[raw_slice] = data_slice
+
+        ds.resize((old_shape[0] + len(slices_to_write) * chunk_size,) + chunks[1:])
+        for raw_slice, data_slice in slices_to_write.items():
+            data_s = data[data_slice.raw]
+            idx = Tuple(raw_slice, *[slice(0, i) for i in data_s.shape[1:]])
+            ds[idx.raw] = data[data_slice.raw]
 
         new_chunks = hashtable.largest_index
 
@@ -552,6 +554,178 @@ def write_dataset_chunks(f, name, data_dict):
     )
 
     return slices
+
+
+def _data_v4_to_sc_hash_table(hash_table: Dataset, chunk_size0: int) -> np.ndarray:
+    """Load the SHA256 digests from the on-disk hash table and convert it to the
+    layout compatible with `StagedChangesArray.hash_tables`, which is indexed by the
+    chunk index along axis 0 of raw_data.
+
+    This on-the-fly conversion allows not increasing the DATA_VERSION and thus not
+    having to migrate legacy datasets.
+    """
+    largest_index = int(hash_table.attrs["largest_index"])
+    records = hash_table[:largest_index]  # Load into memory
+    hashes = np.ascontiguousarray(records["hash"]).view(np.uint64)
+
+    # The rows of the on-disk hash table are typically already sorted by raw_data
+    # offset, but those of a hash table rebuilt by Hashtable.from_versions_traverse()
+    # are in version order instead and may skip chunks altogether. Reorder them by
+    # chunk index, leaving all-zeros (which means "no chunk here") in the gaps.
+    rows = records["shape"][:, 0] // chunk_size0
+    if not np.array_equal(rows, np.arange(largest_index)):
+        reordered = np.zeros((int(rows.max()) + 1, 4), dtype=np.uint64)
+        reordered[rows] = hashes
+        hashes = reordered
+
+    return hashes
+
+
+def _sc_hash_table_to_data_v4(
+    hashes: np.ndarray,
+    starts: np.ndarray,
+    stops: np.ndarray,
+    hash_table_dtype: np.dtype,
+) -> np.ndarray:
+    """Inverse conversion of `_data_v4_to_sc_hash_table`"""
+    n = hashes.shape[0]
+    out = np.empty(n, dtype=hash_table_dtype)
+    out["hash"] = hashes.view(np.uint8).reshape(n, -1)
+    out["shape"] = np.stack([starts, stops], axis=1)
+    return out
+
+
+def commit_staged_changes(
+    f, name: str, staged_changes: StagedChangesArray
+) -> dict[Tuple, Slice]:
+    """Commit a StagedChangesArray into `raw_data` and its on-disk hash table.
+
+    1. Load the on-dish hash table dataset that hashes all chunks of `raw_data`
+       into memory
+    2. Inject it as the hash table of `staged_changes.base_slabs[0]`, which is
+       `raw_data`
+    3. Define a callback function that mocks `numpy.empty`. The callback internally
+       extends `raw_data` and returns a view to the new empty surface.
+    4. Call staged_changes.commit, passing the callback above.
+       This hashes all staged chunks vs. all present and past chunks in `raw_data`,
+       saving the hashes of all unique staged chunks to a new np.ndarray, then
+       writes to `raw_data` on disk. See docs/staged_changes.rst for details.
+    5. Append the new chunks' hashes and slices to the on-disk hash table
+    6. Shift staged_changes.slab_offsets for the new virtual base slab, so that
+       offsets are correct for raw_data.
+    7. Tail-call `staged_changes.changes`, which returns the
+       `{chunk_index: raw_data slice}` dict to be passed to `create_virtual_dataset`.
+
+    **TRANSITION NOTES**
+
+    This function is the replacement for the legacy functions
+    `write_dataset`, `write_dataset_chunks` and the `Hashtable` class.
+    At the moment of writing, the legacy path is still triggered by some
+    use cases:
+
+    commit_staged_changes + hash_slab (new, fast)
+        - InMemorySparseDataset commit (first version of sparse datasets)
+        - InMemoryDataset commit (version 2+ of any dataset)
+
+    write_dataset + Hashtable (legacy, slow)
+        - InMemoryArrayDataset commit (first version of dense datasets)
+        - delete_versions
+        - update_metadata
+        - recreate_dataset
+        - VersionedHDF5.rebuild_hashtables
+    """
+    sc = staged_changes
+    group = f["_version_data"][name]
+    raw_data = group["raw_data"]
+    hash_table = group["hash_table"]
+    chunk_size0 = sc.chunk_size[0]
+
+    # A dataset carried over from a previous version has exactly one base slab
+    # (raw_data); a brand new (sparse) dataset has none, and its raw_data was just
+    # created empty. commit() below appends at most one further base slab.
+    n_base_before = sc.n_base_slabs
+    assert n_base_before in (0, 1)
+
+    if n_base_before == 1:
+        prev_n_chunks = int(hash_table.attrs["largest_index"])
+        prev_len = prev_n_chunks * chunk_size0
+        assert sc.hash_tables[1] is None
+        sc.hash_tables[1] = _data_v4_to_sc_hash_table(hash_table, chunk_size0)
+    else:
+        prev_n_chunks = prev_len = 0
+
+    def empty(shape: tuple[int, ...], dtype) -> RawDataView:
+        """Mock API of np.empty. Extend raw_data and return view to the new area."""
+        raw_data.resize((prev_len + shape[0], *raw_data.shape[1:]))
+        return RawDataView(raw_data, prev_len, dtype)
+
+    # Calculate hashes, deduplicate staged chunks, and write to raw_data
+    sc.commit(empty=empty)
+
+    if sc.n_base_slabs > n_base_before:
+        # At least one staged chunk is original (neither identical to a chunk
+        # already on raw_data nor full of fill_value)
+        # === Steps 6-10: a new base slab was appended; record its chunks on disk ===
+        assert sc.n_base_slabs == n_base_before + 1
+        new_slab_idx = sc.n_base_slabs
+        new_hashes = sc.hash_tables[new_slab_idx]
+        assert new_hashes is not None
+        new_n_chunks = prev_n_chunks + new_hashes.shape[0]
+
+        # Calculate (start, stop) offsets of the chunks on raw_data
+        starts = np.arange(
+            prev_n_chunks * chunk_size0,
+            new_n_chunks * chunk_size0,
+            chunk_size0,
+            dtype=np.int64,
+        )
+        stops = starts + chunk_size0
+        if sc.shape[0] % chunk_size0:
+            # Edge chunks along axis 0 are not full chunks; trim stops.
+            # This matters when modify_metadata() recalculates the hashes.
+            n_whole_chunks0 = sc.slab_indices.shape[0] - 1
+            last_chunk_trim = chunk_size0 - sc.shape[0] + n_whole_chunks0 * chunk_size0
+            new_edge_chunks_idx = (
+                sc.slab_offsets[-1][sc.slab_indices[-1] == new_slab_idx] // chunk_size0
+            )
+            stops[new_edge_chunks_idx] -= last_chunk_trim
+
+        # Append the new records to the on-disk hash table in a single write.
+        disk = _sc_hash_table_to_data_v4(new_hashes, starts, stops, hash_table.dtype)
+        hash_table.resize((new_n_chunks,))
+        hash_table[prev_n_chunks:] = disk
+        # Atomic update marking the successful commit (except the VDS creation).
+        # In case of a crash halfway through commit, you will have the
+        # raw_data or raw_data+hash_table larger than this.
+        hash_table.attrs["largest_index"] = new_n_chunks
+
+        # commit() wrote the new chunks through a RawDataView onto
+        # raw_data[prev_len:], so their slab_offsets are relative to prev_len.
+        # Shift them to absolute raw_data offsets.
+        # This doesn't apply to new sparse datasets (InMemorySparseDataset).
+        if n_base_before:
+            new_slab_mask = sc.slab_indices == new_slab_idx
+            sc.slab_indices[new_slab_mask] = 1
+            sc.slab_offsets[new_slab_mask] += prev_len
+
+        # Collapse back to a single raw_data base slab, so the committed
+        # StagedChangesArray is structurally identical to a freshly-loaded
+        # InMemoryDataset.
+        base_slab = raw_data
+        if sc.dtype != raw_data.dtype:
+            # Variable-width strings: raw_data is always object dtype while
+            # the array may be StringDType. Wrap raw_data in a lazy view.
+            base_slab = h5py_astype(raw_data, sc.dtype)
+        sc.slabs = [sc.slabs[0], base_slab]
+        sc.hash_tables = [None, None]
+        sc.n_base_slabs = 1
+
+    # Build the {virtual dataset index: raw_data slice} mapping
+    # TODO Migrated to a Cythonized loop that reads sc.slab_offsets directly
+    return {
+        Tuple(*vds_slice): Slice(raw_data_slice[0])
+        for vds_slice, _, raw_data_slice in sc.changes()
+    }
 
 
 def create_virtual_dataset(

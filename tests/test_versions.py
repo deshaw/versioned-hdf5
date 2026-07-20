@@ -1,6 +1,5 @@
 import numpy as np
 import pytest
-from ndindex import Slice, Tuple
 from numpy.testing import assert_equal
 
 from versioned_hdf5.backend import DEFAULT_CHUNK_SIZE, Filters
@@ -143,17 +142,14 @@ def test_create_version_chunks(h5file):
     assert ds.compression == "gzip"
     assert ds.compression_opts == 3
 
-    data2_chunks = {
-        Tuple(Slice(0 * chunk_size, 1 * chunk_size, 1)): np.ones(chunks),
-        Tuple(Slice(1 * chunk_size, 2 * chunk_size, 1)): np.ones(chunks),
-        Tuple(Slice(2 * chunk_size, 3 * chunk_size, 1)): 2 * np.ones(chunks),
-        Tuple(Slice(3 * chunk_size, 4 * chunk_size, 1)): 3 * np.ones(chunks),
-    }
-    data2_chunks[Tuple(Slice(0 * chunk_size, 1 * chunk_size, 1))][0] = 0.0
     data[0] = 0.0
 
+    # Partially modify the dataset carried over from version1 and commit it as a
+    # new version. Only the first chunk changed, so committing appends a single new
+    # chunk to raw_data and reuses the others.
     version2 = create_version_group(h5file, "version2")
-    commit_version(version2, {"test_data": data2_chunks})
+    version2["test_data"][0] = 0.0
+    commit_version(version2, {"test_data": version2["test_data"]})
     assert_equal(h5file["_version_data/versions/version2/test_data"], data)
 
     assert ds.shape == (4 * chunk_size,)
@@ -165,23 +161,11 @@ def test_create_version_chunks(h5file):
     assert ds.compression == "gzip"
     assert ds.compression_opts == 3
 
-    data3_chunks = {
-        Tuple(Slice(0 * chunk_size, 1 * chunk_size, 1)): np.ones(chunks),
-        Tuple(Slice(1 * chunk_size, 2 * chunk_size, 1)): Slice(
-            0 * chunk_size, 1 * chunk_size
-        ),
-        Tuple(Slice(2 * chunk_size, 3 * chunk_size, 1)): Slice(
-            1 * chunk_size, 2 * chunk_size
-        ),
-        Tuple(Slice(3 * chunk_size, 4 * chunk_size, 1)): Slice(
-            2 * chunk_size, 3 * chunk_size
-        ),
-    }
-    data3_chunks[Tuple(Slice(0 * chunk_size, 1 * chunk_size, 1))][0] = 2.0
     data[0] = 2.0
 
     version3 = create_version_group(h5file, "version3")
-    commit_version(version3, {"test_data": data3_chunks})
+    version3["test_data"][0] = 2.0
+    commit_version(version3, {"test_data": version3["test_data"]})
     assert_equal(h5file["_version_data/versions/version3/test_data"], data)
 
     assert ds.shape == (5 * chunk_size,)

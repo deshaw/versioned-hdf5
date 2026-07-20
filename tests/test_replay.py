@@ -1107,13 +1107,14 @@ def test_delete_versions_fillvalue_only_dataset_raw_data_shape(tmp_path):
                 chunks=(10,),
                 fillvalue=0,
             )
-        assert f["_version_data/fillvalue_only_raw_data_shape/raw_data"].shape == (10,)
+        # A fillvalue-only dataset writes no chunks to raw_data.
+        assert f["_version_data/fillvalue_only_raw_data_shape/raw_data"].shape == (0,)
 
         with vf.stage_version("r1") as sv:
             sv["fillvalue_only_raw_data_shape"].resize((16,))
 
-        # after delete_versions, the raw_data shape should still be non-empty
-        # and have a chunk
+        # r1 only enlarges the dataset with more fillvalue, so raw_data stays empty;
+        # delete_versions must not corrupt the (fillvalue-only) dataset.
         delete_versions(vf, ["r0"])
 
     with h5py.File(tmp_path / "test.h5", "r") as f:
@@ -1173,27 +1174,27 @@ def test_delete_empty_dataset(vfile):
             compression="lzf",
         )
 
-    # Raw data should be filled with fillvalue, but actual current
+    # A fillvalue-only dataset writes no chunks to raw_data; the current
     # version dataset should have size 0.
-    assert vfile.f["_version_data/key0/raw_data"][:].size == 10000
+    assert vfile.f["_version_data/key0/raw_data"][:].size == 0
     assert vfile[vfile.current_version]["key0"][:].size == 0
 
     # Create a new version, checking again the size
     with vfile.stage_version("r1") as sv:
         sv["key0"].resize((0,))
-    assert vfile.f["_version_data/key0/raw_data"][:].size == 10000
+    assert vfile.f["_version_data/key0/raw_data"][:].size == 0
     assert vfile[vfile.current_version]["key0"][:].size == 0
 
     # Deleting a prior version should not change the data in the current version
     delete_versions(vfile, ["r0"])
-    assert vfile.f["_version_data/key0/raw_data"][:].size == 10000
+    assert vfile.f["_version_data/key0/raw_data"][:].size == 0
     assert vfile[vfile.current_version]["key0"][:].size == 0
 
     # Create a new version, then check if the data is the correct size
     with vfile.stage_version("r2") as sv:
         sv["key0"].resize((0,))
 
-    assert vfile.f["_version_data/key0/raw_data"][:].size == 10000
+    assert vfile.f["_version_data/key0/raw_data"][:].size == 0
     assert vfile[vfile.current_version]["key0"][:].size == 0
 
 
