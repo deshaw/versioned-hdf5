@@ -441,3 +441,36 @@ def test_string_dtype(vfile):
         f"fails for r1: {cv['strs'].dtype.metadata=} "
         f"vs. {cv['strs'][:].dtype.metadata=}"
     )
+
+
+def test_object_strings_default_fillvalue(vfile):
+    with vfile.stage_version("v1") as v:
+        # InMemorySparseDataset
+        ds = v.create_dataset("x", shape=(4,), chunks=(2,), dtype=h5py.string_dtype())
+        assert isinstance(ds, InMemorySparseDataset)
+        ds[0] = b"abc"
+        assert ds.fillvalue == b""
+        assert_equal(ds[:], np.array([b"abc", b"", b"", b""], dtype=object))
+
+    v = vfile.get_version_by_name(vfile.current_version)
+    assert_equal(v["x"][:], np.array([b"abc", b"", b"", b""], dtype=object))
+
+    with vfile.stage_version("v2") as v:
+        # InMemoryDataset
+        ds = v["x"]
+        assert isinstance(ds.dataset, InMemoryDataset)
+        assert ds.fillvalue == b""
+        assert_equal(ds[:], np.array([b"abc", b"", b"", b""], dtype=object))
+
+        # InMemoryArrayDataset
+        ds2 = v.create_dataset(
+            "x", data=[b"abc"], chunks=(2,), dtype=h5py.string_dtype()
+        )
+        assert isinstance(ds2.dataset, InMemoryArrayDataset)
+        assert ds2.fillvalue == b""
+
+        # InMemoryArrayDataset -> InMemorySparseDataset
+        ds2.resize((4,))
+        assert isinstance(ds2.dataset, InMemorySparseDataset)
+        assert ds2.fillvalue == b""
+        assert_equal(ds2[:], np.array([b"abc", b"", b"", b""], dtype=object))

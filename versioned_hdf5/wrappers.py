@@ -1039,17 +1039,24 @@ class InMemorySparseDataset(BufferMixin, FiltersMixin, DatasetLike):
     ):
         self.name = name
         self.attrs = attrs or {}
-        self._fillvalue = fillvalue
         assert isinstance(chunks, tuple)
         self.parent = parent
+        self._fillvalue = fillvalue
+
+        # BufferMixin can later change self.staged_changes.dtype
+        if dtype is None:
+            dtype = np.array([]).dtype
+        elif not isinstance(dtype, np.dtype):
+            dtype = np.dtype(dtype)
+        self.dtype = dtype
+
         self.staged_changes = StagedChangesArray.full(
             shape=shape,
             chunk_size=chunks,
             dtype=dtype,
-            fill_value=fillvalue,
+            # DatasetLike.fillvalue property sanitizes the value
+            fill_value=self.fillvalue,
         )
-        # BufferMixin can later change self.staged_changes.dtype
-        self.dtype = self.staged_changes.dtype
 
     @property
     def data_dict(self) -> dict[Tuple, Slice | np.ndarray]:
