@@ -1044,7 +1044,9 @@ class InMemorySparseDataset(BufferMixin, FiltersMixin, DatasetLike):
         self._fillvalue = fillvalue
 
         # BufferMixin can later change self.staged_changes.dtype
-        if dtype is not None and not isinstance(dtype, np.dtype):
+        if dtype is None:
+            dtype = np.array([]).dtype
+        elif not isinstance(dtype, np.dtype):
             dtype = np.dtype(dtype)
         self.dtype = dtype
 
