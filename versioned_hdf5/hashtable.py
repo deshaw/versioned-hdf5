@@ -252,7 +252,7 @@ class Hashtable(MutableMapping):
         if key in self._indices:
             if bytes(self.hash_table[self._indices[key]])[0] != key:
                 raise ValueError(
-                    "The key %s is already in the hashtable under another index."
+                    f"The key {key!r} is already in the hashtable under another index."
                 )
             self.hash_table[self._indices[key]] = kv
         else:
