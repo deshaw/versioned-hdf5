@@ -329,8 +329,9 @@ be physically filled with the fill_value:
 --------------------
 
 ``LoadPlan`` ensures that all chunks are either on the full slab or on a staged slab. It
-selects all chunks in that lie on a base slab and transfers them to a brand new staged
-slab.
+selects all chunks that lie on a base slab and transfers them to a brand new staged
+slab. The base slabs themselves remain in the ``slabs`` list; they're simply no longer
+referenced by ``slab_indices``.
 
 
 .. _staged_changes_commit:
@@ -438,17 +439,14 @@ updates a chunk with ``__setitem__`` and later drops that very same chunk with
 ``resize()`` - which is obviously wasteful so it should not be part of a typical
 workflow. Additionally, slabs are cleaned up as soon as the staged version is committed.
 
-If a slab is completely empty, however - in other words, it no longer appears in
-``slab_indices`` - it *may* be dropped. This is guaranteed to happen for staged slabs
-and *may* happen for base slabs too (if computationally cheap to determine). Note that
-nothing particular happens today when the ``raw_data`` base slab, which is a hdf5
-dataset,is deferenced by the ``StagedChangesArray``.
-
-When a slab is dropped, it is replaced by None in the ``slabs`` list, which dereferences
-it. This allows not to change all the following slab indices after the operation.
-The full slab is never dropped, as it may be needed later by ``resize()`` to create new
-chunks or partially fill existing edge chunks.
-
+When ``ResizePlan`` shrinks the array, it may cause a slab to no longer be referenced by
+``slab_indices``. When this happens to a *staged* slab, it is dereferenced from the
+``slabs`` list and replaced by None. This avoids having to renumber all the following
+slab indices. **The full slab and the base slabs are never dropped**, even when no
+chunks reference them anymore. The full slab may be needed later by ``resize()`` to
+create new chunks or partially fill existing edge chunks. ``commit()`` needs the hash
+tables of the base slabs to deduplicate staged chunks. As base slabs are disk-backed, it
+is cheap to leave them referenced.
 
 Copy-on-Write (CoW) mechanics
 -----------------------------
@@ -465,13 +463,15 @@ the new dtype, not just the selection requested.
 
 Hot-swapping the base slabs
 ---------------------------
-When calling ``astype()``, base slabs are normally fully loaded into memory and then
-converted with NumPy to the new dtype. This may not be desirable:
-`h5py.Dataset.astype()`_ returns a lazy ``AsTypeView`` object, which directly performs
-dtype conversions in libhdf5, only on the areas selected with ``__getitem__``. To
-leverage this, ``StagedChangesArray.astype()`` has the option of hot-swapping the base
-slabs with any other array-like objects with the new dtype and the same shapes as the
-original slabs.
+When calling ``astype()``, each base slab is fully loaded into memory, converted with
+NumPy to the new dtype, and then dropped. Note that this is different from ``resize()``,
+which instead never drops a base slab as it may be useful later during ``commit()``.
+
+This load and drop may not be desirable: `h5py.Dataset.astype()`_ returns a lazy
+``AsTypeView`` object, which directly performs dtype conversions in libhdf5, only on the
+areas selected with ``__getitem__``. To leverage this, ``StagedChangesArray.astype()``
+accepts a ``base_slabs`` parameter to hot-swap the base slabs with any other array-like
+objects with the new dtype and the same shapes as the original slabs.
 
 
 API interaction

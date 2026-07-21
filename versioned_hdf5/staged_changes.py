@@ -163,12 +163,10 @@ class StagedChangesArray(MutableMapping[Any, T]):
     #: cells; the shape of each staged slab is always
     #: (n*chunk_size[0], *chunk_size[1:]).
     #:
-    #: When a slab no longer holds any current chunk, it is dereferenced and replaced
-    #: with None in this list. This happens:
-    #: 1. after modifying every chunk of a base slab, so that they now live entirely
-    #:    in the staged slabs, and/or
-    #: 2. when shrinking the array with resize().
-    #: slabs[0] is never dereferenced.
+    #: When resize() shrinks the array, causing a *staged* slab to no longer hold
+    #: any chunk, the slab is dereferenced and
+    #: replaced with None in this list. astype() can instead dereference the base slabs.
+    #: The full slab (index 0) is never dereferenced.
     slabs: list[NDArray[T] | None]
 
     #: List parallel to :attr:`slabs` (same length, None wherever ``slabs`` is None).
@@ -725,9 +723,9 @@ class StagedChangesArray(MutableMapping[Any, T]):
         transfers from a base slab to the new slab, and finally transfers from slabs[0]
         to the new slab.
 
-        Slabs that are no longer needed are dereferenced; their location in the slabs
-        list is replaced with None.
-        This may cause base slabs to be dereferenced, but never the full slab.
+        Staged slabs that are no longer needed are dereferenced; their location in the
+        slabs list is replaced with None.
+        This never causes base slabs or the full slab to be dereferenced.
         """
         if not self.writeable:
             raise ValueError("assignment destination is read-only")
@@ -789,9 +787,7 @@ class StagedChangesArray(MutableMapping[Any, T]):
         the staged slabs.
 
         After this call there are exactly ``n_base_slabs + 2`` slabs: the full slab, the
-        original base slabs (any that are no longer referenced are replaced with None),
-        and the new base slab at index ``n_base_slabs + 1`` (the old ``n_base_slabs``).
-        There are no more staged slabs.
+        original base slabs, and a single new base slab. There are no more staged slabs.
 
         Parameters
         ----------
@@ -890,6 +886,9 @@ class StagedChangesArray(MutableMapping[Any, T]):
             # Load all base slabs, if any, into new staged slabs
             # and set all the base slabs to None
             out.load()
+            for i in range(1, out.n_base_slabs + 1):
+                out.slabs[i] = None
+                out.hash_tables[i] = None
         else:
             # Hot-swap the base slabs
             for i, old in enumerate(out.base_slabs):
@@ -1417,19 +1416,21 @@ class SetItemPlan(MutatingPlan):
            a. create a new empty slab;
            b. transfer the chunk from the base or full slab to the new slab;
            c. update slab_indices and slab_offsets to reflect the transfer;
-           d. potentially dereference the base slab if it contains no other chunks;
-           e. update the new slab with the __setitem__ value.
+           d. update the new slab with the __setitem__ value.
 
         2. A chunk is full of fill_value or lies on a base slab,
            and is wholly covered by the selection:
            a. create a new empty slab;
            b. update the new slab with the __setitem__ value;
            c. update slab_indices and slab_offsets to reflect that the chunk is no
-              longer on the base or full slab;
-           d. potentially dereference the base slab if it contains no other chunks.
+              longer on the base or full slab.
 
         3. A chunk is on a staged slab:
            a. update the staged slab with the __setitem__ value.
+
+        Note that this may leave a base slab without any references to it in
+        ``slab_indices``. The base slab must remain in memory, as it may be used later
+        by ``commit()`` to deduplicate staged chunks.
         """
         super().__init__(slab_indices, slab_offsets)
 
@@ -1520,10 +1521,6 @@ class SetItemPlan(MutatingPlan):
                 )
             )
 
-        # DO NOT perform a full scan of self.slab_indices in order to populate
-        # self.drop_slabs. Everything so far has been O(selected chunks), do not
-        # introduce an operation that is O(all chunks)!
-
     @property
     def head(self) -> str:
         return (
@@ -1574,10 +1571,6 @@ class LoadPlan(MutatingPlan):
                     slab_offsets=slab_offsets,  # Modified in place
                 )
             )
-
-        # Also drop slabs that were previously loaded by SetItemPlan or ResizePlan, but
-        # which were not in SetItemPlan.drop_slabs because of performance reasons.
-        self.drop_slabs.extend(range(1, n_base_slabs + 1))
 
     @property
     def head(self) -> str:
@@ -1794,17 +1787,12 @@ class ResizePlan(MutatingPlan):
                         )
                         prev_shape = next_shape
 
-        # Shrinking may drop any slab. Crucially, they may be staged slabs, and
-        # dereferencing them means releasing memory.
-        # Enlarging may only drop base slabs. Let's not do that, for the same
-        # reason we don't do it in __setitem__: an all-too-common pattern is to
-        # enlarge over and over again by one or a few points.
-        if chunks_dropped:
-            # This may set to None again slabs that were already None. That's fine.
-            # On the upside, it also cleans up slabs dereferenced by __setitem__
-            # or by enlarge operations.
+        # Shrinking may leave staged slabs unreferenced; dereferencing them releases
+        # memory. Do not drop the full slab or base slabs.
+        if chunks_dropped and n_slabs > n_base_slabs + 1:
             self.drop_slabs = np.setdiff1d(
-                np.arange(1, n_slabs, dtype=np_hsize_t),  # Never drop the full slab
+                # Never drop the full slab (0) or the base slabs (1 .. n_base_slabs)
+                np.arange(n_base_slabs + 1, n_slabs, dtype=np_hsize_t),
                 np.unique(self.slab_indices),  # fairly expensive
                 assume_unique=True,
             ).tolist()
