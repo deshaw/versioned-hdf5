@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import sys
+import textwrap
 import time
 from typing import Any, Literal
 
@@ -15,7 +17,7 @@ from versioned_hdf5.staged_changes import StagedChangesArray
 from versioned_hdf5.tools import NP_GE_200
 
 from .test_subchunk_map import idx_st, shape_chunks_st
-from .test_typing import MinimalArray
+from .test_typing import MinimalArray, MinimalMutableArray
 
 max_examples = 10_000
 
@@ -162,6 +164,27 @@ def test_staged_array(args):
     # Test __iter__
     assert_array_equal(list(arr), list(expect), strict=True)
 
+    # Commit: consolidate all staged chunks into a new base slab. The data must be
+    # unchanged, there must be no staged slabs left, and changes() (now reading from
+    # base slabs only) must still reconstruct the array.
+    prev_base_slabs = arr.n_base_slabs
+    arr.commit()
+    assert arr.n_base_slabs in (prev_base_slabs, prev_base_slabs + 1)
+    assert arr.n_staged_slabs == 0
+
+    for _, slab_idx, chunk in arr.changes():
+        assert slab_idx in list(range(1, prev_base_slabs + 2))
+        assert isinstance(chunk, tuple)
+        assert all(isinstance(s, slice) for s in chunk)
+
+    for i, (slab, ht) in enumerate(zip(arr.slabs, arr.hash_tables, strict=True)):
+        if slab is None:
+            assert ht is None
+        # Pre-existing base slabs may not have a hash table
+        elif i == prev_base_slabs + 1:
+            assert ht is not None
+    assert_array_equal(arr, expect, strict=True)
+
 
 def test_array_protocol_setitem():
     """Test that the value of __setitem__ can be anything that implements
@@ -238,7 +261,10 @@ def test_array_protocol_from_slabs():
     arr3 = arr.astype("i4")
     arr.load()
 
-    assert arr.slabs[1] is None
+    # load() does not drop base slabs: it leaves them in the slabs list, unreferenced by
+    # slab_indices. astype(), on the other hand, drops the base slabs, as they don't
+    # contain compatible data anymore.
+    assert arr.slabs[1] is base_slab
     assert arr2.slabs[1] is base_slab
     assert arr3.slabs[1] is None
 
@@ -267,6 +293,8 @@ def test_load():
     arr = StagedChangesArray.from_array(
         np.arange(4).reshape(2, 2), chunk_size=(2, 1), fill_value=42
     )
+    orig_slabs = arr.slabs.copy()
+
     arr.resize((3, 2))
     assert len(arr.slabs) == 3
     assert_array_equal(arr.slab_indices, [[1, 2], [0, 0]])
@@ -277,10 +305,10 @@ def test_load():
     assert_array_equal(arr.slab_indices, [[3, 3], [0, 0]])
     assert_array_equal(arr, np.array([[0, 1], [2, 3], [42, 42]]))
 
-    # Base slabs were dereferenced; full slab was not
-    assert_array_equal(arr.slabs[0], [[42], [42]])
-    assert arr.slabs[1] is None
-    assert arr.slabs[2] is None
+    # Base slabs are no longer referenced by any chunk,
+    # but are still in the slabs list.
+    for lhs, rhs in zip(arr.slabs[: arr.n_base_slabs + 1], orig_slabs, strict=True):
+        assert lhs is rhs
 
     # No-op
     arr.load()
@@ -288,9 +316,8 @@ def test_load():
     assert_array_equal(arr.slab_indices, [[3, 3], [0, 0]])
     assert_array_equal(arr, np.array([[0, 1], [2, 3], [42, 42]]))
 
-    # Edge case where __setitem__ stops using a base slab but doesn't dereference it for
-    # performance reasons, so there are no transfers to do but you still should drop
-    # the base slab
+    # Edge case where __setitem__ stopped using a base slab:
+    # there are no transfers to do, so load() is a no-op.
     arr = StagedChangesArray.from_array(np.arange(2), chunk_size=(2,))
     arr[0] = 2
     assert_array_equal(arr.slab_indices, [2])
@@ -298,7 +325,7 @@ def test_load():
     arr.load()
     assert_array_equal(arr.slab_indices, [2])
     assert len(arr.slabs) == 3  # Didn't append a new slab with size 0
-    assert arr.slabs[1] is None
+    assert arr.slabs[1] is not None
 
 
 def test_load_plan_without_base_slabs():
@@ -316,6 +343,8 @@ def test_has_changes():
     assert a[2:2].shape == (0,)
     a[0] = 1
     assert a.has_changes
+    a.commit()  # commit() resets has_changes
+    assert not a.has_changes
 
     a = StagedChangesArray.full((4,), chunk_size=(2,))
     a.resize((6,))
@@ -336,8 +365,12 @@ def test_resize_through_size_zero():
     size 0, so that no chunks are actually transferred.
     """
     a = StagedChangesArray.from_array(np.arange(12).reshape(2, 6), chunk_size=(2, 3))
+    orig_slabs = a.slabs.copy()
     a.resize((0, 5))  # Shrink to size 0, leaving a partial edge chunk
-    assert a.slabs[1:] == [None, None]
+    # Base slabs are never dropped, even when the array shrinks to size 0
+    assert a.n_base_slabs == 2
+    for lhs, rhs in zip(orig_slabs, a.slabs[:3], strict=True):
+        assert lhs is rhs
     a.resize((0, 8))  # Enlarge the edge chunk and add a new chunk while size stays 0
     a.resize((2, 8))
     assert_array_equal(a, np.zeros((2, 8)))
@@ -359,27 +392,34 @@ def test_size_zero_with_base_slabs():
 
 
 def test_shrinking_dereferences_slabs():
-    """Test that shrinking a StagedChangesArray dereferences the slabs that are no
-    longer referenced by any chunks.
+    """Test that shrinking a StagedChangesArray dereferences the *staged* slabs that are
+    no longer referenced by any chunks. The full slab and the base slabs are never
+    dereferenced.
     """
     arr = StagedChangesArray.from_array(
         [[1, 2, 3, 4, 5, 6, 7]], chunk_size=(1, 2), fill_value=42
     )
-    arr[0, -1] = 8
+    assert arr.n_base_slabs == 4  # slabs 1..4
+    arr[0, -1] = 8  # partial chunk on base slab 4 -> staged slab 5
     arr.resize((1, 10))
     assert_array_equal(arr.slab_indices, [[1, 2, 3, 5, 0]])
     assert_array_equal(arr, [[1, 2, 3, 4, 5, 6, 8, 42, 42, 42]])
 
     arr.resize((1, 4))
     assert_array_equal(arr.slab_indices, [[1, 2]])
-    assert arr.slabs[3:] == [None, None, None]
+    # Base slabs 3 and 4 are no longer referenced, but they are kept; only the staged
+    # slab 5 is dropped.
+    assert arr.slabs[3] is not None
+    assert arr.slabs[4] is not None
+    assert arr.slabs[5] is None
     assert_array_equal(arr, [[1, 2, 3, 4]])
 
     arr.resize((0, 0))
     assert_array_equal(arr.slab_indices, np.empty((0, 0)))
-    # The base slab is never dereferenced
+    # The full slab and all the base slabs are kept; only the staged slab was dropped.
     assert_array_equal(arr.slabs[0], [[42, 42]])
-    assert arr.slabs[1:] == [None, None, None, None, None]
+    assert all(slab is not None for slab in arr.slabs[:5])
+    assert arr.slabs[5:] == [None]
 
 
 @pytest.mark.parametrize("starting_size", [6, 5])
@@ -452,7 +492,7 @@ def test_astype():
     a = StagedChangesArray.from_array(
         np.asarray([[1, 2, 3]], dtype="f4"), chunk_size=(1, 1)
     )
-    a.resize((1, 2))  # dereference a slab
+    a.resize((1, 2))  # leave a base slab unreferenced (but not dropped)
     a.resize((1, 3))
     a[0, 1] = 4
     assert a.n_base_slabs == 3
@@ -498,11 +538,11 @@ def test_astype_base_slabs():
         slab_offsets=[0, 1, 0],
     )
     a[1] = 4  # base slab -> staged slab; chunks remain on the base slab
-    a.resize((2,))  # drop base_slabs[1]
+    a.resize((2,))
     assert a.slab_indices.tolist() == [1, 3]
     assert a.slab_offsets.tolist() == [0, 0]
-    assert a.base_slabs[1] is None
-    base_slabs = [np.array([6, 7], dtype="i2"), None]
+    assert a.base_slabs[1] is not None
+    base_slabs = [np.array([6, 7], dtype="i2"), np.array([0, 0], dtype="i2")]
     b = a.astype("i2", base_slabs=base_slabs)
     assert b.base_slabs[0] is base_slabs[0]
     assert_array_equal(a, np.array([1, 4], dtype="i1"), strict=True)
@@ -513,7 +553,7 @@ def test_astype_base_slabs():
     base_slabs = [np.array([6, 7], dtype="i2"), np.array([8, 9], dtype="i2")]
     b = a.astype("i2", base_slabs=base_slabs)
     assert b.base_slabs[0] is base_slabs[0]
-    assert b.base_slabs[1] is None
+    assert b.base_slabs[1] is base_slabs[1]
     assert_array_equal(b, np.array([6, 4], dtype="i2"), strict=True)
 
     with pytest.raises(TypeError, match=r"base_slabs\[0\] is None"):
@@ -526,6 +566,53 @@ def test_astype_base_slabs():
         a.astype("i2", base_slabs=[np.array([6], dtype="i2"), None])
     with pytest.raises(ValueError, match="shape"):
         a.astype("i2", base_slabs=[np.array([[6, 7]], dtype="i2"), None])
+
+
+def test_astype_wipes_hashes():
+    base = np.array([1, 2], dtype=np.int64)
+    a = StagedChangesArray.from_array(base, chunk_size=(2,), as_base_slabs=False)
+    assert a.n_base_slabs == 0
+    assert a.hash_tables[1] is None
+    a.commit()
+    assert a.n_base_slabs == 1
+    expect_hash = [
+        [
+            15475097508508859130,
+            14309329822420762989,
+            1054910637374818680,
+            16249530140865467715,
+        ]
+    ]
+    assert_array_equal(a.hash_tables[1], expect_hash)
+
+    b = a.astype(float)
+    assert a.n_base_slabs == 1
+    assert_array_equal(a.hash_tables[1], expect_hash)
+    assert b.n_base_slabs == 1
+    assert b.hash_tables[1] is None
+
+
+@pytest.mark.skipif(not NP_GE_200, reason="StringDType requires numpy >=2")
+def test_astype_object_to_str_keeps_hashes():
+    """In object string <-> StringDType conversions the data doesn't change,
+    so the hashes of the swapped base slabs are not invalidated.
+    """
+    base = np.array(["aa", "bb"], dtype=object)
+    ht = np.full((1, 4), 1337, dtype=np.uint64)
+    a = StagedChangesArray(
+        shape=(2,),
+        chunk_size=(2,),
+        base_slabs=[base],
+        slab_indices=[1],
+        slab_offsets=[0],
+        fill_value="",
+        base_hash_tables=[ht],
+    )
+    dtype = np.dtypes.StringDType()
+    b = a.astype(dtype, base_slabs=[base.astype(dtype)])
+    assert b.dtype == dtype
+    assert_array_equal(b.base_hash_tables[0], ht)
+    assert_array_equal(b, base.astype(dtype), strict=True)
 
 
 class TestAsTypeLazy:
@@ -866,7 +953,7 @@ def test_repr():
     r = repr(a._setitem_plan((0, 2)))
     assert "append 1 empty slab" in r, r
     assert "2 slice transfers among 2 slab pairs" in r, r
-    assert "slabs.append(np.empty((2, 1)))  # slabs[4]" in r, r
+    assert "slabs.append(empty((2, 1)))  # slabs[4]" in r, r
     assert "slabs[4][0:2, 0:1] = slabs[0][0:2, 0:1]" in r, r
     assert "slabs[4][0:1, 0:1] = value[0:1, 0:1]" in r, r
     assert "[[3 2 4]]" in r, r  # updated slab_indices
@@ -876,16 +963,18 @@ def test_repr():
     )
     r = repr(a._resize_plan((1, 5)))
     assert "2 slice transfers among 2 slab pairs" in r, r
-    assert "drop 1 slabs" in r, r
+    # The base slab becomes unreferenced but is never dropped
+    assert "drop 0 slabs" in r, r
     assert "slabs[2][0:1, 0:2] = slabs[1][0:1, 0:2]" in r, r
 
     r = repr(a._load_plan())
     assert "append 1 empty slab" in r, r
     assert "2 slice transfers among 1 slab pair" in r, r
-    assert "drop 1 slab" in r, r
-    assert "slabs.append(np.empty((2, 4)))  # slabs[2]" in r, r
+    # load() moves the chunks off the base slab, but the base slab is never dropped
+    assert "drop 0 slabs" in r, r
+    assert "slabs.append(empty((2, 4)))  # slabs[2]" in r, r
     assert "slabs[2][0:1, 0:2] = slabs[1][0:1, 0:2]" in r, r
-    assert "slabs[1] = None" in r, r
+    assert "slabs[1] = None" not in r, r
 
     a[0, 0] = 5
     r = repr(a._changes_plan())
@@ -894,9 +983,10 @@ def test_repr():
     assert "base[1:2, 0:2] = slabs[1][1:2, 0:2]" in r, r
 
     # MutatingPlan.__repr__ with no appended slabs
-    r = repr(a._resize_plan((1, 2)))
+    r = repr(a._resize_plan((0, 2)))
     assert "append 0 empty slabs" in r, r
-    assert "slabs[1] = None" in r, r
+    assert "slabs[1] = None" not in r, r
+    assert "slabs[2] = None" in r, r
 
 
 def test_invalid_parameters():
@@ -1002,6 +1092,20 @@ def test_invalid_parameters():
             ValueError, match="Cannot return a ndarray view of a StagedChangesArray"
         ):
             np.asarray(a, copy=False)
+
+
+def test_invalid_base_hash_tables():
+    kwargs = dict(
+        shape=(4,),
+        chunk_size=(2,),
+        base_slabs=[np.arange(4, dtype="i8")],
+        slab_indices=[1, 1],
+        slab_offsets=[0, 2],
+    )
+    with pytest.raises(ValueError, match="hash_table.shape"):
+        StagedChangesArray(**kwargs, base_hash_tables=[np.zeros((1, 4), dtype="u8")])
+    with pytest.raises(ValueError, match="shorter"):
+        StagedChangesArray(**kwargs, base_hash_tables=[])
 
 
 def assert_tuple_of_ints(x: object) -> None:
@@ -1197,3 +1301,480 @@ def test_from_array_as_staged_slabs_6():
     a[:] = -1
     assert_array_equal(a, [-1, -1, -1])
     assert_array_equal(arr, [0, 1, 2])
+
+
+# ---------------------------------------------------------------------------
+# Committing staged changes: hashing and deduplication
+# ---------------------------------------------------------------------------
+
+
+def _baseline_hash_row(chunk: np.ndarray) -> np.ndarray:
+    """The SHA256 of a chunk, as 4x uint64 (one hash_tables row).
+    Does not cover VLEN dtypes (object strings or NpyStrings).
+    """
+    h = hashlib.sha256()
+    h.update(np.ascontiguousarray(chunk))
+    h.update(str(chunk.shape).encode("ascii"))
+    return np.frombuffer(h.digest(), dtype=np.uint64)
+
+
+def _baseline_hash_table(base_slab: np.ndarray, cs0: int) -> np.ndarray:
+    """Position-indexed hash table for a chunk-aligned 1D base slab, as the on-disk
+    legacy hash table would be inverted into.
+    """
+    n = base_slab.shape[0] // cs0
+    ht = np.zeros((n, 4), dtype=np.uint64)
+    for j in range(n):
+        ht[j] = _baseline_hash_row(base_slab[j * cs0 : (j + 1) * cs0])
+    return ht
+
+
+def test_commit_basic():
+    """commit() consolidates staged slabs into one new base slab, preserving data."""
+    a = StagedChangesArray.full((6,), chunk_size=(2,), fill_value=42)
+    a[0:2] = [1, 2]
+    a[2:4] = [3, 4]
+    assert a.n_staged_slabs == 2
+    expect = np.array([1, 2, 3, 4, 42, 42])
+    assert_array_equal(a, expect)
+
+    a.commit()
+    assert a.n_staged_slabs == 0
+    # full() has no base slab, so the new base slab is the only one, at index 1.
+    assert a.n_base_slabs == 1
+    assert len(a.slabs) == 2  # [full slab, new base slab]
+    assert_array_equal(a, expect)
+    # Third chunk is entirely fill_value -> deduplicated to the full slab, not written.
+    assert_array_equal(a.slab_indices, [1, 1, 0])
+    assert_array_equal(a.slab_offsets, [0, 2, 0])
+    # New base slab holds exactly the two non-fill chunks.
+    assert a.slabs[1].shape == (4,)
+
+
+def test_commit_dedup_staged_vs_staged():
+    """Identical staged chunks are stored once in the new base slab."""
+    a = StagedChangesArray.full((6,), chunk_size=(2,), fill_value=0)
+    a[0:2] = [7, 8]
+    a[2:4] = [7, 8]  # identical to chunk 0
+    a[4:6] = [9, 9]  # distinct
+    a.commit()
+    assert_array_equal(a, [7, 8, 7, 8, 9, 9])
+    # chunks 0 and 1 share the same offset; chunk 2 is distinct
+    assert_array_equal(a.slab_indices, [1, 1, 1])
+    assert_array_equal(a.slab_offsets, [0, 0, 2])
+    assert a.slabs[1].shape == (4,)  # only two unique chunks written
+
+
+def test_commit_dedup_staged_vs_base():
+    """A staged chunk identical to an existing base (raw_data) chunk becomes
+    a reference to it and is not rewritten.
+    """
+    base = np.array([7, 8, 50, 60], dtype="i8")  # chunk0=[7,8], chunk1=[50,60]
+    a = StagedChangesArray(
+        shape=(4,),
+        chunk_size=(2,),
+        base_slabs=[base],
+        slab_indices=[1, 1],
+        slab_offsets=[0, 2],
+        base_hash_tables=[_baseline_hash_table(base, 2)],
+    )
+    assert_array_equal(a.base_hash_tables[0], _baseline_hash_table(base, 2))
+    a[2:4] = [7, 8]  # now identical to base chunk 0
+    assert_array_equal(a, [7, 8, 7, 8])
+    assert_array_equal(a.slab_indices, [1, 2])
+    assert_array_equal(a.slab_offsets, [0, 0])
+    a.commit()
+    # Both chunks reference base slab 1; the staged chunk deduped to base offset 0.
+    assert_array_equal(a.slab_indices, [1, 1])
+    assert_array_equal(a.slab_offsets, [0, 0])
+    # Every staged chunk deduplicated against the base slab, so nothing was written and
+    # no new base slab was appended.
+    assert a.n_base_slabs == 1
+    assert len(a.slabs) == 2
+    assert_array_equal(a, [7, 8, 7, 8])
+
+
+def test_commit_base_wins_over_staged():
+    """When a chunk matches both a base and (the same value on) another staged chunk,
+    the base slab wins (lowest slab index).
+    """
+    base = np.array([7, 8], dtype="i8")
+    a = StagedChangesArray(
+        shape=(6,),
+        chunk_size=(2,),
+        base_slabs=[base],
+        slab_indices=[1, 0, 0],
+        slab_offsets=[0, 0, 0],
+        base_hash_tables=[_baseline_hash_table(base, 2)],
+    )
+    a[2:4] = [7, 8]  # staged, == base chunk
+    a[4:6] = [7, 8]  # staged, == base chunk
+    assert_array_equal(a.slab_indices, [1, 2, 3])
+    assert_array_equal(a.slab_offsets, [0, 0, 0])
+    a.commit()
+    assert_array_equal(a, [7, 8, 7, 8, 7, 8])
+    # All three reference the single base chunk; nothing new written, so no new base
+    # slab was appended.
+    assert_array_equal(a.slab_indices, [1, 1, 1])
+    assert_array_equal(a.slab_offsets, [0, 0, 0])
+    assert a.n_base_slabs == 1
+    assert len(a.slabs) == 2
+
+
+def test_commit_duplicate_base_hashes():
+    """When two identical chunks exist on the base slabs, the first one
+    encountered wins and the other contributes no deduplication candidate.
+    """
+    base = np.array([7, 8, 7, 8], dtype="i8")  # two identical chunks
+    a = StagedChangesArray(
+        shape=(6,),
+        chunk_size=(2,),
+        base_slabs=[base],
+        slab_indices=[1, 1, 0],
+        slab_offsets=[0, 2, 0],
+        base_hash_tables=[_baseline_hash_table(base, 2)],
+    )
+    a[4:6] = [7, 8]
+    assert_array_equal(a.slab_indices, [1, 1, 2])
+    assert_array_equal(a.slab_offsets, [0, 2, 0])
+    a.commit()
+    assert_array_equal(a.slab_indices, [1, 1, 1])
+    assert_array_equal(a.slab_offsets, [0, 2, 0])
+    assert a.n_base_slabs == 1  # Nothing was written
+    # Base chunks keep their mapping; the staged chunk
+    # is deduplicated to the first occurrence
+    assert_array_equal(a.slab_indices, [1, 1, 1])
+    assert_array_equal(a.slab_offsets, [0, 2, 0])
+    assert_array_equal(a, [7, 8, 7, 8, 7, 8])
+
+
+def test_commit_reuses_dereferenced_base_chunk():
+    """All base-slab hashes are considered, even of chunks no longer referenced by the
+    virtual array (e.g. deleted versions ago but still in raw_data).
+    """
+    base = np.array([10, 11, 20, 21, 30, 31], dtype="i8")
+    a = StagedChangesArray(
+        shape=(2,),  # only references base chunk 0
+        chunk_size=(2,),
+        base_slabs=[base],
+        slab_indices=[1],
+        slab_offsets=[0],
+        base_hash_tables=[_baseline_hash_table(base, 2)],
+    )
+    a.resize((4,))  # add a full chunk
+    a[2:4] = [30, 31]  # identical to the dereferenced base chunk 2
+    assert_array_equal(a, [10, 11, 30, 31])
+    assert_array_equal(a.slab_indices, [1, 2])
+    assert_array_equal(a.slab_offsets, [0, 0])
+    a.commit()
+    # The staged chunk is deduplicated onto the dereferenced base chunk at offset 2.
+    assert_array_equal(a, [10, 11, 30, 31])
+    assert_array_equal(a.slab_indices, [1, 1])
+    assert_array_equal(a.slab_offsets, [0, 4])
+    assert a.n_base_slabs == 1  # no new base slab written
+    assert len(a.slabs) == 2
+
+
+def test_commit_dedup_against_previous_commit():
+    """The hash table of the base slab created by a previous commit() is used to
+    deduplicate later staged chunks.
+    """
+    a = StagedChangesArray.full((4,), chunk_size=(2,))
+
+    a[0:2] = [1, 2]
+    a.commit()
+    assert a.n_base_slabs == 1
+    assert_array_equal(a.slab_indices, [1, 0])
+    assert_array_equal(a.slab_offsets, [0, 0])
+    assert_array_equal(a, [1, 2, 0, 0])
+
+    a[2:4] = [1, 2]  # Identical to the chunk committed above
+    a.commit()
+    assert a.n_base_slabs == 1  # Nothing new was written
+    assert_array_equal(a.slab_indices, [1, 1])
+    assert_array_equal(a.slab_offsets, [0, 0])
+    assert_array_equal(a, [1, 2, 1, 2])
+
+
+def test_commit_skips_dereferenced_staged_chunks():
+    """A staged chunk that was dropped by resize(), while other chunks on its slab
+    remain in use, is not committed.
+    """
+    a = StagedChangesArray.full((4,), chunk_size=(2,))
+    a[:] = [1, 2, 3, 4]  # One staged slab with two chunks
+    a.resize((2,))  # Chunk 1 is dropped; its slab is still referenced by chunk 0
+    a.commit()
+    assert_array_equal(a, [1, 2])
+    assert a.slabs[1].shape == (2,)  # Only the referenced chunk was written
+    assert a.hash_tables[1].shape == (1, 4)
+
+
+def test_commit_with_dropped_staged_slabs():
+    """commit() when a staged slab was entirely dropped by resize()"""
+    a = StagedChangesArray.full((4,), chunk_size=(2,))
+    a[0:2] = [1, 2]
+    a[2:4] = [3, 4]  # Second staged slab
+    assert len(a.slabs) == 3
+    assert a.n_base_slabs == 0
+    a.resize((2,))  # Drop it
+    assert a.slabs[2] is None
+
+    a.commit()
+    assert len(a.slabs) == len(a.hash_tables) == 2
+    assert a.n_base_slabs == 1
+    assert a.slabs[1].shape == (2,)
+    assert a.hash_tables[1].shape == (1, 4)
+    assert_array_equal(a, [1, 2])
+
+
+def test_commit_ignores_zeroed_base_hashes():
+    """An all-zero row in a base hash table means 'hash unknown': the chunk doesn't
+    contribute a deduplication candidate.
+    """
+    base = np.array([1, 2, 3, 4], dtype="i8")
+    ht = _baseline_hash_table(base, 2)
+    ht[1] = 0
+    a = StagedChangesArray(
+        shape=(4,),
+        chunk_size=(2,),
+        base_slabs=[base],
+        slab_indices=[1, 1],
+        slab_offsets=[0, 2],
+        base_hash_tables=[ht],
+    )
+    a[2:4] = [3, 4]  # Identical to base chunk 1, whose hash is zeroed
+    a.commit()
+    assert a.n_base_slabs == 2  # Not deduplicated: written to a new base slab
+    assert_array_equal(a.slab_indices, [1, 2])
+    assert_array_equal(a, [1, 2, 3, 4])
+
+
+def test_commit_dedup_edge_chunks():
+    """Edge chunks are hashed on their visible area only and deduplicate normally."""
+    a = StagedChangesArray.full((4, 5), chunk_size=(2, 2))
+    a[0:2, 4] = [9, 9]
+    a[2:4, 4] = [9, 9]  # Identical to the edge chunk above
+    a[0:2, 0] = [8, 8]
+    a.commit()
+    expect = np.zeros((4, 5))
+    expect[:, 4] = 9
+    expect[0:2, 0] = 8
+    assert_array_equal(a, expect)
+    assert_array_equal(a.slab_indices, [[1, 0, 1], [0, 0, 1]])
+    assert_array_equal(a.slab_offsets, [[2, 0, 0], [0, 0, 0]])
+    assert a.slabs[1].shape == (4, 2)  # Two unique chunks
+
+
+def test_commit_multidim_and_edges():
+    """commit() works for multidimensional arrays with edge chunks."""
+    rng = np.random.default_rng(0)
+    base = rng.integers(1000, size=(5, 5)).astype("i8")
+    a = StagedChangesArray.from_array(base.copy(), chunk_size=(2, 3), fill_value=0)
+    a[0, 0] = 999
+    a[4, 4] = 888  # bottom-right edge chunk
+    expect = base.copy()
+    expect[0, 0] = 999
+    expect[4, 4] = 888
+    assert_array_equal(a, expect)
+    a.commit()
+    assert a.n_staged_slabs == 0
+    assert_array_equal(a, expect, strict=True)
+
+
+def test_commit_no_staged_chunks():
+    """commit() on an array without staged chunks has nothing to write, so it does not
+    append a new base slab."""
+    a = StagedChangesArray.from_array(np.arange(4), chunk_size=(2,))
+    n_before = a.n_base_slabs
+    a.commit()
+    assert a.n_staged_slabs == 0
+    assert a.n_base_slabs == n_before
+    assert_array_equal(a, [0, 1, 2, 3])
+
+
+def test_commit_size_zero():
+    """commit() on a size-0 array is a well-behaved no-op-ish operation."""
+    a = StagedChangesArray.full((0,), chunk_size=(2,))
+    a.commit()
+    assert a.shape == (0,)
+    assert a.n_staged_slabs == 0
+    assert_array_equal(a, np.empty((0,)))
+
+
+def test_commit_empty_callback():
+    """The ``empty`` callback replicates numpy.empty and receives the new slab shape."""
+    calls = []
+
+    def my_empty(shape, dtype):
+        calls.append((shape, dtype))
+        return np.empty(shape, dtype=dtype)
+
+    a = StagedChangesArray.full((4,), chunk_size=(2,), dtype="i4")
+    a[0:2] = [1, 2]
+    a.commit(empty=my_empty)
+    assert len(calls) == 1
+    assert calls[0][0] == (2,)  # one surviving chunk * chunk_size[0]
+    assert calls[0][1] == np.dtype("i4")
+    assert_array_equal(a, np.array([1, 2, 0, 0], dtype="i4"), strict=True)
+
+
+def test_commit_writes_through_callback():
+    """The callback's returned array is where the chunks actually land (mirrors the
+    InMemoryDataset wrapper writing into a raw_data view).
+    """
+    surface = np.full((2,), -1, dtype="i8")
+
+    def my_empty(shape, dtype):
+        assert shape == (2,)
+        assert dtype == np.dtype("i8")
+        return surface  # pre-allocated destination
+
+    a = StagedChangesArray.full((2,), chunk_size=(2,), dtype="i8")
+    a[:] = [5, 6]
+    a.commit(empty=my_empty)
+    assert_array_equal(surface, [5, 6])  # written straight into our buffer
+    assert a.slabs[a.n_base_slabs] is surface
+
+
+def test_commit_empty_callback_non_ndarray():
+    """The empty callback may return a non-ndarray MutableArrayProtocol.
+
+    This is important for the InMemoryDataset wrapper, which uses a callback that
+    returns a view of the raw_data hdf5 dataset.
+    """
+    dst = MinimalMutableArray(np.full((2,), -1, dtype="i8"))
+    a = StagedChangesArray.full((3,), chunk_size=(2,), dtype="i8")
+    a[0:2] = [5, 6]
+    a.commit(empty=lambda *_args, **_kwargs: dst)
+    assert a.slabs[1] is dst
+    assert_array_equal(np.asarray(a), [5, 6, 0])
+
+
+def test_commit_readonly():
+    a = StagedChangesArray.full((2,), chunk_size=(2,))
+    a[:] = [1, 2]
+    a.writeable = False
+    with pytest.raises(ValueError, match="read-only"):
+        a.commit()
+
+
+def test_commit_after_copy_is_cow():
+    """commit() on one CoW sibling does not affect the other."""
+    a = StagedChangesArray.full((4,), chunk_size=(2,), fill_value=0)
+    a[0:2] = [1, 2]
+    b = a.copy()
+    a.commit()
+    assert_array_equal(a, [1, 2, 0, 0])
+    assert_array_equal(b, [1, 2, 0, 0])
+    assert a.n_staged_slabs == 0
+    assert b.n_staged_slabs == 1  # b still has the staged slab
+
+
+def test_commit_after_astype():
+    a = StagedChangesArray.full((4,), chunk_size=(2,), dtype="i1")
+    a[0:2] = [1, 2]
+    b = a.astype("i4")
+    b.commit()
+    assert b.dtype == "i4"
+    assert b.n_staged_slabs == 0
+    assert_array_equal(b, np.array([1, 2, 0, 0], dtype="i4"), strict=True)
+
+
+def test_commit_after_refill():
+    a = StagedChangesArray.full((4,), chunk_size=(2,), fill_value=0)
+    a[0:2] = [1, 2]
+    b = a.refill(9)
+    b.commit()
+    assert_array_equal(b, [1, 2, 9, 9])
+    # chunk 1 is entirely the new fill_value -> stays on the full slab
+    assert_array_equal(b.slab_indices, [1, 0])
+
+
+def test_commit_string_dtype():
+    a = StagedChangesArray.from_array(
+        np.array(["aaa", "bbb", "ccc", "aaa"], dtype="U3"),
+        chunk_size=(2,),
+        fill_value="zzz",
+    )
+    a[0] = "ddd"
+    a[2:4] = ["aaa", "aaa"]
+    expect = np.array(["ddd", "bbb", "aaa", "aaa"], dtype="U3")
+    assert_array_equal(a, expect, strict=True)
+    a.commit()
+    assert a.n_staged_slabs == 0
+    assert_array_equal(a, expect, strict=True)
+
+
+def test_hash_tables_parallel_to_slabs():
+    """hash_tables stays the same length as slabs, with None wherever a slab is None."""
+    a = StagedChangesArray.from_array(np.arange(6), chunk_size=(2,))
+
+    def check(arr):
+        assert len(arr.hash_tables) == len(arr.slabs)
+        for i, (slab, ht) in enumerate(zip(arr.slabs, arr.hash_tables, strict=True)):
+            if i == 0:
+                assert slab is not None
+            # Hashes are computed lazily (full, base, and staged slabs alike), so a
+            # present slab may still have ht=None. The firm invariant is the reverse:
+            # a dropped slab (None) never keeps a hash table.
+            if slab is None:
+                assert ht is None
+            if ht is not None:
+                assert ht.dtype == np.uint64
+                assert ht.shape[1] == 4
+
+    check(a)
+    a[0] = 9  # __setitem__ appends a staged slab
+    check(a)
+    a.resize((10,))  # enlarge -> append slab
+    check(a)
+    a.resize((2,))  # shrink -> drop slabs
+    check(a)
+    a.load()
+    check(a)
+    b = a.copy()
+    check(b)
+    a.commit()
+    check(a)
+
+
+def test_commit_repr():
+    a = StagedChangesArray.full((2, 10), chunk_size=(2, 2), fill_value=0)
+    a[0, 0:6] = [1, 2, 1, 2, 3, 4]  # create slabs[1] (note the duplicate chunk)
+    a[1, 7] = 5  # create slabs[2]
+
+    r = repr(a._hash_plan())
+    expect = """
+HashPlan<5 chunks over 3 slabs>
+  # hash 1 chunks of slabs[0]
+  hash_tables[0] = np.empty((1, sizeof(sha256)))
+  hash_tables[0][0] = hash(slabs[0][0:2, :2])
+  # hash 3 chunks of slabs[1]
+  hash_tables[1] = np.empty((3, sizeof(sha256)))
+  hash_tables[1][0] = hash(slabs[1][0:2, :2])
+  hash_tables[1][1] = hash(slabs[1][2:4, :2])
+  hash_tables[1][2] = hash(slabs[1][4:6, :2])
+  # hash 1 chunks of slabs[2]
+  hash_tables[2] = np.empty((1, sizeof(sha256)))
+  hash_tables[2][0] = hash(slabs[2][0:2, :2])
+    """
+    assert r == textwrap.dedent(expect).strip()
+
+    a._calc_hashes()
+
+    r = repr(a._commit_plan())
+    print(r)
+    expect = """
+CommitPlan<append 1 empty slabs, 3 slice transfers among 2 slab pairs, drop 0 slabs>
+  slabs.append(empty((6, 2)))  # slabs[1]
+  # 2 transfers from slabs[1] to slabs[3]
+  slabs[3][0:2, 0:2] = slabs[1][0:2, 0:2]
+  slabs[3][2:4, 0:2] = slabs[1][4:6, 0:2]
+  # 1 transfers from slabs[2] to slabs[3]
+  slabs[3][4:6, 0:2] = slabs[2][0:2, 0:2]
+slab_indices:
+[[1 1 1 1 0]]
+slab_offsets:
+[[0 0 2 4 0]]
+    """
+    assert r == textwrap.dedent(expect).strip()
