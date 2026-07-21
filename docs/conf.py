@@ -20,6 +20,17 @@ author = "Quansight"
 # with the -W flag in the Makefile.
 nitpicky = True
 
+# These internal modules are not documented via autodoc, so Sphinx can't
+# resolve cross-references to them. Ignore them in nitpicky mode.
+nitpick_ignore = [
+    ("py:class", "versioned_hdf5.hashtable.Hashtable"),
+    ("py:meth", "versioned_hdf5.staged_changes.StagedChangesArray.commit"),
+    ("py:meth", "versioned_hdf5.hashtable.Hashtable.hash"),
+    ("py:mod", "versioned_hdf5.hash"),
+    ("py:mod", "versioned_hdf5.replay"),
+    ("py:func", "versioned_hdf5.backend.commit_staged_changes"),
+]
+
 # -- General configuration ---------------------------------------------------
 
 # Add any Sphinx extension module names here, as strings. They can be
