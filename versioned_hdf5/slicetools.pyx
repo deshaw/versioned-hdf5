@@ -294,6 +294,44 @@ cdef Exception HDF5Error():
     return RuntimeError(msg)
 
 
+class RawDataView:
+    """A writeable view onto raw_data[offset:], to be used with read_many_slices.
+    """
+    raw_data: Dataset
+    offset: int
+    dtype: np.dtype
+
+    def __init__(self, raw_data: Dataset, offset: int, dtype: np.dtype):
+        self.raw_data = raw_data
+        self.offset = offset
+        # Outwards dtype. This may differ from raw_data.dtype for variable-width strings
+        # (e.g. StringDType staged slabs vs an object-dtype raw_data).
+        self.dtype = dtype
+
+    @property
+    def ndim(self):
+        return self.raw_data.ndim
+
+    @property
+    def shape(self):
+        s = self.raw_data.shape
+        return (s[0] - self.offset, *s[1:])
+
+    @property
+    def size(self):
+        return int(np.prod(self.shape))
+
+    # This class must be exclusively accessed with read_many_slices
+    def __getitem__(self, idx):
+        raise NotImplementedError()
+
+    def __setitem__(self, idx, value):
+        raise NotImplementedError()
+
+    def __array__(self, dtype=None, copy=None):
+        raise NotImplementedError()
+
+
 cpdef void read_many_slices(
     src: ArrayProtocol,
     dst: ArrayProtocol,
@@ -433,6 +471,11 @@ cpdef void read_many_slices(
     if dst.size == 0 or src.size == 0:
         return
 
+    cdef hsize_t dst_axis0_offset = 0
+    if isinstance(dst, RawDataView):
+        dst_axis0_offset = dst.offset
+        dst = dst.raw_data
+
     cdef bint fast_h5_to_np = False
     cdef bint fast_np_to_h5 = False
     if fast is not False:
@@ -446,6 +489,10 @@ cpdef void read_many_slices(
     src_start = _preproc_many_slices_idx(src_start, ndim, bfast)
     dst_start = _preproc_many_slices_idx(dst_start, ndim, bfast)
     count = _preproc_many_slices_idx(count, ndim, bfast)
+
+    if dst_axis0_offset:
+        dst_start = dst_start.copy()
+        dst_start[..., 0] += dst_axis0_offset
 
     if src_stride is None:
         src_stride = np.ones(ndim, dtype=np_hsize_t)

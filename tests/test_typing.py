@@ -3,6 +3,7 @@ import numpy as np
 import numpy.ma as ma
 import pytest
 from packaging.version import Version
+from versioned_hdf5.slicetools import RawDataView
 
 from versioned_hdf5.h5py_compat import h5py_astype
 from versioned_hdf5.staged_changes import StagedChangesArray
@@ -101,3 +102,13 @@ def array_protocol_staged_changes():
     arr = StagedChangesArray.full((3, 3), chunk_size=(3, 1), dtype="f4")
     assert isinstance(arr, ArrayProtocol)
     assert isinstance(arr, MutableArrayProtocol)
+
+
+def test_array_protocol_rawdataview():
+    """RawDataView conforms to the writeable MutableArrayProtocol, so that it satisfies
+    the return type of StagedChangesArray.commit()'s ``empty`` callback, even though its
+    __getitem__/__setitem__/__array__ raise (it must only be used via read_many_slices).
+    """
+    view = RawDataView(np.zeros((4, 3)), offset=1, dtype=np.dtype("i8"))
+    assert isinstance(view, ArrayProtocol)
+    assert isinstance(view, MutableArrayProtocol)

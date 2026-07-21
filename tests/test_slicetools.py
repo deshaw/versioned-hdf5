@@ -6,6 +6,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from numpy.testing import assert_equal
 from versioned_hdf5.slicetools import (
+    RawDataView,
     build_slab_indices_and_offsets,
     read_many_slices,
     spaceid_to_slice,
@@ -481,6 +482,26 @@ def test_read_many_slices_array_protocol():
     expect = np.asarray([0, 2, 3, 0])
     read_many_slices(src, dst, src_start=[(2,)], dst_start=[(1,)], count=[(2,)])
     np.testing.assert_equal(dst, expect)
+
+
+@pytest.mark.parametrize("fast", [True, None, False])
+def test_read_many_slices_rawdataview(h5file, fast):
+    src = np.array([[1, 2, 3], [4, 5, 6]])
+    nrows = 3
+    raw = h5file.create_dataset("raw", shape=(nrows, 3), dtype=src.dtype)
+    view = RawDataView(raw, 1, raw.dtype)
+    assert view.shape == (2, 3)
+    assert view.ndim == 2
+    assert view.size == 6
+    assert view.dtype == raw.dtype
+
+    src_start = [[0, 0]]
+    dst_start = [[1, 1]]
+    count = [[1, 2]]
+
+    read_many_slices(src, view, src_start, dst_start, count, fast=fast)
+    expect = [[0, 0, 0], [0, 0, 0], [0, 1, 2]]
+    np.testing.assert_array_equal(raw[:], expect)
 
 
 def test_read_many_slices_fail():
