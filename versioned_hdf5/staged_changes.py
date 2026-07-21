@@ -29,14 +29,29 @@ from versioned_hdf5.tools import asarray, format_ndindex, ix_with_slices
 from versioned_hdf5.typing_ import ArrayProtocol, MutableArrayProtocol
 
 if cython.compiled:  # pragma: nocover
+    from cython.cimports import numpy as np
+    from cython.cimports.versioned_hdf5._commit_hash import (
+        ChunkHash,
+        ChunkHashMap,
+        ChunkLoc,
+        ChunkLocMap,
+    )
     from cython.cimports.versioned_hdf5.cytools import (  # type: ignore
         ceil_a_over_b,
         count2stop,
         hsize_t,
     )
+    from cython.cimports.versioned_hdf5.hash import hash_slab
     from cython.cimports.versioned_hdf5.subchunk_map import (  # type: ignore
         IndexChunkMapper,
         read_many_slices_params_nd,
+    )
+else:
+    from versioned_hdf5._commit_hash import (
+        ChunkHash,
+        ChunkHashMap,
+        ChunkLoc,
+        ChunkLocMap,
     )
 
 

@@ -30,11 +30,13 @@ patchelf = "*"
 
 [feature.build.target.win.dependencies]
 clang = "*"
+clangxx = "*" # staged_changes.pyx is compiled as C++
 llvm-tools = "*"
 pkg-config = "*" # Needed to find hdf5
 
 [feature.build.target.win.activation.env]
 CC = "clang"
+CXX = "clang++"
 LD = "llvm-ar"
 
 [feature.build.tasks]
@@ -99,8 +101,12 @@ clang = "=14"
 # hdf5 1.12 shows double-linking issues at runtime
 hdf5 = "=1.14.0"
 h5py = "=3.9.0"
-clang = "=14"
-llvm-tools = "=14"
+# This is for compatibility with windows-latest (windows-2025 at the moment of writing).
+# It may break when windows-latest is upgraded in the future to ship with a newer
+# version of MSVC.
+clang = "=20"
+clangxx = "=20"
+llvm-tools = "=20"
 
 [feature.hdf5-112]
 # hdf5 1.12.2 is the minimum version supported by h5py binaries in conda-forge.

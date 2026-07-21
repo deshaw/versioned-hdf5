@@ -204,6 +204,7 @@ delvewheel repair -v -w {dest_dir} \
 
 [tool.cibuildwheel.windows.environment]
 CC = "clang"
+CXX = "clang++" # staged_changes.pyx is compiled as C++
 LD = "llvm-ar"
 PATH = "$HDF5_DIR/lib;$OPENSSL_DIR/bin;$PATH"
 PKG_CONFIG_PATH = "$HDF5_DIR/lib/pkgconfig;$OPENSSL_DIR/lib/pkgconfig;$PKG_CONFIG_PATH"
