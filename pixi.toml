@@ -183,6 +183,9 @@ asv = "*"
 [feature.bench.tasks]
 asv-machine = "asv machine --yes"
 asv-run = { cmd = "asv run --python=same --quick --set-commit-hash $(git rev-parse HEAD)", depends-on = ["editable-install"] }
+# Note: no depends-on; asv_compare.py installs each revision itself, and reinstates the
+# editable install of the working tree when it's done.
+asv-compare = { cmd = "python ci/asv_compare.py", description = "Benchmark two or more git revisions side by side" }
 
 [feature.docs.dependencies]
 graphviz = "*"
