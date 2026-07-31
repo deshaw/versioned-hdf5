@@ -73,6 +73,32 @@ At the moment, historical benchmarking is not configured.
 
 These commands are available in the `default` and `mindeps` environments.
 
+### Comparing revisions
+
+`pixi r asv-compare <rev1> <rev2> [... <revn>]` benchmarks two or more git revisions and
+prints `asv compare` of each of them against the first one:
+
+```console
+$ pixi r asv-compare 1c10d29 nocpp -b TimeCommitPlan
+[...]
+| Change   | Before [1c10d295] <commit>   | After [9653508e] <nocpp>   |   Ratio | Benchmark (Parameter)                            |
+|----------|------------------------------|----------------------------|---------|--------------------------------------------------|
+| +        | 2.74±0.05ms                  | 11.7±0.6ms                 |    4.27 | ...TimeCommitPlan.time_commit_plan('all_new')    |
+|          | 89.0±1ms                     | 93.9±1ms                   |    1.06 | ...TimeCommitPlan.time_commit_plan('fragmented') |
+| +        | 1.03±0.02ms                  | 3.65±0.05ms                |    3.55 | ...TimeCommitPlan.time_commit_plan('no_changes') |
+```
+
+Each revision is built from a temporary git worktree. Your editable install of the
+working tree is restored at the end.
+
+`benchmarks/` always comes from the working tree, never from the revisions, so you can
+benchmark revisions that predate the benchmark you're running on them (as long as it
+doesn't crash on them).
+
+Each benchmark is sampled 5 times per process to measure noise (`-n/--repeat`), where
+`pixi r asv-run` measures it once.
+Pass `-b/--bench <regex>` to select individual tests.
+
 ## Automated Contributions and AI Policy
 
 AI and automated tools may be used to assist in code development, documentation, and
