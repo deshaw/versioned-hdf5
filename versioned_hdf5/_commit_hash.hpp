@@ -61,8 +61,10 @@ struct ChunkLoc {
 
 struct ChunkLocHash {
     std::size_t operator()(const ChunkLoc& key) const noexcept {
-        std::size_t h = std::hash<uint64_t>{}(key.slab_offset);
-        return h ^ (std::hash<uint64_t>{}(key.slab_idx) << 1u);
+        // Shift one of the two parameters by a large prime number
+        // in order to minimize collisions in the frequent use case
+        // where slab_idx and slab_offset are both small.
+        return key.slab_idx * 0x100000001b3ULL + key.slab_offset;
     }
 };
 
