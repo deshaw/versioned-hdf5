@@ -1,6 +1,7 @@
 py.install_sources(
     [
         '__init__.py',
+        '_commit_hash.py',
         'api.py',
         'backend.py',
         'h5py_compat.py',
@@ -78,6 +79,12 @@ py.extension_module(
     cython_args: cython_args,
 )
 
+# Custom C++ hash functors / key types used by staged_changes (C++ std::unordered_map)
+# in CommitPlan.__init__.
+commit_hash_hpp = include_directories('.')
+
+py.install_sources(['_commit_hash.hpp'], subdir: 'versioned_hdf5')
+
 py.extension_module(
     'staged_changes',
     'staged_changes.pyx',
@@ -85,7 +92,10 @@ py.extension_module(
     subdir: 'versioned_hdf5',
     dependencies: compiled_deps,
     cython_args: cython_args,
-    include_directories: [npy_include_path],    
+    include_directories: [npy_include_path, commit_hash_hpp],
+    # staged_changes uses std::unordered_map (C++). Keep it in C++ so the linker
+    # pulls in libstdc++.
+    override_options: ['cython_language=cpp'],
 )
 
 py.extension_module(
