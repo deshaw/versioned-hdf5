@@ -2,9 +2,12 @@
 
 import hashlib
 import struct
+from contextlib import suppress
 
 import numpy as np
-from versioned_hdf5.hash import hash_slab
+
+with suppress(ImportError):  # Allow asv-compare vs. older releases
+    from versioned_hdf5.hash import hash_slab
 
 from .common import require_npystrings
 
