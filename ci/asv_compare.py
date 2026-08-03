@@ -39,8 +39,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "-n",
         "--repeat",
         type=int,
-        default=5,
-        help="How many samples of each benchmark to take (default: 5)",
+        default=3,
+        help="How many samples of each benchmark to take (default: 3)",
     )
     parser.add_argument(
         "-b",
