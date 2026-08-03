@@ -115,6 +115,7 @@ def ix_idx_st(draw, max_ndim: int = 4) -> tuple[tuple[int, ...], tuple]:
     return shape, draw(idx_st)
 
 
+@pytest.mark.slow
 @given(ix_idx_st())
 @hypothesis.settings(max_examples=1000)
 def test_ix_with_slices(args):

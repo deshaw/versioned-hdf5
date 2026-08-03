@@ -2904,6 +2904,7 @@ def test_make_empty_multidimensional_dataset(tmp_path):
         assert_equal(cv["values"][:], np.zeros((0, 0), dtype="int64"))
 
 
+@pytest.mark.slow
 def test_insert_in_middle_multi_dim(tmp_path):
     """
     Test we correctly handle inserting into a multi-dimensional Dataset
