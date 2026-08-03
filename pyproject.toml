@@ -119,7 +119,7 @@ profile = "black"
 ENABLE_CHUNK_REUSE_VALIDATION = 1
 
 [tool.pytest.ini_options]
-addopts = "--doctest-modules --ignore=ci/ --ignore=analysis/ --import-mode=importlib"
+addopts = "--doctest-modules --ignore=ci/ --ignore=analysis/ --import-mode=importlib --durations 10"
 doctest_optionflags = "NORMALIZE_WHITESPACE"
 strict_xfail = true
 markers = [

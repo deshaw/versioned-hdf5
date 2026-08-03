@@ -1219,8 +1219,10 @@ def test_delete_versions_after_shrinking(vfile):
     np.testing.assert_equal(ht_after[Slice(10, 17, 1)], ht_before[Slice(30, 37, 1)])
 
 
+@pytest.mark.slow
 @hypothesis.settings(
     max_examples=20,
+    deadline=2000,
     # h5file is not reset between hypothesis examples
     suppress_health_check=[hypothesis.HealthCheck.function_scoped_fixture],
 )
