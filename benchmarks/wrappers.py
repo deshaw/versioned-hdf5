@@ -111,28 +111,62 @@ class TimeCreateDataset(Benchmark):
 class TimeCommit(Benchmark):
     params = [
         [
+            # Create new dataset with data=
             "v1_dense",
-            "v1_sparse",
+            # Create new dataset with shape=
+            "v1_sparse_empty",
+            # Create new dataset with shape=; then fill all chunks
+            "v1_sparse_full",
+            # Create new dataset with data=np.full(shape, fillvalue)
+            # Then set a single chunk to non-fillvalue
+            "v1_dense_fillvalue",
+            # As above, but sparse
+            "v1_sparse_fillvalue",
+            # New version of existing dataset; no __setitem__ calls
             "v2_no_changes",
+            # A single point changes
+            "v2_one_change",
+            # New version; [:] = ... hot-swaps InMemoryDataset -> InMemoryArrayDataset
+            # (identical contents)
+            "v2_hotswap_no_changes",
+            # As above, but chunk contents change
+            "v2_hotswap_all_changes",
+            # Points are not updated all at once; doesn't trigger the hotswap
             "v2_modified_no_changes",
             "v2_modified_all_changes",
+            # v2 replaces all chunks of v1, but v3 is identical to v1
+            # [:] triggers a InMemoryDataset -> InMemoryArrayDataset hotswap
+            "v3_restore_obsolete",
+            # As above, but points are not update at once which prevents the hotswap
+            "v3_restore_obsolete_hotswap",
         ],
-        [(10, 10), (50, 50), (250, 250)],
+        [(25, 25), (50, 50), (250, 250)],
     ]
     param_names = ["kind", "chunks"]
 
     def setup(self, kind, chunks):
-        shape = (500, 500)
-        data = np.arange(500 * 500).reshape(shape)
+        shape = (1000, 1000)
+        if kind.endswith("_fillvalue"):
+            data = np.zeros(shape, dtype=np.float64)
+            data[0, 0] = 1
+        else:
+            rng = np.random.default_rng(0)
+            data = rng.random(size=shape, dtype=np.float64)
 
         super().setup()
         if kind.startswith("v1_"):
             self.ctx = self.vfile.stage_version("v1")
             self.version = self.ctx.__enter__()
-            if kind == "v1_dense":
+            if kind in ("v1_dense", "v1_dense_fillvalue"):
                 self.version.create_dataset("data", data=data, chunks=chunks)
-            elif kind == "v1_sparse":
+            elif kind == "v1_sparse_empty":
                 self.version.create_dataset("data", shape=shape, chunks=chunks)
+            elif kind in ("v1_sparse_full", "v1_sparse_fillvalue"):
+                ds = self.version.create_dataset("data", shape=shape, chunks=chunks)
+                # Don't write all at once, or it would trigger a hotswap
+                # InMemorySparseDataset -> InMemoryArrayDataset
+                ds[0] = data[0]
+                ds[1:] = data[1:]
             else:
                 raise AssertionError("unreachable")
 
@@ -144,10 +178,38 @@ class TimeCommit(Benchmark):
             ds = self.version["data"]
             if kind == "v2_no_changes":
                 pass
+            elif kind == "v2_one_change":
+                ds[0, 0] = data[0, 0] + 123
+            elif kind == "v2_hotswap_no_changes":
+                ds[:] = data
+            elif kind == "v2_hotswap_all_changes":
+                ds[:] = data + 123
             elif kind == "v2_modified_no_changes":
-                ds[:] = ds[:]
+                # Don't write all at once, or it would trigger a hotswap
+                # InMemoryDataset -> InMemoryArrayDataset
+                ds[0] = data[0]
+                ds[1:] = data[1:]
             elif kind == "v2_modified_all_changes":
-                ds[:] = ds[:] + 123
+                ds[0] = data[0] + 123
+                ds[1:] = data[1:] + 123
+            else:
+                raise AssertionError("unreachable")
+
+        elif kind.startswith("v3_"):
+            with self.vfile.stage_version("v1") as version:
+                version.create_dataset("data", data=data, chunks=chunks)
+            with self.vfile.stage_version("v2") as version:
+                version["data"] = data + 123
+            self.ctx = self.vfile.stage_version("v3")
+            self.version = self.ctx.__enter__()
+            ds = self.version["data"]
+            if kind == "v3_restore_obsolete":
+                # Don't write all at once, or it would trigger a hotswap
+                # InMemoryDataset -> InMemoryArrayDataset
+                ds[0] = data[0]
+                ds[1:] = data[1:]
+            elif kind == "v3_restore_obsolete_hotswap":
+                ds[:] = data
             else:
                 raise AssertionError("unreachable")
 
