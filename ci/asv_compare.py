@@ -10,6 +10,7 @@ benchmarks/ must be able to run on all of them.
 from __future__ import annotations
 
 import argparse
+import io
 import subprocess
 import sys
 import tempfile
@@ -39,8 +40,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "-n",
         "--repeat",
         type=int,
-        default=5,
-        help="How many samples of each benchmark to take (default: 5)",
+        default=3,
+        help="How many samples of each benchmark to take (default: 3)",
     )
     parser.add_argument(
         "-b",
@@ -51,16 +52,31 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="Only run the benchmarks matching this regex. May be repeated. "
         "Forwarded to `asv run`.",
     )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=RESULTS_DIR.parent / "compare_report.txt",
+        metavar="FILE",
+        help="Path to write the comparison report (default: .asv/compare_report.txt)",
+    )
     args = parser.parse_args(argv)
     if len(set(args.revs)) < 2:  # Deduplicate
         parser.error("need at least two revisions to compare")
     return args
 
 
-def run(*args: str | Path) -> None:
-    """Run a command in the project root, raising if it fails"""
+def run(*args: str | Path, tee: io.TextIOBase | None = None) -> None:
+    """Run a command in the project root, raising if it fails.
+    If `tee` is given, stdout is also written to that file.
+    """
     print("+", *args, flush=True)
-    subprocess.check_call(args, cwd=PROJECT_ROOT)
+    rbytes = subprocess.check_output(args, cwd=PROJECT_ROOT)
+    result = rbytes.decode("utf-8", errors="ignore")
+    sys.stdout.write(result)
+    sys.stdout.flush()
+    if tee is not None:
+        tee.write(result)
 
 
 def asv_run(commit_hash: str, repeat: int, bench: list[str]) -> None:
@@ -136,8 +152,12 @@ def main(argv: list[str] | None = None) -> None:
         run("git", "worktree", "prune")
 
     baseline, *others = revs
-    for rev in others:
-        run(sys.executable, "-m", "asv", "compare", baseline, rev)
+
+    with open(args.output, "w") as f:
+        for rev in others:
+            run(sys.executable, "-m", "asv", "compare", baseline, rev, tee=f)
+
+    print(f"Report written to {args.output}", file=sys.stderr)
 
 
 if __name__ == "__main__":
