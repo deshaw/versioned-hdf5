@@ -550,6 +550,7 @@ class StagedChangesArray(MutableMapping[Any, T]):
         # chunks are duplicates of the base or full chunks and thus no data transfers
         # are needed.
         return CommitPlan(
+            shape=self.shape,
             slab_indices=self.slab_indices.copy() if copy else self.slab_indices,
             slab_offsets=self.slab_offsets.copy() if copy else self.slab_offsets,
             hash_tables=self.hash_tables,
@@ -659,13 +660,7 @@ class StagedChangesArray(MutableMapping[Any, T]):
     ) -> None:
         """Implement common workflow of __setitem__, resize, and load."""
         for shape in plan.append_slabs:
-            slab = empty(shape, dtype=self.dtype)
-            if isinstance(slab, np.ndarray):
-                # This is a __setitem__ / resize / load. Initialise the slab to
-                # fill_value. commit() will later write the whole thing, padding
-                # included, to hdf5 and we don't want to write uninitialised memory.
-                slab[...] = self.fill_value
-            self.slabs.append(slab)
+            self.slabs.append(empty(shape, dtype=self.dtype))
             self.hash_tables.append(None)
 
         for tplan in plan.transfers:
@@ -674,6 +669,8 @@ class StagedChangesArray(MutableMapping[Any, T]):
             assert tplan.dst_slab_idx is not None
             assert tplan.dst_slab_idx > self.n_base_slabs
             dst_slab = self._get_slab(tplan.dst_slab_idx, writeable=True)
+            # Whatever hashes we knew about the destination slab are now stale
+            self.hash_tables[tplan.dst_slab_idx] = None
 
             tplan.transfer(src_slab, dst_slab)
 
@@ -2111,6 +2108,7 @@ class CommitPlan(MutatingPlan):
 
     def __init__(
         self,
+        shape: tuple[int, ...],
         slab_indices: NDArray[np_hsize_t],
         slab_offsets: NDArray[np_hsize_t],
         hash_tables: list[np.ndarray | None],
@@ -2164,6 +2162,10 @@ class CommitPlan(MutatingPlan):
         # beats the base slabs, which beat the staged slabs. Unreferenced base-slab
         # chunks are included too, so a chunk deleted versions ago but still present in
         # raw_data can be reused.
+
+        # Plan to copy full chunks, including for partial edge chunks.
+        # We'll refine the selection later in this method.
+        tplan_count = np.broadcast_to(np_chunk_size, (n_total_transfers, ndim)).copy()
 
         for old_slab_idx in range(len(hash_tables)):
             ht = hash_tables[old_slab_idx]
@@ -2220,12 +2222,9 @@ class CommitPlan(MutatingPlan):
                 tplan.dst_slab_idx = len(hash_tables)
                 tplan.src_start = src_start[out_row - n_slab_transfers : out_row]
                 tplan.dst_start = dst_start[out_row - n_slab_transfers : out_row]
-                # Slightly inefficient: also copy uninitialised data beyond the
-                # border of edge chunks so that we don't have to bother figuring
-                # out their shape here
-                tplan.count = np.broadcast_to(
-                    np_chunk_size, (n_slab_transfers, ndim)
-                ).copy()
+                # Note: this is a view; it's important since we're going to refine
+                # tplan_count values later in this method.
+                tplan.count = tplan_count[out_row - n_slab_transfers : out_row]
                 tplan.src_stride = np.ones((n_slab_transfers, ndim), dtype=np_hsize_t)
                 tplan.dst_stride = tplan.src_stride
                 self.transfers.append(tplan)
@@ -2254,6 +2253,23 @@ class CommitPlan(MutatingPlan):
                 mapped = old_to_new_chunk[loc]
                 slab_indices_flat_view[i] = mapped.slab_idx
                 slab_offsets_flat_view[i] = mapped.slab_offset
+
+        # Trim the edge chunks, so that the transfers never read the uninitialised
+        # padding beyond the edge of a staged slab (which would then be written to
+        # disk). The TransferPlans hold views of `tplan_count`, so this applies
+        # retroactively. Duplicate chunks all share the same trimmed shape, as the shape
+        # is part of the hash, so it's enough to look at one occurrence of each on the
+        # new slab.
+        for dim in range(ndim):
+            last_chunk_idx = self.slab_indices.shape[dim] - 1
+            trim = shape[dim] - last_chunk_idx * chunk_size[dim]
+            if trim == chunk_size[dim]:
+                continue  # No edge chunks along this axis
+            edge = (slice(None),) * dim + (slice(last_chunk_idx, None),)
+            edge_offsets = self.slab_offsets[edge][
+                self.slab_indices[edge] == new_slab_idx
+            ]
+            tplan_count[edge_offsets // cs0, dim] = trim
 
     @property
     def head(self) -> str:

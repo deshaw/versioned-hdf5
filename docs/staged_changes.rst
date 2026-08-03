@@ -406,12 +406,6 @@ tie:
 3. finally the lowest (arbitrary) staged chunk wins, meaning that two identical stage
    chunks result in only one chunk being written.
 
-For sake of simplicity, ``CommitPlan`` is blind to the geometry of edge chunks. To
-compensate, staged slabs are initialised to the ``fill_value``, so that the cells of an
-edge chunk that lie beyond the array boundary hold the ``fill_value`` rather than
-uninitialised memory; this keeps the layout deterministic when ``commit()`` later copies
-whole chunks (padding included) to HDF5.
-
 A new base slab is appended *only if at least one staged chunk survives deduplication*.
 If every staged chunk turns out to be a duplicate of a base or full chunk (or there are
 no staged chunks at all), nothing is written: no new base slab is created and
