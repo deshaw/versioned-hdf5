@@ -9,6 +9,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from ndindex import Slice
 from numpy.testing import assert_array_equal
+from versioned_hdf5.slicetools import spaceid_to_slice
 
 from versioned_hdf5 import VersionedHDF5File
 from versioned_hdf5.backend import DEFAULT_CHUNK_SIZE
@@ -917,6 +918,67 @@ def test_recreate_virtual_dataset(vfile):
     new_virtual_dataset = vfile.f["_version_data/versions/version2/_tmp_test_data"][:]
 
     np.testing.assert_equal(orig_virtual_dataset, new_virtual_dataset)
+
+
+def test_delete_versions_invalidates_cache(vfile):
+    """delete_versions() shuffles the chunks of raw_data around. A version that was read
+    through the same VersionedHDF5File handle beforehand must not keep reading from the
+    stale chunk offsets afterwards.
+    """
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("values", data=np.arange(1, 10).reshape(3, 3), chunks=(2, 2))
+    with vfile.stage_version("r1") as sv:
+        sv["values"][0, 0] = 100
+
+    expect = np.arange(1, 10).reshape(3, 3)
+    expect[0, 0] = 100
+    assert_array_equal(vfile["r1"]["values"][:], expect)  # Populate the caches
+
+    delete_versions(vfile, ["r0"])
+
+    assert_array_equal(vfile["r1"]["values"][:], expect)
+
+
+def test_delete_versions_resets_edge_chunk_padding(vfile):
+    """raw_data must not retain any data from the deleted versions in the padding around
+    the chunks that lie on the edge of the virtual dataset. This includes the corner of
+    a chunk that is truncated along two or more axes at once.
+    """
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("values", data=[[1, 2], [3, 4]], chunks=(2, 2))
+    with vfile.stage_version("r1") as sv:
+        sv["values"].resize((3, 3))
+        sv["values"][2, 2] = 5
+    with vfile.stage_version("r2") as sv:
+        sv["values"][:2, :2] = [[6, 7], [8, 9]]
+
+    expect_vds = [
+        [6, 7, 0],
+        [8, 9, 0],
+        [0, 0, 5],
+    ]
+    expect_raw_data = [
+        [1, 2],  # r0 (0, 0)
+        [3, 4],
+        [5, 0],  # r1 (1, 1) (corner)
+        [0, 0],
+        [6, 7],  # r2 (0, 0)
+        [8, 9],
+    ]
+
+    assert_array_equal(vfile["r2"]["values"][:], expect_vds)
+    assert_array_equal(vfile.f["_version_data/values/raw_data"], expect_raw_data)
+
+    delete_versions(vfile, ["r0", "r1"])
+    expect_raw_data2 = [
+        [5, 0],  # r1 (1, 1) (corner)
+        [0, 0],
+        [6, 7],  # r2 (0, 0)
+        [8, 9],
+    ]
+
+    assert_array_equal(vfile["r2"]["values"][:], expect_vds)
+    assert_array_equal(vfile.f["_version_data/values/raw_data"], expect_raw_data2)
 
 
 def test_delete_versions2(vfile):

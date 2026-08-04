@@ -229,34 +229,23 @@ def _recreate_raw_data(
         chunks.indices(new_shape), sorted_chunks_to_keep, strict=False
     ):
         # Truncate the new slice if it isn't a full chunk
-        to_set_fillvalue = []
+        truncated = False
         new_truncated = []
         for i in range(len(new_chunk.args)):
             end = new_chunk.args[i].start + len(chunk.args[i])
             new_truncated.append(Slice(new_chunk.args[i].start, end))
-
-            # If one dimension is truncated, create slices into
-            # all other dimensions to be set to the fillvalue
             if len(new_chunk.args[i]) != len(chunk.args[i]):
-                to_fill = []
-                for j in range(len(new_chunk.args)):
-                    if j == i:
-                        to_fill.append(Slice(end, new_chunk.args[i].stop))
-                    else:
-                        to_fill.append(
-                            Slice(
-                                new_chunk.args[j].start,
-                                new_chunk.args[j].start + len(chunk.args[j]),
-                            )
-                        )
-                to_set_fillvalue.append(Tuple(*to_fill))
+                truncated = True
 
         new_truncated = Tuple(*new_truncated)
-        raw_data[new_truncated.raw] = raw_data[chunk.raw]
-
-        # Set the fillvalue of any slices which were truncated.
-        for tup in to_set_fillvalue:
-            raw_data[tup.raw] = fillvalue
+        # Read before writing; the destination may be the source itself
+        chunk_data = raw_data[chunk.raw]
+        if truncated:
+            # The chunk lies on the edge of the virtual dataset, so it doesn't cover the
+            # whole raw_data chunk. Reset the padding around it to the fillvalue, so
+            # that no data from the deleted versions lingers in raw_data.
+            raw_data[new_chunk.raw] = fillvalue
+        raw_data[new_truncated.raw] = chunk_data
         raw_data_chunks_map[chunk] = new_truncated
 
     raw_data.resize(new_shape)
@@ -529,7 +518,10 @@ def delete_versions(
     the version.
     """
     if isinstance(f, VersionedHDF5File):
+        vfile = f
         f = f.f
+    else:
+        vfile = None
 
     version_data = f["_version_data"]
     if isinstance(versions_to_delete, str):
@@ -550,6 +542,11 @@ def delete_versions(
 
     for name in _walk(version_data):
         _delete_dataset(f, name, versions_to_delete)
+
+    # Invalidate any cached InMemoryGroup's and their contents
+    InMemoryGroup._instances.clear()
+    if vfile is not None:
+        vfile._version_cache.clear()
 
     # find new prev_version which was not deleted
     versions_to_delete_set = set(versions_to_delete)
