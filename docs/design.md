@@ -301,10 +301,10 @@ file = VersionedHDF5File(f)
 # new_version and prev_version are strings corresponding to the version names
 # for the new and previous versions
 with file.stage_version(new_version, prev_version) as g:
-    g['dataset'][0] = 1 # Modify a dataset from prev_version
-    g['dataset'].resize(...) # Resize a dataset from prev_version
-    g.create_dataset('dataset2', ...) # Create a new dataset
-    g.create_group('new_group') # Create a new subgroup
+    g["dataset"][0] = 1  # Modify a dataset from prev_version
+    g["dataset"].resize(...)  # Resize a dataset from prev_version
+    g.create_dataset("dataset2", ...)  # Create a new dataset
+    g.create_group("new_group")  # Create a new subgroup
 ```
 
 Inside of the context manager, the group `g` will look exactly like the

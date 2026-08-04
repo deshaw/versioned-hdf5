@@ -22,15 +22,17 @@ openssl = "*" # libcrypto, for the SHA256 hasher in versioned_hdf5/hash.pyx
 
 [feature.build.target.linux.dependencies]
 gcc = "*"
+gxx = "*"
 patchelf = "*"
 
 [feature.build.target.osx.dependencies]
 clang = "*"
+clangxx = "*"
 patchelf = "*"
 
 [feature.build.target.win.dependencies]
 clang = "*"
-clangxx = "*" # staged_changes.pyx is compiled as C++
+clangxx = "*"
 llvm-tools = "*"
 pkg-config = "*" # Needed to find hdf5
 
