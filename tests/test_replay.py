@@ -9,7 +9,6 @@ from hypothesis import given
 from hypothesis import strategies as st
 from ndindex import Slice
 from numpy.testing import assert_array_equal
-from versioned_hdf5.slicetools import spaceid_to_slice
 
 from versioned_hdf5 import VersionedHDF5File
 from versioned_hdf5.backend import DEFAULT_CHUNK_SIZE
@@ -920,23 +919,66 @@ def test_recreate_virtual_dataset(vfile):
     np.testing.assert_equal(orig_virtual_dataset, new_virtual_dataset)
 
 
-def test_delete_versions_invalidates_cache(vfile):
-    """delete_versions() shuffles the chunks of raw_data around. A version that was read
-    through the same VersionedHDF5File handle beforehand must not keep reading from the
-    stale chunk offsets afterwards.
+def setup_two_versions(vfile):
+    """Create two versions of a 3x3 dataset, the second of which alters a single chunk.
+
+    Return the expected contents of the second version.
     """
     with vfile.stage_version("r0") as sv:
         sv.create_dataset("values", data=np.arange(1, 10).reshape(3, 3), chunks=(2, 2))
     with vfile.stage_version("r1") as sv:
         sv["values"][0, 0] = 100
+    return [[100, 2, 3], [4, 5, 6], [7, 8, 9]]
 
-    expect = np.arange(1, 10).reshape(3, 3)
-    expect[0, 0] = 100
-    assert_array_equal(vfile["r1"]["values"][:], expect)  # Populate the caches
 
-    delete_versions(vfile, ["r0"])
-
+@pytest.mark.parametrize("raw_h5py_file", [False, True])
+def test_delete_versions_invalidates_cache(vfile, raw_h5py_file):
+    """delete_versions() shuffles the chunks of raw_data around. A version that was read
+    through the same VersionedHDF5File handle beforehand must not keep reading from the
+    stale chunk offsets afterwards.
+    """
+    expect = setup_two_versions(vfile)
+    assert_array_equal(vfile["r1"]["values"][:], expect)  # Populate cache
+    delete_versions(vfile.f if raw_h5py_file else vfile, ["r0"])
     assert_array_equal(vfile["r1"]["values"][:], expect)
+
+
+def test_delete_versions_invalidates_other_handle(vfile):
+    """All VersionedHDF5File handles on a file must be invalidated by delete_versions(),
+    not just the one it was called on.
+    """
+    other = VersionedHDF5File(vfile.f)
+    expect = setup_two_versions(vfile)
+    assert_array_equal(other["r1"]["values"][:], expect)  # Populate cache
+    delete_versions(vfile, ["r0"])
+    assert_array_equal(other["r1"]["values"][:], expect)
+
+
+def test_delete_versions_invalidates_held_group(vfile):
+    """A version group obtained before delete_versions() must not keep reading from the
+    stale chunk offsets afterwards.
+    """
+    expect = setup_two_versions(vfile)
+    r1 = vfile["r1"]
+    assert_array_equal(r1["values"][:], expect)  # Populate cache
+    delete_versions(vfile, ["r0"])
+    assert_array_equal(r1["values"][:], expect)
+
+
+@pytest.mark.xfail(
+    reason="A dataset that was already handed out to the user is bound to a virtual "
+    "dataset which delete_versions() deletes and recreates from scratch; it can't be "
+    "repointed to the new one."
+)
+def test_delete_versions_invalidates_held_dataset(vfile):
+    """Same as test_delete_versions_invalidates_held_group, for a dataset that was
+    obtained directly.
+    """
+    expect = setup_two_versions(vfile)
+    values = vfile["r1"]["values"]
+    assert_array_equal(values[:], expect)  # Populate cache
+    delete_versions(vfile, ["r0"])
+    assert_array_equal(values[:], expect)
 
 
 def test_delete_versions_resets_edge_chunk_padding(vfile):

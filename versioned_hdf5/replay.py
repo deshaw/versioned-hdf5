@@ -518,10 +518,7 @@ def delete_versions(
     the version.
     """
     if isinstance(f, VersionedHDF5File):
-        vfile = f
         f = f.f
-    else:
-        vfile = None
 
     version_data = f["_version_data"]
     if isinstance(versions_to_delete, str):
@@ -543,11 +540,6 @@ def delete_versions(
     for name in _walk(version_data):
         _delete_dataset(f, name, versions_to_delete)
 
-    # Invalidate any cached InMemoryGroup's and their contents
-    InMemoryGroup._instances.clear()
-    if vfile is not None:
-        vfile._version_cache.clear()
-
     # find new prev_version which was not deleted
     versions_to_delete_set = set(versions_to_delete)
     for version_name in versions:
@@ -566,6 +558,13 @@ def delete_versions(
         del versions[version_name]
 
     versions.attrs["current_version"] = current_version
+
+    # Invalidate the caches of all live wrappers of this file, as they point to the
+    # chunks of raw_data that we just moved around. Note that this indiscriminately hits
+    # the wrappers of other files too, which is harmless.
+    InMemoryGroup._invalidate_all()
+    for vfile in VersionedHDF5File._instances:
+        vfile._version_cache.clear()
 
     # Collect garbage here to handle intermittent slicing
     # issue; see https://github.com/deshaw/versioned-hdf5/pull/277
