@@ -1563,6 +1563,20 @@ def test_commit_multidim_and_edges():
     assert_array_equal(a, expect, strict=True)
 
 
+def test_commit_doesnt_write_beyond_edge():
+    """commit() trims the edge chunks, so that it never writes to disk
+    the uninitialised padding beyond the edge of a staged chunk
+    """
+    a = StagedChangesArray.full((3,), chunk_size=(2,))
+    a[2] = 5  # Partial edge chunk; a.slabs[1][1] is uninitialised
+
+    def empty(*args, **kwargs):
+        return np.full(*args, **kwargs, fill_value=1337)
+
+    a.commit(empty=empty)
+    assert_array_equal(a.slabs[1], [5, 1337])
+
+
 def test_commit_no_staged_chunks():
     """commit() on an array without staged chunks has nothing to write, so it does not
     append a new base slab."""
