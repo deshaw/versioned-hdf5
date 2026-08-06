@@ -507,14 +507,12 @@ class StagedChangesArray(MutableMapping[Any, T]):
         # table, or passed to __init__) and a base slab that lacks one simply doesn't
         # contribute deduplication candidates at commit time.
         start = self.staged_slabs_start
-        slab_idx_filter = np.asarray(
-            [
-                slab is not None and ht is None and (i == 0 or i >= start)
-                for i, (slab, ht) in enumerate(
-                    zip(self.slabs, self.hash_tables, strict=True)
-                )
-            ]
-        )
+        slab_idx_filter = [
+            slab is not None and ht is None and (i == 0 or i >= start)
+            for i, (slab, ht) in enumerate(
+                zip(self.slabs, self.hash_tables, strict=True)
+            )
+        ]
 
         return HashPlan(
             shape=self.shape,
@@ -2017,7 +2015,7 @@ class HashPlan:
         chunk_size: tuple[int, ...],
         slab_indices: np.ndarray[np_hsize_t],
         slab_offsets: np.ndarray[np_hsize_t],
-        slab_idx_filter: np.bool_[::1],
+        slab_idx_filter: list[bool],
     ):
         self.slabs = []
         ndim = len(shape)
@@ -2027,10 +2025,11 @@ class HashPlan:
         if not mappers:  # size-0 array: no chunks at all
             return
 
-        if slab_idx_filter[0]:
+        slab_idx_filter_np: np.bool_[::-1] = np.asarray(slab_idx_filter)
+        if slab_idx_filter_np[0]:
             # Hash full slab. Do not pass it to _chunk_in_selection below
             # as it would return one row for each chunk where it is used.
-            slab_idx_filter[0] = False
+            slab_idx_filter_np[0] = False
             self.slabs.append(
                 HashSlabPlan(
                     slab_idx=0,
@@ -2044,7 +2043,7 @@ class HashPlan:
             slab_indices,
             slab_offsets,
             mappers,
-            filter=lambda slab_idx: slab_idx_filter[slab_idx],
+            filter=lambda slab_idx: slab_idx_filter_np[slab_idx],
             idxidx=False,
             sort_by_slab=True,
         )
