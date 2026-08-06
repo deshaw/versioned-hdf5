@@ -7,6 +7,7 @@ import pytest
 from numpy.testing import assert_array_equal
 
 from versioned_hdf5 import VersionedHDF5File
+from versioned_hdf5.backend import write_dataset
 from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS
 from versioned_hdf5.hashtable import Hashtable
 from versioned_hdf5.wrappers import (
@@ -350,14 +351,15 @@ class NpyStringsHashtable(Hashtable):
         return super().hash(data)
 
 
-def test_hashtable_monkeypatch(vfile, monkeypatch):
-    """Test monkey-patching of the hash table"""
+def test_hashtable_monkeypatch(h5file, monkeypatch):
+    """Test monkey-patching of the hash table.
+
+    Note: Hashtable is only used by the legacy write_dataset() path; datasets
+    staged through a StagedChangesArray hash their chunks in hash.pyx.
+    """
     monkeypatch.setattr("versioned_hdf5.backend.Hashtable", BadHashtable)
-    with (
-        pytest.raises(AssertionError, match="monkeypatch OK"),
-        vfile.stage_version("v0") as v,
-    ):
-        v.create_dataset("bad", data=["foo"], dtype="T")
+    with pytest.raises(AssertionError, match="monkeypatch OK"):
+        write_dataset(h5file, "bad", np.asarray(["foo"], dtype="T"))
 
 
 def test_hash_native(vfile, monkeypatch):
