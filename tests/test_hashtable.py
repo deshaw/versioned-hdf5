@@ -1,9 +1,11 @@
+from unittest import mock
+
 import h5py
 import numpy as np
 import pytest
 
 from versioned_hdf5 import VersionedHDF5File
-from versioned_hdf5.backend import create_base_dataset
+from versioned_hdf5.backend import create_base_dataset, write_dataset
 from versioned_hdf5.hashtable import Hashtable
 
 from .conftest import assert_slab_offsets
@@ -136,6 +138,109 @@ def test_object_dtype_hashes_concatenated_values(tmp_path):
         )
 
 
+def test_verify_chunk_reuse_data_version_2(h5file, monkeypatch):
+    """Test whether the issue with DATA_VERSION==2 would have been caught by
+    _verify_new_chunk_reuse.
+
+    The problem with the hash function for DATA_VERSION==2 was that it hashed
+    the encoded data, not the data itself, meaning that "b'hello'" would hash
+    to the same value as b'hello'.
+
+    Note: chunk reuse validation only exists in the legacy write_dataset() path,
+    which is why this test drives it directly. Datasets staged through a
+    StagedChangesArray hash their chunks in hash.pyx and never call
+    Hashtable.hash.
+    """
+
+    monkeypatch.setenv("ENABLE_CHUNK_REUSE_VALIDATION", "1")
+
+    def data_version_2_hash(self, data: np.ndarray):
+        """
+        Compute hash for `data` array.
+
+        (Copied from commit 1f968f4 Hashtable.hash. This version hashes the encoded
+        data, not the data itself.)
+        """
+        if data.dtype == "object":
+            hash_value = self.hash_function()
+            for value in data.flat:
+                hash_value.update(bytes(str(value), "utf-8"))
+            hash_value.update(bytes(str(data.shape), "utf-8"))
+            return hash_value.digest()
+        else:
+            return self.hash_function(
+                data.data.tobytes() + bytes(str(data.shape), "ascii")
+            ).digest()
+
+    with mock.patch.object(Hashtable, "hash", autospec=True) as mocked_hash:
+        mocked_hash.side_effect = data_version_2_hash
+
+        data1 = np.array(["b'hello'", "b'world'"], dtype="O")
+        data2 = np.array([b"hello", b"world"], dtype="O")
+
+        write_dataset(
+            h5file,
+            "values",
+            data1,
+            dtype=h5py.string_dtype(encoding="ascii"),
+            chunks=(2,),
+        )
+        with pytest.raises(ValueError):
+            write_dataset(h5file, "values", np.concatenate((data2, data2)))
+
+
+def test_verify_chunk_reuse_data_version_3(h5file, monkeypatch):
+    """Test whether the issue with DATA_VERSION==3 would have been caught by
+    _verify_new_chunk_reuse.
+
+    The problem with the hash function for DATA_VERSION==3 was that it didn't
+    include the length of string array elements in the hash, meaning that
+    the hash of [b"a", b"b", b"cd"] would be the same as [b"ab", b"", b"cd"]
+    (because hashing each element in the array is equivalent to hashing
+    the concatenated elements of the array).
+
+    See note in test_verify_chunk_reuse_data_version_2 on why this test drives
+    write_dataset() directly.
+    """
+
+    monkeypatch.setenv("ENABLE_CHUNK_REUSE_VALIDATION", "1")
+
+    def data_version_3_hash(self, data: np.ndarray):
+        """
+        Compute hash for `data` array.
+
+        (Copied from commit d382673 Hashtable.hash. This version didn't include the
+        string length in the hash.)
+        """
+        if data.dtype == "object":
+            hash_value = self.hash_function()
+            for value in data.flat:
+                if isinstance(value, str):
+                    value = value.encode("utf-8")
+                hash_value.update(value)
+            hash_value.update(bytes(str(data.shape), "utf-8"))
+            return hash_value.digest()
+        else:
+            return self.hash_function(
+                data.data.tobytes() + bytes(str(data.shape), "ascii")
+            ).digest()
+
+    with mock.patch.object(Hashtable, "hash", autospec=True) as mocked_hash:
+        mocked_hash.side_effect = data_version_3_hash
+
+        write_dataset(
+            h5file,
+            "values",
+            np.array([b"a", b"b", b"cd"], dtype=object),
+            dtype=h5py.string_dtype(encoding="ascii"),
+            chunks=(100,),
+        )
+        with pytest.raises(ValueError):
+            write_dataset(h5file, "values", np.array([b"ab", b"", b"cd"], dtype=object))
+        with pytest.raises(ValueError):
+            write_dataset(h5file, "values", np.array([b"ab", b"c", b"d"], dtype=object))
+
+
 def test_chunk_reuse_nan(vfile):
     """Check that chunks are correctly verified when reused, even with nans."""
     data = np.array([1, 2, 3, 4, 5, np.nan])
@@ -201,3 +306,47 @@ def test_chunk_reuse_multidim_1(vfile):
         values_ds[:] = np.array([[i + (j % 3) for i in range(8)] for j in range(8)])
     with vfile.stage_version("r2") as sv:
         assert_slab_offsets(sv, "values", [[0, 3, 6], [0, 3, 6], [18, 21, 24]])
+
+
+def test_verify_chunk_disabled_by_default(h5file, monkeypatch):
+    """Check that we skip chunk reuse verification if the environment variable is not
+    set.
+    """
+    monkeypatch.delenv("ENABLE_CHUNK_REUSE_VALIDATION", raising=False)
+
+    # This is the same test as test_verify_chunk_reuse_data_version_2,
+    # but with verification turned off with the environment variable.
+    def data_version_2_hash(self, data: np.ndarray):
+        """
+        Compute hash for `data` array.
+
+        (Copied from commit 1f968f4 Hashtable.hash. This version hashes the encoded
+        data, not the data itself.)
+        """
+        if data.dtype == "object":
+            hash_value = self.hash_function()
+            for value in data.flat:
+                hash_value.update(bytes(str(value), "utf-8"))
+            hash_value.update(bytes(str(data.shape), "utf-8"))
+            return hash_value.digest()
+        else:
+            return self.hash_function(
+                data.data.tobytes() + bytes(str(data.shape), "ascii")
+            ).digest()
+
+    with mock.patch.object(Hashtable, "hash", autospec=True) as mocked_hash:
+        mocked_hash.side_effect = data_version_2_hash
+
+        data1 = np.array(["b'hello'", "b'world'"], dtype="O")
+        data2 = np.array([b"hello", b"world"], dtype="O")
+
+        write_dataset(
+            h5file,
+            "values",
+            data1,
+            dtype=h5py.string_dtype(encoding="ascii"),
+            chunks=(2,),
+        )
+        # This should raise an error, but will not because chunk
+        # reuse verification is turned off.
+        write_dataset(h5file, "values", np.concatenate((data2, data2)))
