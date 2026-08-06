@@ -1095,7 +1095,7 @@ class StagedChangesArray(MutableMapping[Any, T]):
 
 
 @cython.cclass
-@dataclass(init=False, eq=False, repr=False)
+@dataclass(init=False, eq=False, repr=False, kw_only=True)
 class TransferPlan:
     """Instructions to transfer data:
 
@@ -1251,7 +1251,7 @@ class TransferPlan:
 
 
 @cython.cclass
-@dataclass(init=False, repr=False)
+@dataclass(init=False, repr=False, kw_only=True)
 class GetItemPlan:
     """Instructions to execute StagedChangesArray.__getitem__"""
 
@@ -1375,7 +1375,7 @@ class MutatingPlan:
 
 
 @cython.cclass
-@dataclass(init=False, repr=False)
+@dataclass(init=False, repr=False, kw_only=True)
 class SetItemPlan(MutatingPlan):
     """Instructions to execute StagedChangesArray.__setitem__"""
 
@@ -1530,7 +1530,7 @@ class SetItemPlan(MutatingPlan):
 
 
 @cython.cclass
-@dataclass(init=False, repr=False)
+@dataclass(init=False, repr=False, kw_only=True)
 class LoadPlan(MutatingPlan):
     """Load all chunks that have not been loaded yet from the base slabs."""
 
@@ -1582,7 +1582,7 @@ class LoadPlan(MutatingPlan):
 
 
 @cython.cclass
-@dataclass(init=False, repr=False)
+@dataclass(init=False, repr=False, kw_only=True)
 class ChangesPlan:
     """Instructions to execute StagedChangesArray.changes()."""
 
@@ -1687,7 +1687,7 @@ class ChangesPlan:
 
 
 @cython.cclass
-@dataclass(init=False, repr=False)
+@dataclass(init=False, repr=False, kw_only=True)
 class ResizePlan(MutatingPlan):
     """Instructions to execute StagedChangesArray.resize()"""
 
@@ -1947,7 +1947,7 @@ class ResizePlan(MutatingPlan):
 
 
 @cython.cclass
-@dataclass(repr=False, eq=False)
+@dataclass(eq=False, repr=False, kw_only=True)
 class HashSlabPlan:
     """Container for the plan to a single call to hash_slab"""
 
@@ -1997,7 +1997,7 @@ class HashSlabPlan:
 
 
 @cython.cclass
-@dataclass(init=False, repr=False)
+@dataclass(init=False, repr=False, kw_only=True)
 class HashPlan:
     """Instructions to hash all staged chunks of a StagedChangesArray.
 
@@ -2095,7 +2095,7 @@ class HashPlan:
 
 
 @cython.cclass
-@dataclass(init=False, repr=False)
+@dataclass(init=False, repr=False, kw_only=True)
 class CommitPlan(MutatingPlan):
     """Instructions to execute StagedChangesArray.commit().
 
