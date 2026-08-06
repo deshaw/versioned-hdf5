@@ -229,34 +229,23 @@ def _recreate_raw_data(
         chunks.indices(new_shape), sorted_chunks_to_keep, strict=False
     ):
         # Truncate the new slice if it isn't a full chunk
-        to_set_fillvalue = []
+        truncated = False
         new_truncated = []
         for i in range(len(new_chunk.args)):
             end = new_chunk.args[i].start + len(chunk.args[i])
             new_truncated.append(Slice(new_chunk.args[i].start, end))
-
-            # If one dimension is truncated, create slices into
-            # all other dimensions to be set to the fillvalue
             if len(new_chunk.args[i]) != len(chunk.args[i]):
-                to_fill = []
-                for j in range(len(new_chunk.args)):
-                    if j == i:
-                        to_fill.append(Slice(end, new_chunk.args[i].stop))
-                    else:
-                        to_fill.append(
-                            Slice(
-                                new_chunk.args[j].start,
-                                new_chunk.args[j].start + len(chunk.args[j]),
-                            )
-                        )
-                to_set_fillvalue.append(Tuple(*to_fill))
+                truncated = True
 
         new_truncated = Tuple(*new_truncated)
-        raw_data[new_truncated.raw] = raw_data[chunk.raw]
-
-        # Set the fillvalue of any slices which were truncated.
-        for tup in to_set_fillvalue:
-            raw_data[tup.raw] = fillvalue
+        # Read before writing; the destination may be the source itself
+        chunk_data = raw_data[chunk.raw]
+        if truncated:
+            # The chunk lies on the edge of the virtual dataset, so it doesn't cover the
+            # whole raw_data chunk. Reset the padding around it to the fillvalue, so
+            # that no data from the deleted versions lingers in raw_data.
+            raw_data[new_chunk.raw] = fillvalue
+        raw_data[new_truncated.raw] = chunk_data
         raw_data_chunks_map[chunk] = new_truncated
 
     raw_data.resize(new_shape)
@@ -569,6 +558,13 @@ def delete_versions(
         del versions[version_name]
 
     versions.attrs["current_version"] = current_version
+
+    # Invalidate the caches of all live wrappers of this file, as they point to the
+    # chunks of raw_data that we just moved around. Note that this indiscriminately hits
+    # the wrappers of other files too, which is harmless.
+    InMemoryGroup._invalidate_all()
+    for vfile in VersionedHDF5File._instances:
+        vfile._version_cache.clear()
 
     # Collect garbage here to handle intermittent slicing
     # issue; see https://github.com/deshaw/versioned-hdf5/pull/277
