@@ -2228,8 +2228,10 @@ def test_stage_version_log_stats(tmp_path, caplog):
             "bar: New chunks written: 2; Number of chunks reused: 151"
             in caplog.records[-2].getMessage()
         )
+        # 20 chunks; the 10 that resize() created and nobody wrote to are full of
+        # the fill_value, so they are neither written nor reused.
         assert (
-            "baz: New chunks written: 1; Number of chunks reused: 4"
+            "baz: New chunks written: 1; Number of chunks reused: 9"
             in caplog.records[-1].getMessage()
         )
 

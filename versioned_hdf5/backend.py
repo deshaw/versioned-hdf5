@@ -510,6 +510,7 @@ def commit_staged_changes(
     # Calculate hashes, deduplicate staged chunks, and write to raw_data
     sc.commit(empty=empty)
 
+    n_new_chunks = 0
     if sc.n_base_slabs > n_base_before:
         # At least one staged chunk is original (neither identical to a chunk
         # already on raw_data nor full of fill_value)
@@ -518,7 +519,8 @@ def commit_staged_changes(
         new_slab_idx = sc.n_base_slabs
         new_hashes = sc.hash_tables[new_slab_idx]
         assert new_hashes is not None
-        new_n_chunks = prev_n_chunks + new_hashes.shape[0]
+        n_new_chunks = new_hashes.shape[0]
+        new_n_chunks = prev_n_chunks + n_new_chunks
 
         # Calculate (start, stop) offsets of the chunks on raw_data
         starts = np.arange(
@@ -562,6 +564,16 @@ def commit_staged_changes(
         sc.slabs = [sc.slabs[0], _raw_data_as_base_slab(raw_data, sc.dtype)]
         sc.hash_tables = [None, None]
         sc.n_base_slabs = 1
+
+    # Chunks now either lie on raw_data (slab 1) or are full of the fill_value
+    # (slab 0), which costs nothing to store and is neither written nor reused.
+    n_on_raw_data = int((sc.slab_indices != 0).sum())
+    logging.debug(
+        "  %s: New chunks written: %d; Number of chunks reused: %d",
+        name,
+        n_new_chunks,
+        n_on_raw_data - n_new_chunks,
+    )
 
     # Build the {virtual dataset index: raw_data slice} mapping
     # TODO Migrated to a Cythonized loop that reads sc.slab_offsets directly
