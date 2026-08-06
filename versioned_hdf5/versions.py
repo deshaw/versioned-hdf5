@@ -167,17 +167,17 @@ def commit_version(
             slices = commit_staged_changes(f, name, data.staged_changes)
         elif isinstance(data, InMemoryArrayDataset) and data.ndim > 0:
             # InMemoryArrayDataset could be either a new dense dataset
-            # or DatasetWrapper performing a hotswap of its inner dataset
-            if f"_version_data/{name}/raw_data" not in f:
-                # Create the (empty) raw_data + hash table
-                write_dataset(
-                    f,
-                    name,
-                    np.empty((0,) * data.ndim, dtype=data._buffer.dtype),
-                    chunks=chunks[name],
-                    filters=filters[name],
-                    fillvalue=fillvalue,
-                )
+            # or DatasetWrapper performing a hotswap of its inner dataset.
+            # Create the (empty) raw_data + hash table if they don't exist yet;
+            # otherwise validate chunks, filters, fillvalue, and dtype against them.
+            write_dataset(
+                f,
+                name,
+                np.empty((0,) * data.ndim, dtype=data._buffer.dtype),
+                chunks=chunks[name],
+                filters=filters[name],
+                fillvalue=fillvalue,
+            )
 
             staged_changes = StagedChangesArray.from_array(
                 data._buffer,
