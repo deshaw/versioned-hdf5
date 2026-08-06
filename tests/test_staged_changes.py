@@ -261,7 +261,10 @@ def test_array_protocol_from_slabs():
     arr3 = arr.astype("i4")
     arr.load()
 
-    assert arr.slabs[1] is None
+    # load() does not drop base slabs: it leaves them in the slabs list, unreferenced by
+    # slab_indices. astype(), on the other hand, drops the base slabs, as they don't
+    # contain compatible data anymore.
+    assert arr.slabs[1] is base_slab
     assert arr2.slabs[1] is base_slab
     assert arr3.slabs[1] is None
 
@@ -290,6 +293,8 @@ def test_load():
     arr = StagedChangesArray.from_array(
         np.arange(4).reshape(2, 2), chunk_size=(2, 1), fill_value=42
     )
+    orig_slabs = arr.slabs.copy()
+
     arr.resize((3, 2))
     assert len(arr.slabs) == 3
     assert_array_equal(arr.slab_indices, [[1, 2], [0, 0]])
@@ -300,10 +305,10 @@ def test_load():
     assert_array_equal(arr.slab_indices, [[3, 3], [0, 0]])
     assert_array_equal(arr, np.array([[0, 1], [2, 3], [42, 42]]))
 
-    # Base slabs were dereferenced; full slab was not
-    assert_array_equal(arr.slabs[0], [[42], [42]])
-    assert arr.slabs[1] is None
-    assert arr.slabs[2] is None
+    # Base slabs are no longer referenced by any chunk,
+    # but are still in the slabs list.
+    for lhs, rhs in zip(arr.slabs[: arr.n_base_slabs + 1], orig_slabs, strict=True):
+        assert lhs is rhs
 
     # No-op
     arr.load()
@@ -311,9 +316,8 @@ def test_load():
     assert_array_equal(arr.slab_indices, [[3, 3], [0, 0]])
     assert_array_equal(arr, np.array([[0, 1], [2, 3], [42, 42]]))
 
-    # Edge case where __setitem__ stops using a base slab but doesn't dereference it for
-    # performance reasons, so there are no transfers to do but you still should drop
-    # the base slab
+    # Edge case where __setitem__ stopped using a base slab:
+    # there are no transfers to do, so load() is a no-op.
     arr = StagedChangesArray.from_array(np.arange(2), chunk_size=(2,))
     arr[0] = 2
     assert_array_equal(arr.slab_indices, [2])
@@ -321,7 +325,7 @@ def test_load():
     arr.load()
     assert_array_equal(arr.slab_indices, [2])
     assert len(arr.slabs) == 3  # Didn't append a new slab with size 0
-    assert arr.slabs[1] is None
+    assert arr.slabs[1] is not None
 
 
 def test_load_plan_without_base_slabs():
@@ -361,8 +365,12 @@ def test_resize_through_size_zero():
     size 0, so that no chunks are actually transferred.
     """
     a = StagedChangesArray.from_array(np.arange(12).reshape(2, 6), chunk_size=(2, 3))
+    orig_slabs = a.slabs.copy()
     a.resize((0, 5))  # Shrink to size 0, leaving a partial edge chunk
-    assert a.slabs[1:] == [None, None]
+    # Base slabs are never dropped, even when the array shrinks to size 0
+    assert a.n_base_slabs == 2
+    for lhs, rhs in zip(orig_slabs, a.slabs[:3], strict=True):
+        assert lhs is rhs
     a.resize((0, 8))  # Enlarge the edge chunk and add a new chunk while size stays 0
     a.resize((2, 8))
     assert_array_equal(a, np.zeros((2, 8)))
@@ -384,27 +392,34 @@ def test_size_zero_with_base_slabs():
 
 
 def test_shrinking_dereferences_slabs():
-    """Test that shrinking a StagedChangesArray dereferences the slabs that are no
-    longer referenced by any chunks.
+    """Test that shrinking a StagedChangesArray dereferences the *staged* slabs that are
+    no longer referenced by any chunks. The full slab and the base slabs are never
+    dereferenced.
     """
     arr = StagedChangesArray.from_array(
         [[1, 2, 3, 4, 5, 6, 7]], chunk_size=(1, 2), fill_value=42
     )
-    arr[0, -1] = 8
+    assert arr.n_base_slabs == 4  # slabs 1..4
+    arr[0, -1] = 8  # partial chunk on base slab 4 -> staged slab 5
     arr.resize((1, 10))
     assert_array_equal(arr.slab_indices, [[1, 2, 3, 5, 0]])
     assert_array_equal(arr, [[1, 2, 3, 4, 5, 6, 8, 42, 42, 42]])
 
     arr.resize((1, 4))
     assert_array_equal(arr.slab_indices, [[1, 2]])
-    assert arr.slabs[3:] == [None, None, None]
+    # Base slabs 3 and 4 are no longer referenced, but they are kept; only the staged
+    # slab 5 is dropped.
+    assert arr.slabs[3] is not None
+    assert arr.slabs[4] is not None
+    assert arr.slabs[5] is None
     assert_array_equal(arr, [[1, 2, 3, 4]])
 
     arr.resize((0, 0))
     assert_array_equal(arr.slab_indices, np.empty((0, 0)))
-    # The base slab is never dereferenced
+    # The full slab and all the base slabs are kept; only the staged slab was dropped.
     assert_array_equal(arr.slabs[0], [[42, 42]])
-    assert arr.slabs[1:] == [None, None, None, None, None]
+    assert all(slab is not None for slab in arr.slabs[:5])
+    assert arr.slabs[5:] == [None]
 
 
 @pytest.mark.parametrize("starting_size", [6, 5])
@@ -477,7 +492,7 @@ def test_astype():
     a = StagedChangesArray.from_array(
         np.asarray([[1, 2, 3]], dtype="f4"), chunk_size=(1, 1)
     )
-    a.resize((1, 2))  # dereference a slab
+    a.resize((1, 2))  # leave a base slab unreferenced (but not dropped)
     a.resize((1, 3))
     a[0, 1] = 4
     assert a.n_base_slabs == 3
@@ -523,11 +538,11 @@ def test_astype_base_slabs():
         slab_offsets=[0, 1, 0],
     )
     a[1] = 4  # base slab -> staged slab; chunks remain on the base slab
-    a.resize((2,))  # drop base_slabs[1]
+    a.resize((2,))
     assert a.slab_indices.tolist() == [1, 3]
     assert a.slab_offsets.tolist() == [0, 0]
-    assert a.base_slabs[1] is None
-    base_slabs = [np.array([6, 7], dtype="i2"), None]
+    assert a.base_slabs[1] is not None
+    base_slabs = [np.array([6, 7], dtype="i2"), np.array([0, 0], dtype="i2")]
     b = a.astype("i2", base_slabs=base_slabs)
     assert b.base_slabs[0] is base_slabs[0]
     assert_array_equal(a, np.array([1, 4], dtype="i1"), strict=True)
@@ -538,7 +553,7 @@ def test_astype_base_slabs():
     base_slabs = [np.array([6, 7], dtype="i2"), np.array([8, 9], dtype="i2")]
     b = a.astype("i2", base_slabs=base_slabs)
     assert b.base_slabs[0] is base_slabs[0]
-    assert b.base_slabs[1] is None
+    assert b.base_slabs[1] is base_slabs[1]
     assert_array_equal(b, np.array([6, 4], dtype="i2"), strict=True)
 
     with pytest.raises(TypeError, match=r"base_slabs\[0\] is None"):
@@ -948,16 +963,18 @@ def test_repr():
     )
     r = repr(a._resize_plan((1, 5)))
     assert "2 slice transfers among 2 slab pairs" in r, r
-    assert "drop 1 slabs" in r, r
+    # The base slab becomes unreferenced but is never dropped
+    assert "drop 0 slabs" in r, r
     assert "slabs[2][0:1, 0:2] = slabs[1][0:1, 0:2]" in r, r
 
     r = repr(a._load_plan())
     assert "append 1 empty slab" in r, r
     assert "2 slice transfers among 1 slab pair" in r, r
-    assert "drop 1 slab" in r, r
+    # load() moves the chunks off the base slab, but the base slab is never dropped
+    assert "drop 0 slabs" in r, r
     assert "slabs.append(empty((2, 4)))  # slabs[2]" in r, r
     assert "slabs[2][0:1, 0:2] = slabs[1][0:1, 0:2]" in r, r
-    assert "slabs[1] = None" in r, r
+    assert "slabs[1] = None" not in r, r
 
     a[0, 0] = 5
     r = repr(a._changes_plan())
@@ -966,9 +983,10 @@ def test_repr():
     assert "base[1:2, 0:2] = slabs[1][1:2, 0:2]" in r, r
 
     # MutatingPlan.__repr__ with no appended slabs
-    r = repr(a._resize_plan((1, 2)))
+    r = repr(a._resize_plan((0, 2)))
     assert "append 0 empty slabs" in r, r
-    assert "slabs[1] = None" in r, r
+    assert "slabs[1] = None" not in r, r
+    assert "slabs[2] = None" in r, r
 
 
 def test_invalid_parameters():
