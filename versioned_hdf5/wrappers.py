@@ -99,6 +99,23 @@ class InMemoryGroup(Group):
             if isinstance(obj, InMemoryGroup):
                 obj.close()
 
+    @classmethod
+    def _invalidate_all(cls):
+        """Forget everything that was read from the file, both in the live instances and
+        in the instances registry, so that it is read again on next access.
+
+        This must be called by :func:`~versioned_hdf5.replay.delete_versions`, which
+        moves the chunks of ``raw_data`` around and recreates all virtual datasets
+        pointing to them.
+        """
+        for group in list(cls._instances.values()):
+            # Uncommitted groups hold data that only exists in memory; dropping it
+            # would silently discard the user's staged changes.
+            if group._committed:
+                group._data.clear()
+                group._subgroups.clear()
+        cls._instances.clear()
+
     # Based on Group.__repr__
     def __repr__(self):
         namestr = f'"{self.name}"' if self.name is not None else "(anonymous)"

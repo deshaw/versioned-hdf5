@@ -10,6 +10,8 @@ from __future__ import annotations
 import datetime
 import logging
 from contextlib import contextmanager
+from typing import ClassVar
+from weakref import WeakSet
 
 import h5py
 import ndindex
@@ -79,6 +81,8 @@ class VersionedHDF5File:
     should be closed separately.)
     """
 
+    _instances: ClassVar[WeakSet[VersionedHDF5File]] = WeakSet()
+
     def __init__(self, f):
         self.f = f
         if "_version_data" not in f:
@@ -130,6 +134,7 @@ class VersionedHDF5File:
 
         self._closed = False
         self._version_cache = {}
+        VersionedHDF5File._instances.add(self)
 
     @property
     def _versions(self):
