@@ -282,7 +282,7 @@ class StagedChangesArray(MutableMapping[Any, T]):
         return cast(NDArray[T], self.slabs[0])
 
     @property
-    def full_hash_table(self) -> NDArray[T] | None:
+    def full_hash_table(self) -> NDArray[np.uint64] | None:
         """The hash_table for the full slab is calculated lazily only when actually
         needed to deduplicate the staged chunks
         """
