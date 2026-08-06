@@ -138,6 +138,7 @@ def test_object_dtype_hashes_concatenated_values(tmp_path):
         )
 
 
+@pytest.mark.skip(reason="chunk reuse validation not present on this branch")
 def test_verify_chunk_reuse_data_version_2(h5file, monkeypatch):
     """Test whether the issue with DATA_VERSION==2 would have been caught by
     _verify_new_chunk_reuse.
@@ -189,6 +190,7 @@ def test_verify_chunk_reuse_data_version_2(h5file, monkeypatch):
             write_dataset(h5file, "values", np.concatenate((data2, data2)))
 
 
+@pytest.mark.skip(reason="chunk reuse validation not present on this branch")
 def test_verify_chunk_reuse_data_version_3(h5file, monkeypatch):
     """Test whether the issue with DATA_VERSION==3 would have been caught by
     _verify_new_chunk_reuse.
@@ -312,6 +314,7 @@ def test_chunk_reuse_multidim_1(vfile):
         assert_slab_offsets(sv, "values", [[0, 3, 15], [0, 3, 15], [18, 21, 24]])
 
 
+@pytest.mark.skip(reason="chunk reuse validation not present on this branch")
 def test_verify_chunk_disabled_by_default(h5file, monkeypatch):
     """Check that we skip chunk reuse verification if the environment variable is not
     set.

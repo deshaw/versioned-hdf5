@@ -460,11 +460,12 @@ def commit_staged_changes(
     commit_staged_changes + hash_slab (new, fast)
         - InMemorySparseDataset commit (first version of sparse datasets)
         - InMemoryDataset commit (version 2+ of any dataset)
+        - InMemoryArrayDataset commit (dense datasets), except scalar ones
         - recreate_dataset, when its callback returns an InMemoryDataset or an
           InMemorySparseDataset
 
     write_dataset + Hashtable (legacy, slow)
-        - InMemoryArrayDataset commit (first version of dense datasets; full overwrites)
+        - scalar dataset commit
         - delete_versions
         - update_metadata
         - recreate_dataset, in all other cases
