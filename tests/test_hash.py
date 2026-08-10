@@ -234,3 +234,244 @@ def test_identical_chunks_same_hash():
         np.array([[2], [2]], dtype=np_hsize_t),
     )
     assert rows_as_digests(ht)[0] == rows_as_digests(ht)[1]
+
+
+VLEN_DTYPES = [
+    "object",
+    pytest.param(
+        "T",
+        marks=pytest.mark.skipif(
+            not HAS_NPYSTRINGS, reason="StringDType requires NumPy >=2.0"
+        ),
+    ),
+]
+
+
+def hash_chunk(
+    slab, src_start: int = 0, count: tuple[int, ...] | None = None, dtype=None
+) -> bytes:
+    """Hash a single chunk of ``slab`` with hash_slab and return its digest,
+    double-checking it against the reference implementation.
+
+    The chunk is ``slab[src_start:src_start + count[0], :count[1], ...]``;
+    ``count`` defaults to the whole slab.
+    """
+    slab = np.asarray(slab, dtype=dtype)
+    count = slab.shape if count is None else count
+    ht = np.zeros((1, 4), dtype=np.uint64)
+    hash_slab(
+        slab,
+        ht,
+        np.array([0], dtype=np_hsize_t),
+        np.array([src_start], dtype=np_hsize_t),
+        np.array([count], dtype=np_hsize_t),
+    )
+    digest = rows_as_digests(ht)[0]
+    idx = (slice(src_start, src_start + count[0]), *(slice(c) for c in count[1:]))
+    assert digest == reference(slab[idx])
+    return digest
+
+
+@pytest.mark.parametrize("dtype", VLEN_DTYPES)
+@pytest.mark.parametrize(
+    ("a", "b"),
+    [
+        (["foo", "bar"], ["foob", "ar"]),
+        (["a", "b"], ["ab", ""]),
+        (["ab", ""], ["", "ab"]),
+        (["ab", ""], ["ab"]),
+        (["", "ab"], ["ab"]),
+    ],
+)
+def test_no_collision_vlen_split_points(dtype, a, b):
+    """Moving the boundaries between variable-width strings, without changing their
+    concatenation, changes the hash.
+    """
+    assert "".join(a) == "".join(b)
+    assert hash_chunk(a, dtype=dtype) != hash_chunk(b, dtype=dtype)
+
+
+def test_no_collision_vlen_embedded_length_prefix():
+    """A variable-width string that spells out its own length prefix can't be used to
+    forge the element boundaries.
+    """
+    forged = b"x" + struct.pack("<Q", 1) + b"y"
+    plain = hash_chunk([b"x", b"y"], dtype=object)
+    assert plain != hash_chunk([forged], dtype=object)
+    # Same shape as the plain chunk, to also rule out the shape suffix doing the work
+    assert plain != hash_chunk([forged, b""], dtype=object)
+
+
+def test_no_collision_vlen_empty_and_nul():
+    """Empty strings, and strings made of NUL bytes, are all distinguished from each
+    other and from their own repetitions.
+    """
+    cases = [
+        [b""],
+        [b"", b""],
+        [b"", b"", b""],
+        [b"\x00"],
+        [b"\x00", b""],
+        [b"", b"\x00"],
+        [b"\x00\x00"],
+        # Unlike fixed-width bytes, a trailing NUL is significant for VLEN
+        [b"a"],
+        [b"a\x00"],
+    ]
+    digests = {hash_chunk(case, dtype=object) for case in cases}
+    assert len(digests) == len(cases)
+
+
+GEOMETRIES = [(6,), (1, 6), (6, 1), (2, 3), (3, 2), (1, 1, 6), (1, 6, 1), (6, 1, 1)]
+
+
+@pytest.mark.parametrize("dtype", ["i8", "u1", *VLEN_DTYPES])
+def test_no_collision_same_data_different_geometry(dtype):
+    """The same six values, arranged in different shapes, hash differently.
+
+    Every reshape below is C-contiguous, so the data bytes are byte-for-byte the same
+    in all cases and the shape suffix is the only discriminator.
+    """
+    if dtype in ("i8", "u1"):
+        flat = np.arange(6, dtype=dtype)
+    else:
+        flat = np.array(["a", "bb", "", "d", "e", "ff"], dtype=dtype)
+    digests = {hash_chunk(flat.reshape(shape)) for shape in GEOMETRIES}
+    assert len(digests) == len(GEOMETRIES)
+
+
+def test_no_collision_chunk_geometry_within_slab():
+    """Chunks carved out of the same slab with the same number of identical elements,
+    but different edge-trimmed shapes, hash differently.
+
+    The data bytes are four zeros in every case, so the shape suffix is the only
+    discriminator; (4, 1) and (2, 2) also go through the strided walk instead of the
+    single-blob path.
+    """
+    slab = np.zeros((4, 4), dtype="i8")
+    digests = {hash_chunk(slab, count=count) for count in [(1, 4), (4, 1), (2, 2)]}
+    # A 1-dimensional slab of the same four zeros is different again
+    digests.add(hash_chunk(np.zeros(4, dtype="i8"), count=(4,)))
+    assert len(digests) == 4
+
+    # Conversely, the offset of the chunk within the slab is not part of the digest
+    assert hash_chunk(slab, count=(2, 2)) == hash_chunk(slab, 2, (2, 2))
+
+
+def test_no_collision_shape_string_injection():
+    """Data bytes that spell out a shape string can't be used to forge the shape
+    suffix, no matter how they line up with the real one.
+    """
+    cases = [
+        np.frombuffer(b"(4,)", dtype="u1"),  # b"(4,)" + b"(4,)"
+        np.frombuffer(b"(8,)", dtype="u1"),  # b"(8,)" + b"(4,)"
+        np.frombuffer(b"(1, 4)", dtype="u1"),  # b"(1, 4)" + b"(6,)"
+        np.frombuffer(b"(6,)", dtype="u1").reshape(1, 4),  # b"(6,)" + b"(1, 4)"
+        np.frombuffer(b"ab(2,)", dtype="u1"),  # b"ab(2,)" + b"(6,)"
+        np.frombuffer(b"ab", dtype="u1"),  # b"ab" + b"(2,)"
+    ]
+    digests = {hash_chunk(case) for case in cases}
+    assert len(digests) == len(cases)
+
+
+@pytest.mark.parametrize("dtype", ["f4", "f8", "c8", "c16"])
+def test_no_collision_signed_zero(dtype):
+    """+0.0 and -0.0 compare equal, but they are not the same chunk."""
+    a = np.zeros(4, dtype=dtype)
+    b = -a
+    assert (a == b).all()
+    assert hash_chunk(a) != hash_chunk(b)
+
+
+def test_nan_hashes_bitwise():
+    """Chunks are deduplicated by raw bytes, not by value: two chunks of NaNs with
+    the same bit pattern hash the same, even though they compare unequal
+    """
+    a = np.array([np.nan, 1.0])
+    assert a[0] != a[0]
+    assert hash_chunk(a) == hash_chunk(a.copy())
+
+
+def test_no_collision_multichunk_geometry():
+    """Chunks of different shapes hashed in a single hash_slab call don't contaminate
+    each other; the shape suffix of one chunk must not leak into the next.
+    """
+    slab = np.zeros((6, 4), dtype="i8")
+    starts = [0, 1, 3, 2]
+    counts = [(1, 4), (2, 2), (3, 1), (4, 4)]
+    ht = np.zeros((4, 4), dtype=np.uint64)
+    hash_slab(
+        slab,
+        ht,
+        np.array([0, 1, 2, 3], dtype=np_hsize_t),
+        np.array(starts, dtype=np_hsize_t),
+        np.array(counts, dtype=np_hsize_t),
+    )
+    digests = rows_as_digests(ht)
+    assert digests == [
+        hash_chunk(slab, start, count)
+        for start, count in zip(starts, counts, strict=True)
+    ]
+    assert len(set(digests)) == 4
+
+
+@pytest.mark.parametrize(
+    ("a", "b"),
+    [
+        # Same bits, different signedness or kind
+        (np.array([-1, -2], "i4"), np.array([2**32 - 1, 2**32 - 2], "u4")),
+        (np.array([0, 0], "i8"), np.array([0.0, 0.0], "f8")),
+        (np.array([True, False]), np.array([1, 0], "u1")),
+        # Same bits, different byte order, hence different values
+        (np.array([1], ">i4"), np.array([1 << 24], "<i4")),
+        # Same bits, different time unit, hence different instants
+        (np.array([1, 2], "M8[s]"), np.array([1, 2], "M8[ns]")),
+        (np.array([1, 2], "M8[s]"), np.array([1, 2], "m8[s]")),
+        # Fixed-width strings vs. their raw buffers
+        (np.array([b"a"], "S4"), np.array(["a"], "U1")),
+        (np.array([b"ab"], "S2"), np.array([b"ab"], "V2")),
+        # Structured vs. flat
+        (
+            np.array([(1, 2)], dtype=[("a", "i4"), ("b", "i4")]),
+            np.array([2**33 + 1], "u8"),
+        ),
+        # A fixed-width string that spells out the length prefix of a VLEN one
+        (
+            np.array([b"ab"], dtype=object),
+            np.array([struct.pack("<Q", 2) + b"ab"], dtype="S10"),
+        ),
+        (np.array([b""], dtype=object), np.array([0], "u8")),
+        # Empty chunks hash their shape and nothing else
+        (np.zeros((0, 3), dtype="i8"), np.zeros((0, 3), dtype=object)),
+    ],
+)
+def test_known_collisions_reinterpreted_dtype(a, b):
+    """The dtype is not part of the digest, so two chunks of the same shape with the
+    same raw byte image collide even when they mean entirely different things.
+
+    This is the only possible collision family and it is unreachable: a hash table is
+    shared exclusively by the chunks of one raw_data dataset, and
+    backend.check_compatible_dtypes() refuses to write to it anything but the dtype it
+    was created with (bar the object/StringDType equivalence, which is deliberate; see
+    test_vlen_encoding_equivalence). ``modify_metadata(dtype=...)`` rewrites the whole
+    file, hash table included.
+    """
+    assert a.dtype != b.dtype
+    assert hash_chunk(a) == hash_chunk(b)
+
+
+def test_vlen_encoding_equivalence():
+    """Variable-width strings are hashed by their UTF-8 bytes, so ``str``, ``bytes``
+    and StringDType spellings of the same value collide *by design*.
+
+    h5py hands back the contents of a VLEN string dataset as either ``bytes`` or
+    ``str`` depending on how it is read, and the same dataset can be read as an
+    object or a StringDType array.
+    """
+    digests = {
+        hash_chunk(np.array(values, dtype=object))
+        for values in (["é", "a"], [b"\xc3\xa9", b"a"], ["é", b"a"])
+    }
+    if HAS_NPYSTRINGS:
+        digests.add(hash_chunk(np.array(["é", "a"], dtype="T")))
+    assert len(digests) == 1
