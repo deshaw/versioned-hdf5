@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import datetime
 import logging
-import os
 import textwrap
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -14,7 +13,6 @@ from h5py._hl.filters import guess_chunk
 from h5py._hl.selections import select
 from h5py._selector import Selector
 from ndindex import ChunkSize, Slice, Tuple, ndindex
-from numpy.testing import assert_array_equal
 
 from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS
 from versioned_hdf5.hashtable import Hashtable
@@ -310,10 +308,6 @@ def write_dataset(
     slices_to_write: dict[Tuple, Slice] = {}
     chunk_size = chunks[0]
 
-    validate_reused_chunks = os.environ.get(
-        "ENABLE_CHUNK_REUSE_VALIDATION", "false"
-    ).lower() in ("1", "true")
-
     with Hashtable(f, name) as hashtable:
         old_chunks = hashtable.largest_index
         chunks_reused = 0
@@ -326,17 +320,6 @@ def write_dataset(
                 if data_hash in hashtable:
                     hashed_slice = hashtable[data_hash]
                     slices[data_slice] = hashed_slice
-
-                    if validate_reused_chunks:
-                        _verify_new_chunk_reuse(
-                            raw_dataset=ds,
-                            new_data=data,
-                            data_hash=data_hash,
-                            hashed_slice=hashed_slice,
-                            chunk_being_written=data_s,
-                            slices_to_write=slices_to_write,
-                        )
-
                     chunks_reused += 1
 
                 else:
@@ -364,94 +347,6 @@ def write_dataset(
     )
 
     return slices
-
-
-def _verify_new_chunk_reuse(
-    raw_dataset: Dataset,
-    new_data: np.ndarray,
-    data_hash: bytes,
-    hashed_slice: Slice,
-    chunk_being_written: np.ndarray,
-    slices_to_write: dict[Slice, Tuple] | None = None,
-    data_to_write: dict[Slice, np.ndarray] | None = None,
-) -> None:
-    """Check that the data from the hashed slice matches the data to be written.
-
-    Raises a ValueError if the data reference by the hashed slice doesn't match the
-    underlying raw data.
-
-    This function retrieves a reused chunk of data either from the ``slices_to_write``,
-    if the data has not yet been written to the file, or from the ``raw_data`` that has
-    already been written.
-
-    Parameters
-    ----------
-    raw_dataset : Dataset
-        Raw Dataset that already exists in the file
-    new_data : np.ndarray
-        New data that we are writing
-    data_hash : bytes
-        Hash of the new data chunk
-    hashed_slice : Slice
-        Slice that is stored in the hash table for the given data_hash. This is a slice
-        into the raw_data for the dataset; however if the data has not yet been written
-        it may not point to a valid region in raw_data (but in that case it _would_
-        point to a slice in ``slices_to_write``)
-    chunk_being_written : np.ndarray
-        New data chunk to be written
-    slices_to_write : dict[slice, tuple] | None
-        Dict of slices which will be written. Maps slices that will exist in the
-        raw_data once the write is complete to slices of the dataset that is being
-        written.
-    data_to_write : dict[slice, tuple] | None
-        Dict of arrays which will be written as chunks. Maps slices that will exist in
-        the raw_data once the write is complete to chunks of the dataset that is being
-        written. If ``data_to_write`` is specified, ``slices_to_write`` must be None.
-    """
-    if slices_to_write is not None and hashed_slice in slices_to_write:
-        # The hash table contains a slice we will write but haven't yet; grab the
-        # chunk from the new data being written
-        reused_chunk = new_data[slices_to_write[hashed_slice].raw]
-    elif data_to_write is not None and hashed_slice in data_to_write:
-        # The hash table contains a slice we will write but haven't yet; grab the
-        # chunk from the data_to_write dict, which stores the data that will be written
-        # for the given hashed slice.
-        reused_chunk = data_to_write[hashed_slice]
-    else:
-        # The hash table contains a slice that was written in a previous
-        # write operation; grab that chunk from the existing raw data
-        reused_slice = Tuple(
-            hashed_slice, *[slice(0, size) for size in chunk_being_written.shape[1:]]
-        )
-        reused_chunk = raw_dataset[reused_slice.raw]
-
-    # In some cases type coercion can happen during the write process even if the dtypes
-    # are the same - for example, if the raw_data.dtype == dtype('O'), but the elements
-    # are bytes, and chunk_being_written.dtype == dtype('O'), but the elements are
-    # utf-8 strings. For this case, when the raw_data is changed, e.g.
-    #     raw_data[some_slice] = chunk_being_written[another_slice]  # noqa: ERA001
-    # the data that gets written is bytes. So in certain cases, just calling
-    # assert_array_equal doesn't work. Instead, we encode each element to bytes first.
-    def normalize_chunk(chunk):
-        # TODO object dtype and StringDType can be accelerated in C/Cython
-        # See also hashtable.Hashtable.hash()
-        if chunk.dtype.kind == "T":
-            return _convert_to_bytes(chunk.astype("O"))
-        if chunk.dtype.kind == "O":
-            return _convert_to_bytes(chunk)
-        return chunk
-
-    to_be_written = normalize_chunk(chunk_being_written)
-    to_be_reused = normalize_chunk(reused_chunk)
-
-    try:
-        assert_array_equal(to_be_reused, to_be_written, strict=True)
-    except AssertionError as e:
-        raise ValueError(
-            f"Hash {data_hash!r} of existing data chunk {reused_chunk!r} "
-            f"matches the hash of new data chunk {chunk_being_written!r}, "
-            "but data does not."
-        ) from e
 
 
 @np.vectorize
@@ -489,10 +384,6 @@ def write_dataset_chunks(f, name, data_dict):
     chunks = tuple(raw_data.attrs["chunks"])
     chunk_size = chunks[0]
 
-    validate_reused_chunks = os.environ.get(
-        "ENABLE_CHUNK_REUSE_VALIDATION", "false"
-    ).lower() in ("1", "true")
-
     with Hashtable(f, name) as hashtable:
         old_chunks = hashtable.largest_index
         chunks_reused = 0
@@ -513,17 +404,6 @@ def write_dataset_chunks(f, name, data_dict):
                 if data_hash in hashtable:
                     hashed_slice = hashtable[data_hash]
                     slices[chunk] = hashed_slice
-
-                    if validate_reused_chunks:
-                        _verify_new_chunk_reuse(
-                            raw_dataset=raw_data,
-                            new_data=data_s,
-                            data_hash=data_hash,
-                            hashed_slice=hashed_slice,
-                            chunk_being_written=data_s,
-                            data_to_write=data_to_write,
-                        )
-
                     chunks_reused += 1
 
                 else:
