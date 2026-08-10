@@ -38,8 +38,6 @@ Run a single test: `pixi r test -- tests/test_api.py::test_name -x`. Anything af
 - `--doctest-modules` is enabled (doctests in source run as tests).
 - `filterwarnings = ["error"]` — any unhandled warning fails the run.
 - `strict_xfail = true` — xfailed tests that pass become failures.
-- `ENABLE_CHUNK_REUSE_VALIDATION=1` is set via `pytest-env` (asserts that reused
-  hash-deduplicated chunks really match — slow, disabled in production).
 - `@pytest.mark.slow` tests are auto-reordered to run last (see `tests/conftest.py`).
 
 ### Editable install gotchas
