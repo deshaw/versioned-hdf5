@@ -595,12 +595,22 @@ def _sc_hash_table_to_data_v4(
     return out
 
 
+def _raw_data_as_base_slab(raw_data: Dataset, dtype: np.dtype):
+    """Return `raw_data`, to be used as a base slab of a StagedChangesArray of the
+    given dtype.
+
+    Variable-width strings are always stored as object dtype in raw_data, while the
+    StagedChangesArray may be StringDType; wrap raw_data in a lazy view in that case.
+    """
+    return raw_data if dtype == raw_data.dtype else h5py_astype(raw_data, dtype)
+
+
 def commit_staged_changes(
     f, name: str, staged_changes: StagedChangesArray
 ) -> dict[Tuple, Slice]:
     """Commit a StagedChangesArray into `raw_data` and its on-disk hash table.
 
-    1. Load the on-dish hash table dataset that hashes all chunks of `raw_data`
+    1. Load the on-disk hash table dataset that hashes all chunks of `raw_data`
        into memory
     2. Inject it as the hash table of `staged_changes.base_slabs[0]`, which is
        `raw_data`
@@ -626,33 +636,47 @@ def commit_staged_changes(
     commit_staged_changes + hash_slab (new, fast)
         - InMemorySparseDataset commit (first version of sparse datasets)
         - InMemoryDataset commit (version 2+ of any dataset)
+        - recreate_dataset, when its callback returns an InMemoryDataset or an
+          InMemorySparseDataset
 
     write_dataset + Hashtable (legacy, slow)
         - InMemoryArrayDataset commit (first version of dense datasets)
         - delete_versions
         - update_metadata
-        - recreate_dataset
+        - recreate_dataset, in all other cases
         - VersionedHDF5.rebuild_hashtables
     """
     sc = staged_changes
     group = f["_version_data"][name]
     raw_data = group["raw_data"]
     hash_table = group["hash_table"]
+    assert sc.chunk_size == tuple(raw_data.chunks)
     chunk_size0 = sc.chunk_size[0]
 
-    # A dataset carried over from a previous version has exactly one base slab
-    # (raw_data); a brand new (sparse) dataset has none, and its raw_data was just
-    # created empty. commit() below appends at most one further base slab.
+    # Number of chunks that the previous versions committed to raw_data.
+    # raw_data, and possibly hash_table too, can be longer than this if a previous
+    # commit crashed halfway through; largest_index is updated last and is the only
+    # trustworthy measure. Anything beyond it is garbage and will be overwritten.
+    prev_n_chunks = int(hash_table.attrs["largest_index"])
+    prev_len = prev_n_chunks * chunk_size0
+
+    # A InMemoryDataset has exactly one base slab (raw_data); a
+    # InMemoryArrayDataset or InMemorySparseDataset has none.
+    assert sc.n_base_slabs in (0, 1)
+    if sc.n_base_slabs == 0 and prev_n_chunks > 0:
+        # DatasetWrapper hot-swapped a InMemoryDataset for an InMemorySparseDataset or
+        # an InMemoryArrayDataset, or a dataset was deleted in an intermediate version
+        # and then recreated, or it was created in two independent branches
+        sc.slabs.insert(1, _raw_data_as_base_slab(raw_data, sc.dtype))
+        sc.hash_tables.insert(1, None)
+        sc.slab_indices[sc.slab_indices > 0] += 1
+        sc.n_base_slabs = 1
+
     n_base_before = sc.n_base_slabs
-    assert n_base_before in (0, 1)
 
     if n_base_before == 1:
-        prev_n_chunks = int(hash_table.attrs["largest_index"])
-        prev_len = prev_n_chunks * chunk_size0
         assert sc.hash_tables[1] is None
         sc.hash_tables[1] = _data_v4_to_sc_hash_table(hash_table, chunk_size0)
-    else:
-        prev_n_chunks = prev_len = 0
 
     def empty(shape: tuple[int, ...], dtype) -> RawDataView:
         """Mock API of np.empty. Extend raw_data and return view to the new area."""
@@ -701,8 +725,8 @@ def commit_staged_changes(
 
         # commit() wrote the new chunks through a RawDataView onto
         # raw_data[prev_len:], so their slab_offsets are relative to prev_len.
-        # Shift them to absolute raw_data offsets.
-        # This doesn't apply to new sparse datasets (InMemorySparseDataset).
+        # Shift them to absolute raw_data offsets and collapse the new base slab onto
+        # slab 1 (raw_data).
         if n_base_before:
             new_slab_mask = sc.slab_indices == new_slab_idx
             sc.slab_indices[new_slab_mask] = 1
@@ -711,12 +735,7 @@ def commit_staged_changes(
         # Collapse back to a single raw_data base slab, so the committed
         # StagedChangesArray is structurally identical to a freshly-loaded
         # InMemoryDataset.
-        base_slab = raw_data
-        if sc.dtype != raw_data.dtype:
-            # Variable-width strings: raw_data is always object dtype while
-            # the array may be StringDType. Wrap raw_data in a lazy view.
-            base_slab = h5py_astype(raw_data, sc.dtype)
-        sc.slabs = [sc.slabs[0], base_slab]
+        sc.slabs = [sc.slabs[0], _raw_data_as_base_slab(raw_data, sc.dtype)]
         sc.hash_tables = [None, None]
         sc.n_base_slabs = 1
 
