@@ -13,7 +13,6 @@ from versioned_hdf5.backend import (
     create_base_dataset,
     create_virtual_dataset,
     write_dataset,
-    write_dataset_chunks,
 )
 
 CHUNK_SIZE_3D = 2**4  # = cbrt(DEFAULT_CHUNK_SIZE)
@@ -195,83 +194,6 @@ def test_write_dataset_multidimension(h5file):
             Slice(1 * CHUNK_SIZE_3D, 2 * CHUNK_SIZE_3D, 1),
             Slice(1 * CHUNK_SIZE_3D, 2 * CHUNK_SIZE_3D, 1),
         ): slice(7 * CHUNK_SIZE_3D, 8 * CHUNK_SIZE_3D),
-    }
-
-    ds = h5file["/_version_data/test_data/raw_data"]
-    assert ds.shape == (8 * CHUNK_SIZE_3D, CHUNK_SIZE_3D, CHUNK_SIZE_3D)
-    for n in range(8):
-        assert_equal(ds[n * CHUNK_SIZE_3D : (n + 1) * CHUNK_SIZE_3D], n)
-    assert ds.dtype == np.float64
-
-
-def test_write_dataset_chunks(h5file):
-    data = np.ones((2 * DEFAULT_CHUNK_SIZE,))
-    slices1 = write_dataset(h5file, "test_data", data)
-    chunksize = guess_chunk(data.shape, None, data.dtype.itemsize)[0]
-
-    raw_slice1 = Tuple(Slice(0 * chunksize, 1 * chunksize, 1))
-    slices2 = write_dataset_chunks(
-        h5file,
-        "test_data",
-        {
-            Tuple(Slice(0 * chunksize, 1 * chunksize, 1)): slices1[raw_slice1],
-            Tuple(Slice(1 * chunksize, 2 * chunksize, 1)): 2 * np.ones((chunksize,)),
-            Tuple(Slice(2 * chunksize, 3 * chunksize, 1)): 2 * np.ones((chunksize,)),
-            Tuple(Slice(3 * chunksize, 4 * chunksize, 1)): 3 * np.ones((chunksize,)),
-        },
-    )
-
-    slices1_expected = {}
-    for i in range(data.size // chunksize):
-        data_slice = Tuple(Slice(i * chunksize, (i + 1) * chunksize, 1))
-        slices1_expected[data_slice] = slice(0, chunksize)
-
-    assert slices1 == slices1_expected
-    assert slices2 == {
-        Tuple(Slice(0 * chunksize, 1 * chunksize, 1)): slice(
-            0 * chunksize, 1 * chunksize
-        ),
-        Tuple(Slice(1 * chunksize, 2 * chunksize, 1)): slice(
-            1 * chunksize, 2 * chunksize
-        ),
-        Tuple(Slice(2 * chunksize, 3 * chunksize, 1)): slice(
-            1 * chunksize, 2 * chunksize
-        ),
-        Tuple(Slice(3 * chunksize, 4 * chunksize, 1)): slice(
-            2 * chunksize, 3 * chunksize
-        ),
-    }
-
-    ds = h5file["/_version_data/test_data/raw_data"]
-    assert ds.shape == (3 * chunksize,)
-    assert_equal(ds[0 * chunksize : 1 * chunksize], 1.0)
-    assert_equal(ds[1 * chunksize : 2 * chunksize], 2.0)
-    assert_equal(ds[2 * chunksize : 3 * chunksize], 3.0)
-    assert_equal(ds[3 * chunksize : 4 * chunksize], 0.0)
-    assert ds.dtype == np.float64
-
-
-def test_write_dataset_chunks_multidimension(h5file):
-    chunks = ChunkSize(3 * (CHUNK_SIZE_3D,))
-    shape = (2 * CHUNK_SIZE_3D, 2 * CHUNK_SIZE_3D, 2 * CHUNK_SIZE_3D)
-    data = np.zeros(shape)
-    slices1 = write_dataset(h5file, "test_data", data, chunks=chunks)
-    data_dict = {}
-    for n, c in enumerate(chunks.indices(shape)):
-        if n == 0:
-            data_dict[c] = slices1[c]
-        else:
-            data_dict[c] = n * np.ones(chunks)
-
-    slices1 = write_dataset(h5file, "test_data", data, chunks=chunks)
-    slices2 = write_dataset_chunks(h5file, "test_data", data_dict)
-
-    assert slices1 == {
-        c: slice(0 * CHUNK_SIZE_3D, 1 * CHUNK_SIZE_3D) for c in chunks.indices(shape)
-    }
-    assert slices2 == {
-        c: slice(i * CHUNK_SIZE_3D, (i + 1) * CHUNK_SIZE_3D)
-        for i, c in enumerate(chunks.indices(shape))
     }
 
     ds = h5file["/_version_data/test_data/raw_data"]
@@ -639,59 +561,6 @@ def test_create_virtual_dataset_offset_multidimension(h5file):
     assert virtual_data.shape == shape2
     assert_equal(virtual_data[()], data2)
     assert virtual_data.dtype == np.float64
-
-
-def test_write_dataset_chunk_size(h5file):
-    chunk_size = 2**10
-    chunks = (chunk_size,)
-    slices1 = write_dataset(
-        h5file, "test_data", np.ones((2 * chunk_size,)), chunks=chunks
-    )
-    with pytest.raises(ValueError):
-        write_dataset(h5file, "test_data", np.ones(chunks), chunks=(2**9,))
-    slices2 = write_dataset_chunks(
-        h5file,
-        "test_data",
-        {
-            Tuple(Slice(0 * chunk_size, 1 * chunk_size, 1)): slices1[
-                Tuple(Slice(0 * chunk_size, 1 * chunk_size, 1))
-            ],
-            Tuple(Slice(1 * chunk_size, 2 * chunk_size, 1)): 2 * np.ones((chunk_size,)),
-            Tuple(Slice(2 * chunk_size, 3 * chunk_size, 1)): 2 * np.ones((chunk_size,)),
-            Tuple(Slice(3 * chunk_size, 4 * chunk_size, 1)): 3 * np.ones((chunk_size,)),
-        },
-    )
-
-    assert slices1 == {
-        Tuple(Slice(0 * chunk_size, 1 * chunk_size, 1)): slice(
-            0 * chunk_size, 1 * chunk_size
-        ),
-        Tuple(Slice(1 * chunk_size, 2 * chunk_size, 1)): slice(
-            0 * chunk_size, 1 * chunk_size
-        ),
-    }
-    assert slices2 == {
-        Tuple(Slice(0 * chunk_size, 1 * chunk_size, 1)): slice(
-            0 * chunk_size, 1 * chunk_size
-        ),
-        Tuple(Slice(1 * chunk_size, 2 * chunk_size, 1)): slice(
-            1 * chunk_size, 2 * chunk_size
-        ),
-        Tuple(Slice(2 * chunk_size, 3 * chunk_size, 1)): slice(
-            1 * chunk_size, 2 * chunk_size
-        ),
-        Tuple(Slice(3 * chunk_size, 4 * chunk_size, 1)): slice(
-            2 * chunk_size, 3 * chunk_size
-        ),
-    }
-
-    ds = h5file["/_version_data/test_data/raw_data"]
-    assert ds.shape == (3 * chunk_size,)
-    assert_equal(ds[0 : 1 * chunk_size], 1.0)
-    assert_equal(ds[1 * chunk_size : 2 * chunk_size], 2.0)
-    assert_equal(ds[2 * chunk_size : 3 * chunk_size], 3.0)
-    assert_equal(ds[3 * chunk_size : 4 * chunk_size], 0.0)
-    assert ds.dtype == np.float64
 
 
 def test_write_dataset_offset_chunk_size(h5file):
