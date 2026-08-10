@@ -22,6 +22,9 @@ from versioned_hdf5.replay import (
     delete_version,
     delete_versions,
     modify_metadata,
+    recreate_dataset,
+    swap,
+    tmp_group,
 )
 
 
@@ -695,6 +698,42 @@ def test_modify_metadata_sparse_rechunk_true_nd(vfile):
         modify_metadata(vfile, "x", chunks=True)
 
 
+def test_recreate_dataset_staged_changes(vfile):
+    """recreate_dataset() rewrites every version of a dataset into a brand new group.
+    When its callback returns an InMemoryDataset, the StagedChangesArray that is
+    committed is built on top of the raw_data of the *source* group, while
+    commit_staged_changes() writes to the raw_data of the *target* group and
+    deduplicates against its hash table, which describes the versions rewritten so far.
+    The chunks of the two raw_data must not be conflated.
+    """
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("x", data=np.arange(30), chunks=(10,))
+    for i in range(1, 3):
+        with vfile.stage_version(f"r{i}") as sv:
+            sv["x"][0] = i * 100
+
+    expected = {v: vfile[v]["x"][:] for v in ("r0", "r1", "r2")}
+
+    def callback(dataset, version_name):  # noqa: ARG001
+        # Unwrap DatasetWrapper -> InMemoryDataset or InMemoryArrayDataset
+        return dataset.dataset
+
+    f = vfile.f
+    newf = tmp_group(f)
+    recreate_dataset(f, "x", newf, callback=callback)
+    swap(f, newf)
+
+    for v, want in expected.items():
+        assert_array_equal(vfile[v]["x"][:], want)
+
+    # r1 and r2 each rewrote chunk 0 only; chunks 1 and 2 were deduplicated
+    # against those of r0 in the new raw_data.
+    raw_data = f["_version_data/x/raw_data"]
+    hash_table = f["_version_data/x/hash_table"]
+    assert raw_data.shape == (50,)
+    assert hash_table.attrs["largest_index"] == 5
+
+
 def test_delete_version(vfile):
     setup_vfile(vfile)
     f = vfile.f
@@ -1107,13 +1146,14 @@ def test_delete_versions_fillvalue_only_dataset_raw_data_shape(tmp_path):
                 chunks=(10,),
                 fillvalue=0,
             )
-        assert f["_version_data/fillvalue_only_raw_data_shape/raw_data"].shape == (10,)
+        # A fillvalue-only dataset writes no chunks to raw_data.
+        assert f["_version_data/fillvalue_only_raw_data_shape/raw_data"].shape == (0,)
 
         with vf.stage_version("r1") as sv:
             sv["fillvalue_only_raw_data_shape"].resize((16,))
 
-        # after delete_versions, the raw_data shape should still be non-empty
-        # and have a chunk
+        # r1 only enlarges the dataset with more fillvalue, so raw_data stays empty;
+        # delete_versions must not corrupt the (fillvalue-only) dataset.
         delete_versions(vf, ["r0"])
 
     with h5py.File(tmp_path / "test.h5", "r") as f:
@@ -1173,27 +1213,27 @@ def test_delete_empty_dataset(vfile):
             compression="lzf",
         )
 
-    # Raw data should be filled with fillvalue, but actual current
+    # A fillvalue-only dataset writes no chunks to raw_data; the current
     # version dataset should have size 0.
-    assert vfile.f["_version_data/key0/raw_data"][:].size == 10000
+    assert vfile.f["_version_data/key0/raw_data"][:].size == 0
     assert vfile[vfile.current_version]["key0"][:].size == 0
 
     # Create a new version, checking again the size
     with vfile.stage_version("r1") as sv:
         sv["key0"].resize((0,))
-    assert vfile.f["_version_data/key0/raw_data"][:].size == 10000
+    assert vfile.f["_version_data/key0/raw_data"][:].size == 0
     assert vfile[vfile.current_version]["key0"][:].size == 0
 
     # Deleting a prior version should not change the data in the current version
     delete_versions(vfile, ["r0"])
-    assert vfile.f["_version_data/key0/raw_data"][:].size == 10000
+    assert vfile.f["_version_data/key0/raw_data"][:].size == 0
     assert vfile[vfile.current_version]["key0"][:].size == 0
 
     # Create a new version, then check if the data is the correct size
     with vfile.stage_version("r2") as sv:
         sv["key0"].resize((0,))
 
-    assert vfile.f["_version_data/key0/raw_data"][:].size == 10000
+    assert vfile.f["_version_data/key0/raw_data"][:].size == 0
     assert vfile[vfile.current_version]["key0"][:].size == 0
 
 

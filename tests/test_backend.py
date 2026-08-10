@@ -9,6 +9,7 @@ from numpy.testing import assert_equal
 from versioned_hdf5.backend import (
     DEFAULT_CHUNK_SIZE,
     Filters,
+    _data_v4_to_sc_hash_table,
     create_base_dataset,
     create_virtual_dataset,
     write_dataset,
@@ -831,3 +832,255 @@ def test_create_empty_multidimensional_virtual_dataset(setup_vfile):
         assert_equal(ds, np.zeros((0, 0)))
         assert ds.shape == (0, 0)
         assert ds.size == 0
+
+
+def _raw_data_hashtable(vfile, name):
+    grp = vfile.f["_version_data"][name]
+    return grp["raw_data"], grp["hash_table"]
+
+
+def test_commit_staged_changes_modify(vfile):
+    """Modifying a dataset carried over from a previous version goes through
+    commit_staged_changes (an InMemoryDataset, i.e. one base slab on entry), not the
+    legacy write_dataset path.
+    """
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("x", data=np.arange(30), chunks=(10,))
+    with vfile.stage_version("r1") as sv:
+        sv["x"][5] = 999  # partial write -> InMemoryDataset -> commit_staged_changes
+
+    assert_equal(vfile["r0"]["x"][:], np.arange(30))
+    expected = np.arange(30)
+    expected[5] = 999
+    assert_equal(vfile["r1"]["x"][:], expected)
+
+    # Invariant: the on-disk hash table records exactly one chunk per raw_data chunk,
+    # and holds no rows beyond them.
+    raw_data, hash_table = _raw_data_hashtable(vfile, "x")
+    assert raw_data.shape[0] // 10 == hash_table.attrs["largest_index"] == 4
+    assert hash_table.shape == (4,)
+
+
+def test_commit_staged_changes_edge_chunk_hashtable(vfile):
+    """The on-disk hash table records the *trimmed* (start, stop) of a rewritten edge
+    chunk - start still lands on a full-chunk boundary, but stop is the chunk's logical
+    length - so replay keeps matching it against the virtual dataset's slices.
+    """
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("x", data=np.arange(25), chunks=(10,))  # chunk 2 is edge (5)
+    with vfile.stage_version("r1") as sv:
+        sv["x"][22] = 999  # rewrite the trailing edge chunk (indices 20..24)
+
+    _, hash_table = _raw_data_hashtable(vfile, "x")
+    # r0 committed 3 chunks; r1 appends one new (edge) chunk in row 3.
+    assert hash_table.attrs["largest_index"] == 4
+    assert tuple(int(v) for v in hash_table[3]["shape"]) == (30, 35)
+
+    expected = np.arange(25)
+    expected[22] = 999
+    assert_equal(vfile["r1"]["x"][:], expected)
+
+
+@pytest.mark.parametrize("n_new", [4, 6], ids=["shrink", "grow"])
+@pytest.mark.parametrize("ht_grown", [False, True], ids=["raw_only", "raw+ht"])
+def test_commit_staged_changes_recovers_from_failed_commit(vfile, ht_grown, n_new):
+    """A commit that crashes halfway through leaves raw_data - and possibly the hash
+    table too - enlarged, with garbage past the last recorded chunk. Neither shape is
+    trustworthy; hash_table.attrs["largest_index"], written last, is the packed length.
+    commit_staged_changes reads it and resizes both datasets to fit exactly the
+    surviving chunks plus the new ones, so a failed commit is fully overwritten
+    regardless of whether the next version is smaller or larger than it.
+    """
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("x", data=np.arange(100), chunks=(10,))
+
+    raw_data, hash_table = _raw_data_hashtable(vfile, "x")
+    assert raw_data.shape == (100,)
+    assert hash_table.shape == (10,)
+    assert hash_table.attrs["largest_index"] == 10
+
+    # Simulate r1 crashing while committing 5 extra chunks. raw_data grows first;
+    # the hash table may or may not have been enlarged (with garbage rows) yet.
+    # Either way largest_index remains 10, which makes the crash detectable.
+    raw_data.resize((150,))
+    raw_data[100:] = -12345
+    if ht_grown:
+        garbage = np.zeros(5, dtype=hash_table.dtype)
+        garbage["hash"] = 123
+        garbage["shape"] = [(s, s + 10) for s in range(100, 150, 10)]
+        hash_table.resize((15,))
+        hash_table[10:] = garbage
+
+    # r2 commits n_new original chunks; fewer or more than r1 was going to
+    with vfile.stage_version("r2") as sv:
+        sv["x"][: n_new * 10 : 10] = -1
+
+    n = 10 + n_new
+    raw_data, hash_table = _raw_data_hashtable(vfile, "x")
+    assert raw_data.shape == (n * 10,)
+    assert not np.any(raw_data[:] == -12345)
+    assert hash_table.attrs["largest_index"] == n
+    assert hash_table.shape == (n,)
+
+    assert_equal(vfile["r0"]["x"][:], np.arange(100))
+    expected = np.arange(100)
+    expected[: n_new * 10 : 10] = -1
+    assert_equal(vfile["r2"]["x"][:], expected)
+
+    # The rows r2 appended are sane: r3 dedups against them and writes nothing new
+    with vfile.stage_version("r3") as sv:
+        sv["x"][0] = -1
+    raw_data, hash_table = _raw_data_hashtable(vfile, "x")
+    assert raw_data.shape == (n * 10,)
+    assert hash_table.attrs["largest_index"] == n
+
+
+def test_commit_staged_changes_dedup_no_new_chunks(vfile):
+    """A version that only re-stages chunks identical to ones already in raw_data
+    appends no new base slab and leaves the on-disk hash table untouched.
+    """
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("x", data=np.arange(30), chunks=(10,))
+    raw_data, hash_table = _raw_data_hashtable(vfile, "x")
+    raw_data_before = raw_data[:]
+    hash_table_before = hash_table[:]
+    assert int(hash_table.attrs["largest_index"]) == 3
+
+    with vfile.stage_version("r1") as sv:
+        sv["x"][5] = sv["x"][5]
+
+    raw_data, hash_table = _raw_data_hashtable(vfile, "x")
+    assert_equal(raw_data[:], raw_data_before)
+    assert_equal(hash_table[:], hash_table_before)
+    assert int(hash_table.attrs["largest_index"]) == 3
+
+
+def test_commit_staged_changes_sparse_edge_chunk(vfile):
+    """A brand new (sparse) dataset has no base slab on entry (n_base_slabs == 0).
+    Partially filling it, edge chunk included, commits the right chunks.
+    """
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("x", shape=(25,), chunks=(10,))
+        sv["x"][:22] = np.arange(22)  # leaves the edge chunk's tail as fill_value
+
+    expected = np.zeros(25)
+    expected[:22] = np.arange(22)
+    assert_equal(vfile["r0"]["x"][:], expected)
+
+    raw_data, hash_table = _raw_data_hashtable(vfile, "x")
+    assert raw_data.shape[0] // 10 == hash_table.attrs["largest_index"] == 3
+
+
+@pytest.mark.parametrize("delete", [True, False])
+def test_commit_staged_changes_recreated_sparse_dataset(vfile, delete):
+    """An InMemorySparseDataset (no base slabs) can nonetheless have raw_data, either
+    because it was deleted and then created anew or because it was created independently
+    on two branches of the version DAG. Its chunks must be appended to raw_data and
+    deduplicated against it, not overwrite it.
+    """
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("x", data=[1, 2, 3, 4, 5, 6], chunks=(2,), dtype=np.int64)
+    raw_data, hash_table = _raw_data_hashtable(vfile, "x")
+    assert hash_table.attrs["largest_index"] == 3
+
+    if delete:
+        with vfile.stage_version("r1") as sv:
+            del sv["x"]
+
+    with vfile.stage_version("r2", prev_version="r1" if delete else "") as sv:
+        sv.create_dataset("x", shape=(6,), dtype=np.int64, chunks=(2,))
+        sv["x"][:2] = [1, 2]  # identical to chunk 0 of r0; deduplicated
+        sv["x"][2:4] = 7, 8  # original; appended to raw_data
+        # chunk 2 is left full of fill_value
+
+    # r0 was not overwritten
+    assert_equal(vfile["r0"]["x"][:], [1, 2, 3, 4, 5, 6])
+    assert_equal(vfile["r2"]["x"][:], [1, 2, 7, 8, 0, 0])
+
+    # Exactly one new chunk was appended
+    raw_data, hash_table = _raw_data_hashtable(vfile, "x")
+    assert_equal(raw_data[:8], [1, 2, 3, 4, 5, 6, 7, 8])
+    assert hash_table.attrs["largest_index"] == 4
+    assert hash_table.shape == (4,)
+
+
+def test_commit_staged_changes_hotswapped_sparse_dataset(vfile):
+    """An InMemorySparseDataset (no base slabs) can nonetheless have raw_data
+    after DatasetWrapper hot-swapped it from a InMemoryDataset.
+    """
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("x", data=[1, 2, 3, 4, 5, 6], chunks=(2,), dtype=np.int64)
+    raw_data, hash_table = _raw_data_hashtable(vfile, "x")
+    assert hash_table.attrs["largest_index"] == 3
+
+    with vfile.stage_version("r1") as sv:
+        sv["x"][:] = 0  # hot-swap InMemoryDataset -> InMemoryArrayDataset
+        sv["x"].resize((7,))  # hot-swap InMemoryArrayDataset -> InMemorySparseDataset
+        sv["x"].resize((6,))
+        sv["x"][:2] = [1, 2]  # identical to chunk 0 of r0; deduplicated
+        sv["x"][2:4] = 7, 8  # original; appended to raw_data
+
+    # r0 was not overwritten
+    assert_equal(vfile["r0"]["x"][:], [1, 2, 3, 4, 5, 6])
+    assert_equal(vfile["r1"]["x"][:], [1, 2, 7, 8, 0, 0])
+
+    # Exactly one new chunk was appended
+    raw_data, hash_table = _raw_data_hashtable(vfile, "x")
+    assert_equal(raw_data[:8], [1, 2, 3, 4, 5, 6, 7, 8])
+    assert hash_table.attrs["largest_index"] == 4
+    assert hash_table.shape == (4,)
+
+
+def test_data_v4_to_sc_hash_table_out_of_order(vfile):
+    """_data_v4_to_sc_hash_table() indexes the digests by chunk index, whatever order
+    the records happen to be in on disk. VersionedHDF5File.rebuild_hashtables() writes
+    them in the order the versions reference them, which is not the order they lie in
+    along axis 0 of raw_data.
+    """
+    # rebuild_hashtables() traverses versions in alphabetical order,
+    # not in creation order
+    with vfile.stage_version("z") as sv:
+        sv.create_dataset("x", data=np.array([1, 2, 3, 4]), chunks=(2,))
+    with vfile.stage_version("a") as sv:
+        # Swap the two chunks around. Both are deduplicated against version z, so
+        # raw_data is unchanged; version a just references its chunks in reverse order.
+        sv["x"][:2] = [3, 4]
+        sv["x"][2:] = [1, 2]
+
+    raw_data = vfile.f["_version_data/x/raw_data"]
+    assert_equal(raw_data[:], [1, 2, 3, 4])
+
+    vfile.rebuild_hashtables()
+
+    hash_table = vfile.f["_version_data/x/hash_table"]
+    records = hash_table[: int(hash_table.attrs["largest_index"])]
+    assert records["shape"][:, 0].tolist() == [2, 0]  # Not in chunk order
+
+    on_disk = np.ascontiguousarray(records["hash"]).view(np.uint64)
+    actual = _data_v4_to_sc_hash_table(hash_table, 2)
+    assert_equal(actual, on_disk[::-1])
+
+
+def test_commit_staged_changes_out_of_order_hashtable(vfile):
+    """Staged chunks are deduplicated onto the correct raw_data offset even when the
+    records of the on-disk hash table are not in chunk order, which is the case after
+    VersionedHDF5File.rebuild_object_dtype_hashtables().
+    """
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("x", data=np.array([1, 2, 3, 4]), chunks=(2,))
+
+    raw_data, hash_table = _raw_data_hashtable(vfile, "x")
+    assert raw_data.shape == (4,)
+    # Reverse the records, preserving each (hash, (start, stop)) pairing
+    nrows = int(hash_table.attrs["largest_index"])
+    hash_table[:nrows] = hash_table[:nrows][::-1]
+
+    with vfile.stage_version("r1") as sv:
+        # Rewrite chunk 0 with the contents of chunk 1. It must be deduplicated onto
+        # raw_data[2:4] and not onto raw_data[0:2], which still holds [1, 2].
+        sv["x"][:2] = [3, 4]
+
+    assert_equal(vfile["r1"]["x"][:], [3, 4, 3, 4])
+    raw_data, hash_table = _raw_data_hashtable(vfile, "x")
+    assert raw_data.shape == (4,)  # No new chunk was written
+    assert hash_table.attrs["largest_index"] == 2

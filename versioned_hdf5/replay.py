@@ -19,11 +19,11 @@ from versioned_hdf5.api import VersionedHDF5File
 from versioned_hdf5.backend import (
     DEFAULT_CHUNK_SIZE,
     Filters,
+    commit_staged_changes,
     create_base_dataset,
     create_virtual_dataset,
     initialize,
     write_dataset,
-    write_dataset_chunks,
 )
 from versioned_hdf5.hashtable import Hashtable
 from versioned_hdf5.slicetools import spaceid_to_slice
@@ -110,7 +110,7 @@ def recreate_dataset(f, name, newf, callback=None):
             # data is unchanged).
             if isinstance(dataset, (InMemoryDataset, InMemorySparseDataset)):
                 dataset.staged_changes.load()
-                slices = write_dataset_chunks(newf, name, dataset.data_dict)
+                slices = commit_staged_changes(newf, name, dataset.staged_changes)
             else:
                 slices = write_dataset(newf, name, dataset)
             create_virtual_dataset(
@@ -716,7 +716,27 @@ def modify_metadata(
         del newf[newf.name]
 
 
-def swap(old, new):
+def _normalize_path(path: str) -> str:
+    return path if path.endswith("/") else path + "/"
+
+
+def _replace_prefix(path: str, name1: str, name2: str) -> str:
+    """Replace the prefix name1 with name2 in path"""
+    name1 = _normalize_path(name1)
+    name2 = _normalize_path(name2)
+    return name2 + path[len(name1) :]
+
+
+def _replace_attrs_prefix(dataset: Dataset, name1: str, name2: str) -> None:
+    """Replace the prefix name1 with name2 in every string attribute of dataset
+    that holds an absolute path, e.g. the 'raw_data' attribute of a version dataset.
+    """
+    for k, v in dataset.attrs.items():
+        if isinstance(v, str) and v.startswith(_normalize_path(name1)):
+            dataset.attrs[k] = _replace_prefix(v, name1, name2)
+
+
+def swap(old: InMemoryGroup, new: InMemoryGroup) -> None:
     """
     Swap every dataset in old with the corresponding one in new
 
@@ -730,21 +750,12 @@ def swap(old, new):
 
     old.visititems(_move)
     for name in move_names:
-        if new[name].is_virtual:
+        newd = new[name]
+        if isinstance(newd, Dataset) and newd.is_virtual:
             # We cannot simply move virtual datasets, because they will still
             # point to the old raw_data location. So instead, we have to
             # recreate them, pointing to the new raw_data.
             oldd = old[name]
-            newd = new[name]
-
-            def _normalize(path):
-                return path if path.endswith("/") else path + "/"
-
-            def _replace_prefix(path, name1, name2):
-                """Replace the prefix name1 with name2 in path"""
-                name1 = _normalize(name1)
-                name2 = _normalize(name2)
-                return name2 + path[len(name1) :]
 
             def _new_vds_layout(d, name1, name2):
                 """Recreate a VirtualLayout for d, replacing name1 with name2 in the
@@ -796,3 +807,11 @@ def swap(old, new):
             old.move(name, posixpath.join(new.name, name + "__tmp"))
             new.move(name, posixpath.join(old.name, name))
             new.move(name + "__tmp", name)
+
+            # HDF5 <1.14:
+            # A version dataset that contains nothing but the fillvalue is not
+            # virtual, so it lands here instead of in the branch above. It still
+            # references raw_data through an attribute holding its absolute path,
+            # which the moves above have just invalidated.
+            _replace_attrs_prefix(old[name], new.name, old.name)
+            _replace_attrs_prefix(new[name], old.name, new.name)

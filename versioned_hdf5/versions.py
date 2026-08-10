@@ -11,9 +11,9 @@ from h5py import Dataset, Group
 
 from versioned_hdf5.backend import (
     Filters,
+    commit_staged_changes,
     create_virtual_dataset,
     write_dataset,
-    write_dataset_chunks,
 )
 from versioned_hdf5.wrappers import (
     DatasetWrapper,
@@ -137,9 +137,7 @@ def commit_version(
             attrs = {}
             fillvalue = None
 
-        shape = None
         if isinstance(data, InMemoryDataset):
-            shape = data.shape
             if not data.staged_changes.has_changes:
                 # The virtual dataset was not changed from the previous
                 # version. Just copy it to the new version directly.
@@ -152,12 +150,10 @@ def commit_version(
                 for k, v in data.attrs.items():
                     data_copy.attrs[k] = v
                 continue
-            data = data.data_dict
-        if isinstance(data, dict):
-            if chunks[name] is not None:
-                raise NotImplementedError("Specifying chunk size with dict data")
-            slices = write_dataset_chunks(f, name, data)
+            # Commit the staged changes straight into raw_data + the on-disk hash table.
+            slices = commit_staged_changes(f, name, data.staged_changes)
         elif isinstance(data, InMemorySparseDataset):
+            # Create the (empty) raw_data + hash table, then commit into them.
             write_dataset(
                 f,
                 name,
@@ -166,14 +162,14 @@ def commit_version(
                 filters=filters[name],
                 fillvalue=fillvalue,
             )
-            slices = write_dataset_chunks(f, name, data.data_dict)
+            slices = commit_staged_changes(f, name, data.staged_changes)
         else:
             if isinstance(data, InMemoryArrayDataset):
                 # If buffer has StringDType, avoid unnecessary conversion from outwardly
                 # presented object dtype.
                 data = data._buffer
 
-            assert isinstance(data, (np.ndarray, dict))
+            assert isinstance(data, np.ndarray)
             slices = write_dataset(
                 f,
                 name,
@@ -182,19 +178,8 @@ def commit_version(
                 filters=filters[name],
                 fillvalue=fillvalue,
             )
-        if shape is None:
-            if isinstance(data, dict):
-                raw_data = f["_version_data"][name]["raw_data"]
-                shape = tuple(
-                    [
-                        max(c.args[i].stop for c in slices)
-                        for i in range(len(tuple(raw_data.attrs["chunks"])))
-                    ]
-                )
-            else:
-                shape = data.shape
         create_virtual_dataset(
-            f, version_name, name, shape, slices, attrs=attrs, fillvalue=fillvalue
+            f, version_name, name, data.shape, slices, attrs=attrs, fillvalue=fillvalue
         )
     version_group.attrs["committed"] = True
 
