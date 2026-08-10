@@ -115,9 +115,6 @@ exclude = [
 [tool.isort]
 profile = "black"
 
-[tool.pytest_env]
-ENABLE_CHUNK_REUSE_VALIDATION = 1
-
 [tool.pytest.ini_options]
 addopts = "--doctest-modules --ignore=ci/ --ignore=analysis/ --import-mode=importlib --durations 10"
 doctest_optionflags = "NORMALIZE_WHITESPACE"

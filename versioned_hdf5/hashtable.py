@@ -128,7 +128,6 @@ class Hashtable(MutableMapping):
         if data.dtype.kind == "T":
             # Ensure that StringDType and object type strings produce the same hash.
             # TODO this can be accelerated in C/Cython
-            # See also backend._verify_new_chunk_reuse()
             #
             # DO NOT use hash_value.update(data)!
             # Besides producing a different hash, it also suffers from hash collisions
