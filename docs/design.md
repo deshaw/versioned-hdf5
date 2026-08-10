@@ -179,10 +179,7 @@ The hashtable maps `SHA256 hash -> (start, stop)` where `(start, stop)` gives
 a slice range for the chunk in the raw dataset (chunks in the `raw_data`
 dataset are concatenated along the first axis only). All chunks that do not
 exist in the hashtable already are appended to the raw dataset and added to
-the hashtable. `versioned_hdf5.backend.write_dataset_chunks()` works
-similarly, except instead of taking a dataset as input, it takes an dictionary
-mapping chunks. This allows the higher levels of the API to only pass in the
-chunks of an existing dataset that have been modified (see below).
+the hashtable.
 
 `versioned_hdf5.backend.create_virtual_dataset()` creates a virtual dataset
 in the version group pointing to corresponding chunks in the raw dataset.

@@ -12,7 +12,7 @@ from h5py import Dataset, VirtualLayout, h5s, h5z
 from h5py._hl.filters import guess_chunk
 from h5py._hl.selections import select
 from h5py._selector import Selector
-from ndindex import ChunkSize, Slice, Tuple, ndindex
+from ndindex import ChunkSize, Slice, Tuple
 
 from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS, h5py_astype
 from versioned_hdf5.hashtable import Hashtable
@@ -371,71 +371,6 @@ def _convert_to_bytes(x: str | bytes) -> bytes:
     return x.encode("utf-8") if isinstance(x, str) else x
 
 
-def write_dataset_chunks(f, name, data_dict):
-    """
-    data_dict should be a dictionary mapping chunk_size index to either an
-    array for that chunk, or a slice into the raw data for that chunk
-
-    """
-    if name not in f["_version_data"]:
-        raise NotImplementedError(
-            "Use write_dataset() if the dataset does not yet exist"
-        )
-
-    raw_data = f["_version_data"][name]["raw_data"]
-    chunks = tuple(raw_data.attrs["chunks"])
-    chunk_size = chunks[0]
-
-    with Hashtable(f, name) as hashtable:
-        old_chunks = hashtable.largest_index
-        chunks_reused = 0
-
-        slices = {i: None for i in data_dict}
-
-        # Mapping from slices in the raw dataset after this write is complete to ndarray
-        # chunks of the new data which will be written
-        data_to_write = {}
-        for chunk, data_s in data_dict.items():
-            if isinstance(data_s, (slice, tuple, Tuple, Slice)):
-                slices[chunk] = ndindex(data_s)
-            else:
-                check_compatible_dtypes(data_s.dtype, raw_data.dtype)
-
-                data_hash = hashtable.hash(data_s)
-
-                if data_hash in hashtable:
-                    hashed_slice = hashtable[data_hash]
-                    slices[chunk] = hashed_slice
-                    chunks_reused += 1
-
-                else:
-                    idx = hashtable.largest_index
-                    raw_slice = Slice(
-                        idx * chunk_size, idx * chunk_size + data_s.shape[0]
-                    )
-                    slices[chunk] = raw_slice
-                    hashtable[data_hash] = raw_slice
-                    data_to_write[raw_slice] = data_s
-
-        new_chunks = hashtable.largest_index
-
-    assert None not in slices.values()
-    old_shape = raw_data.shape
-    raw_data.resize((old_shape[0] + len(data_to_write) * chunk_size,) + chunks[1:])
-    for raw_slice, data_s in data_to_write.items():
-        c = (raw_slice.raw,) + tuple(slice(0, i) for i in data_s.shape[1:])
-        raw_data[c] = data_s
-
-    logging.debug(
-        "  %s: New chunks written: %d; Number of chunks reused: %d",
-        name,
-        new_chunks - old_chunks,
-        chunks_reused,
-    )
-
-    return slices
-
-
 def _data_v4_to_sc_hash_table(hash_table: Dataset, chunk_size0: int) -> np.ndarray:
     """Load the SHA256 digests from the on-disk hash table and convert it to the
     layout compatible with `StagedChangesArray.hash_tables`, which is indexed by the
@@ -508,10 +443,9 @@ def commit_staged_changes(
 
     **TRANSITION NOTES**
 
-    This function is the replacement for the legacy functions
-    `write_dataset`, `write_dataset_chunks` and the `Hashtable` class.
-    At the moment of writing, the legacy path is still triggered by some
-    use cases:
+    This function is the replacement for the legacy function `write_dataset` and the
+    `Hashtable` class. At the moment of writing, the legacy path is still triggered by
+    some use cases:
 
     commit_staged_changes + hash_slab (new, fast)
         - InMemorySparseDataset commit (first version of sparse datasets)
