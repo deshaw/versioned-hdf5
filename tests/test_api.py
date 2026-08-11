@@ -1,4 +1,5 @@
 import datetime
+import gc
 import itertools
 import logging
 import os
@@ -1563,6 +1564,10 @@ def test_closes(vfile):
     assert repr(vfile) == "<Closed VersionedHDF5File>"
 
 
+@pytest.mark.xfail(
+    reason="0d arrays never worked in versioned_hdf5. You may get a false positive "
+    "if you fail to flush caches. "
+)
 @pytest.mark.parametrize(
     ("data1", "data2"),
     [
@@ -1585,6 +1590,13 @@ def test_scalar_dataset(vfile, data1, data2):
     dtype = np.asarray(data1).dtype
     with vfile.stage_version("v1") as group:
         group["scalar_ds"] = data1
+
+    # Flush caches
+    f = vfile.f
+    del group
+    del vfile
+    gc.collect()
+    vfile = VersionedHDF5File(f)
 
     v1_ds = vfile["v1"]["scalar_ds"]
     assert v1_ds[()] == data1
