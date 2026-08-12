@@ -946,8 +946,7 @@ class DatasetLike:
                     fv = b""
             elif self.dtype.kind == "O":
                 # Bare object dtype, stripped of the h5py metadata, e.g. from
-                # ``group[name] = np.array([...], dtype=object)``.
-                # It is stored on disk as a variable length string.
+                # ``group[name] = np.array([...], dtype=object)``
                 fv = b""
 
         if fv is not None:

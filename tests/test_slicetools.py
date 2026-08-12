@@ -62,8 +62,8 @@ def test_build_slab_indices_and_offsets_dense(h5file):
             [11, 12, 13, 14, 15],
         ]
     )
-    # Chunks are appended to raw_data in the order of the staged slabs of the
-    # StagedChangesArray, which is not the C order of the chunk grid.
+    # Chunks are appended to raw_data in the order of the staged slabs determined by
+    # StagedChangesArray.from_array, which is not the native C order of the chunk grid.
     expect_raw_data = np.array(
         [
             # chunk (0, 0), offset 0

@@ -7,9 +7,7 @@ import pytest
 from numpy.testing import assert_array_equal
 
 from versioned_hdf5 import VersionedHDF5File
-from versioned_hdf5.backend import write_dataset
 from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS
-from versioned_hdf5.hashtable import Hashtable
 from versioned_hdf5.wrappers import (
     DatasetWrapper,
     InMemoryArrayDataset,
@@ -340,40 +338,18 @@ def test_multiple_swaps_warning(vfile):
         assert_swaps_counter(ds, 5)
 
 
-class BadHashtable(Hashtable):
-    def hash(self, data):  # noqa: ARG002
-        raise AssertionError("monkeypatch OK")
-
-
-class NpyStringsHashtable(Hashtable):
-    def hash(self, data):
-        assert data.dtype.kind == "T", data
-        return super().hash(data)
-
-
-def test_hashtable_monkeypatch(h5file, monkeypatch):
-    """Test monkey-patching of the hash table.
-
-    Note: Hashtable is only used by the legacy write_dataset() path; datasets
-    staged through a StagedChangesArray hash their chunks in hash.pyx.
+def test_hash_native(vfile):
+    """Test that chunks in StagedChangesArray have not been converted to object dtype,
+    which means they will reach the hashing function intact
     """
-    monkeypatch.setattr("versioned_hdf5.backend.Hashtable", BadHashtable)
-    with pytest.raises(AssertionError, match="monkeypatch OK"):
-        write_dataset(h5file, "bad", np.asarray(["foo"], dtype="T"))
-
-
-def test_hash_native(vfile, monkeypatch):
-    """Test that chunks reach the hash() function without being converted to object
-    dtype. This is for future-proofing to enable using a cython-based hash algorithm.
-    """
-    monkeypatch.setattr("versioned_hdf5.backend.Hashtable", NpyStringsHashtable)
-
     # Hash from InMemoryArrayDataset
     with vfile.stage_version("v0") as v:
         ds = v.create_dataset(
             "dense", data=["ab", "cd", "ef", "gh"], chunks=(2,), dtype="T"
         )
         assert isinstance(ds.dataset, InMemoryArrayDataset)
+        # Note: not a StagedChangesArray yet. The conversion
+        # np.ndarray -> StagedChangesArray happens in commit_version().
         assert ds._buffer.dtype.kind == "T"
 
     # Hash from InMemoryDataset

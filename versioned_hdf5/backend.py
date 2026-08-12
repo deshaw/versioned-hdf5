@@ -188,10 +188,7 @@ def normalize_chunks(
         return tuple(chunks)
 
     ndim = len(shape)
-    if ndim == 0:
-        # Chunks are not allowed for scalar datasets; keeping original
-        # behavior here
-        return (DEFAULT_CHUNK_SIZE,)
+    assert ndim > 0  # 0d use case is caught upstream by wrappers.py
     if ndim == 1:
         return guess_chunk(shape, None, dtype.itemsize)
     raise NotImplementedError("chunks must be specified for multi-dimensional datasets")
@@ -458,17 +455,14 @@ def commit_staged_changes(
     some use cases:
 
     commit_staged_changes + hash_slab (new, fast)
-        - InMemorySparseDataset commit (first version of sparse datasets)
-        - InMemoryDataset commit (version 2+ of any dataset)
-        - InMemoryArrayDataset commit (dense datasets), except scalar ones
-        - recreate_dataset, when its callback returns an InMemoryDataset or an
-          InMemorySparseDataset
+        - InMemorySparseDataset commit
+        - InMemoryArrayDataset commit
+        - InMemoryDataset commit
+        - recreate_dataset
 
     write_dataset + Hashtable (legacy, slow)
-        - scalar dataset commit
         - delete_versions
         - update_metadata
-        - recreate_dataset, in all other cases
         - VersionedHDF5.rebuild_hashtables
     """
     sc = staged_changes
@@ -482,13 +476,13 @@ def commit_staged_changes(
     # raw_data, and possibly hash_table too, can be longer than this if a previous
     # commit crashed halfway through; largest_index is updated last and is the only
     # trustworthy measure. Anything beyond it is garbage and will be overwritten.
-    prev_n_chunks = int(hash_table.attrs["largest_index"])
-    prev_len = prev_n_chunks * chunk_size0
+    prev_total_n_chunks = int(hash_table.attrs["largest_index"])
+    prev_len = prev_total_n_chunks * chunk_size0
 
     # A InMemoryDataset has exactly one base slab (raw_data); a
     # InMemoryArrayDataset or InMemorySparseDataset has none.
     assert sc.n_base_slabs in (0, 1)
-    if sc.n_base_slabs == 0 and prev_n_chunks > 0:
+    if sc.n_base_slabs == 0 and prev_total_n_chunks > 0:
         # DatasetWrapper hot-swapped a InMemoryDataset for an InMemorySparseDataset or
         # an InMemoryArrayDataset, or a dataset was deleted in an intermediate version
         # and then recreated, or it was created in two independent branches
@@ -521,12 +515,12 @@ def commit_staged_changes(
         new_hashes = sc.hash_tables[new_slab_idx]
         assert new_hashes is not None
         n_new_chunks = new_hashes.shape[0]
-        new_n_chunks = prev_n_chunks + n_new_chunks
+        new_total_n_chunks = prev_total_n_chunks + n_new_chunks
 
         # Calculate (start, stop) offsets of the chunks on raw_data
         starts = np.arange(
-            prev_n_chunks * chunk_size0,
-            new_n_chunks * chunk_size0,
+            prev_total_n_chunks * chunk_size0,
+            new_total_n_chunks * chunk_size0,
             chunk_size0,
             dtype=np.int64,
         )
@@ -543,12 +537,12 @@ def commit_staged_changes(
 
         # Append the new records to the on-disk hash table in a single write.
         disk = _sc_hash_table_to_data_v4(new_hashes, starts, stops, hash_table.dtype)
-        hash_table.resize((new_n_chunks,))
-        hash_table[prev_n_chunks:] = disk
+        hash_table.resize((new_total_n_chunks,))
+        hash_table[prev_total_n_chunks:] = disk
         # Atomic update marking the successful commit (except the VDS creation).
         # In case of a crash halfway through commit, you will have the
         # raw_data or raw_data+hash_table larger than this.
-        hash_table.attrs["largest_index"] = new_n_chunks
+        hash_table.attrs["largest_index"] = new_total_n_chunks
 
         # commit() wrote the new chunks through a RawDataView onto
         # raw_data[prev_len:], so their slab_offsets are relative to prev_len.
@@ -566,14 +560,11 @@ def commit_staged_changes(
         sc.hash_tables = [None, None]
         sc.n_base_slabs = 1
 
-    # Chunks now either lie on raw_data (slab 1) or are full of the fill_value
-    # (slab 0), which costs nothing to store and is neither written nor reused.
-    n_on_raw_data = int((sc.slab_indices != 0).sum())
     logging.debug(
         "  %s: New chunks written: %d; Number of chunks reused: %d",
         name,
         n_new_chunks,
-        n_on_raw_data - n_new_chunks,
+        np.prod(sc.slab_indices.shape) - n_new_chunks,
     )
 
     # Build the {virtual dataset index: raw_data slice} mapping

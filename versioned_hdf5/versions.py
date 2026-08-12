@@ -166,14 +166,16 @@ def commit_version(
                 fillvalue=fillvalue,
             )
             slices = commit_staged_changes(f, name, data.staged_changes)
-        elif isinstance(data, InMemoryArrayDataset) and data.ndim > 0:
+        elif isinstance(data, InMemoryArrayDataset):
             # InMemoryArrayDataset could be either a new dense dataset
             # or DatasetWrapper performing a hotswap of its inner dataset.
             # Resolve the chunk size upfront: write_dataset() would otherwise guess
             # it from the empty array below instead of from the real data shape.
-            ds_chunks = chunks[name]
+            chunk_size = chunks[name]
             if f"_version_data/{name}/raw_data" not in f:
-                ds_chunks = normalize_chunks(ds_chunks, data.shape, data._buffer.dtype)
+                chunk_size = normalize_chunks(
+                    chunk_size, data.shape, data._buffer.dtype
+                )
 
             # Create the (empty) raw_data + hash table if they don't exist yet;
             # otherwise validate chunks, filters, fillvalue, and dtype against them.
@@ -181,25 +183,20 @@ def commit_version(
                 f,
                 name,
                 np.empty((0,) * data.ndim, dtype=data._buffer.dtype),
-                chunks=ds_chunks,
+                chunks=chunk_size,
                 filters=filters[name],
                 fillvalue=fillvalue,
             )
+            chunk_size = tuple(f[f"_version_data/{name}/raw_data"].attrs["chunks"])
 
             staged_changes = StagedChangesArray.from_array(
                 data._buffer,
-                chunk_size=tuple(f[f"_version_data/{name}/raw_data"].attrs["chunks"]),
+                chunk_size=chunk_size,
                 fill_value=fillvalue,
                 as_base_slabs=False,
             )
             slices = commit_staged_changes(f, name, staged_changes)
         else:
-            if isinstance(data, InMemoryArrayDataset):
-                # Scalar dataset. StagedChangesArray doesn't support 0 dimensions.
-                # If buffer has StringDType, avoid unnecessary conversion from outwardly
-                # presented object dtype.
-                data = data._buffer
-
             assert isinstance(data, np.ndarray)
             slices = write_dataset(
                 f,
