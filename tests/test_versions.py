@@ -11,6 +11,7 @@ from versioned_hdf5.versions import (
     get_nth_previous_version,
     set_current_version,
 )
+from versioned_hdf5.wrappers import InMemoryArrayDataset
 
 
 def test_create_version(h5file):
@@ -21,32 +22,38 @@ def test_create_version(h5file):
     )
 
     version1 = create_version_group(h5file, "version1", "")
+    dataset = InMemoryArrayDataset("test_data", data, parent=version1)
     commit_version(
         version1,
-        {"test_data": data},
+        {"test_data": dataset},
         chunks={"test_data": chunks},
         filters={"test_data": Filters(compression="gzip", compression_opts=3)},
     )
 
     version_bad = create_version_group(h5file, "version_bad", "")
+    dataset = InMemoryArrayDataset("test_data", data, parent=version_bad)
     with pytest.raises(ValueError):
-        commit_version(version_bad, {"test_data": data}, chunks={"test_data": (2**9,)})
+        commit_version(
+            version_bad, {"test_data": dataset}, chunks={"test_data": (2**9,)}
+        )
     delete_version(h5file, "version_bad", "version1")
 
     version_bad = create_version_group(h5file, "version_bad", "")
+    dataset = InMemoryArrayDataset("test_data", data, parent=version_bad)
     with pytest.raises(ValueError):
         commit_version(
             version_bad,
-            {"test_data": data},
+            {"test_data": dataset},
             filters={"test_data": Filters(compression="lzf")},
         )
     delete_version(h5file, "version_bad", "version1")
 
     version_bad = create_version_group(h5file, "version_bad", "")
+    dataset = InMemoryArrayDataset("test_data", data, parent=version_bad)
     with pytest.raises(ValueError):
         commit_version(
             version_bad,
-            {"test_data": data},
+            {"test_data": dataset},
             filters={"test_data": Filters(compression_opts=4)},
         )
     delete_version(h5file, "version_bad", "version1")
@@ -70,9 +77,11 @@ def test_create_version(h5file):
     data[0] = 0.0
     version2 = create_version_group(h5file, "version2", "version1")
 
+    dataset1 = InMemoryArrayDataset("test_data", data, parent=version1)
     with pytest.raises(ValueError):
-        commit_version(version1, {"test_data": data}, make_current=False)
-    commit_version(version2, {"test_data": data}, make_current=False)
+        commit_version(version1, {"test_data": dataset1}, make_current=False)
+    dataset2 = InMemoryArrayDataset("test_data", data, parent=version2)
+    commit_version(version2, {"test_data": dataset2}, make_current=False)
     assert version2.attrs["prev_version"] == "version1"
     assert_equal(h5file["_version_data/versions/version2/test_data"], data)
     assert version2.parent.attrs["current_version"] == "version1"
@@ -102,31 +111,37 @@ def test_create_version_chunks(h5file):
     )
     # TODO: Support creating the initial version with chunks
     version1 = create_version_group(h5file, "version1")
+    dataset = InMemoryArrayDataset("test_data", data, parent=version1)
     commit_version(
         version1,
-        {"test_data": data},
+        {"test_data": dataset},
         chunks={"test_data": chunks},
         filters={"test_data": Filters(compression="gzip", compression_opts=3)},
     )
     version_bad = create_version_group(h5file, "version_bad", "")
+    dataset = InMemoryArrayDataset("test_data", data, parent=version_bad)
     with pytest.raises(ValueError):
-        commit_version(version_bad, {"test_data": data}, chunks={"test_data": (2**9,)})
+        commit_version(
+            version_bad, {"test_data": dataset}, chunks={"test_data": (2**9,)}
+        )
     delete_version(h5file, "version_bad", "version1")
 
     version_bad = create_version_group(h5file, "version_bad", "")
+    dataset = InMemoryArrayDataset("test_data", data, parent=version_bad)
     with pytest.raises(ValueError):
         commit_version(
             version_bad,
-            {"test_data": data},
+            {"test_data": dataset},
             filters={"test_data": Filters(compression="lzf")},
         )
     delete_version(h5file, "version_bad", "version1")
 
     version_bad = create_version_group(h5file, "version_bad", "")
+    dataset = InMemoryArrayDataset("test_data", data, parent=version_bad)
     with pytest.raises(ValueError):
         commit_version(
             version_bad,
-            {"test_data": data},
+            {"test_data": dataset},
             filters={"test_data": Filters(compression_opts=4)},
         )
     delete_version(h5file, "version_bad", "version1")
@@ -190,19 +205,23 @@ def test_get_nth_prev_version(h5file):
     )
 
     version1 = create_version_group(h5file, "version1")
-    commit_version(version1, {"test_data": data})
+    dataset = InMemoryArrayDataset("test_data", data, parent=version1)
+    commit_version(version1, {"test_data": dataset})
 
     data[0] = 2.0
     version2 = create_version_group(h5file, "version2")
-    commit_version(version2, {"test_data": data})
+    dataset = InMemoryArrayDataset("test_data", data, parent=version2)
+    commit_version(version2, {"test_data": dataset})
 
     data[0] = 3.0
     version3 = create_version_group(h5file, "version3")
-    commit_version(version3, {"test_data": data})
+    dataset = InMemoryArrayDataset("test_data", data, parent=version3)
+    commit_version(version3, {"test_data": dataset})
 
     data[1] = 2.0
     version2_1 = create_version_group(h5file, "version2_1", "version1")
-    commit_version(version2_1, {"test_data": data})
+    dataset = InMemoryArrayDataset("test_data", data, parent=version2_1)
+    commit_version(version2_1, {"test_data": dataset})
 
     assert get_nth_previous_version(h5file, "version1", 0) == "version1"
 
@@ -236,13 +255,15 @@ def test_set_current_version(h5file):
     )
 
     version1 = create_version_group(h5file, "version1")
-    commit_version(version1, {"test_data": data})
+    dataset = InMemoryArrayDataset("test_data", data, parent=version1)
+    commit_version(version1, {"test_data": dataset})
     versions = h5file["_version_data/versions"]
     assert versions.attrs["current_version"] == "version1"
 
     data[0] = 2.0
     version2 = create_version_group(h5file, "version2")
-    commit_version(version2, {"test_data": data})
+    dataset = InMemoryArrayDataset("test_data", data, parent=version2)
+    commit_version(version2, {"test_data": dataset})
     assert versions.attrs["current_version"] == "version2"
 
     set_current_version(h5file, "version1")
@@ -265,7 +286,8 @@ def test_delete_version(h5file):
     )
 
     version1 = create_version_group(h5file, "version1")
-    commit_version(version1, {"test_data": data})
+    dataset = InMemoryArrayDataset("test_data", data, parent=version1)
+    commit_version(version1, {"test_data": dataset})
     versions = h5file["_version_data/versions"]
     assert versions.attrs["current_version"] == "version1"
 
@@ -288,6 +310,7 @@ def test_forbidden_dataset_name(h5file):
         )
     )
     v1 = create_version_group(h5file, "v1")
+    dataset = InMemoryArrayDataset("versions", data, parent=v1)
 
     with pytest.raises(ValueError):
-        commit_version(v1, {"versions": data})
+        commit_version(v1, {"versions": dataset})
