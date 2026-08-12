@@ -204,10 +204,10 @@ def create_base_dataset(
     if isinstance(chunks, int) and not isinstance(chunks, bool):
         chunks = (chunks,)
     if chunks in [True, None]:
-        assert ndim > 0  # Caught upstream by wrappers.py
         if ndim == 1:
             chunks = guess_chunk(shape, None, data.dtype.itemsize)
         else:
+            assert ndim > 1  # 0d use case is caught upstream by wrappers.py
             raise NotImplementedError(
                 "chunks must be specified for multi-dimensional datasets"
             )
