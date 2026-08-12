@@ -78,8 +78,8 @@ def create_version_group(f, version_name, prev_version=None):
 
 
 def commit_version(
-    version_group,
-    datasets: dict[str, InMemoryDataset | DatasetLike | np.ndarray],
+    version_group: InMemoryGroup,
+    datasets: dict[str, InMemoryDataset | DatasetLike],
     *,
     make_current: bool = True,
     chunks: Mapping[str, tuple[int, ...] | bool | None] | None = None,
@@ -90,9 +90,7 @@ def commit_version(
     Create a new version.
 
     datasets should be a dictionary mapping {path: dataset}, where `dataset`
-    is either a numpy array, or a dictionary mapping {chunk_index:
-    data_or_slice}, where `data_or_slice` is either an array or a slice
-    pointing into the raw data for that chunk.
+    is a *Dataset object.
 
     If make_current is True, the new version will be set as the current version.
 
@@ -129,15 +127,6 @@ def commit_version(
         if isinstance(data, DatasetWrapper):
             data = data.dataset
 
-        if isinstance(
-            data, (InMemoryDataset, InMemoryArrayDataset, InMemorySparseDataset)
-        ):
-            attrs = data.attrs
-            fillvalue = data.fillvalue
-        else:
-            attrs = {}
-            fillvalue = None
-
         if isinstance(data, InMemoryDataset):
             if not data.staged_changes.has_changes:
                 # The virtual dataset was not changed from the previous
@@ -161,27 +150,33 @@ def commit_version(
                 np.empty((0,) * len(data.shape), dtype=data._buffer.dtype),
                 chunks=chunks[name],
                 filters=filters[name],
-                fillvalue=fillvalue,
+                fillvalue=data.fillvalue,
             )
             slices = commit_staged_changes(f, name, data.staged_changes)
-        else:
-            if isinstance(data, InMemoryArrayDataset):
-                # If buffer has StringDType, avoid unnecessary conversion from outwardly
-                # presented object dtype.
-                data = data._buffer
-
-            assert isinstance(data, np.ndarray)
+        elif isinstance(data, InMemoryArrayDataset):
             slices = write_dataset(
                 f,
                 name,
-                data,
+                # Note: data._buffer.dtype could be StringDType while data.dtype
+                # presents as object dtype. Avoid unnecessary conversion.
+                data._buffer,
                 chunks=chunks[name],
                 filters=filters[name],
-                fillvalue=fillvalue,
+                fillvalue=data.fillvalue,
             )
+        else:
+            raise AssertionError("Unreachable")
+
         create_virtual_dataset(
-            f, version_name, name, data.shape, slices, attrs=attrs, fillvalue=fillvalue
+            f,
+            version_name,
+            name,
+            data.shape,
+            slices,
+            attrs=data.attrs,
+            fillvalue=data.fillvalue,
         )
+
     version_group.attrs["committed"] = True
 
     if timestamp is not None:
