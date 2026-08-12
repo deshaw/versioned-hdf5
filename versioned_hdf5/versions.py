@@ -84,7 +84,7 @@ def commit_version(
     make_current: bool = True,
     chunks: Mapping[str, tuple[int, ...] | bool | None] | None = None,
     filters: Mapping[str, Filters] | None = None,
-    timestamp=None,
+    timestamp: datetime.datetime | np.datetime64 | None = None,
 ):
     """
     Create a new version.
@@ -179,25 +179,20 @@ def commit_version(
 
     version_group.attrs["committed"] = True
 
-    if timestamp is not None:
-        if isinstance(timestamp, datetime.datetime):
-            if timestamp.utcoffset() != datetime.timedelta(0):
-                raise ValueError("timestamp must be in UTC")
-            version_group.attrs["timestamp"] = timestamp.strftime(TIMESTAMP_FMT)
-        elif isinstance(timestamp, np.datetime64):
-            version_group.attrs["timestamp"] = (
-                timestamp.astype(datetime.datetime)
-                .replace(tzinfo=datetime.timezone.utc)
-                .strftime(TIMESTAMP_FMT)
-            )
-        else:
-            raise TypeError(
-                "timestamp must be either a datetime.datetime or "
-                "numpy.datetime64 object"
-            )
+    if timestamp is None:
+        timestamp = datetime.datetime.now(datetime.timezone.utc)
+    elif isinstance(timestamp, datetime.datetime):
+        if timestamp.utcoffset() != datetime.timedelta(0):
+            raise ValueError("timestamp must be in UTC")
+    elif isinstance(timestamp, np.datetime64):
+        timestamp = timestamp.astype(datetime.datetime).replace(
+            tzinfo=datetime.timezone.utc
+        )
     else:
-        ts = datetime.datetime.now(datetime.timezone.utc)
-        version_group.attrs["timestamp"] = ts.strftime(TIMESTAMP_FMT)
+        raise TypeError(
+            "timestamp must be either a datetime.datetime or numpy.datetime64 object"
+        )
+    version_group.attrs["timestamp"] = timestamp.strftime(TIMESTAMP_FMT)
 
 
 def delete_version(f, version_name, new_current=None):
