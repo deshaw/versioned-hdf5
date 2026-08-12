@@ -15,7 +15,6 @@ import warnings
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from contextlib import suppress
-from functools import cached_property
 from typing import Any, ClassVar, Generic, Literal, TypeVar
 from weakref import WeakValueDictionary
 
@@ -618,6 +617,8 @@ class InMemoryDataset(BufferMixin, FiltersMixin, Dataset):
     in-memory only.
     """
 
+    _staged_changes: StagedChangesArray | None
+
     def __init__(self, bind, parent, *, readonly=False):
         # Hold a reference to the original bind so h5py doesn't invalidate the id
         # XXX: We need to handle deallocation here properly when our object
@@ -626,21 +627,26 @@ class InMemoryDataset(BufferMixin, FiltersMixin, Dataset):
         Dataset.__init__(self, InMemoryDatasetID(bind.id), readonly=readonly)
         self._parent = parent
         self._attrs = dict(super().attrs)
+        self._staged_changes = None
 
-    @cached_property
+    # Note: don't use @cached_property. In Python <3.12, @cached_property uses an
+    # interpreter-wide RLock, which can deadlock with h5py's interpreter-wide phil lock.
+    @property
     def staged_changes(self) -> StagedChangesArray:
-        dcpl = self.id.get_create_plist()
-        slab_indices, slab_offsets = build_slab_indices_and_offsets(
-            dcpl, self.id.shape, self.id.chunks
-        )
-        return StagedChangesArray(
-            shape=self.id.shape,
-            chunk_size=self.id.chunks,
-            base_slabs=[self.id.raw_data],
-            slab_indices=slab_indices,
-            slab_offsets=slab_offsets,
-            fill_value=self.fillvalue,
-        )
+        if self._staged_changes is None:
+            dcpl = self.id.get_create_plist()
+            slab_indices, slab_offsets = build_slab_indices_and_offsets(
+                dcpl, self.id.shape, self.id.chunks
+            )
+            self._staged_changes = StagedChangesArray(
+                shape=self.id.shape,
+                chunk_size=self.id.chunks,
+                base_slabs=[self.id.raw_data],
+                slab_indices=slab_indices,
+                slab_offsets=slab_offsets,
+                fill_value=self.fillvalue,
+            )
+        return self._staged_changes
 
     @property
     def _buffer(self) -> MutableArrayProtocol:
@@ -651,7 +657,7 @@ class InMemoryDataset(BufferMixin, FiltersMixin, Dataset):
     def _buffer(self, value: MutableArrayProtocol) -> None:
         """Hook for BufferMixin"""
         assert isinstance(value, StagedChangesArray)
-        self.__dict__["staged_changes"] = value
+        self._staged_changes = value
 
     def _astype_impl(self, dtype: np.dtype, writeable: bool) -> MutableArrayProtocol:
         """Hook for BufferMixin"""
