@@ -200,16 +200,12 @@ def create_base_dataset(
         ):
             raise ValueError("Shape tuple is incompatible with data")
 
-    ndims = len(shape)
-
+    ndim = len(shape)
     if isinstance(chunks, int) and not isinstance(chunks, bool):
         chunks = (chunks,)
     if chunks in [True, None]:
-        if ndims == 0:
-            # Chunks are not allowed for scalar datasets; keeping original
-            # behavior here
-            chunks = (DEFAULT_CHUNK_SIZE,)
-        elif ndims == 1:
+        assert ndim > 0  # Caught upstream by wrappers.py
+        if ndim == 1:
             chunks = guess_chunk(shape, None, data.dtype.itemsize)
         else:
             raise NotImplementedError(
@@ -454,7 +450,7 @@ def commit_staged_changes(
           InMemorySparseDataset
 
     write_dataset + Hashtable (legacy, slow)
-        - InMemoryArrayDataset commit (first version of dense datasets)
+        - InMemoryArrayDataset commit (first version of dense datasets; full overwrites)
         - delete_versions
         - update_metadata
         - recreate_dataset, in all other cases

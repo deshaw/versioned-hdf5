@@ -1,5 +1,4 @@
 import datetime
-import gc
 import itertools
 import logging
 import os
@@ -1564,54 +1563,24 @@ def test_closes(vfile):
     assert repr(vfile) == "<Closed VersionedHDF5File>"
 
 
-@pytest.mark.xfail(
-    reason="0d arrays never worked in versioned_hdf5. You may get a false positive "
-    "if you fail to flush caches. "
-)
-@pytest.mark.parametrize(
-    ("data1", "data2"),
-    [
-        (b"baz", b"foo"),
-        (np.asarray("baz", dtype="S"), np.asarray("foo", dtype="S")),
-        (
-            np.asarray("baz", dtype=h5py.string_dtype()),
-            np.asarray("foo", dtype=h5py.string_dtype()),
-        ),
-        (
-            np.asarray("baz", dtype=h5py.string_dtype(length=3)),
-            np.asarray("foo", dtype=h5py.string_dtype(length=3)),
-        ),
-        (1.5, 2.3),
-        (1, 0),
-        (np.int16(1), np.int16(2)),
-    ],
-)
-def test_scalar_dataset(vfile, data1, data2):
-    dtype = np.asarray(data1).dtype
-    with vfile.stage_version("v1") as group:
-        group["scalar_ds"] = data1
+def test_scalar_dataset(vfile):
+    """Scalar (ndim=0) datasets are supported by h5py, but implementing them in
+    versioned_hdf5 would take a lot of special-casing as raw_data can't go below
+    ndim=1
+    """
+    with vfile.stage_version("v1") as v:
+        with pytest.raises(NotImplementedError, match="Scalar"):
+            v["x"] = 123
+        with pytest.raises(NotImplementedError, match="Scalar"):
+            v.create_dataset("x", data=123)
+        with pytest.raises(NotImplementedError, match="Scalar"):
+            v.create_dataset("x", data=np.asarray(123))
+        with pytest.raises(NotImplementedError, match="Scalar"):
+            v.create_dataset("x", shape=())
 
-    # Flush caches
-    f = vfile.f
-    del group
-    del vfile
-    gc.collect()
-    vfile = VersionedHDF5File(f)
-
-    v1_ds = vfile["v1"]["scalar_ds"]
-    assert v1_ds[()] == data1
-    assert v1_ds.shape == ()
-    assert v1_ds.dtype == dtype
-    assert v1_ds._buffer.dtype == dtype
-
-    with vfile.stage_version("v2") as group:
-        group["scalar_ds"] = data2
-
-    v2_ds = vfile["v2"]["scalar_ds"]
-    assert v2_ds[()] == data2
-    assert v2_ds.shape == ()
-    assert v2_ds.dtype == dtype
-    assert v2_ds._buffer.dtype == dtype
+        vfile.f.create_dataset("y", data=123)
+        with pytest.raises(NotImplementedError, match="Scalar"):
+            v["x"] = vfile.f["y"]
 
 
 def test_store_binary_as_void(vfile):

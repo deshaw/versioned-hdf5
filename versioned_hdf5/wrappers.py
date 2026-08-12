@@ -176,25 +176,33 @@ class InMemoryGroup(Group):
             self[dirname][basename] = obj
             return
 
+        if isinstance(obj, InMemoryGroup):
+            self._subgroups[name] = obj
+            return
+        if isinstance(obj, Group):
+            self._subgroups[name] = InMemoryGroup(obj.id)
+            return
+
         if isinstance(obj, Dataset):
+            if obj.ndim == 0:
+                raise NotImplementedError("Scalar datasets are not implemented.")
             wrapped_dataset = self._data[name] = DatasetWrapper(
                 InMemoryDataset(obj.id, parent=self)
             )
             raw_data = wrapped_dataset.dataset.id.raw_data
             self._set_filters(name, Filters.from_dataset(raw_data))
-        elif isinstance(obj, Group):
-            self._subgroups[name] = InMemoryGroup(obj.id)
-        elif isinstance(obj, InMemoryGroup):
-            self._subgroups[name] = obj
         elif isinstance(obj, DatasetLike):
             self._data[name] = obj
             if isinstance(obj, DatasetWrapper) and isinstance(obj.dataset, Dataset):
                 raw_data = obj.dataset.id.raw_data
                 self._set_filters(name, Filters.from_dataset(raw_data))
         else:
-            self._data[name] = DatasetWrapper(
+            wrapped_dataset = DatasetWrapper(
                 InMemoryArrayDataset(name, np.asarray(obj), parent=self)
             )
+            if wrapped_dataset.ndim == 0:
+                raise NotImplementedError("Scalar datasets are not implemented.")
+            self._data[name] = wrapped_dataset
 
     def __delitem__(self, name):
         self._check_committed()
@@ -321,6 +329,9 @@ class InMemoryGroup(Group):
             raise ValueError(
                 f"data.shape {data.shape} does not match specified shape {shape}"
             )
+        assert isinstance(shape, tuple)
+        if len(shape) == 0:
+            raise NotImplementedError("Scalar datasets are not implemented.")
 
         if chunks in (True, None):
             if len(shape) == 1:
@@ -334,14 +345,11 @@ class InMemoryGroup(Group):
         elif isinstance(chunks, int) and not isinstance(chunks, bool):
             chunks = (chunks,)
         assert isinstance(chunks, tuple)
-
-        if len(shape) != len(chunks):
+        if len(chunks) != len(shape):
             raise ValueError(
                 f"Dimensions of chunks ({chunks}) must equal the dimensions of the "
                 f"shape ({shape})"
             )
-        if len(shape) == 0:
-            raise NotImplementedError("Scalar datasets are not implemented.")
 
         ds: DatasetLike
         if data is not None:
@@ -946,8 +954,7 @@ class DatasetLike:
 
     def len(self) -> int:
         """Length of the first axis."""
-        if len(self.shape) == 0:
-            raise TypeError("Attempt to take len() of scalar dataset")
+        assert len(self.shape) > 0  # Scalar datasets blocked upstream
         return self.shape[0]
 
     def __repr__(self) -> str:
@@ -961,14 +968,12 @@ class DatasetLike:
         )
 
     def __iter__(self) -> Iterable[np.ndarray | np.generic]:
-        """Iterate over the first axis. TypeError if scalar.
+        """Iterate over the first axis.
 
         BEWARE: Modifications to the yielded data are *NOT* written to file.
         """
-        shape = self.shape
-        if len(shape) == 0:
-            raise TypeError("Can't iterate over a scalar dataset")
-        for i in range(shape[0]):
+        assert len(self.shape) > 0  # Scalar datasets blocked upstream
+        for i in range(self.shape[0]):
             yield self[i]  # type: ignore[index]
 
 

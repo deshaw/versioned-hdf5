@@ -16,6 +16,7 @@ from versioned_hdf5.backend import (
     write_dataset,
 )
 from versioned_hdf5.wrappers import (
+    DatasetLike,
     DatasetWrapper,
     InMemoryArrayDataset,
     InMemoryDataset,
@@ -78,9 +79,9 @@ def create_version_group(f, version_name, prev_version=None):
 
 def commit_version(
     version_group,
-    datasets,
+    datasets: dict[str, InMemoryDataset | DatasetLike | np.ndarray],
     *,
-    make_current=True,
+    make_current: bool = True,
     chunks: Mapping[str, tuple[int, ...] | bool | None] | None = None,
     filters: Mapping[str, Filters] | None = None,
     timestamp=None,
