@@ -4,6 +4,7 @@ platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64", "win-64"]
 
 [dependencies]
 h5py = "*"
+hdf5 = "<=2.1.0"  # Temporary until next h5py rebuild in conda
 ndindex = "*"
 openssl = "*" # libcrypto, for the SHA256 hasher in versioned_hdf5/hash.pyx
 
