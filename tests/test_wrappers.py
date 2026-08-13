@@ -474,3 +474,44 @@ def test_object_strings_default_fillvalue(vfile):
         assert isinstance(ds2.dataset, InMemorySparseDataset)
         assert ds2.fillvalue == b""
         assert_equal(ds2[:], np.array([b"abc", b"", b"", b""], dtype=object))
+
+
+@pytest.mark.parametrize("data", [["foo", "bar"], [b"foo", b"bar"]])
+def test_InMemoryArrayDataset_bare_object_dtype_fillvalue(h5file, data):
+    """Test that an InMemoryArrayDataset built from an array of bare object
+    dtype (stripped of the h5py string metadata) defaults its fillvalue to
+    b"" instead of np.zeros(), i.e. the int 0.
+    """
+    group = h5file.create_group("group")
+    parent = InMemoryGroup(group.id)
+    ds = InMemoryArrayDataset("data", np.asarray(data, dtype=object), parent=parent)
+    assert ds.dtype.metadata is None
+    assert ds.fillvalue == b""
+
+
+def test_object_strings_bare_object_dtype_fillvalue(vfile):
+    """Test the end-to-end use case ``group[name] = np.array([...],
+    dtype=object)``: assignment of a bare object dtype array, stripped of the
+    h5py string metadata, must default to a b"" fillvalue, not the int 0.
+    """
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset(
+            "values",
+            data=np.array([b"a", b"b"], dtype=object),
+            dtype=h5py.string_dtype(),
+            maxshape=(None,),
+            chunks=(2,),
+        )
+    with vfile.stage_version("r1") as sv:
+        # Assignment builds an InMemoryArrayDataset whose dtype has been
+        # stripped of the h5py string metadata
+        sv["values"] = np.array([b"c", b"d"], dtype=object)
+        ds = sv["values"]
+        assert isinstance(ds.dataset, InMemoryArrayDataset)
+        assert ds.dataset.dtype.metadata is None
+        assert ds.fillvalue == b""
+        assert_equal(ds[:], np.array([b"c", b"d"], dtype=object))
+    assert_equal(
+        vfile[vfile.current_version]["values"][:],
+        np.array([b"c", b"d"], dtype=object),
+    )
