@@ -937,11 +937,16 @@ class DatasetLike:
     @property
     def fillvalue(self) -> np.generic:
         fv = self._fillvalue
-        if fv is None and self.dtype.metadata:
-            # Custom h5py string dtype. Make sure to use a fillvalue of ''
-            if (vlen := self.dtype.metadata.get("vlen")) is not None:
-                fv = b"" if vlen is str else vlen()
-            elif "h5py_encoding" in self.dtype.metadata:
+        if fv is None:
+            if self.dtype.metadata:
+                # Custom h5py string dtype. Make sure to use a fillvalue of ''
+                if (vlen := self.dtype.metadata.get("vlen")) is not None:
+                    fv = b"" if vlen is str else vlen()
+                elif "h5py_encoding" in self.dtype.metadata:
+                    fv = b""
+            elif self.dtype.kind == "O":
+                # Bare object dtype, stripped of the h5py metadata, e.g. from
+                # ``group[name] = np.array([...], dtype=object)``
                 fv = b""
 
         if fv is not None:
