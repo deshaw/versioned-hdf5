@@ -40,6 +40,9 @@ STATES = [
     # writes to the chunks one by one. Worst case for the plans, which must
     # partition their transfers by slab.
     "fragmented",
+    # No base slabs; every chunk lies on a staged slab that is a view of the original
+    # dataset. Edge slabs may be smaller than the chunk size.
+    "from_array",
 ]
 
 #: (index, initial state) pairs for __getitem__ and __setitem__.
@@ -101,6 +104,9 @@ COMMIT_SCENARIOS = [
     # versions ago - so the deduplication table is 10x larger, even though the amount
     # of data that is read, hashed, and written is the same as in "all_new".
     "obsolete_base",
+    # No base slabs; every chunk lies on a staged slab that is a view of the original
+    # dataset. Edge slabs may be smaller than the chunk size.
+    "from_array",
 ]
 
 #: Number of chunks on the base slab that are left over from previous versions in the
@@ -121,6 +127,17 @@ def _commit_random(shape: tuple[int, ...], seed: int) -> StagedChangesArray:
     arr.commit()
     assert arr.n_base_slabs == 1
     return arr
+
+
+@cache
+def _buffer() -> np.ndarray:
+    """Return a writeable buffer of random data, of shape SHAPE.
+
+    This mimics the _buffer attribute of an InMemoryArrayDataset, the input to
+    StagedChangesArray.from_array(as_base_slabs=False) in
+    InMemoryArrayDatasetWrapper.resize().
+    """
+    return np.random.default_rng(0).random(SHAPE).astype(DTYPE)
 
 
 @cache
@@ -167,6 +184,11 @@ def make_array(state: str, n_obsolete_chunks: int = 0) -> StagedChangesArray:
     """Create a StagedChangesArray with the chunks laid out as described by STATES"""
     assert state in STATES
 
+    if state == "from_array":
+        return StagedChangesArray.from_array(
+            _buffer(), chunk_size=CHUNK_SIZE, fill_value=0, as_base_slabs=False
+        )
+
     if state in ("full", "fragmented"):
         arr = StagedChangesArray.full(SHAPE, chunk_size=CHUNK_SIZE, dtype=DTYPE)
         if state == "fragmented":
@@ -204,8 +226,8 @@ def make_committable(scenario: str) -> StagedChangesArray:
     """Create a StagedChangesArray with staged changes as described by
     COMMIT_SCENARIOS, ready to be committed
     """
-    if scenario == "fragmented":
-        return make_array("fragmented")
+    if scenario in ("fragmented", "from_array"):
+        return make_array(scenario)
 
     n_obsolete_chunks = N_OBSOLETE_CHUNKS if scenario == "obsolete_base" else 0
     arr = make_array("base", n_obsolete_chunks=n_obsolete_chunks)
@@ -266,7 +288,7 @@ class TimeSetItem(_MutatingBenchmark):
         self.value = np.asarray(self.arr[self.idx]) + 1.0
 
     def time_setitem_plan(self, case):
-        self.arr._setitem_plan(self.idx)
+        self.arr._setitem_plan(self.idx, copy=False)
 
     def time_setitem(self, case):
         # Internally calls _setitem_plan() and then executes the plan
@@ -274,21 +296,48 @@ class TimeSetItem(_MutatingBenchmark):
 
 
 class TimeResize(_MutatingBenchmark):
-    """Benchmark ResizePlan creation and execution"""
+    """Benchmark ResizePlan creation and execution.
 
-    params = [list(RESIZES)]
-    param_names = ["resize"]
+    For the "from_array" state, enlarging also deep-copies the trimmed staged slabs,
+    as in the resize() of an InMemoryArrayDataset.
+    """
 
-    def setup(self, resize):
-        self.arr = make_array("base")
+    params = [list(RESIZES), ["base", "from_array"]]
+    param_names = ["resize", "state"]
+
+    def setup(self, resize, state):
+        self.arr = make_array(state)
         self.shape = RESIZES[resize]
 
-    def time_resize_plan(self, resize):
-        self.arr._resize_plan(self.shape)
+    def time_resize_plan(self, resize, state):
+        self.arr._resize_plan(self.shape, copy=False)
 
-    def time_resize(self, resize):
+    def time_resize(self, resize, state):
         # Internally calls _resize_plan() and then executes the plan
         self.arr.resize(self.shape)
+
+
+class TimeFromArray:
+    """Benchmark StagedChangesArray.from_array().
+
+    This is the entry point of the resize() of an InMemoryArrayDataset, which calls
+    from_array(as_base_slabs=False) and then resize(). With as_base_slabs=False the
+    staged slabs are views of the input buffer; only the trimmed edge slabs are
+    deep-copied, and only later, upon resize() or first write.
+    """
+
+    params = [["base", "staged"]]
+    param_names = ["as_base_slabs"]
+
+    def setup(self, as_base_slabs):
+        self.arr = _buffer()
+
+    def time_from_array(self, as_base_slabs):
+        _ = StagedChangesArray.from_array(
+            self.arr,
+            chunk_size=CHUNK_SIZE,
+            as_base_slabs=as_base_slabs == "base",
+        )
 
 
 class TimeLoad(_MutatingBenchmark):
@@ -305,7 +354,7 @@ class TimeLoad(_MutatingBenchmark):
         self.arr = make_array(state)
 
     def time_load_plan(self, state):
-        self.arr._load_plan()
+        self.arr._load_plan(copy=False)
 
     def time_load(self, state):
         # Internally calls _load_plan() and then executes the plan
@@ -370,4 +419,4 @@ class TimeCommitPlan:
         self.arr._calc_hashes()
 
     def time_commit_plan(self, scenario):
-        self.arr._commit_plan()
+        self.arr._commit_plan(copy=False)
