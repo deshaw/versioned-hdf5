@@ -23,10 +23,10 @@ from versioned_hdf5.backend import (
     create_base_dataset,
     create_virtual_dataset,
     initialize,
-    write_dataset,
 )
 from versioned_hdf5.hashtable import Hashtable
 from versioned_hdf5.slicetools import spaceid_to_slice
+from versioned_hdf5.staged_changes import StagedChangesArray
 from versioned_hdf5.typing_ import DEFAULT, Default
 from versioned_hdf5.versions import all_versions
 from versioned_hdf5.wrappers import (
@@ -108,11 +108,22 @@ def recreate_dataset(f, name, newf, callback=None):
             # Read in all the chunks of the dataset (we can't assume the new
             # hash table has the raw data in the same locations, even if the
             # data is unchanged).
+            if isinstance(dataset, DatasetWrapper):
+                dataset = dataset.dataset
             if isinstance(dataset, (InMemoryDataset, InMemorySparseDataset)):
                 dataset.staged_changes.load()
                 slices = commit_staged_changes(newf, name, dataset.staged_changes)
+            elif isinstance(dataset, InMemoryArrayDataset):
+                staged_changes = StagedChangesArray.from_array(
+                    dataset._buffer,
+                    chunk_size=chunks,
+                    fill_value=fillvalue,
+                    as_base_slabs=False,
+                )
+                slices = commit_staged_changes(newf, name, staged_changes)
             else:
-                slices = write_dataset(newf, name, dataset)
+                raise TypeError(f"Unexpected: {type(dataset)}")  # pragma: no cover
+
             create_virtual_dataset(
                 newf,
                 version_name,

@@ -443,14 +443,14 @@ def commit_staged_changes(
     `Hashtable` class. At the moment of writing, the legacy path is still triggered by
     some use cases:
 
-    commit_staged_changes + hash_slab (new, fast)
+    New code path (commit_staged_changes + hash_slab)
         - commit on stage_version(...) context exit
         - recreate_dataset
+        - modify_metadata
 
-    write_dataset + Hashtable (legacy, slow)
-        - delete_versions
-        - update_metadata
-        - VersionedHDF5.rebuild_hashtables
+    Legacy code path
+        - delete_versions (Hashtable, _recreate_raw_data)
+        - VersionedHDF5.rebuild_hashtables (Hashtable)
     """
     sc = staged_changes
     group = f["_version_data"][name]
