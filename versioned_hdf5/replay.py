@@ -114,6 +114,10 @@ def recreate_dataset(f, name, newf, callback=None):
                 dataset.staged_changes.load()
                 slices = commit_staged_changes(newf, name, dataset.staged_changes)
             elif isinstance(dataset, InMemoryArrayDataset):
+                if not isinstance(chunks, tuple):
+                    chunks = tuple(
+                        newf["_version_data"][name]["raw_data"].attrs["chunks"]
+                    )
                 staged_changes = StagedChangesArray.from_array(
                     dataset._buffer,
                     chunk_size=chunks,
