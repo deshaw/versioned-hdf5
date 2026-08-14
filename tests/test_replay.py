@@ -698,6 +698,41 @@ def test_modify_metadata_sparse_rechunk_true_nd(vfile):
         modify_metadata(vfile, "x", chunks=True)
 
 
+def test_modify_metadata_chunks_true(vfile):
+    """modify_metadata(chunks=True) on a dense dataset created with explicit chunks.
+    modify_metadata reuses the cached original InMemoryArrayDataset; it does not read a
+    InMemoryDataset back from disk.
+    """
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("d", data=np.arange(3.0), chunks=(2,))
+
+    modify_metadata(vfile, "d", chunks=True)
+
+    assert vfile["r0"]["d"].chunks == (1024,)
+    assert_array_equal(vfile["r0"]["d"][:], np.arange(3.0))
+
+
+def test_modify_metadata_chunks_not_materialized(vfile):
+    """modify_metadata on a dataset whose wrapper carries chunks=None.
+
+    A dataset assigned with ``sv[name] = array`` is backed by an InMemoryArrayDataset,
+    whose chunks are None (unlike create_dataset(), plain __setitem__ never normalizes
+    them).
+
+    modify_metadata reuses the cached original InMemoryArrayDataset; it does not read a
+    InMemoryDataset back from disk.
+    """
+    with vfile.stage_version("r0") as sv:
+        sv["d"] = np.arange(3.0)
+
+    modify_metadata(vfile, "d", fillvalue=9.0)
+
+    assert vfile["r0"]["d"].chunks == (1024,)
+    assert vfile["r0"]["d"].fillvalue == 9.0
+    assert_array_equal(vfile["r0"]["d"][:], [9.0, 1.0, 2.0])
+    assert vfile.f["_version_data"]["d"]["raw_data"].chunks == (1024,)
+
+
 def test_recreate_dataset_staged_changes(vfile):
     """recreate_dataset() rewrites every version of a dataset into a brand new group.
     When its callback returns an InMemoryDataset, the StagedChangesArray that is

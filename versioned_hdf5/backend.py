@@ -443,18 +443,14 @@ def commit_staged_changes(
     `Hashtable` class. At the moment of writing, the legacy path is still triggered by
     some use cases:
 
-    commit_staged_changes + hash_slab (new, fast)
-        - InMemorySparseDataset commit (first version of sparse datasets)
-        - InMemoryDataset commit (version 2+ of any dataset)
-        - recreate_dataset, when its callback returns an InMemoryDataset or an
-          InMemorySparseDataset
+    New code path (commit_staged_changes + hash_slab)
+        - commit on stage_version(...) context exit
+        - recreate_dataset
+        - modify_metadata
 
-    write_dataset + Hashtable (legacy, slow)
-        - InMemoryArrayDataset commit (first version of dense datasets; full overwrites)
-        - delete_versions
-        - update_metadata
-        - recreate_dataset, in all other cases
-        - VersionedHDF5.rebuild_hashtables
+    Legacy code path
+        - delete_versions (Hashtable, _recreate_raw_data)
+        - VersionedHDF5.rebuild_hashtables (Hashtable)
     """
     sc = staged_changes
     group = f["_version_data"][name]
@@ -496,6 +492,7 @@ def commit_staged_changes(
     # Calculate hashes, deduplicate staged chunks, and write to raw_data
     sc.commit(empty=empty)
 
+    n_appended_chunks = 0
     if sc.n_base_slabs > n_base_before:
         # At least one staged chunk is original (neither identical to a chunk
         # already on raw_data nor full of fill_value)
@@ -504,7 +501,8 @@ def commit_staged_changes(
         new_slab_idx = sc.n_base_slabs
         new_hashes = sc.hash_tables[new_slab_idx]
         assert new_hashes is not None
-        new_n_chunks = prev_n_chunks + new_hashes.shape[0]
+        n_appended_chunks = new_hashes.shape[0]
+        new_n_chunks = prev_n_chunks + n_appended_chunks
 
         # Calculate (start, stop) offsets of the chunks on raw_data
         starts = np.arange(
@@ -548,6 +546,13 @@ def commit_staged_changes(
         sc.slabs = [sc.slabs[0], _raw_data_as_base_slab(raw_data, sc.dtype)]
         sc.hash_tables = [None, None]
         sc.n_base_slabs = 1
+
+    logging.debug(
+        "  %s: New chunks written: %d; Number of chunks reused: %d",
+        name,
+        n_appended_chunks,
+        np.prod(sc.slab_indices.shape) - n_appended_chunks,
+    )
 
     # Build the {virtual dataset index: raw_data slice} mapping
     # TODO Migrated to a Cythonized loop that reads sc.slab_offsets directly
