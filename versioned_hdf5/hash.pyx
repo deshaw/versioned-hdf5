@@ -15,6 +15,7 @@ from numpy cimport npy_intp, NPY_MAXDIMS
 from libc.stddef cimport size_t
 from libc.stdint cimport uint64_t
 from libc.stdio cimport snprintf
+from libc.string cimport memcpy
 
 from versioned_hdf5.cytools cimport hsize_t
 
@@ -54,6 +55,7 @@ cpdef void hash_slab(
     hsize_t[::1] hash_rows,
     hsize_t[::1] src_start,
     hsize_t[:, ::1] count,
+    chunk_size,  # tuple[int, ...]
 ) except *:
     """Compute the SHA256 of one or more chunks of a slab and write them to a hash table.
 
@@ -76,8 +78,10 @@ cpdef void hash_slab(
     ----------
     src:
         The slab to read from; always a NumPy array (a staged slab, or the broadcasted
-        full slab). Note that non-NumPy base slabs (e.g. backed by h5py) are never
-        hashed here; their hashes are loaded from disk.
+        full slab). Slabs that are not C-contiguous along the innermost axis are
+        hashed through a chunk-sized scratch buffer; other axes may be strided.
+        Note that non-NumPy base slabs (e.g. backed by h5py) are never hashed here;
+        their hashes are loaded from disk.
     hash_table:
         2D C-contiguous array of uint64 and shape ``(n, 4)``, modified in place.
         ``n`` is the number of chunks in the slab.
@@ -90,6 +94,9 @@ cpdef void hash_slab(
     count:
         2D array of shape ``(nchunks, ndim)`` with the edge-trimmed shape of each chunk,
         i.e. the actual number of valid points along each axis.
+    chunk_size:
+        The physical (untrimmed) chunk shape, e.g. the maximum that can be contained on
+        any one row of ``count``.
     """
     cdef hsize_t nchunks = count.shape[0]
     cdef hsize_t ndim = count.shape[1]
@@ -98,15 +105,18 @@ cpdef void hash_slab(
     cdef hsize_t itemsize = src.dtype.itemsize
     cdef hsize_t stride0
     cdef hsize_t offset
-    cdef hsize_t total_bytes
+    cdef hsize_t n_contig
+    cdef np.ndarray scratch
 
     assert src.ndim == ndim
     assert hash_table.shape[1] == 4
     assert hash_rows.shape[0] == nchunks
     assert src_start.shape[0] == nchunks
+    assert isinstance(chunk_size, tuple)
+    assert len(chunk_size) == ndim
 
-    # Case 1: Object/StringDType — GIL always held (Python object iteration).
     if src.dtype.kind in ("O", "T"):
+        # Case 1: Object/StringDType — GIL always held (Python object iteration).
         for i in range(nchunks):
             offset = src_start[i]
             idx = [slice(offset, offset + count[i, 0])]
@@ -118,31 +128,84 @@ cpdef void hash_slab(
             )
         return
 
-    # Case 2: full slab. This is a single chunk; it's ok to be suboptimal.
-    if not src.flags.c_contiguous:
-        src = np.ascontiguousarray(src)
+    cdef bint is_broadcasted_scalar = True
+    for j in range(ndim):
+        if src.strides[j] != 0:
+            is_broadcasted_scalar = False
+            break
 
-    # Case 3: Non-object slab, at least C-contiguous along the innermost axis
-    # (edge chunks may not be C-contiguous on axes[:-1])
-    # release GIL for the loop.
-    # Each chunk is a slice along axis 0; byte offset = start * stride0.
-    with nogil:
-        stride0 = itemsize
-        for j in range(1, ndim):
-            stride0 *= src.shape[j]
+    if is_broadcasted_scalar and src.size > 0:
+        # Case 2: the full slab is broadcasted from scalar. However, this could also be
+        # a much larger user-provided broadcasted array, which we don't want to
+        # materialize as contiguous all at once.
+        # Special case: an empty slab also has all-zero strides, but a None base;
+        # fall through to Case 3 instead.
+        scratch = np.full(chunk_size, fill_value=src.flat[0], dtype=src.dtype)
+        with nogil:
+            for i in range(nchunks):
+                _hash_chunk_from_ptr(
+                    <const unsigned char*>scratch.data,
+                    &hash_table[hash_rows[i], 0],
+                    count[i],
+                    ndim,
+                    ndim,
+                    itemsize,
+                    scratch.strides,
+                )
 
-        for i in range(nchunks):
-            offset = stride0 * src_start[i]
-            total_bytes = stride0 * count[i, 0]
-            _hash_chunk_from_ptr(
-                <const unsigned char*>src.data + offset,
-                &hash_table[hash_rows[i], 0],
-                count[i],
-                ndim,
-                itemsize,
-                src.strides,
-                total_bytes,
-            )
+    elif src.strides[ndim - 1] != itemsize:
+        # Case 3: the innermost axis is strided. Deep-copy each chunk into a chunk-sized
+        # scratch buffer and hash it as a contiguous blob.
+        scratch = np.empty(chunk_size, dtype=src.dtype)
+        with nogil:
+            for i in range(nchunks):
+                _copy_chunk(
+                    <const unsigned char*>src.data + src.strides[0] * src_start[i],
+                    <unsigned char*>scratch.data,
+                    count[i],
+                    ndim,
+                    itemsize,
+                    src.strides,
+                )
+                _hash_chunk_from_ptr(
+                    <const unsigned char*>scratch.data,
+                    &hash_table[hash_rows[i], 0],
+                    count[i],
+                    ndim,
+                    ndim,
+                    itemsize,
+                    scratch.strides,
+                )
+
+    else:
+        # Case 4 (general, most common case): Non-object slab, at least C-contiguous
+        # along the innermost axis. The other axes may be strided (e.g. stepped or
+        # transposed slabs): chunks are then hashed one trailing-contiguous hyperplane
+        # at a time. release GIL for the loop. Each chunk is a slice along axis 0; byte
+        # offset = start * stride0.
+        with nogil:
+            stride0 = src.strides[0]
+
+            for i in range(nchunks):
+                offset = stride0 * src_start[i]
+                # Count the trailing axes -1..-n that form one C-contiguous run. This must
+                # be tested per chunk: edge chunks with trimmed counts may be non-contiguous
+                # even on a C-contiguous slab.
+                n_contig = 1
+                for j in range(ndim - 2, -1, -1):
+                    if src.strides[j] != src.strides[j + 1] * count[i, j + 1]:
+                        break
+                    n_contig += 1
+
+                _hash_chunk_from_ptr(
+                    <const unsigned char*>src.data + offset,
+                    &hash_table[hash_rows[i], 0],
+                    count[i],
+                    ndim,
+                    n_contig,
+                    itemsize,
+                    src.strides,
+                )
 
 
 cdef void _hash_shape(EVP_MD_CTX* ctx, hsize_t* shape, int ndim) noexcept nogil:
@@ -178,14 +241,55 @@ cdef void _hash_shape(EVP_MD_CTX* ctx, hsize_t* shape, int ndim) noexcept nogil:
     EVP_DigestUpdate(ctx, shape_buf, nchars)
 
 
+cdef void _copy_chunk(
+    const unsigned char* src_ptr,
+    unsigned char* dst,
+    hsize_t[::1] shape,
+    hsize_t ndim,
+    hsize_t itemsize,
+    npy_intp* strides,
+) noexcept nogil:
+    """Deep-copy an edge-trimmed chunk into a C-contiguous scratch buffer.
+
+    nogil, C-friendly equivalent of np.ascontiguousarray().
+    """
+    cdef hsize_t[NPY_MAXDIMS] outer_idx
+    cdef hsize_t outer_total = 1
+    cdef hsize_t inner = shape[ndim - 1]
+    cdef hsize_t outer, k
+    cdef npy_intp offset
+    cdef const unsigned char* src_row
+
+    for k in range(ndim - 1):
+        outer_idx[k] = 0
+        outer_total *= shape[k]
+
+    for outer in range(outer_total):
+        offset = 0
+        for k in range(ndim - 1):
+            offset += outer_idx[k] * strides[k]
+        src_row = src_ptr + offset
+
+        for k in range(inner):
+            memcpy(dst, src_row + k * strides[ndim - 1], itemsize)
+            dst += itemsize
+
+        # Advance the indices of the leading axes
+        for k in range(ndim - 2, -1, -1):
+            outer_idx[k] += 1
+            if outer_idx[k] < shape[k]:
+                break
+            outer_idx[k] = 0
+
+
 cdef int _hash_chunk_from_ptr(
     const unsigned char* data_ptr,
     uint64_t* out,
     hsize_t[::1] shape,
     hsize_t ndim,
+    hsize_t n_contig,
     hsize_t itemsize,
     npy_intp* strides,
-    size_t total_bytes,
 ) except -1 nogil:
     """Hash a single chunk given a raw pointer and strides.
     The chunk must be not object dtype, not StringDType, not broadcasted, and
@@ -194,17 +298,10 @@ cdef int _hash_chunk_from_ptr(
     cdef EVP_MD_CTX* ctx
     cdef hsize_t[NPY_MAXDIMS] outer_idx
     cdef hsize_t outer_total
-    cdef hsize_t inner_size
+    cdef hsize_t n_outer
+    cdef hsize_t block_size = itemsize
     cdef hsize_t offset
     cdef hsize_t j
-    cdef bint is_contiguous
-
-    # Check C-contiguous: strides[j] == strides[j+1] * shape[j+1]
-    is_contiguous = True
-    for j in range(ndim - 1):
-        if strides[j] != strides[j + 1] * shape[j + 1]:
-            is_contiguous = False
-            break
 
     ctx = EVP_MD_CTX_new()
     if ctx == NULL:
@@ -213,34 +310,35 @@ cdef int _hash_chunk_from_ptr(
         if EVP_DigestInit_ex(ctx, EVP_sha256(), NULL) != 1:
             return -1
 
-        if is_contiguous:
+        if n_contig == ndim:
             # Single contiguous blob
-            if total_bytes and EVP_DigestUpdate(ctx, data_ptr, total_bytes) != 1:
+            for j in range(ndim):
+                block_size *= shape[j]
+            if block_size and EVP_DigestUpdate(ctx, data_ptr, block_size) != 1:
                 return -1
         else:
-            # Non-contiguous: walk in C-order, hash each row (innermost axis).
-            # The innermost axis is contiguous for C-order arrays,
-            # so each "row" (fixed indices on axes 0..ndim-2, all indices on
-            # axis ndim-1) is a single contiguous run.
-            inner_size = itemsize * shape[ndim - 1]
-
-            # Iterate over outer dimensions (axes 0 .. ndim-2)
+            # The trailing n_contig axes are one contiguous run; hash the chunk as
+            # prod(shape[:n_outer]) contiguous blocks of block_size bytes each,
+            # walking the leading axes in C-order.
+            n_outer = ndim - n_contig
             outer_total = 1
-            for j in range(ndim - 1):
+            for j in range(ndim - 1, n_outer - 1, -1):
+                block_size *= shape[j]
+            for j in range(n_outer):
                 outer_idx[j] = 0
                 outer_total *= shape[j]
 
             for outer in range(outer_total):
-                # Compute byte offset for current outer position
+                # Compute byte offset for current block
                 offset = 0
-                for j in range(ndim - 1):
+                for j in range(n_outer):
                     offset += outer_idx[j] * strides[j]
 
-                if EVP_DigestUpdate(ctx, data_ptr + offset, inner_size) != 1:
+                if EVP_DigestUpdate(ctx, data_ptr + offset, block_size) != 1:
                     return -1
 
-                # Advance outer indices
-                for j in range(ndim - 2, -1, -1):
+                # Advance the indices of the leading axes
+                for j in range(n_outer - 1, -1, -1):
                     outer_idx[j] += 1
                     if outer_idx[j] < shape[j]:
                         break
