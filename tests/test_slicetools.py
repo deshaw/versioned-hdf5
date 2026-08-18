@@ -1,3 +1,6 @@
+import enum
+from typing import Literal, NamedTuple
+
 import hypothesis
 import numpy as np
 import pytest
@@ -5,6 +8,7 @@ from h5py._hl.selections import Selection
 from hypothesis import given
 from hypothesis import strategies as st
 from numpy.testing import assert_equal
+from numpy.typing import DTypeLike
 from versioned_hdf5.slicetools import (
     RawDataView,
     build_slab_indices_and_offsets,
@@ -18,6 +22,86 @@ from versioned_hdf5.cytools import count2stop
 from .test_typing import MinimalArray
 
 max_examples = 10_000
+
+
+class NumPyLayoutElem(NamedTuple):
+    name: str
+    min_ndim: int
+    writeable: bool
+    fast: bool
+
+
+class NumPyLayout(enum.Enum):
+    # Note: repeating the name prevents elements with identical capabilities from
+    # becoming aliases of each other and get silently skipped when enumerating.
+    contiguous = NumPyLayoutElem("contiguous", 1, True, True)
+    sliced = NumPyLayoutElem("sliced", 1, True, True)
+    step_outer = NumPyLayoutElem("step_outer", 2, True, True)
+    step_inner = NumPyLayoutElem("step_inner", 1, True, False)
+    transposed = NumPyLayoutElem("transposed", 2, True, False)
+    reversed_inner = NumPyLayoutElem("reversed_inner", 1, True, False)
+    reversed_outer = NumPyLayoutElem("reversed_outer", 2, True, False)
+    broadcast_outer = NumPyLayoutElem("broadcast_outer", 2, False, False)
+    broadcast_inner = NumPyLayoutElem("broadcast_inner", 2, False, False)
+
+
+def make_array(
+    shape: tuple[int, ...],
+    dtype: DTypeLike,
+    layout: NumPyLayout,
+    values: Literal["zeros", "range"],
+) -> np.ndarray:
+    """Return a NumPy array of the given shape, dtype, memory layout, and sample
+    values.
+    """
+    ndim = len(shape)
+    L = NumPyLayout
+
+    def every_axis(s: slice) -> tuple[slice, ...]:
+        return (s,) * ndim
+
+    if layout is L.contiguous:
+        out = np.empty(shape, dtype)
+    elif layout is L.sliced:
+        out = np.empty(tuple(s + 3 for s in shape), dtype)[every_axis(slice(1, -2))]
+    elif layout is L.step_inner:
+        out = np.empty((*shape[:-1], shape[-1] * 3), dtype)[..., ::3]
+    elif layout is L.step_outer:
+        assert ndim > 1
+        base = np.empty((*(s * 3 for s in shape[:-1]), shape[-1]), dtype)
+        out = base[every_axis(slice(None, None, 3))[:-1]]
+    elif layout is L.transposed:
+        assert ndim > 1
+        out = np.empty(shape[::-1], dtype).T
+    elif layout is L.reversed_inner:
+        # Negative strides on the innermost axis
+        out = np.empty(shape, dtype)[..., ::-1]
+    elif layout is L.reversed_outer:
+        assert ndim > 1
+        # Negative stride but not on the innermost axis
+        out = np.empty(shape, dtype)[::-1]
+
+    # Broadcast arrays must be filled *before* we create the view
+    elif layout is L.broadcast_inner:
+        assert ndim > 1
+        base = make_array(shape[:-1], dtype, L.contiguous, values)
+        return np.broadcast_to(base[..., None], shape)
+    elif layout is L.broadcast_outer:
+        assert ndim > 1
+        base = make_array(shape[1:], dtype, L.contiguous, values)
+        return np.broadcast_to(base[None, ...], shape)
+
+    else:
+        raise AssertionError("unreachable")  # pragma: nocover
+
+    if values == "zeros":
+        out[:] = 0
+    elif values == "range":
+        out[:] = np.arange(1, out.size + 1, dtype=dtype).reshape(out.shape)
+    else:
+        raise AssertionError("unreachable")  # pragma: nocover
+
+    return out
 
 
 def test_spaceid_to_slice(h5file):
@@ -193,6 +277,10 @@ def many_slices_st(
     list[tuple[slice, ...]],
     # matching list of indices to slice dst array with
     list[tuple[slice, ...]],
+    # memory layout of the src array, when it's a numpy array
+    NumPyLayout,
+    # memory layout of the dst array, when it's a numpy array
+    NumPyLayout,
 ]:
     src_shape_st = st.lists(st.integers(1, max_size), min_size=1, max_size=max_ndim)
     src_shape = tuple(draw(src_shape_st))
@@ -213,7 +301,22 @@ def many_slices_st(
         src_indices.append(tuple(src_idx))
         dst_indices.append(tuple(dst_idx))
 
-    return src_shape, dst_shape, src_indices, dst_indices
+    src_layout = draw(
+        st.sampled_from(
+            [layout for layout in NumPyLayout if layout.value.min_ndim <= ndim]
+        )
+    )
+    dst_layout = draw(
+        st.sampled_from(
+            [
+                layout
+                for layout in NumPyLayout
+                if layout.value.min_ndim <= ndim and layout.value.writeable
+            ]
+        )
+    )
+
+    return src_shape, dst_shape, src_indices, dst_indices, src_layout, dst_layout
 
 
 @pytest.mark.slow
@@ -225,9 +328,9 @@ def many_slices_st(
     suppress_health_check=[hypothesis.HealthCheck.function_scoped_fixture],
 )
 def test_read_many_slices(h5file, args):
-    shape_from, shape_to, indices_from, indices_to = args
+    shape_from, shape_to, indices_from, indices_to, src_layout, dst_layout = args
 
-    src = np.arange(1, np.prod(shape_from) + 1, dtype=np.int32).reshape(shape_from)
+    src = make_array(shape_from, np.int32, src_layout, "range")
 
     expect = np.zeros(shape_to, dtype=src.dtype)
     src_start = []
@@ -245,7 +348,7 @@ def test_read_many_slices(h5file, args):
         count.append([len(range(s.start, s.stop, s.step)) for s in idx_from])
 
     # Test numpy->numpy
-    dst = np.zeros(shape_to, dtype=src.dtype)
+    dst = make_array(shape_to, src.dtype, dst_layout, "zeros")
     read_many_slices(src, dst, src_start, dst_start, count, src_step, dst_step)
     np.testing.assert_array_equal(dst, expect, strict=True)
 
@@ -258,15 +361,21 @@ def test_read_many_slices(h5file, args):
     dst_dset = h5file.create_dataset("b", shape=shape_to, dtype=src.dtype, fillvalue=0)
 
     # Test h5py->NumPy
-    for kwargs in ({}, {"fast": True}, {"fast": False}):
-        dst = np.zeros(shape_to, dtype=src.dtype)
+    kwargss = [{}, {"fast": False}]
+    if dst_layout.value.fast:
+        kwargss.append({"fast": True})
+    for kwargs in kwargss:
+        dst = make_array(shape_to, src.dtype, dst_layout, "zeros")
         read_many_slices(
             src_dset, dst, src_start, dst_start, count, src_step, dst_step, **kwargs
         )
         np.testing.assert_array_equal(dst, expect, strict=True)
 
     # Test NumPy->h5py
-    for kwargs in ({}, {"fast": True}, {"fast": False}):
+    kwargss = [{}, {"fast": False}]
+    if src_layout.value.fast:
+        kwargss.append({"fast": True})
+    for kwargs in kwargss:
         dst_dset[:] = 0
         read_many_slices(
             src, dst_dset, src_start, dst_start, count, src_step, dst_step, **kwargs
@@ -426,30 +535,56 @@ def test_read_many_slices_dst_size_zero(h5file, use_h5):
     read_many_slices(src, dst, [(0, 0)], [(0, 0)], [(3, 3)])
 
 
-def test_read_many_slices_noncontiguous_dst(h5file):
-    """dst is a numpy array that's not C-contiguous.
-    It is supported, but only with fast=False.
+@pytest.mark.parametrize("shape", [(6,), (5, 4), (3, 4, 5), (3, 1, 4)], ids=str)
+@pytest.mark.parametrize("layout", NumPyLayout)
+@pytest.mark.parametrize("side", ["src", "dst"])
+def test_read_many_slices_layouts(h5file, side, layout, shape):
+    """read_many_slices uses the hdf5 C API for the memory layouts H5Sselect_hyperslab
+    can describe and falls back to the pure-python transfer for the rest, with the same
+    outcome either way.
     """
-    src = np.arange(1, 17).reshape(4, 4)
-    expect = np.zeros((8, 12), dtype=src.dtype)
-    expect[::2, ::3] = src[()]
+    if layout.value.min_ndim > len(shape):
+        pytest.skip(f"{layout.name} requires at least {layout.value.min_ndim} axes")
 
-    dst = np.zeros_like(expect)
-    read_many_slices(src, dst[::2, ::3], [(0, 0), (2, 0)], [(0, 0), (2, 0)], (2, 4))
-    np.testing.assert_equal(dst, expect)
+    dtype = np.dtype(np.int32)
+    data = np.arange(1, np.prod(shape) + 1, dtype=dtype).reshape(shape)
+    params = {
+        "src_start": [[i % s for s in shape] for i in range(3)],
+        "dst_start": [[(i + 1) % s for s in shape] for i in range(3)],
+        "count": [list(shape) for _ in range(3)],
+        "src_stride": [[i + 1] * len(shape) for i in range(3)],
+        "dst_stride": [[3 - i] * len(shape) for i in range(3)],
+    }
 
-    src = h5file.create_dataset("a", data=src)
-    dst = np.zeros_like(expect)
-    read_many_slices(
-        src, dst[::2, ::3], [(0, 0), (2, 0)], [(0, 0), (2, 0)], (2, 4), fast=False
-    )
-    np.testing.assert_equal(dst, expect)
+    if side == "dst":
+        ref_src = data
+    else:
+        ref_src = make_array(shape, dtype, layout, "range")
 
-    # h5py src only works in slow mode
-    with pytest.raises(ValueError, match="fast transfer is not possible"):
-        read_many_slices(
-            src, dst[::2, ::3], [(0, 0), (2, 0)], [(0, 0), (2, 0)], (2, 4), fast=True
-        )
+    # numpy->numpy always goes through the pure-python transfer
+    expect = np.zeros(shape, dtype)
+    read_many_slices(ref_src, expect, **params)
+
+    dset = h5file.create_dataset("a", shape=shape, dtype=dtype)
+
+    for fast in (None, False, True):
+        if side == "dst":
+            if not layout.value.writeable:
+                continue
+
+            dset[...] = data
+            np_arr = make_array(shape, dtype, layout, "zeros")
+            src, dst = dset, np_arr
+        else:
+            dset[...] = 0
+            src, dst = ref_src, dset
+
+        if fast and not layout.value.fast:
+            with pytest.raises(ValueError, match="fast transfer is not possible"):
+                read_many_slices(src, dst, **params, fast=True)
+        else:
+            read_many_slices(src, dst, **params, fast=fast)
+            np.testing.assert_array_equal(dst[...], expect, strict=True)
 
 
 def test_read_many_slices_not_fast_read_ok(h5file):
