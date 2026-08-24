@@ -15,7 +15,6 @@ from numpy cimport npy_intp, NPY_MAXDIMS
 from libc.stddef cimport size_t
 from libc.stdint cimport uint64_t
 from libc.stdio cimport snprintf
-from libc.string cimport memcpy
 
 from versioned_hdf5.cytools cimport hsize_t
 
@@ -79,7 +78,7 @@ cpdef void hash_slab(
     src:
         The slab to read from; always a NumPy array (a staged slab, or the broadcasted
         full slab). Slabs that are not C-contiguous along the innermost axis are
-        hashed through a chunk-sized scratch buffer; other axes may be strided.
+        hashed through a per-chunk C-contiguous copy; other axes may be strided.
         Note that non-NumPy base slabs (e.g. backed by h5py) are never hashed here;
         their hashes are loaded from disk.
     hash_table:
@@ -154,28 +153,23 @@ cpdef void hash_slab(
                 )
 
     elif src.strides[ndim - 1] != itemsize:
-        # Case 3: the innermost axis is strided. Deep-copy each chunk into a chunk-sized
-        # scratch buffer and hash it as a contiguous blob.
-        scratch = np.empty(chunk_size, dtype=src.dtype)
-        with nogil:
-            for i in range(nchunks):
-                _copy_chunk(
-                    <const unsigned char*>src.data + src.strides[0] * src_start[i],
-                    <unsigned char*>scratch.data,
-                    count[i],
-                    ndim,
-                    itemsize,
-                    src.strides,
-                )
-                _hash_chunk_from_ptr(
-                    <const unsigned char*>scratch.data,
-                    &hash_table[hash_rows[i], 0],
-                    count[i],
-                    ndim,
-                    ndim,
-                    itemsize,
-                    scratch.strides,
-                )
+        # Case 3: the innermost axis is strided. Copy each chunk to a C-contiguous
+        # buffer (via numpy, GIL held) and hash it as a contiguous blob.
+        for i in range(nchunks):
+            offset = src_start[i]
+            idx = [slice(offset, offset + count[i, 0])]
+            for j in range(1, ndim):
+                idx.append(slice(count[i, j]))
+            scratch = np.ascontiguousarray(src[tuple(idx)])
+            _hash_chunk_from_ptr(
+                <const unsigned char*>scratch.data,
+                &hash_table[hash_rows[i], 0],
+                count[i],
+                ndim,
+                ndim,
+                itemsize,
+                scratch.strides,
+            )
 
     else:
         # Case 4 (general, most common case): Non-object slab, at least C-contiguous
@@ -239,47 +233,6 @@ cdef void _hash_shape(EVP_MD_CTX* ctx, hsize_t* shape, int ndim) noexcept nogil:
         )
 
     EVP_DigestUpdate(ctx, shape_buf, nchars)
-
-
-cdef void _copy_chunk(
-    const unsigned char* src_ptr,
-    unsigned char* dst,
-    hsize_t[::1] shape,
-    hsize_t ndim,
-    hsize_t itemsize,
-    npy_intp* strides,
-) noexcept nogil:
-    """Deep-copy an edge-trimmed chunk into a C-contiguous scratch buffer.
-
-    nogil, C-friendly equivalent of np.ascontiguousarray().
-    """
-    cdef hsize_t[NPY_MAXDIMS] outer_idx
-    cdef hsize_t outer_total = 1
-    cdef hsize_t inner = shape[ndim - 1]
-    cdef hsize_t outer, k
-    cdef npy_intp offset
-    cdef const unsigned char* src_row
-
-    for k in range(ndim - 1):
-        outer_idx[k] = 0
-        outer_total *= shape[k]
-
-    for outer in range(outer_total):
-        offset = 0
-        for k in range(ndim - 1):
-            offset += outer_idx[k] * strides[k]
-        src_row = src_ptr + offset
-
-        for k in range(inner):
-            memcpy(dst, src_row + k * strides[ndim - 1], itemsize)
-            dst += itemsize
-
-        # Advance the indices of the leading axes
-        for k in range(ndim - 2, -1, -1):
-            outer_idx[k] += 1
-            if outer_idx[k] < shape[k]:
-                break
-            outer_idx[k] = 0
 
 
 cdef int _hash_chunk_from_ptr(
