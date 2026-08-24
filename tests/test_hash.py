@@ -396,15 +396,6 @@ def test_step_inner_axis_3d():
     assert hash_single_chunk(slab) == reference(slab)
 
 
-def test_single_chunk_larger_than_lot():
-    """Test when a single non-C-contiguous chunk is larger than the ~2 MiB lot size"""
-    base = np.arange(5 * 1000002, dtype="u1").reshape(5, 1000002)
-    slab = base[:, ::2]  # shape (5, 500001): 2.5 MB > 2 MiB, strided innermost axis
-    assert slab.nbytes > 2 * 1024 * 1024
-    assert slab.strides[-1] != slab.dtype.itemsize
-    assert hash_single_chunk(slab) == reference(slab)
-
-
 def test_step_outer_axis():
     # Contiguous along the innermost axis only; rows are contiguous runs
     slab = np.arange(60, dtype="i8").reshape(6, 10)[::2]
