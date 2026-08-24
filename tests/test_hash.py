@@ -58,13 +58,13 @@ def test_multiple_chunks_route_to_rows():
     """
     slab = np.arange(16, dtype="i4")  # 4 chunks
     ht = np.zeros((4, 4), dtype=np.uint64)
-    # Hash chunks 0 and 3 only, and (to prove hash_rows is honoured)
-    # deliberately route chunk at offset 8 to row 2.
+    # Hash chunks 0, 2 and 3 (skipping chunk 1), and (to prove hash_rows is honoured)
+    # deliberately route chunk at offset 8 to row 2 and the one at offset 12 to row 3.
     hash_slab(
         slab,
         ht,
-        np.array([0, 3, 2], dtype=np_hsize_t),
-        np.array([0, 12, 8], dtype=np_hsize_t),
+        np.array([0, 2, 3], dtype=np_hsize_t),
+        np.array([0, 8, 12], dtype=np_hsize_t),
         np.array([[4], [4], [4]], dtype=np_hsize_t),
         (4,),
     )
@@ -396,6 +396,15 @@ def test_step_inner_axis_3d():
     assert hash_single_chunk(slab) == reference(slab)
 
 
+def test_single_chunk_larger_than_lot():
+    """Test when a single non-C-contiguous chunk is larger than the ~2 MiB lot size"""
+    base = np.arange(5 * 1000002, dtype="u1").reshape(5, 1000002)
+    slab = base[:, ::2]  # shape (5, 500001): 2.5 MB > 2 MiB, strided innermost axis
+    assert slab.nbytes > 2 * 1024 * 1024
+    assert slab.strides[-1] != slab.dtype.itemsize
+    assert hash_single_chunk(slab) == reference(slab)
+
+
 def test_step_outer_axis():
     # Contiguous along the innermost axis only; rows are contiguous runs
     slab = np.arange(60, dtype="i8").reshape(6, 10)[::2]
@@ -558,17 +567,20 @@ def test_hypothesis_single_chunk(slab_and_name):
 
 @given(_slabs(), st.data())
 def test_hypothesis_multichunk(slab_and_name, data):
-    """Random chunks carved out of a randomly strided slab."""
+    """Random tiled chunks carved out of a randomly strided slab."""
     _, slab = slab_and_name
     ndim = slab.ndim
-    if slab.shape[0] < 2:
-        return  # need room for at least an offset chunk
-    nchunks = data.draw(st.integers(1, min(3, slab.shape[0])))
+    # Chunks partition the slab's rows: draw the physical chunk width and how
+    # many chunks fit, then trim the counts along the other axes randomly.
+    chunk_size_0 = data.draw(st.integers(1, slab.shape[0]))
+    nchunks = data.draw(
+        st.integers(1, (slab.shape[0] + chunk_size_0 - 1) // chunk_size_0)
+    )
     src_start = []
     counts = []
-    for _ in range(nchunks):
-        start = data.draw(st.integers(0, slab.shape[0] - 1))
-        c0 = data.draw(st.integers(1, slab.shape[0] - start))
+    for i in range(nchunks):
+        start = i * chunk_size_0
+        c0 = min(chunk_size_0, slab.shape[0] - start)
         count = [c0]
         for j in range(1, ndim):
             count.append(data.draw(st.integers(1, slab.shape[j])))
@@ -668,8 +680,8 @@ def test_no_collision_multichunk_geometry():
     each other; the shape suffix of one chunk must not leak into the next.
     """
     slab = np.zeros((6, 4), dtype="i8")
-    starts = [0, 1, 3, 2]
-    counts = [(1, 4), (2, 2), (3, 1), (4, 4)]
+    starts = [0, 1, 2, 3]
+    counts = [(1, 4), (1, 2), (1, 1), (3, 4)]
     ht = np.zeros((4, 4), dtype=np.uint64)
     hash_slab(
         slab,

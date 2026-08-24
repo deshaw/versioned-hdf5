@@ -77,8 +77,7 @@ cpdef void hash_slab(
     ----------
     src:
         The slab to read from; always a NumPy array (a staged slab, or the broadcasted
-        full slab). Slabs that are not C-contiguous along the innermost axis are
-        hashed through a per-chunk C-contiguous copy; other axes may be strided.
+        full slab).
         Note that non-NumPy base slabs (e.g. backed by h5py) are never hashed here;
         their hashes are loaded from disk.
     hash_table:
@@ -89,7 +88,10 @@ cpdef void hash_slab(
         the digest of that chunk to.
     src_start:
         1D array with one element per chunk. ``src_start[i]`` is the offset along
-        axis 0 of chunk i within its slab. Offsets on all other axes are always 0.
+        axis 0 of chunk i within its slab, strictly monotonic increasing. Chunks must
+        occupy disjoint row ranges (two chunks never share a slab row); gaps
+        between chunks are allowed (e.g. caused by edge chunks). Offsets on all
+        other axes are always 0.
     count:
         2D array of shape ``(nchunks, ndim)`` with the edge-trimmed shape of each chunk,
         i.e. the actual number of valid points along each axis.
@@ -105,6 +107,14 @@ cpdef void hash_slab(
     cdef hsize_t stride0
     cdef hsize_t offset
     cdef hsize_t n_contig
+    cdef hsize_t bytes_per_chunk
+    cdef hsize_t chunks_per_lot
+    cdef hsize_t lot_begin
+    cdef hsize_t lot_end
+    cdef hsize_t lot_start
+    cdef hsize_t lot_stop
+    cdef hsize_t lot_stride0
+    cdef hsize_t chunk_size0
     cdef np.ndarray scratch
 
     assert src.ndim == ndim
@@ -140,6 +150,7 @@ cpdef void hash_slab(
         # Special case: an empty slab also has all-zero strides, but a None base;
         # fall through to Case 3 instead.
         scratch = np.full(chunk_size, fill_value=src.flat[0], dtype=src.dtype)
+
         with nogil:
             for i in range(nchunks):
                 _hash_chunk_from_ptr(
@@ -153,23 +164,50 @@ cpdef void hash_slab(
                 )
 
     elif src.strides[ndim - 1] != itemsize:
-        # Case 3: the innermost axis is strided. Copy each chunk to a C-contiguous
-        # buffer (via numpy, GIL held) and hash it as a contiguous blob.
-        for i in range(nchunks):
-            offset = src_start[i]
-            idx = [slice(offset, offset + count[i, 0])]
-            for j in range(1, ndim):
-                idx.append(slice(count[i, j]))
-            scratch = np.ascontiguousarray(src[tuple(idx)])
-            _hash_chunk_from_ptr(
-                <const unsigned char*>scratch.data,
-                &hash_table[hash_rows[i], 0],
-                count[i],
-                ndim,
-                ndim,
-                itemsize,
-                scratch.strides,
-            )
+        # Case 3: the innermost axis is strided. Copy chunks in lots of up to ~2 MiB to
+        # a C-contiguous buffer, then hash each chunk in the lot.
+        chunk_size0 = <hsize_t>chunk_size[0]
+        bytes_per_chunk = itemsize * chunk_size0
+        for j in range(1, ndim):
+            bytes_per_chunk *= src.shape[j]
+        if bytes_per_chunk == 0:
+            chunks_per_lot = nchunks
+        else:
+            chunks_per_lot = max(1, (2 * 1024 * 1024) // bytes_per_chunk)
+
+        for lot_begin in range(0, nchunks, chunks_per_lot):
+            lot_end = min(lot_begin + chunks_per_lot, nchunks)
+            # Copy the row span covering every chunk of the lot. Chunks never
+            # overlap, so this (clamped at the slab edge) contains each chunk in
+            # full; gaps between chunks are copied along but never hashed.
+            lot_start = src_start[lot_begin]
+            lot_stop = src_start[lot_end] if lot_end < nchunks else src.shape[0]
+            scratch = np.ascontiguousarray(src[lot_start:lot_stop])
+
+            with nogil:
+                lot_stride0 = scratch.strides[0]
+                for i in range(lot_begin, lot_end):
+                    # Byte offset of chunk i within the lot: the lot copy starts at row
+                    # lot_start, and every chunk lies fully inside it.
+                    offset = (src_start[i] - lot_start) * lot_stride0
+                    # The lot is fully C-contiguous, but an edge chunk may be trimmed
+                    # along some axis: count the trailing axes that form one contiguous
+                    # run, as in Case 4.
+                    n_contig = 1
+                    for j in range(ndim - 2, -1, -1):
+                        if scratch.strides[j] != scratch.strides[j + 1] * count[i, j + 1]:
+                            break
+                        n_contig += 1
+
+                    _hash_chunk_from_ptr(
+                        <const unsigned char*>scratch.data + offset,
+                        &hash_table[hash_rows[i], 0],
+                        count[i],
+                        ndim,
+                        n_contig,
+                        itemsize,
+                        scratch.strides,
+                    )
 
     else:
         # Case 4 (general, most common case): Non-object slab, at least C-contiguous
