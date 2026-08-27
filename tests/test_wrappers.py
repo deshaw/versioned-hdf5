@@ -6,7 +6,7 @@ import pytest
 from numpy.testing import assert_array_equal, assert_equal
 
 from versioned_hdf5 import VersionedHDF5File
-from versioned_hdf5.typing_ import ArrayProtocol
+from versioned_hdf5.typing_ import is_array_protocol
 from versioned_hdf5.wrappers import (
     DatasetWrapper,
     InMemoryArrayDataset,
@@ -270,7 +270,7 @@ def test_astype_dense(vfile, dtype):
         assert isinstance(dset.dataset, InMemoryArrayDataset)
 
         a = dset.astype(dtype)
-        assert isinstance(a, ArrayProtocol)
+        assert is_array_protocol(a)
         assert a.dtype == dtype
         assert dset.dtype == "i1"
         with pytest.raises(ValueError, match="read-only"):
@@ -286,7 +286,7 @@ def test_astype_dense(vfile, dtype):
         assert dset.dtype == "i1"
 
         a = dset.astype(dtype)
-        assert isinstance(a, ArrayProtocol)
+        assert is_array_protocol(a)
         assert a.dtype == dtype
         assert dset.dtype == "i1"
         with pytest.raises(ValueError, match="read-only"):
@@ -307,7 +307,7 @@ def test_astype_sparse(vfile, dtype):
         dset[0] = 1
 
         a = dset.astype(dtype)
-        assert isinstance(a, ArrayProtocol)
+        assert is_array_protocol(a)
         assert a.dtype == dtype
         assert dset.dtype == "i1"
         with pytest.raises(ValueError, match="read-only"):

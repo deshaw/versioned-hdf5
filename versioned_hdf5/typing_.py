@@ -8,13 +8,12 @@ collision in Cython with the standard library 'typing' and 'types' modules.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol
 
 import numpy as np
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
 
-@runtime_checkable
 class ArrayProtocol(Protocol):
     """Minimal read-only NumPy array-like interface.
 
@@ -46,7 +45,7 @@ class ArrayProtocol(Protocol):
     ) -> NDArray: ...
 
 
-@runtime_checkable  # Does not support inheritance
+# Protocol does not support inheritance
 class MutableArrayProtocol(Protocol):
     @property
     def shape(self) -> tuple[int, ...]: ...
@@ -62,11 +61,23 @@ class MutableArrayProtocol(Protocol):
 
     def __getitem__(self, index: Any) -> MutableArrayProtocol: ...
 
-    def __array__(
-        self, dtype: DTypeLike | None = None, copy: bool | None = None
-    ) -> NDArray: ...
-
     def __setitem__(self, index: Any, value: ArrayLike) -> None: ...
+
+
+def is_array_protocol(a: Any, *, mutable: bool = False) -> bool:
+    """Equivalent of ``isinstance(a, ArrayProtocol)`` or
+    ``isinstance(a, MutableArrayProtocol)`` should these classes have
+    the @runtime_checkable decorator, but up to 35x faster (5.5us -> 0.15us).
+    """
+    out = isinstance(a, np.ndarray) or (
+        hasattr(a, "shape")
+        and hasattr(a, "size")
+        and hasattr(a, "ndim")
+        and hasattr(a, "dtype")
+        and hasattr(a, "__getitem__")
+        and hasattr(a, "__array__")
+    )
+    return out and (not mutable or hasattr(a, "__setitem__"))
 
 
 class Default(Enum):
