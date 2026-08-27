@@ -7,9 +7,7 @@ from versioned_hdf5.slicetools import RawDataView
 
 from versioned_hdf5.h5py_compat import h5py_astype
 from versioned_hdf5.staged_changes import StagedChangesArray
-from versioned_hdf5.typing_ import (
-    is_array_protocol,
-)
+from versioned_hdf5.typing_ import is_array_protocol
 
 
 class MinimalArray:
