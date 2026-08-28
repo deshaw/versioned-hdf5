@@ -20,9 +20,9 @@ LAYOUTS = [
     # 1D array in memory, with replicated columns
     "broadcast_inner",
     # The innermost axis is C-contiguous, but rows are copied in reverse order
-    "reverse_outer",
+    "reversed_outer",
     # The innermost axis is copied in reverse order
-    "reverse_inner",
+    "reversed_inner",
     # Copy every other row. The innermost axis is C-contiguous.
     "strided_outer",
     # Copy every other column.
@@ -48,9 +48,9 @@ def make_array(
         return np.broadcast_to(rng.random((1, shape[1]), np.float64), shape)
     if layout == "broadcast_inner":
         return np.broadcast_to(rng.random((shape[0], 1), np.float64), shape)
-    if layout == "reverse_outer":
+    if layout == "reversed_outer":
         return rng.random(shape, np.float64)[::-1, :]
-    if layout == "reverse_inner":
+    if layout == "reversed_inner":
         return rng.random(shape, np.float64)[:, ::-1]
     if layout == "strided_outer":
         return rng.random((shape[0] * 2, shape[1]), np.float64)[::2, :]

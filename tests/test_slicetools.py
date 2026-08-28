@@ -36,8 +36,8 @@ class NumPyLayout(enum.Enum):
     # becoming aliases of each other and get silently skipped when enumerating.
     contiguous = NumPyLayoutElem("contiguous", 1, True, True)
     sliced = NumPyLayoutElem("sliced", 1, True, True)
-    step_outer = NumPyLayoutElem("step_outer", 2, True, True)
-    step_inner = NumPyLayoutElem("step_inner", 1, True, False)
+    strided_outer = NumPyLayoutElem("strided_outer", 2, True, True)
+    strided_inner = NumPyLayoutElem("strided_inner", 1, True, False)
     transposed = NumPyLayoutElem("transposed", 2, True, False)
     reversed_inner = NumPyLayoutElem("reversed_inner", 1, True, False)
     reversed_outer = NumPyLayoutElem("reversed_outer", 2, True, False)
@@ -64,9 +64,9 @@ def make_array(
         out = np.empty(shape, dtype)
     elif layout is L.sliced:
         out = np.empty(tuple(s + 3 for s in shape), dtype)[every_axis(slice(1, -2))]
-    elif layout is L.step_inner:
+    elif layout is L.strided_inner:
         out = np.empty((*shape[:-1], shape[-1] * 3), dtype)[..., ::3]
-    elif layout is L.step_outer:
+    elif layout is L.strided_outer:
         assert ndim > 1
         base = np.empty((*(s * 3 for s in shape[:-1]), shape[-1]), dtype)
         out = base[every_axis(slice(None, None, 3))[:-1]]
