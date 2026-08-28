@@ -37,7 +37,7 @@ NCOLS = 128
 def make_array(
     shape: tuple[int, int], layout: str, rng: np.random.Generator
 ) -> np.ndarray:
-    """Return a NumPy array of with the given shape and layout,
+    """Return a NumPy array with the given shape and layout,
     full of random float64 data
     """
     if layout == "contiguous":
