@@ -34,6 +34,7 @@ def hash_one(chunk: np.ndarray) -> bytes:
         np.zeros(1, dtype=np_hsize_t),  # hash_rows
         np.zeros(1, dtype=np_hsize_t),  # src_start
         np.asarray([chunk.shape], dtype=np_hsize_t),  # count
+        chunk.shape,
     )
     return hash_table[0].view(np.uint8).tobytes()
 
