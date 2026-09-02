@@ -1,4 +1,7 @@
+import functools
+import gc
 import subprocess
+import tracemalloc
 from unittest import mock
 
 import h5py
@@ -10,8 +13,8 @@ from hypothesis import strategies as st
 from ndindex import Slice
 from numpy.testing import assert_array_equal
 
-from versioned_hdf5 import VersionedHDF5File
-from versioned_hdf5.backend import DEFAULT_CHUNK_SIZE
+from versioned_hdf5 import VersionedHDF5File, replay
+from versioned_hdf5.backend import DEFAULT_CHUNK_SIZE, rewrite_dataset
 from versioned_hdf5.h5py_compat import H5PY_VERSION
 from versioned_hdf5.hashtable import Hashtable
 from versioned_hdf5.replay import (
@@ -767,6 +770,79 @@ def test_recreate_dataset_staged_changes(vfile):
     hash_table = f["_version_data/x/hash_table"]
     assert raw_data.shape == (50,)
     assert hash_table.attrs["largest_index"] == 5
+
+
+# One whole chunk, one chunk row, and the whole dataset at a time
+@pytest.mark.parametrize("max_bytes", [0, 96, 10_000])
+def test_recreate_dataset_streams_chunks(vfile, monkeypatch, max_bytes):
+    """recreate_dataset() rewrites each version a block of chunks at a time, so that
+    peak memory usage doesn't scale with the size of the dataset. Neither the data nor
+    the deduplication across blocks and across versions may depend on the block size.
+    """
+    monkeypatch.setattr(
+        replay,
+        "rewrite_dataset",
+        functools.partial(rewrite_dataset, max_bytes=max_bytes),
+    )
+
+    # 3x2 chunks along axis 0 and 2 along axis 1, the last one of each being an edge
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("x", data=np.arange(50.0).reshape(5, 10), chunks=(2, 4))
+    with vfile.stage_version("r1") as sv:
+        sv["x"][0, 0] = -1.0  # Rewrite chunk (0, 0) only
+    with vfile.stage_version("r2") as sv:
+        sv["x"][4, 9] = -2.0  # Rewrite edge chunk (2, 2) only
+
+    expected = {v: vfile[v]["x"][:] for v in ("r0", "r1", "r2")}
+
+    f = vfile.f
+    newf = tmp_group(f)
+    recreate_dataset(f, "x", newf)
+    swap(f, newf)
+
+    for v, want in expected.items():
+        assert_array_equal(vfile[v]["x"][:], want)
+
+    # r0 wrote 9 chunks; r1 and r2 added one each and deduplicated the other 8
+    # against the new raw_data.
+    raw_data = f["_version_data/x/raw_data"]
+    hash_table = f["_version_data/x/hash_table"]
+    assert hash_table.attrs["largest_index"] == 11
+    assert raw_data.shape == (22, 4)
+
+
+def test_recreate_dataset_bounded_memory(vfile, monkeypatch):
+    """recreate_dataset() streams the chunks of a committed dataset from the raw_data
+    of the source group into the raw_data of the target group, instead of loading whole
+    datasets in memory.
+    """
+    shape = (2048, 128)  # 2 MiB of float64
+    chunks = (32, 128)  # 32 kiB
+    max_bytes = 128 * 1024  # 128 kiB (16k points)
+    monkeypatch.setattr(
+        replay,
+        "rewrite_dataset",
+        functools.partial(rewrite_dataset, max_bytes=max_bytes),
+    )
+
+    rng = np.random.default_rng(0)
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("x", data=rng.random(shape), chunks=chunks)
+    with vfile.stage_version("r1") as sv:
+        sv["x"][0, 0] = -1.0
+
+    f = vfile.f
+    newf = tmp_group(f)
+    gc.collect()
+    tracemalloc.start()
+    try:
+        recreate_dataset(f, "x", newf)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    # Generous margin over max_bytes; loading a whole version would be 2 MiB
+    assert peak < np.prod(shape) * 8 // 2
 
 
 def test_delete_version(vfile):
