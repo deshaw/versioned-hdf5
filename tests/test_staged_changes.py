@@ -1364,8 +1364,7 @@ def test_from_array_as_staged_slabs_6():
 def test_from_array_as_staged_slabs_trimmed_shapes():
     """from_array(..., as_base_slabs=False)
 
-    Edge slabs are trimmed to the exact edge size, never padded,
-    and _has_trimmed_staged_slabs is set.
+    Edge slabs are trimmed to the exact edge size, never padded.
     """
     arr = np.arange(35).reshape((5, 7))
     a = StagedChangesArray.from_array(arr, chunk_size=(3, 4), as_base_slabs=False)
