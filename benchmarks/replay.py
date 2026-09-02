@@ -1,10 +1,12 @@
-"""Benchmarks for replay.py: recreate_dataset() and modify_metadata()."""
+"""Benchmarks for replay.py: delete_versions, modify_metadata, recreate_dataset"""
 
 from __future__ import annotations
 
+import gc
+
 import numpy as np
 
-from versioned_hdf5 import modify_metadata
+from versioned_hdf5 import delete_versions, modify_metadata
 from versioned_hdf5.replay import recreate_dataset, tmp_group
 
 from .common import Benchmark
@@ -58,6 +60,7 @@ class _ReplayBenchmark(Benchmark):
             sv[NAME][0, 0] = -1.0
         with self.vfile.stage_version("v2") as sv:
             sv[NAME][32, 0] = -1.0
+        gc.collect()
 
 
 class Baseline(_ReplayBenchmark):
@@ -68,14 +71,21 @@ class Baseline(_ReplayBenchmark):
         """Measure RAM usage when doing nothing"""
 
 
+class TimeDeleteVersions(_ReplayBenchmark):
+    params = ["v0", "v1", "v2"]
+    param_names = ["case"]
+
+    def setup(self, case):
+        super().setup(case)
+
+    def time_delete_versions(self, case):
+        self.assert_clean_setup()
+        delete_versions(self.file, case)
+
+    peakmem_delete_versions = time_delete_versions
+
+
 class TimeRecreateDataset(_ReplayBenchmark):
-    """Benchmark recreate_dataset(), which rewrites every version of a dataset
-    into a brand new group, and is the workhorse behind modify_metadata().
-
-    Note that the callback is called on the dataset of the *committed* version,
-    which is always a DatasetWrapper around an InMemoryDataset.
-    """
-
     params = [RECREATE_CASES]
     param_names = ["case"]
 
@@ -102,15 +112,6 @@ class TimeRecreateDataset(_ReplayBenchmark):
 
 
 class TimeModifyMetadata(_ReplayBenchmark):
-    """Benchmark modify_metadata(), which recreates every version of a dataset
-    with new chunk size, dtype, fillvalue, or filters.
-
-    Its callback always returns an InMemoryArrayDataset, which holds a whole
-    version of the dataset in memory; there is no way around it for a change of
-    dtype or fillvalue, whereas a change of chunk size or filters could in
-    principle be streamed chunk by chunk.
-    """
-
     params = [list(MODIFY_METADATA_CASES)]
     param_names = ["case"]
 
