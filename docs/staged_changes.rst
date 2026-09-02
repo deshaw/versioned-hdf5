@@ -333,7 +333,7 @@ may not be large enough to contain the chunks after ``resize()`` enlarges the ar
 important that this happens lazily, only when and if needed, to avoid unnecessary
 deep-copies when the array is never enlarged over its lifetime - notably, when it's
 created and then immediately consumed and destroyed when committing an
-InMemoryArrayDataset.
+``InMemoryArrayDataset``.
 
 ``load()`` algorithm
 --------------------
