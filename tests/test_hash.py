@@ -8,6 +8,8 @@ import struct
 
 import numpy as np
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 from versioned_hdf5.hash import hash_slab
 
 from versioned_hdf5.cytools import np_hsize_t
@@ -45,6 +47,7 @@ def test_single_chunk():
         np.array([0], dtype=np_hsize_t),
         np.array([0], dtype=np_hsize_t),
         np.array([[10]], dtype=np_hsize_t),
+        (10,),
     )
     assert rows_as_digests(ht)[0] == reference(slab)
 
@@ -55,14 +58,15 @@ def test_multiple_chunks_route_to_rows():
     """
     slab = np.arange(16, dtype="i4")  # 4 chunks
     ht = np.zeros((4, 4), dtype=np.uint64)
-    # Hash chunks 0 and 3 only, and (to prove hash_rows is honoured)
-    # deliberately route chunk at offset 8 to row 2.
+    # Hash chunks 0, 2 and 3 (skipping chunk 1), and (to prove hash_rows is honoured)
+    # deliberately route chunk at offset 8 to row 2 and the one at offset 12 to row 3.
     hash_slab(
         slab,
         ht,
-        np.array([0, 3, 2], dtype=np_hsize_t),
-        np.array([0, 12, 8], dtype=np_hsize_t),
+        np.array([0, 2, 3], dtype=np_hsize_t),
+        np.array([0, 8, 12], dtype=np_hsize_t),
         np.array([[4], [4], [4]], dtype=np_hsize_t),
+        (4,),
     )
     digests = rows_as_digests(ht)
     assert digests[0] == reference(slab[0:4])
@@ -84,7 +88,7 @@ def test_edge_chunk_ignores_uninitialised_memory():
     rows = np.array([0, 1], dtype=np_hsize_t)
 
     ht = np.zeros((2, 4), dtype=np.uint64)
-    hash_slab(slab, ht, rows, src_start, count)
+    hash_slab(slab, ht, rows, src_start, count, (3, 5))
     h0, h1 = rows_as_digests(ht)
     assert h0 == reference(slab[0:3, :])
     assert h1 == reference(slab[3:5, :])
@@ -92,7 +96,7 @@ def test_edge_chunk_ignores_uninitialised_memory():
     # Poison the uninitialised row and re-hash: the digests must be unchanged.
     slab[5] = 999
     ht2 = np.zeros((2, 4), dtype=np.uint64)
-    hash_slab(slab, ht2, rows, src_start, count)
+    hash_slab(slab, ht2, rows, src_start, count, (3, 5))
     assert rows_as_digests(ht2) == [h0, h1]
 
 
@@ -109,6 +113,7 @@ def test_column_edge_is_made_contiguous():
         np.array([0], dtype=np_hsize_t),
         np.array([0], dtype=np_hsize_t),
         np.array([[4, 3]], dtype=np_hsize_t),
+        (4, 5),
     )
     sub = slab[0:4, 0:3]
     assert not sub.flags.c_contiguous
@@ -128,6 +133,7 @@ def test_full_slab_broadcast():
         np.array([0], dtype=np_hsize_t),
         np.array([0], dtype=np_hsize_t),
         np.array([[3, 4]], dtype=np_hsize_t),
+        (3, 4),
     )
     assert rows_as_digests(ht)[0] == reference(np.full((3, 4), 42, dtype="u2"))
 
@@ -142,6 +148,7 @@ def test_empty_chunk():
         np.array([0], dtype=np_hsize_t),
         np.array([0], dtype=np_hsize_t),
         np.array([[0, 3]], dtype=np_hsize_t),
+        (1, 3),
     )
     (h,) = rows_as_digests(ht)
     assert h == hashlib.sha256(b"(0, 3)").digest()
@@ -157,6 +164,7 @@ def test_no_chunks_is_noop():
         np.zeros(0, dtype=np_hsize_t),
         np.zeros(0, dtype=np_hsize_t),
         np.zeros((0, 1), dtype=np_hsize_t),
+        (1,),
     )
     assert rows_as_digests(ht) == [b"\x00" * 32]  # Never written
 
@@ -176,6 +184,7 @@ def test_pod_dtypes_multichunk(dtype):
         np.array([0, 1, 2], dtype=np_hsize_t),
         np.array([0, 2, 4], dtype=np_hsize_t),
         np.array([[2], [2], [2]], dtype=np_hsize_t),
+        (2,),
     )
     digests = rows_as_digests(ht)
     for j, start in ((0, 0), (1, 2), (2, 4)):
@@ -191,6 +200,7 @@ def test_object_slab():
         np.array([0, 1, 2], dtype=np_hsize_t),
         np.array([0, 2, 4], dtype=np_hsize_t),
         np.array([[2], [2], [2]], dtype=np_hsize_t),
+        (2,),
     )
     digests = rows_as_digests(ht)
     for j, start in enumerate([0, 2, 4]):
@@ -203,7 +213,7 @@ def test_object_edge_chunk_ignores_uninitialised():
     count = np.array([[1]], dtype=np_hsize_t)  # only "ccc"
     rows = np.array([0], dtype=np_hsize_t)
     ht = np.zeros((1, 4), dtype=np.uint64)
-    hash_slab(slab, ht, rows, src_start, count)
+    hash_slab(slab, ht, rows, src_start, count, (1,))
     assert rows_as_digests(ht)[0] == reference(slab[2:3])
 
 
@@ -217,6 +227,7 @@ def test_npystrings_slab():
         np.array([0, 1], dtype=np_hsize_t),
         np.array([0, 2], dtype=np_hsize_t),
         np.array([[2], [2]], dtype=np_hsize_t),
+        (2,),
     )
     digests = rows_as_digests(ht)
     assert digests[0] == reference(slab[0:2])
@@ -232,6 +243,7 @@ def test_identical_chunks_same_hash():
         np.array([0, 1], dtype=np_hsize_t),
         np.array([0, 2], dtype=np_hsize_t),
         np.array([[2], [2]], dtype=np_hsize_t),
+        (2,),
     )
     assert rows_as_digests(ht)[0] == rows_as_digests(ht)[1]
 
@@ -265,6 +277,7 @@ def hash_chunk(
         np.array([0], dtype=np_hsize_t),
         np.array([src_start], dtype=np_hsize_t),
         np.array([count], dtype=np_hsize_t),
+        count,
     )
     digest = rows_as_digests(ht)[0]
     idx = (slice(src_start, src_start + count[0]), *(slice(c) for c in count[1:]))
@@ -320,6 +333,267 @@ def test_no_collision_vlen_empty_and_nul():
     ]
     digests = {hash_chunk(case, dtype=object) for case in cases}
     assert len(digests) == len(cases)
+
+
+# ------------------------------------------------------------------------------
+# Non-contiguous input geometries
+#
+# hash_slab may be handed any NumPy view as a slab: transposed, stepped along any
+# axis, broadcast, reversed, or combinations thereof. In all cases the digest must
+# match the C-contiguous materialization of the chunk.
+# ------------------------------------------------------------------------------
+
+
+def make_ht(n):
+    return np.zeros((n, 4), dtype=np.uint64)
+
+
+def hash_single_chunk(slab, count=None):
+    """Hash the whole of ``slab`` (or its ``count``-trimmed prefix) as one chunk."""
+    count = slab.shape if count is None else count
+    ht = make_ht(1)
+    hash_slab(
+        slab,
+        ht,
+        np.array([0], dtype=np_hsize_t),
+        np.array([0], dtype=np_hsize_t),
+        np.array([count], dtype=np_hsize_t),
+        count,
+    )
+    return rows_as_digests(ht)[0]
+
+
+def test_transposed_2d():
+    slab = np.arange(30, dtype="i8").reshape(5, 6).T  # F-contiguous
+    assert not slab.flags.c_contiguous
+    assert hash_single_chunk(slab) == reference(slab)
+
+
+def test_transposed_3d():
+    a = np.arange(60, dtype="f4").reshape(3, 4, 5)
+    for perm in [(1, 0, 2), (2, 1, 0), (0, 2, 1), (2, 0, 1)]:
+        slab = a.transpose(perm)
+        assert hash_single_chunk(slab) == reference(slab)
+
+
+def test_fortran_order():
+    slab = np.asfortranarray(np.arange(24, dtype="i2").reshape(4, 6))
+    assert slab.flags.f_contiguous
+    assert not slab.flags.c_contiguous
+    assert hash_single_chunk(slab) == reference(slab)
+
+
+def test_step_inner_axis():
+    # Non-contiguous along the innermost axis
+    slab = np.arange(40, dtype="i8").reshape(4, 10)[:, ::2]
+    assert slab.strides[-1] != slab.dtype.itemsize
+    assert hash_single_chunk(slab) == reference(slab)
+
+
+def test_step_inner_axis_3d():
+    slab = np.arange(120, dtype="i8").reshape(4, 5, 6)[:, ::3, ::2]
+    assert slab.strides[-1] != slab.dtype.itemsize
+    assert hash_single_chunk(slab) == reference(slab)
+
+
+def test_step_outer_axis():
+    # Contiguous along the innermost axis only; rows are contiguous runs
+    slab = np.arange(60, dtype="i8").reshape(6, 10)[::2]
+    assert slab.strides[-1] == slab.dtype.itemsize
+    assert not slab.flags.c_contiguous
+    assert hash_single_chunk(slab) == reference(slab)
+
+
+def test_step_middle_axis():
+    slab = np.arange(120, dtype="i8").reshape(4, 5, 6)[:, ::2]
+    assert slab.strides[-1] == slab.dtype.itemsize
+    assert not slab.flags.c_contiguous
+    assert hash_single_chunk(slab) == reference(slab)
+
+
+def test_trailing_axes_contiguous_3d():
+    # Contiguous along axes 1 and 2, but not along axis 0
+    slab = np.arange(180, dtype="i8").reshape(6, 5, 6)[::2]
+    assert slab.strides == (60 * 8, 6 * 8, 8)
+    assert hash_single_chunk(slab) == reference(slab)
+
+
+def test_reversed_axis_0():
+    slab = np.arange(30, dtype="i8").reshape(5, 6)[::-1]
+    assert slab.strides[0] < 0
+    assert hash_single_chunk(slab) == reference(slab)
+
+
+def test_reversed_all_axes():
+    slab = np.arange(60, dtype="i8").reshape(3, 4, 5)[::-1, ::-1, ::-1]
+    assert all(s < 0 for s in slab.strides)
+    assert hash_single_chunk(slab) == reference(slab)
+
+
+def test_broadcast_inner_axis():
+    # Zero stride on axis 0, contiguous innermost axis
+    slab = np.broadcast_to(np.arange(1, 5, dtype="i8"), (3, 4))
+    assert slab.strides == (0, 8)
+    assert hash_single_chunk(slab) == reference(slab)
+
+
+def test_broadcast_full_2d():
+    slab = np.broadcast_to(np.array(7, dtype="i4"), (3, 5))
+    assert slab.strides == (0, 0)
+    assert hash_single_chunk(slab) == reference(slab)
+
+
+def test_broadcast_full_3d():
+    slab = np.broadcast_to(1.5, (2, 3, 4))
+    assert hash_single_chunk(slab) == reference(slab)
+
+
+def test_broadcast_1d():
+    slab = np.broadcast_to(np.uint8(3), (7,))
+    assert slab.strides == (0,)
+    assert hash_single_chunk(slab) == reference(slab)
+
+
+def test_expand_dims():
+    slab = np.arange(12, dtype="i8").reshape(4, 3)[:, np.newaxis, :]
+    assert hash_single_chunk(slab) == reference(slab)
+
+
+def test_transposed_then_stepped():
+    slab = np.arange(60, dtype="i8").reshape(5, 12).T[::3]
+    assert slab.strides[-1] != slab.dtype.itemsize
+    assert hash_single_chunk(slab) == reference(slab)
+
+
+def test_strided_slab_multichunk():
+    """Multiple chunks, with edge trimming and hash row permutation, carved out of a
+    stepped (outer axis) slab: the chunk axis-0 offset must use the real stride.
+    """
+    slab = np.arange(80, dtype="i8").reshape(8, 10)[::2]  # shape (4, 10)
+    # 2 chunks of 2 rows each, second one edge-trimmed to 1 row and 7 columns
+    src_start = [0, 2]
+    counts = [(2, 10), (1, 7)]
+    ht = make_ht(2)
+    hash_slab(
+        slab,
+        ht,
+        np.array([1, 0], dtype=np_hsize_t),
+        np.array(src_start, dtype=np_hsize_t),
+        np.array(counts, dtype=np_hsize_t),
+        (2, 10),
+    )
+    digests = rows_as_digests(ht)
+    assert digests[1] == reference(slab[0:2, :10])
+    assert digests[0] == reference(slab[2:3, :7])
+
+
+def test_transposed_slab_multichunk():
+    slab = np.arange(40, dtype="i4").reshape(4, 10).T  # shape (10, 4)
+    ht = make_ht(2)
+    hash_slab(
+        slab,
+        ht,
+        np.array([0, 1], dtype=np_hsize_t),
+        np.array([0, 5], dtype=np_hsize_t),
+        np.array([(5, 4), (5, 3)], dtype=np_hsize_t),
+        (5, 4),
+    )
+    digests = rows_as_digests(ht)
+    assert digests[0] == reference(slab[0:5, :4])
+    assert digests[1] == reference(slab[5:10, :3])
+
+
+def test_object_strided_slab():
+    slab = np.array([b"a", "bb", b"ccc", "dddd", "e", "ff"], dtype=object)[::2]
+    assert hash_single_chunk(slab) == reference(slab)
+
+
+# ------------------------------------------------------------------------------
+# Hypothesis: randomized slab geometries
+# ------------------------------------------------------------------------------
+
+
+def _transformations(a: np.ndarray, rng):
+    """Yield a handful of strided/broadcast views of ``a``."""
+    yield "identity", a
+    if a.ndim >= 2:
+        yield "transpose", a.T
+        yield "fortran", np.asfortranarray(a)
+    yield "step0", a[:: 1 + rng.integers(1, 3)]
+    if a.ndim >= 2:
+        yield "step_inner", a[..., :: 1 + rng.integers(1, 3)]
+        yield "step0_step_inner", a[::2, ..., ::2]
+    if a.ndim >= 3:
+        yield "step1", a[:, :: 1 + rng.integers(1, 3)]
+    yield "reverse0", a[::-1]
+    if a.ndim >= 2:
+        yield "reverse_all", a[::-1, ..., ::-1]
+    yield "expand0", a[np.newaxis]
+    yield "expand_inner", a[..., np.newaxis]
+
+
+@st.composite
+def _slabs(draw):
+    ndim = draw(st.integers(1, 3))
+    shape = tuple(draw(st.integers(1, 5)) for _ in range(ndim))
+    dtype = draw(st.sampled_from(["i8", "i4", "u1", "f8"]))
+    a = np.arange(int(np.prod(shape)), dtype=dtype).reshape(shape)
+    rng = np.random.default_rng(draw(st.integers(0, 2**32 - 1)))
+    name, slab = draw(st.sampled_from(list(_transformations(a, rng))))
+    return name, slab
+
+
+@pytest.mark.parametrize("dtype", VLEN_DTYPES)
+def test_strided_single_chunk_object(dtype):
+    slab = np.array(["a", "bb", "", "ccc", "dddd", "e"], dtype=dtype)[::2]
+    assert hash_single_chunk(slab) == reference(slab)
+
+
+@given(_slabs())
+def test_hypothesis_single_chunk(slab_and_name):
+    _, slab = slab_and_name
+    digest = hash_single_chunk(slab)
+    assert digest == reference(slab)
+
+
+@given(_slabs(), st.data())
+def test_hypothesis_multichunk(slab_and_name, data):
+    """Random tiled chunks carved out of a randomly strided slab."""
+    _, slab = slab_and_name
+    ndim = slab.ndim
+    # Chunks partition the slab's rows: draw the physical chunk width and how
+    # many chunks fit, then trim the counts along the other axes randomly.
+    chunk_size_0 = data.draw(st.integers(1, slab.shape[0]))
+    nchunks = data.draw(
+        st.integers(1, (slab.shape[0] + chunk_size_0 - 1) // chunk_size_0)
+    )
+    src_start = []
+    counts = []
+    for i in range(nchunks):
+        start = i * chunk_size_0
+        c0 = min(chunk_size_0, slab.shape[0] - start)
+        count = [c0]
+        for j in range(1, ndim):
+            count.append(data.draw(st.integers(1, slab.shape[j])))
+        src_start.append(start)
+        counts.append(count)
+    # hash_rows may repeat/permute freely
+    hash_rows = np.arange(nchunks, dtype=np_hsize_t)[::-1].copy()
+    ht = make_ht(nchunks)
+    counts_arr = np.array(counts, dtype=np_hsize_t)
+    hash_slab(
+        slab,
+        ht,
+        hash_rows,
+        np.array(src_start, dtype=np_hsize_t),
+        counts_arr,
+        tuple(counts_arr.max(axis=0)),
+    )
+    digests = rows_as_digests(ht)
+    for i in range(nchunks):
+        idx = (slice(src_start[i], src_start[i] + counts[i][0]),)
+        idx += tuple(slice(c) for c in counts[i][1:])
+        assert digests[hash_rows[i]] == reference(slab[idx])
 
 
 GEOMETRIES = [(6,), (1, 6), (6, 1), (2, 3), (3, 2), (1, 1, 6), (1, 6, 1), (6, 1, 1)]
@@ -397,8 +671,8 @@ def test_no_collision_multichunk_geometry():
     each other; the shape suffix of one chunk must not leak into the next.
     """
     slab = np.zeros((6, 4), dtype="i8")
-    starts = [0, 1, 3, 2]
-    counts = [(1, 4), (2, 2), (3, 1), (4, 4)]
+    starts = [0, 1, 2, 3]
+    counts = [(1, 4), (1, 2), (1, 1), (3, 4)]
     ht = np.zeros((4, 4), dtype=np.uint64)
     hash_slab(
         slab,
@@ -406,6 +680,7 @@ def test_no_collision_multichunk_geometry():
         np.array([0, 1, 2, 3], dtype=np_hsize_t),
         np.array(starts, dtype=np_hsize_t),
         np.array(counts, dtype=np_hsize_t),
+        (4, 4),
     )
     digests = rows_as_digests(ht)
     assert digests == [

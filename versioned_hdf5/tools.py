@@ -6,7 +6,7 @@ import ndindex
 import numpy as np
 from numpy.typing import ArrayLike, DTypeLike
 
-from versioned_hdf5.typing_ import ArrayProtocol
+from versioned_hdf5.typing_ import is_array_protocol
 
 _NP_VERSION = np.lib.NumpyVersion(np.__version__)
 NP_VERSION = (_NP_VERSION.major, _NP_VERSION.minor, _NP_VERSION.bugfix)
@@ -25,7 +25,7 @@ def asarray(a: ArrayLike, /, *, dtype: DTypeLike | None = None):
        on NumPy >=2.0.0,<2.2.3 when converting from arrays of object strings to
        NpyStrings
     """
-    if not isinstance(a, ArrayProtocol) or np.isscalar(a):
+    if not is_array_protocol(a) or np.isscalar(a):
         return np.asarray(a, dtype=dtype)
 
     if dtype is None:

@@ -7,7 +7,7 @@ from versioned_hdf5.slicetools import RawDataView
 
 from versioned_hdf5.h5py_compat import h5py_astype
 from versioned_hdf5.staged_changes import StagedChangesArray
-from versioned_hdf5.typing_ import ArrayProtocol, MutableArrayProtocol
+from versioned_hdf5.typing_ import is_array_protocol
 
 
 class MinimalArray:
@@ -55,28 +55,28 @@ class MinimalMutableArray(MinimalArray):
 
 
 def test_array_protocol():
-    assert isinstance(MinimalArray(1), ArrayProtocol)
-    assert not isinstance(MinimalArray(1), MutableArrayProtocol)
-    assert isinstance(MinimalMutableArray(1), ArrayProtocol)
-    assert isinstance(MinimalMutableArray(1), MutableArrayProtocol)
-    assert isinstance(np.array(1), ArrayProtocol)
-    assert isinstance(np.array(1), MutableArrayProtocol)
-    assert isinstance(np.int64(1), ArrayProtocol)
-    assert not isinstance(np.int64(1), MutableArrayProtocol)
-    assert not isinstance(1, ArrayProtocol)
-    assert not isinstance([1], ArrayProtocol)
+    assert is_array_protocol(MinimalArray(1))
+    assert not is_array_protocol(MinimalArray(1), mutable=True)
+    assert is_array_protocol(MinimalMutableArray(1))
+    assert is_array_protocol(MinimalMutableArray(1), mutable=True)
+    assert is_array_protocol(np.array(1))
+    assert is_array_protocol(np.array(1), mutable=True)
+    assert is_array_protocol(np.int64(1))
+    assert not is_array_protocol(np.int64(1), mutable=True)
+    assert not is_array_protocol(1)
+    assert not is_array_protocol([1])
 
     # numpy subclasses implement ArrayProtocol
     x = ma.masked_array([1, -1], mask=[0, 1], dtype="i2")
-    assert isinstance(x, ArrayProtocol)
-    assert isinstance(x, MutableArrayProtocol)
+    assert is_array_protocol(x)
+    assert is_array_protocol(x, mutable=True)
 
 
 def test_array_protocol_h5_dataset(h5file):
     """Test that h5py.Dataset is a ArrayProtocol"""
     dset = h5file.create_dataset("x", shape=(10,), dtype="i2")
-    assert isinstance(dset, ArrayProtocol)
-    assert isinstance(dset, MutableArrayProtocol)
+    assert is_array_protocol(dset)
+    assert is_array_protocol(dset, mutable=True)
 
 
 @pytest.mark.skipif(Version(h5py.__version__) < Version("3.13"), reason="h5py#2550")
@@ -84,8 +84,9 @@ def test_array_protocol_h5_astypeview(h5file):
     """Test that h5py AsTypeView is an ArrayProtocol"""
     dset = h5file.create_dataset("x", shape=(10,), dtype="i2")
     view = dset.astype("i4")
-    assert isinstance(view, ArrayProtocol)
-    assert not isinstance(view, MutableArrayProtocol)
+    assert is_array_protocol(view)
+    assert not is_array_protocol(view, mutable=True)
+    assert is_array_protocol(view)
 
 
 def test_array_protocol_h5_astypeview_compat(h5file):
@@ -94,14 +95,15 @@ def test_array_protocol_h5_astypeview_compat(h5file):
     """
     dset = h5file.create_dataset("x", shape=(10,), dtype="i2")
     view = h5py_astype(dset, "i4")
-    assert isinstance(view, ArrayProtocol)
-    assert not isinstance(view, MutableArrayProtocol)
+    assert is_array_protocol(view)
+    assert not is_array_protocol(view, mutable=True)
+    assert is_array_protocol(view)
 
 
 def array_protocol_staged_changes():
     arr = StagedChangesArray.full((3, 3), chunk_size=(3, 1), dtype="f4")
-    assert isinstance(arr, ArrayProtocol)
-    assert isinstance(arr, MutableArrayProtocol)
+    assert is_array_protocol(arr)
+    assert is_array_protocol(arr, mutable=True)
 
 
 def test_array_protocol_rawdataview():
@@ -110,5 +112,5 @@ def test_array_protocol_rawdataview():
     __getitem__/__setitem__/__array__ raise (it must only be used via read_many_slices).
     """
     view = RawDataView(np.zeros((4, 3)), offset=1, dtype=np.dtype("i8"))
-    assert isinstance(view, ArrayProtocol)
-    assert isinstance(view, MutableArrayProtocol)
+    assert is_array_protocol(view)
+    assert is_array_protocol(view, mutable=True)

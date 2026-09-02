@@ -56,9 +56,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "-o",
         "--output",
         type=Path,
-        default=RESULTS_DIR.parent / "compare_report.txt",
+        default=RESULTS_DIR.parent / "compare_report.md",
         metavar="FILE",
-        help="Path to write the comparison report (default: .asv/compare_report.txt)",
+        help="Path to write the comparison report (default: .asv/compare_report.md)",
     )
     args = parser.parse_args(argv)
     if len(set(args.revs)) < 2:  # Deduplicate

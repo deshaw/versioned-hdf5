@@ -35,14 +35,16 @@ def action_st(shape: tuple[int, ...], max_size: int = 20):
 def staged_array_st(
     draw, max_ndim: int = 4, max_size: int = 20, max_actions: int = 6
 ) -> tuple[
-    Literal["full", "from_array"],  # how to create the base array
+    Literal["full", "from_array", "from_array_staged"],  # how to create the base array
     tuple[int, ...],  # initial shape
     tuple[int, ...],  # chunk size
     list[tuple[Literal["getitem", "setitem", "resize"], Any]],  # 0 or more actions
 ]:
-    base, (shape, chunks), n_actions = draw(
+    base_kind, (shape, chunks), n_actions = draw(
         st.tuples(
-            st.one_of(st.just("full"), st.just("from_array")),
+            st.one_of(
+                st.just("full"), st.just("from_array"), st.just("from_array_staged")
+            ),
             shape_chunks_st(max_ndim=max_ndim, min_size=0, max_size=max_size),
             st.integers(0, max_actions),
         )
@@ -56,25 +58,25 @@ def staged_array_st(
         if label == "resize":
             shape = arg
 
-    return base, orig_shape, chunks, actions
+    return base_kind, orig_shape, chunks, actions
 
 
 @pytest.mark.slow
 @given(staged_array_st())
 @hypothesis.settings(max_examples=max_examples, deadline=None)
 def test_staged_array(args):
-    base, shape, chunks, actions = args
+    base_kind, shape, chunks, actions = args
 
     rng = np.random.default_rng(0)
     fill_value = 42
 
-    if base == "full":
+    if base_kind == "full":
         base = np.full(shape, fill_value, dtype="u4")
         arr = StagedChangesArray.full(
             shape, chunk_size=chunks, fill_value=fill_value, dtype=base.dtype
         )
         assert arr.n_base_slabs == 0
-    elif base == "from_array":
+    elif base_kind == "from_array":
         base = rng.integers(2**32, size=shape, dtype="u4")
         # copy base to detect bugs where the StagedChangesArray
         # accidentally writes back to the base slabs
@@ -85,6 +87,14 @@ def test_staged_array(args):
             assert arr.n_base_slabs == 0
         else:
             assert arr.n_base_slabs > 0
+    elif base_kind == "from_array_staged":
+        base = rng.integers(2**32, size=shape, dtype="u4")
+        # The staged slabs are writeable views of base: __setitem__ intentionally
+        # writes back into base, and resize() deep-copies the trimmed slabs.
+        arr = StagedChangesArray.from_array(
+            base, chunk_size=chunks, fill_value=fill_value, as_base_slabs=False
+        )
+        assert arr.n_base_slabs == 0
     else:
         raise AssertionError("unreachable")
 
@@ -94,6 +104,7 @@ def test_staged_array(args):
     assert arr.fill_value.dtype == base.dtype
     assert arr.slabs[0].dtype == base.dtype
     assert arr.slabs[0].shape == chunks
+    assert arr.n_slabs == len(arr.slabs)
     assert arr.itemsize == 4
     assert arr.size == np.prod(shape)
     assert arr.nbytes == np.prod(shape) * 4  # dtype=uint32
@@ -104,9 +115,18 @@ def test_staged_array(args):
     assert len(arr.n_chunks) == len(shape)
     for n, s, c in zip(arr.n_chunks, shape, chunks, strict=True):
         assert n == s // c + (s % c > 0)
-    assert arr.n_staged_slabs == 0
-    assert arr.n_base_slabs + 1 == arr.n_slabs == len(arr.slabs)
-    assert not arr.has_changes
+    if base_kind == "from_array_staged":
+        assert arr.n_staged_slabs == arr.n_slabs - 1
+        if base.size > 0:
+            assert arr.n_staged_slabs > 0
+            assert arr.has_changes
+        else:
+            assert arr.n_staged_slabs == 0
+            assert not arr.has_changes
+    else:
+        assert arr.n_staged_slabs == 0
+        assert not arr.has_changes
+        assert arr.n_base_slabs + 1 == arr.n_slabs == len(arr.slabs)
 
     expect = base.copy()
 
@@ -142,7 +162,9 @@ def test_staged_array(args):
     # - a round-trip where an array is created empty, resized, filled, wiped by
     #   resize(0), and then # resized to the original shape will have has_changes=True
     #   even if identical to the original.
-    if expect.shape != base.shape or (expect != base).any():
+    if base_kind == "from_array_staged" and base.size > 0:
+        assert arr.has_changes
+    elif expect.shape != base.shape or (expect != base).any():
         assert arr.has_changes
     elif all(label == "getitem" for label, _ in actions):
         assert not arr.has_changes
@@ -1213,26 +1235,26 @@ def test_from_array_as_staged_slabs_2():
     """from_array(..., as_base_slabs=False)
 
     Input array is not exactly divisible by chunk_size.
-    Edge slabs are deep-copied; everything else is a writeable view.
+    All slabs are views of the original array, including the trimmed edge slabs.
+    resize() deep-copies the trimmed slabs if and when it is called.
     """
     arr = np.arange(15).reshape((3, 5))
     a = StagedChangesArray.from_array(arr, chunk_size=(2, 2), as_base_slabs=False)
     assert_array_equal(a, arr)
-    # Test that non-edge chunks are views
+    # Test that all chunks are views, including the edge chunks
+    for slab in a.staged_slabs:
+        assert slab is not None
+        assert np.shares_memory(slab, arr)
     a[:, :] = -1
     assert_array_equal(a, np.full((3, 5), -1))
-    assert_array_equal(
-        arr,
-        np.array(
-            [
-                [-1, -1, -1, -1, 4],
-                [-1, -1, -1, -1, 9],
-                [10, 11, 12, 13, 14],
-            ]
-        ),
-    )
-    # Enlarging at a later time is OK
+    assert_array_equal(arr, np.full((3, 5), -1))  # All slabs are views
+    # resize() deep-copies and pads the trimmed slabs; from now on writes to a
+    # don't propagate to arr
     a.resize((4, 6))
+    for slab in a.staged_slabs:
+        assert slab is not None
+        assert slab.shape == (4, 2)  # padded from (3, 2) or (3, 1) to (4, 2)
+        assert not np.shares_memory(slab, arr)
     a[0, -1] = 22
     a[-1, 0] = 33
     assert_array_equal(
@@ -1257,22 +1279,58 @@ def test_from_array_as_staged_slabs_3():
     a = StagedChangesArray.from_array(arr, chunk_size=(2, 2), as_base_slabs=False)
     assert_array_equal(a, arr)
     a[:, :] = -1
-    assert_array_equal(a, np.array([[-1, -1, -1], [-1, -1, -1]]))
-    assert_array_equal(arr, np.array([[-1, -1, 2], [-1, -1, 5]]))
+    assert_array_equal(a, np.full((2, 3), -1))
+    assert_array_equal(arr, np.full((2, 3), -1))  # All slabs are views
+
+    # resize() deep-copies the trimmed slab only; the full-size slab is still a view
+    a.resize((4, 5))
+    full_slab = a.staged_slabs[0]
+    assert full_slab is not None
+    assert full_slab.shape == (2, 2)
+    assert np.shares_memory(full_slab, arr)
+    trimmed_slab = a.staged_slabs[1]
+    assert trimmed_slab is not None
+    assert trimmed_slab.shape == (2, 2)
+    assert not np.shares_memory(trimmed_slab, arr)
+    assert_array_equal(
+        a,
+        np.array(
+            [
+                [-1, -1, -1, 0, 0],
+                [-1, -1, -1, 0, 0],
+                [0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0],
+            ]
+        ),
+    )
+    a[:] = 5
+    assert_array_equal(arr, np.array([[5, 5, -1], [5, 5, -1]]))
 
 
 def test_from_array_as_staged_slabs_4():
     """from_array(..., as_base_slabs=False)
 
     Input array is too small to fully cover even a single chunk;
-    all slabs are deep-copied.
+    the slab is a trimmed writeable view of the input array,
+    and resize() deep-copies it into a padded slab.
     """
     arr = np.asarray([1, 2])
     a = StagedChangesArray.from_array(arr, chunk_size=(3,), as_base_slabs=False)
     assert_array_equal(a, arr)
+    assert a.slabs[1].shape == (2,)
+    assert np.shares_memory(a.slabs[1], arr)
+
     a[:] = -1
     assert_array_equal(a, np.array([-1, -1]))
-    assert_array_equal(arr, np.array([1, 2]))
+    assert_array_equal(arr, np.array([-1, -1]))
+
+    # resize() deep-copies and pads the trimmed slab
+    a.resize((5,))
+    assert a.slabs[1].shape == (3,)  # padded from (2,) to (3,)
+    assert not np.shares_memory(a.slabs[1], arr)
+    assert_array_equal(a, np.array([-1, -1, 0, 0, 0]))
+    a[0] = 7
+    assert_array_equal(arr, np.array([-1, -1]))
 
 
 def test_from_array_as_staged_slabs_5():
@@ -1284,7 +1342,7 @@ def test_from_array_as_staged_slabs_5():
     arr.flags.writeable = False
     a = StagedChangesArray.from_array(arr, chunk_size=(2,), as_base_slabs=False)
     assert_array_equal(a, arr)
-    assert a.slabs[1].base is arr
+    assert np.shares_memory(a.slabs[1], arr)
     a[:] = -1
     assert_array_equal(a, [-1, -1, -1])
     assert_array_equal(arr, [0, 1, 2])
@@ -1301,6 +1359,150 @@ def test_from_array_as_staged_slabs_6():
     a[:] = -1
     assert_array_equal(a, [-1, -1, -1])
     assert_array_equal(arr, [0, 1, 2])
+
+
+def test_from_array_as_staged_slabs_trimmed_shapes():
+    """from_array(..., as_base_slabs=False)
+
+    Edge slabs are trimmed to the exact edge size, never padded.
+    """
+    arr = np.arange(35).reshape((5, 7))
+    a = StagedChangesArray.from_array(arr, chunk_size=(3, 4), as_base_slabs=False)
+    assert sorted(slab.shape for slab in a.staged_slabs) == [(5, 3), (5, 4)]
+    assert_array_equal(a, arr)
+
+
+def test_from_array_as_staged_slabs_resize_shrink_and_noop():
+    """resize() deep-copies trimmed staged slabs only when enlarging beyond a trimmed
+    edge; a shrink or a no-op resize leaves them as views. Enlarging afterwards still
+    works."""
+    arr = np.arange(15).reshape((3, 5))
+
+    # Shrink
+    a = StagedChangesArray.from_array(arr, chunk_size=(2, 2), as_base_slabs=False)
+    a.resize((2, 3))
+    assert a.shape == (2, 3)
+    assert_array_equal(a, arr[:2, :3])
+    for slab in a.staged_slabs:
+        if slab is None:
+            continue
+        assert np.shares_memory(slab, arr)  # still views
+    # Enlarging again works
+    a.resize((4, 5))
+    expected = np.zeros((4, 5), dtype=arr.dtype)
+    expected[:2, :3] = arr[:2, :3]
+    assert_array_equal(a, expected)
+    for slab in a.staged_slabs:
+        if slab is None:
+            continue
+        assert slab.shape[1:] == (2,)
+
+    # No-op
+    b = StagedChangesArray.from_array(arr, chunk_size=(2, 2), as_base_slabs=False)
+    b.resize((3, 5))
+    assert_array_equal(b, arr)
+    for slab in b.staged_slabs:
+        assert slab is not None
+        assert np.shares_memory(slab, arr)  # still views
+    # Enlarging again works
+    b.resize((4, 6))
+    expected = np.zeros((4, 6), dtype=arr.dtype)
+    expected[:3, :5] = arr
+    assert_array_equal(b, expected)
+    for slab in b.staged_slabs:
+        assert slab is not None
+        assert slab.shape == (4, 2)
+
+
+def test_from_array_as_staged_slabs_changes():
+    """changes() yields edge chunks trimmed to the exact edge size."""
+    arr = np.arange(15).reshape((3, 5))
+    a = StagedChangesArray.from_array(arr, chunk_size=(2, 2), as_base_slabs=False)
+
+    a[1, 1] = -1
+    final = np.zeros_like(arr)
+    for idx, _, chunk in a.changes():
+        assert not isinstance(chunk, tuple)  # all chunks lie on staged slabs
+        final[idx] = chunk  # chunk.shape must match the size of idx
+    assert_array_equal(final, a)
+
+
+def test_from_array_as_staged_slabs_commit():
+    """commit() hashes, deduplicates, and consolidates trimmed staged slabs."""
+    arr = np.arange(15).reshape((3, 5))
+    a = StagedChangesArray.from_array(arr, chunk_size=(2, 2), as_base_slabs=False)
+    a[2, 2] = -1
+    a.commit()
+    assert a.n_base_slabs == 1
+    assert a.n_staged_slabs == 0
+    assert_array_equal(
+        a,
+        np.array(
+            [
+                [0, 1, 2, 3, 4],
+                [5, 6, 7, 8, 9],
+                [10, 11, -1, 13, 14],
+            ]
+        ),
+    )
+    for _, slab_idx, chunk in a.changes():
+        assert slab_idx == 1
+        assert isinstance(chunk, tuple)  # now read from the base slab
+
+    # Identical trimmed chunks are deduplicated at commit time
+    arr2 = np.full((7, 1), 5)
+    b = StagedChangesArray.from_array(arr2, chunk_size=(3, 1), as_base_slabs=False)
+    b.commit()
+    assert b.n_base_slabs == 1
+    assert b.base_slabs[0].shape == (6, 1)  # 2 unique chunks, not 3
+    assert_array_equal(b, arr2)
+
+
+def test_from_array_as_staged_slabs_copy():
+    """copy() CoW-deep-copies trimmed staged slabs upon first write access."""
+    arr = np.arange(15).reshape((3, 5))
+    a = StagedChangesArray.from_array(arr, chunk_size=(2, 2), as_base_slabs=False)
+    b = a.copy()
+    b[0, 0] = -1
+    assert b[0, 0] == -1
+    assert a[0, 0] == 0
+    assert arr[0, 0] == 0
+    # Only the slab touched by the write has been deep-copied; the other
+    # slabs are still read-only views of arr.
+    assert not np.shares_memory(b.slabs[1], arr)
+    assert np.shares_memory(b.slabs[2], arr)
+
+
+def test_from_array_as_staged_slabs_astype():
+    """astype() lazily converts trimmed staged slabs."""
+    arr = np.arange(15).reshape((3, 5))
+    a = StagedChangesArray.from_array(arr, chunk_size=(2, 2), as_base_slabs=False)
+    c = a.astype("i8")
+    assert c.dtype == np.dtype("i8")
+    assert_array_equal(c, arr)
+    c[2, 4] = -2
+    assert c[2, 4] == -2
+    assert arr[2, 4] == 14
+
+
+def test_from_array_as_staged_slabs_refill():
+    """refill() rewrites fill_value points on trimmed staged slabs in place."""
+    arr = np.arange(15).reshape((3, 5))
+    a = StagedChangesArray.from_array(arr, chunk_size=(2, 2), as_base_slabs=False)
+    d = a.refill(42)
+    assert d.fill_value == 42
+    expected = arr.copy()
+    expected[expected == 0] = 42
+    assert_array_equal(d, expected)
+
+
+def test_from_array_as_staged_slabs_rechunk():
+    """rechunk() works on trimmed staged slabs."""
+    arr = np.arange(15).reshape((3, 5))
+    a = StagedChangesArray.from_array(arr, chunk_size=(2, 2), as_base_slabs=False)
+    e = a.rechunk((4, 4))
+    assert e.chunk_size == (4, 4)
+    assert_array_equal(e, arr)
 
 
 # ---------------------------------------------------------------------------
