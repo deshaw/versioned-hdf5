@@ -324,6 +324,7 @@ be physically filled with the fill_value:
 2. then, there is a transfer from the full slab to the staged slab for the extra area
    that needs to be filled with the fill_value.
 
+
 Trimmed staged slabs
 ^^^^^^^^^^^^^^^^^^^^
 ``from_array(as_base_slabs=False)`` creates staged slabs as views of the input array.
