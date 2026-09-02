@@ -60,6 +60,14 @@ class _ReplayBenchmark(Benchmark):
             sv[NAME][32, 0] = -1.0
 
 
+class Baseline(_ReplayBenchmark):
+    params = ["baseline"]
+    param_names = ["case"]
+
+    def peakmem_baseline(self, case):
+        """Measure RAM usage when doing nothing"""
+
+
 class TimeRecreateDataset(_ReplayBenchmark):
     """Benchmark recreate_dataset(), which rewrites every version of a dataset
     into a brand new group, and is the workhorse behind modify_metadata().
