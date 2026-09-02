@@ -325,6 +325,17 @@ be physically filled with the fill_value:
    that needs to be filled with the fill_value.
 
 
+Trimmed staged slabs
+^^^^^^^^^^^^^^^^^^^^
+``from_array(as_base_slabs=False)`` creates staged slabs as views of the input array.
+When the input array's shape is not exactly divisible by the ``chunk_size``, these views
+may not be large enough to contain the chunks after ``resize()`` enlarges the array.
+``resize()`` deep-copies trimmed slabs into new ones padded with empty data. It's
+important that this happens lazily, only when and if needed, to avoid unnecessary
+deep-copies when the array is never enlarged over its lifetime - notably, when it's
+created and then immediately consumed and destroyed when committing an
+``InMemoryArrayDataset``.
+
 ``load()`` algorithm
 --------------------
 
