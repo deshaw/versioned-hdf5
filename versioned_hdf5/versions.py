@@ -13,6 +13,7 @@ from versioned_hdf5.backend import (
     Filters,
     commit_staged_changes,
     create_virtual_dataset,
+    normalize_chunks,
     write_dataset,
 )
 from versioned_hdf5.staged_changes import StagedChangesArray
@@ -160,18 +161,27 @@ def commit_version(
             slices = commit_staged_changes(f, name, data.staged_changes)
         elif isinstance(data, InMemoryArrayDataset):
             # Either a new dense dataset or DatasetWrapper performing a hotswap of its
-            # inner dataset
+            # inner dataset.
+            # Resolve the chunk size upfront: write_dataset() would otherwise guess
+            # it from the empty array below instead of from the real data shape.
+            ds_chunks = chunks[name]
+            if f"_version_data/{name}/raw_data" not in f:
+                ds_chunks = normalize_chunks(ds_chunks, data.shape, data._buffer.dtype)
+
+            # Create the (empty) raw_data + hash table if they don't exist yet;
+            # otherwise validate chunks, filters, fillvalue, and dtype against them.
             write_dataset(
                 f,
                 name,
                 # Note: data._buffer.dtype could be StringDType while data.dtype
                 # presents as object dtype. Avoid unnecessary conversion.
                 np.empty((0,) * data.ndim, dtype=data._buffer.dtype),
-                chunks=chunks[name],
+                chunks=ds_chunks,
                 filters=filters[name],
                 fillvalue=data.fillvalue,
             )
             chunk_size = tuple(f[f"_version_data/{name}/raw_data"].attrs["chunks"])
+
             staged_changes = StagedChangesArray.from_array(
                 data._buffer,
                 chunk_size=chunk_size,

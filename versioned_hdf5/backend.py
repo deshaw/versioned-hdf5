@@ -174,6 +174,26 @@ class Filters:
         return False
 
 
+def normalize_chunks(
+    chunks: tuple[int, ...] | int | bool | None,
+    shape: tuple[int, ...],
+    dtype: np.dtype,
+) -> tuple[int, ...]:
+    """Normalize the ``chunks`` parameter of create_dataset(), guessing a sensible
+    chunk size when it is not explicitly specified.
+    """
+    if isinstance(chunks, int) and not isinstance(chunks, bool):
+        return (chunks,)
+    if not isinstance(chunks, bool) and chunks is not None:
+        return tuple(chunks)
+
+    ndim = len(shape)
+    assert ndim > 0  # 0d use case is caught upstream by wrappers.py
+    if ndim == 1:
+        return guess_chunk(shape, None, dtype.itemsize)
+    raise NotImplementedError("chunks must be specified for multi-dimensional datasets")
+
+
 def create_base_dataset(
     f,
     name,
@@ -200,23 +220,14 @@ def create_base_dataset(
         ):
             raise ValueError("Shape tuple is incompatible with data")
 
-    ndim = len(shape)
-    if isinstance(chunks, int) and not isinstance(chunks, bool):
-        chunks = (chunks,)
-    if chunks in [True, None]:
-        if ndim == 1:
-            chunks = guess_chunk(shape, None, data.dtype.itemsize)
-        else:
-            assert ndim > 1  # 0d use case is caught upstream by wrappers.py
-            raise NotImplementedError(
-                "chunks must be specified for multi-dimensional datasets"
-            )
-    group = f["_version_data"].create_group(name)
-
     if dtype is None:
         # https://github.com/h5py/h5py/issues/1474
         dtype = data.dtype
     dtype = np.dtype(dtype)
+
+    chunks = normalize_chunks(chunks, shape, dtype)
+    group = f["_version_data"].create_group(name)
+
     if dtype.metadata and (
         "vlen" in dtype.metadata or "h5py_encoding" in dtype.metadata
     ):
