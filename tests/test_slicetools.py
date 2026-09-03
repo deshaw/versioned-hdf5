@@ -146,17 +146,19 @@ def test_build_slab_indices_and_offsets_dense(h5file):
             [11, 12, 13, 14, 15],
         ]
     )
+    # Chunks are appended to raw_data in the order of the staged slabs determined by
+    # StagedChangesArray.from_array, which is not the native C order of the chunk grid.
     expect_raw_data = np.array(
         [
             # chunk (0, 0), offset 0
             [1, 2, 3],
             [6, 7, 8],
-            # chunk (0, 1), offset 2
-            [4, 5, 0],
-            [9, 10, 0],
-            # chunk (1, 0), offset 4
+            # chunk (1, 0), offset 2
             [11, 12, 13],
             [0, 0, 0],
+            # chunk (0, 1), offset 4
+            [4, 5, 0],
+            [9, 10, 0],
             # chunk (1, 1), offset 6
             [14, 15, 0],
             [0, 0, 0],
@@ -173,7 +175,7 @@ def test_build_slab_indices_and_offsets_dense(h5file):
     dcpl = virt_dset.id.get_create_plist()
     indices, offsets = build_slab_indices_and_offsets(dcpl, data.shape, chunks)
     np.testing.assert_array_equal(indices, [[1, 1], [1, 1]])
-    np.testing.assert_array_equal(offsets, [[0, 2], [4, 6]])
+    np.testing.assert_array_equal(offsets, [[0, 4], [2, 6]])
 
 
 def test_build_slab_indices_and_offsets_sparse(h5file):

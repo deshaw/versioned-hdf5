@@ -13,8 +13,10 @@ from versioned_hdf5.backend import (
     Filters,
     commit_staged_changes,
     create_virtual_dataset,
+    normalize_chunks,
     write_dataset,
 )
+from versioned_hdf5.staged_changes import StagedChangesArray
 from versioned_hdf5.wrappers import (
     DatasetLike,
     DatasetWrapper,
@@ -128,6 +130,7 @@ def commit_version(
             data = data.dataset
 
         if isinstance(data, InMemoryDataset):
+            # New version of an existing dataset
             if not data.staged_changes.has_changes:
                 # The virtual dataset was not changed from the previous
                 # version. Just copy it to the new version directly.
@@ -143,7 +146,10 @@ def commit_version(
             # Commit the staged changes straight into raw_data + the on-disk hash table.
             slices = commit_staged_changes(f, name, data.staged_changes)
         elif isinstance(data, InMemorySparseDataset):
-            # Create the (empty) raw_data + hash table, then commit into them.
+            # Either a new sparse dataset or DatasetWrapper performing a hotswap of its
+            # inner dataset. Create the (empty) raw_data + hash table if they don't
+            # exist yet; otherwise validate chunks, filters, fillvalue, and dtype
+            # against them.
             write_dataset(
                 f,
                 name,
@@ -154,16 +160,35 @@ def commit_version(
             )
             slices = commit_staged_changes(f, name, data.staged_changes)
         elif isinstance(data, InMemoryArrayDataset):
-            slices = write_dataset(
+            # Either a new dense dataset or DatasetWrapper performing a hotswap of its
+            # inner dataset.
+            # Resolve the chunk size upfront: write_dataset() would otherwise guess
+            # it from the empty array below instead of from the real data shape.
+            ds_chunks = chunks[name]
+            if f"_version_data/{name}/raw_data" not in f:
+                ds_chunks = normalize_chunks(ds_chunks, data.shape, data._buffer.dtype)
+
+            # Create the (empty) raw_data + hash table if they don't exist yet;
+            # otherwise validate chunks, filters, fillvalue, and dtype against them.
+            write_dataset(
                 f,
                 name,
                 # Note: data._buffer.dtype could be StringDType while data.dtype
                 # presents as object dtype. Avoid unnecessary conversion.
-                data._buffer,
-                chunks=chunks[name],
+                np.empty((0,) * data.ndim, dtype=data._buffer.dtype),
+                chunks=ds_chunks,
                 filters=filters[name],
                 fillvalue=data.fillvalue,
             )
+            chunk_size = tuple(f[f"_version_data/{name}/raw_data"].attrs["chunks"])
+
+            staged_changes = StagedChangesArray.from_array(
+                data._buffer,
+                chunk_size=chunk_size,
+                fill_value=data.fillvalue,
+                as_base_slabs=False,
+            )
+            slices = commit_staged_changes(f, name, staged_changes)
         else:
             raise AssertionError("Unreachable")
 

@@ -2228,8 +2228,10 @@ def test_stage_version_log_stats(tmp_path, caplog):
             "bar: New chunks written: 2; Number of chunks reused: 151"
             in caplog.records[-2].getMessage()
         )
+        # Chunks full of fill_value count towards the reused total;
+        # duplicate chunks are counted for each replica.
         assert (
-            "baz: New chunks written: 1; Number of chunks reused: 4"
+            "baz: New chunks written: 1; Number of chunks reused: 19"
             in caplog.records[-1].getMessage()
         )
 

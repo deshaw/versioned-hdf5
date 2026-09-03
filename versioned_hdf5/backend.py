@@ -174,6 +174,26 @@ class Filters:
         return False
 
 
+def normalize_chunks(
+    chunks: tuple[int, ...] | int | bool | None,
+    shape: tuple[int, ...],
+    dtype: np.dtype,
+) -> tuple[int, ...]:
+    """Normalize the ``chunks`` parameter of create_dataset(), guessing a sensible
+    chunk size when it is not explicitly specified.
+    """
+    if isinstance(chunks, int) and not isinstance(chunks, bool):
+        return (chunks,)
+    if not isinstance(chunks, bool) and chunks is not None:
+        return tuple(chunks)
+
+    ndim = len(shape)
+    assert ndim > 0  # 0d use case is caught upstream by wrappers.py
+    if ndim == 1:
+        return guess_chunk(shape, None, dtype.itemsize)
+    raise NotImplementedError("chunks must be specified for multi-dimensional datasets")
+
+
 def create_base_dataset(
     f,
     name,
@@ -200,23 +220,14 @@ def create_base_dataset(
         ):
             raise ValueError("Shape tuple is incompatible with data")
 
-    ndim = len(shape)
-    if isinstance(chunks, int) and not isinstance(chunks, bool):
-        chunks = (chunks,)
-    if chunks in [True, None]:
-        if ndim == 1:
-            chunks = guess_chunk(shape, None, data.dtype.itemsize)
-        else:
-            assert ndim > 1  # 0d use case is caught upstream by wrappers.py
-            raise NotImplementedError(
-                "chunks must be specified for multi-dimensional datasets"
-            )
-    group = f["_version_data"].create_group(name)
-
     if dtype is None:
         # https://github.com/h5py/h5py/issues/1474
         dtype = data.dtype
     dtype = np.dtype(dtype)
+
+    chunks = normalize_chunks(chunks, shape, dtype)
+    group = f["_version_data"].create_group(name)
+
     if dtype.metadata and (
         "vlen" in dtype.metadata or "h5py_encoding" in dtype.metadata
     ):
@@ -443,18 +454,14 @@ def commit_staged_changes(
     `Hashtable` class. At the moment of writing, the legacy path is still triggered by
     some use cases:
 
-    commit_staged_changes + hash_slab (new, fast)
-        - InMemorySparseDataset commit (first version of sparse datasets)
-        - InMemoryDataset commit (version 2+ of any dataset)
-        - recreate_dataset, when its callback returns an InMemoryDataset or an
-          InMemorySparseDataset
+    New code path (commit_staged_changes + hash_slab)
+        - commit on stage_version(...) context exit
+        - recreate_dataset
+        - modify_metadata
 
-    write_dataset + Hashtable (legacy, slow)
-        - InMemoryArrayDataset commit (first version of dense datasets; full overwrites)
-        - delete_versions
-        - update_metadata
-        - recreate_dataset, in all other cases
-        - VersionedHDF5.rebuild_hashtables
+    Legacy code path
+        - delete_versions (Hashtable, _recreate_raw_data)
+        - VersionedHDF5.rebuild_hashtables (Hashtable)
     """
     sc = staged_changes
     group = f["_version_data"][name]
@@ -496,6 +503,7 @@ def commit_staged_changes(
     # Calculate hashes, deduplicate staged chunks, and write to raw_data
     sc.commit(empty=empty)
 
+    n_appended_chunks = 0
     if sc.n_base_slabs > n_base_before:
         # At least one staged chunk is original (neither identical to a chunk
         # already on raw_data nor full of fill_value)
@@ -504,7 +512,8 @@ def commit_staged_changes(
         new_slab_idx = sc.n_base_slabs
         new_hashes = sc.hash_tables[new_slab_idx]
         assert new_hashes is not None
-        new_n_chunks = prev_n_chunks + new_hashes.shape[0]
+        n_appended_chunks = new_hashes.shape[0]
+        new_n_chunks = prev_n_chunks + n_appended_chunks
 
         # Calculate (start, stop) offsets of the chunks on raw_data
         starts = np.arange(
@@ -548,6 +557,13 @@ def commit_staged_changes(
         sc.slabs = [sc.slabs[0], _raw_data_as_base_slab(raw_data, sc.dtype)]
         sc.hash_tables = [None, None]
         sc.n_base_slabs = 1
+
+    logging.debug(
+        "  %s: New chunks written: %d; Number of chunks reused: %d",
+        name,
+        n_appended_chunks,
+        np.prod(sc.slab_indices.shape) - n_appended_chunks,
+    )
 
     # Build the {virtual dataset index: raw_data slice} mapping
     # TODO Migrated to a Cythonized loop that reads sc.slab_offsets directly
