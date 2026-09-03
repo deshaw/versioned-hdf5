@@ -373,6 +373,35 @@ def test_has_changes():
     assert a.has_changes  # resize() flips it even without data changes
 
 
+def test_has_base_chunks():
+    a = StagedChangesArray.full((6,), chunk_size=(2,), fill_value=42)
+    # only full chunks
+    assert a.n_base_slabs == 0
+    assert a.n_staged_slabs == 0
+    assert not a.has_base_chunks
+    # full and staged chunks
+    a[0] = 1
+    assert a.n_base_slabs == 0
+    assert a.n_staged_slabs == 1
+    assert not a.has_base_chunks
+    # full and base chunks
+    a.commit()
+    assert a.n_base_slabs == 1
+    assert a.n_staged_slabs == 0
+    assert a.has_base_chunks
+    # full, base, and staged chunks
+    a[2] = 1
+    assert a.n_base_slabs == 1
+    assert a.n_staged_slabs == 1
+    assert a.has_base_chunks
+    # A base slab may no longer be referenced by slab_indices,
+    # but it remains in the slabs list.
+    a[:] = 2
+    assert a.n_base_slabs == 1
+    assert a.n_staged_slabs == 2
+    assert not a.has_base_chunks
+
+
 def test_resize_noop():
     a = StagedChangesArray.from_array(np.arange(4), chunk_size=(2,))
     a.resize((4,))
