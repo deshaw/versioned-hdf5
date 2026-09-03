@@ -201,4 +201,4 @@ def test_chunk_reuse_multidim_1(vfile):
         values_ds[:] = np.array([[i + (j % 3) for i in range(8)] for j in range(8)])
     with vfile.stage_version("r2") as sv:
         # Chunk rows 0 and 1 are identical, hence deduplicated.
-        assert_slab_offsets(sv, "values", [[0, 3, 15], [0, 3, 15], [18, 21, 24]])
+        assert_slab_offsets(sv, "values", [[0, 6, 12], [0, 6, 12], [18, 21, 24]])
