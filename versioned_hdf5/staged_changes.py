@@ -479,6 +479,7 @@ class StagedChangesArray(MutableMapping[Any, T]):
             slab_offsets=self.slab_offsets.copy() if copy else self.slab_offsets,
             n_slabs=self.n_slabs,
             n_base_slabs=self.n_base_slabs,
+            slab_lengths=[0 if slab is None else slab.shape[0] for slab in self.slabs],
         )
 
     def _load_plan(self, copy: bool = True) -> LoadPlan:
@@ -676,6 +677,16 @@ class StagedChangesArray(MutableMapping[Any, T]):
 
             tplan.transfer(src_slab, dst_slab)
 
+        for slab_idx, new_size0 in plan.shrink_slabs:
+            assert slab_idx > self.n_base_slabs  # Never shrink base slabs
+            slab = self.slabs[slab_idx]
+            assert slab is not None
+            self.slabs[slab_idx] = slab[:new_size0]
+            ht = self.hash_tables[slab_idx]
+            if ht is not None:
+                new_nchunks = int(ceil_a_over_b(new_size0, self.chunk_size[0]))
+                self.hash_tables[slab_idx] = ht[:new_nchunks]
+
         for slab_idx in plan.drop_slabs:
             assert slab_idx != 0  # Never drop the full slab
             self.slabs[slab_idx] = None
@@ -728,9 +739,17 @@ class StagedChangesArray(MutableMapping[Any, T]):
         slabs list is replaced with None.
         This never causes base slabs or the full slab to be dereferenced.
 
-        When enlarging, trimmed staged slabs created by from_array(as_base_slabs=False)
-        are deep-copied into new slabs padded to a whole number of chunks, as enlarging
-        the array may otherwise need to write beyond the edge of a trimmed slab.
+        Trimmed staged slabs, e.g. slabs with shape smaller than
+        (n * chunk_size[0], chunk_size[1:]) which are only ever created by
+        from_array(as_base_slabs=False), are handled differently depending on which axes
+        are being enlarged:
+
+        - When enlarging along axis 1+, a slab trimmed along any of those axes is
+          deep-copied into a new one padded to a whole number of chunks along all axes,
+          as the resize may otherwise need to write beyond the edge of the slab.
+        - When enlarging along axis 0, a slab that is trimmed exclusively along it is
+          instead handled by ResizePlan, which relocates only its last chunk to a brand
+          new staged slab and shrinks the original in place.
         """
         if not self.writeable:
             raise ValueError("assignment destination is read-only")
@@ -740,15 +759,8 @@ class StagedChangesArray(MutableMapping[Any, T]):
 
         plan = self._resize_plan(shape, copy=False)
 
-        untrim_axes = [
-            axis
-            for axis, (o, n, c) in enumerate(
-                zip(self.shape, shape, self.chunk_size, strict=True)
-            )
-            if n > o and o % c
-        ]
-        if untrim_axes:
-            self._untrim_staged_slabs(untrim_axes)
+        # When enlarging, add padding area to staged slabs that can't fit whole chunks
+        self._untrim_staged_slabs(shape)
 
         # A resize may change the slab_indices and slab_offsets, but won't necessarily
         # impact any chunks. In such cases, this is a no-op.
@@ -768,11 +780,23 @@ class StagedChangesArray(MutableMapping[Any, T]):
         new_slab[tuple(slice(s) for s in slab.shape)] = slab
         return new_slab
 
-    def _untrim_staged_slabs(self, axes: list[int]) -> None:
+    def _untrim_staged_slabs(self, new_shape: tuple[int, ...]) -> None:
         """Deep-copy trimmed staged slabs into new slabs padded to full chunk_size.
 
         Trimmed staged slabs are only ever created by from_array(as_base_slabs=False).
+        Slabs that are exclusively trimmed along axis 0 are left alone; only the last
+        chunk of the slab is affected and ResizePlan relocates it more cheaply.
         """
+        axes = [
+            axis
+            for axis, (o, n, c) in enumerate(
+                zip(self.shape, new_shape, self.chunk_size, strict=True)
+            )
+            if axis > 0 and n > o and o % c
+        ]
+        if not axes:
+            return
+
         for slab_idx in range(self.staged_slabs_start, self.n_slabs):
             slab = self.slabs[slab_idx]
             if slab is None:
@@ -1121,42 +1145,13 @@ class StagedChangesArray(MutableMapping[Any, T]):
 
 
 @cython.cclass
-@dataclass(init=False, eq=False, repr=False, kw_only=True)
+@dataclass(eq=False, repr=False, kw_only=True)
 class TransferPlan:
     """Instructions to transfer data:
 
     - from a slab to the return value of __getitem__, or
     - from the value parameter of __setitem__ to a slab, or
     - between two slabs.
-
-    Parameters
-    ----------
-    mappers:
-        List of IndexChunkMapper objects, one for each axis, defining the selection.
-    src_slab_idx:
-        Index of the source slab in StagedChangesArray.slabs.
-        During __setitem__, it must be None to indicate the value parameter.
-    dst_slab_idx:
-        Index of the destination slab in StagedChangesArray.slabs.
-        During __getitem__, it must be None to indicate the output array.
-    chunk_idxidx:
-        2D array with shape (nchunks, ndim), one row per chunk being transferred and one
-        columns per dimension. chunk_idxidx[i, j] represents the address on
-        mappers[j].chunk_indices for the i-th chunk; in other words,
-        mappers[j].chunk_indices[chunk_idxidx[i, j]] * chunk_size[j] is the address
-        along axis j of the top-left corner of the chunk in the virtual dataset.
-    src_slab_offsets:
-        Offset of each chunk within the source slab along axis 0.
-        Ignored during __setitem__.
-    dst_slab_offsets:
-        Offset of each chunk within the destination slab along axis 0.
-        Ignored during __getitem__.
-    slab_indices: optional
-        StagedChangesArray.slab_indices. It will be updated in place.
-        Ignored during __getitem__.
-    slab_offsets: optional
-        StagedChangesArray.slab_offsets. It will be updated in place.
-        Ignored during __getitem__.
     """
 
     #: Index of the source slab in StagedChangesArray.slabs.
@@ -1174,8 +1169,9 @@ class TransferPlan:
     src_stride: hsize_t[:, :]
     dst_stride: hsize_t[:, :]
 
-    def __init__(
-        self,
+    @classmethod
+    def from_mappers(
+        cls,
         mappers: list[IndexChunkMapper],
         *,
         src_slab_idx: int | None,
@@ -1185,9 +1181,38 @@ class TransferPlan:
         dst_slab_offsets: hsize_t[:],
         slab_indices: NDArray[np_hsize_t] | None = None,
         slab_offsets: NDArray[np_hsize_t] | None = None,
-    ):
-        self.src_slab_idx = src_slab_idx
-        self.dst_slab_idx = dst_slab_idx
+    ) -> TransferPlan:
+        """Define the selection of each chunk through IndexChunkMappers.
+
+        Parameters
+        ----------
+        mappers:
+            List of IndexChunkMapper objects, one for each axis, defining the selection.
+        src_slab_idx:
+            Index of the source slab in StagedChangesArray.slabs.
+            During __setitem__, it must be None to indicate the value parameter.
+        dst_slab_idx:
+            Index of the destination slab in StagedChangesArray.slabs.
+            During __getitem__, it must be None to indicate the output array.
+        chunk_idxidx:
+            2D array with shape (nchunks, ndim), one row per chunk being transferred and
+            one column per dimension. chunk_idxidx[i, j] represents the address on
+            mappers[j].chunk_indices for the i-th chunk; in other words,
+            mappers[j].chunk_indices[chunk_idxidx[i, j]] * chunk_size[j] is the address
+            along axis j of the top-left corner of the chunk in the virtual dataset.
+        src_slab_offsets:
+            Offset of each chunk within the source slab along axis 0.
+            Ignored during __setitem__.
+        dst_slab_offsets:
+            Offset of each chunk within the destination slab along axis 0.
+            Ignored during __getitem__.
+        slab_indices: optional
+            StagedChangesArray.slab_indices. It will be updated in place.
+            Ignored during __getitem__.
+        slab_offsets: optional
+            StagedChangesArray.slab_offsets. It will be updated in place.
+            Ignored during __getitem__.
+        """
         nchunks = chunk_idxidx.shape[0]
         ndim = chunk_idxidx.shape[1]
 
@@ -1209,12 +1234,6 @@ class TransferPlan:
             src_slab_offsets,
             dst_slab_offsets,
         )
-        # Refer to subchunk_map.pxd::ReadManySlicesNDColumn for column indices
-        self.src_start = slices_nd[:, 0, :]
-        self.dst_start = slices_nd[:, 1, :]
-        self.count = slices_nd[:, 2, :]
-        self.src_stride = slices_nd[:, 3, :]
-        self.dst_stride = slices_nd[:, 4, :]
 
         # Finally, update slab_indices and slab_offsets in place
         if slab_indices is not None:
@@ -1229,6 +1248,17 @@ class TransferPlan:
             chunk_indices_tup = tuple(chunk_indices)
             slab_indices[chunk_indices_tup] = dst_slab_idx
             slab_offsets[chunk_indices_tup] = np.asarray(dst_slab_offsets)
+
+        # Refer to subchunk_map.pxd::ReadManySlicesNDColumn for column indices
+        return cls(
+            src_slab_idx=src_slab_idx,
+            dst_slab_idx=dst_slab_idx,
+            src_start=slices_nd[:, 0, :],
+            dst_start=slices_nd[:, 1, :],
+            count=slices_nd[:, 2, :],
+            src_stride=slices_nd[:, 3, :],
+            dst_stride=slices_nd[:, 4, :],
+        )
 
     @cython.ccall
     def transfer(self, src: NDArray[T], dst: NDArray[T]):
@@ -1358,18 +1388,23 @@ class MutatingPlan:
     #: and append them to StagedChangesArray.slabs
     append_slabs: list[tuple[int, ...]] = field(init=False, default_factory=list)
 
-    #: data transfers between slabs or from the __setitem__ value to a slab.
+    #: Data transfers between slabs or from the __setitem__ value to a slab.
     #: dst_slab_idx can include the slabs just created by append_slabs.
     transfers: list[TransferPlan] = field(init=False, default_factory=list)
 
-    #: indices of StagedChangesArray.slabs to replace with None,
+    #: Tuples of (slab idx, new slab size along axis 0).
+    #: Truncate staged slabs in place after the last trimmed chunk has been removed.
+    #: Hash tables, if present, are truncated accordingly.
+    shrink_slabs: list[tuple[int, int]] = field(init=False, default_factory=list)
+
+    #: Indices of StagedChangesArray.slabs to replace with None,
     #: thus dereferencing the slab. This must happen *after* the transfers.
     drop_slabs: list[int] = field(init=False, default_factory=list)
 
     @property
     def mutates(self) -> bool:
         """True if this plan alters the state of the StagedChangesArray"""
-        return bool(self.transfers or self.drop_slabs)
+        return bool(self.transfers or self.shrink_slabs or self.drop_slabs)
 
     @property
     def head(self) -> str:
@@ -1393,6 +1428,8 @@ class MutatingPlan:
                 s += f"\n  slabs.append(empty({shape}))  # slabs[{slab_idx}]"
 
         s += "".join(str(tplan) for tplan in self.transfers)
+        for slab_idx, new_size0 in self.shrink_slabs:
+            s += f"\n  slabs[{slab_idx}] = slabs[{slab_idx}][:{new_size0}]"
         for slab_idx in self.drop_slabs:
             s += f"\n  slabs[{slab_idx}] = None"
         s += f"\nslab_indices:\n{self.slab_indices}"
@@ -1720,6 +1757,7 @@ class ResizePlan(MutatingPlan):
         slab_offsets: NDArray[np_hsize_t],
         n_slabs: int,
         n_base_slabs: int,
+        slab_lengths: list[int],
     ):
         """Generate instructions to execute StagedChangesArray.resize().
 
@@ -1729,6 +1767,8 @@ class ResizePlan(MutatingPlan):
             StagedChangesArray.shape before the resize operation
         new_shape:
             StagedChangesArray.shape after the resize operation
+        slab_lengths:
+            Size along axis 0 of each slab (0 where slab is None)
 
         All other parameters are the matching attributes of StagedChangesArray.
         """
@@ -1808,6 +1848,7 @@ class ResizePlan(MutatingPlan):
                             axis=axis,
                             n_slabs=n_slabs + len(self.append_slabs),
                             n_base_slabs=n_base_slabs,
+                            slab_lengths=slab_lengths,
                         )
                         prev_shape = next_shape
 
@@ -1858,6 +1899,7 @@ class ResizePlan(MutatingPlan):
         axis: ssize_t,
         n_slabs: int,
         n_base_slabs: int,
+        slab_lengths: list[int],
     ):
         """Enlarge along a single axis"""
         old_size = old_shape[axis]
@@ -1869,15 +1911,19 @@ class ResizePlan(MutatingPlan):
 
         new_size = min(new_shape[axis], old_floor_size + chunk_size[axis])
 
-        # Two steps:
+        # Three steps:
         # 1. Find edge chunks on base slabs that were partial and became full, or
         #    vice versa, or remain partial but larger.
         #    Load them into a new slab at slab_idx=n_slabs.
-        # 2. Find edge chunks that need filling with fill_value
+        # 2. (Only when axis==0)
+        #    Find edge chunks on staged slabs trimmed along axis 0 and relocate
+        #    them to a brand new staged slab, shrinking the originals.
+        # 3. Find the edge chunks that need filling with fill_value
         #    and transfer from slabs[0] (the full chunk) into them.
-        #    This includes chunks we just transferred in the previous step)
+        #    This includes chunks we just transferred in the previous steps.
 
         # Step 1
+        n_append_before = len(self.append_slabs)
         self._load_edge_chunks_along_axis(
             shape=new_shape,
             chunk_size=chunk_size,
@@ -1887,8 +1933,20 @@ class ResizePlan(MutatingPlan):
             n_slabs=n_slabs,
             n_base_slabs=n_base_slabs,
         )
+        n_slabs += len(self.append_slabs) - n_append_before
 
         # Step 2
+        if axis == 0:
+            n_slabs = self._relocate_trimmed_staged_chunks_along_axis0(
+                old_shape=old_shape,
+                new_shape=new_shape,
+                chunk_size=chunk_size,
+                n_slabs=n_slabs,
+                n_base_slabs=n_base_slabs,
+                slab_lengths=slab_lengths,
+            )
+
+        # Step 3
         idx = (slice(None),) * axis + (slice(old_size, new_size),)
         _, mappers = index_chunk_mappers(idx, new_shape, chunk_size)
         if not mappers:
@@ -1914,6 +1972,138 @@ class ResizePlan(MutatingPlan):
                     dst_slab_idx="chunks",
                 )
             )
+
+    @cython.cfunc
+    def _relocate_trimmed_staged_chunks_along_axis0(
+        self,
+        old_shape: tuple[int, ...],
+        new_shape: tuple[int, ...],
+        chunk_size: tuple[int, ...],
+        n_slabs: int,
+        n_base_slabs: int,
+        slab_lengths: list[int],
+    ) -> int:
+        """Relocate the edge chunks that lie on staged slabs trimmed along axis 0.
+
+        Trimmed staged slabs are only ever created by from_array(as_base_slabs=False).
+        When enlarging along axis 0, the last chunk of each of them cannot be filled in
+        place, as writing beyond the old edge would overflow the slab. Instead of
+        deep-copying the whole slabs (see _untrim_staged_slabs), relocate only the
+        overflowing chunks to a brand new staged slab, then shrink the originals in
+        place (or drop them if they become empty).
+
+        The relocations are one TransferPlan per source slab, defined by directly
+        invoking the plain constructor with read_many_slices() parameters computed
+        in bulk, bypassing the expensive from_mappers(); each trimmed slab typically
+        contributes a single tiny chunk, so the per-chunk index arithmetic of the
+        mappers would cost more than the copy itself.
+
+        When also enlarging along axis 1+, slabs that are also trimmed along that axis
+        don't reach this method: they were already deep-copied and padded by
+        _untrim_staged_slabs before the plan was created.
+
+        Return the next free slab index (n_slabs + 1 if a new slab was appended, else
+        n_slabs).
+        """
+        cs0 = chunk_size[0]
+        old_size = old_shape[0]
+        old_floor_size = old_size - old_size % cs0
+        assert old_floor_size < old_size
+        ndim = len(chunk_size)
+
+        # Height along axis 0 of each slab (0 for the None slabs, which can never
+        # be trimmed as 0 % cs0 == 0)
+        slab_lengths_nd = np.array(slab_lengths, dtype=np_hsize_t)
+        trimmed = slab_lengths_nd % cs0 != 0
+        trimmed[: n_base_slabs + 1] = False  # Never relocate the full or base slabs
+        if not trimmed[n_base_slabs + 1 :].any():
+            return n_slabs
+
+        # The edge chunks along axis 0 are the last row of the chunk grid. Only the
+        # chunks that would overflow their (trimmed) slab are relocated: the last
+        # chunk of each trimmed slab. Full edge chunks (e.g. after a prior shrink)
+        # already have room for the fill and are updated in place by step 3.
+        idx = (slice(old_floor_size, old_size),)
+        _, mappers = index_chunk_mappers(idx, new_shape, chunk_size)
+        if not mappers:
+            return n_slabs  # Resizing to size 0 along another axis
+        chunks = np.asarray(
+            _chunks_in_selection(
+                self.slab_indices,
+                self.slab_offsets,
+                mappers,
+            )
+        )
+        slab_idx_col = chunks[:, ndim]
+        overflow = chunks[:, ndim + 1] + cs0 > slab_lengths_nd[slab_idx_col]
+        chunks = chunks[trimmed[slab_idx_col] & overflow]
+        n_reloc = chunks.shape[0]
+        if n_reloc == 0:
+            return n_slabs
+
+        # Remap the relocated chunks onto the new slab, one chunk per cs0 rows.
+        # The first ndim columns of chunks are the chunk indices within the grid
+        # of slab_indices and slab_offsets.
+        dst_offsets = np.arange(0, n_reloc * cs0, cs0, dtype=np_hsize_t)
+        grid = tuple(chunks[:, j] for j in range(ndim))
+        self.slab_indices[grid] = n_slabs
+        self.slab_offsets[grid] = dst_offsets
+
+        # The count along axis 0 is the same for all edge chunks; along the other
+        # axes it's the extent of the chunk within the old array, which is also
+        # the width of the (from_array) slab.
+        count = np.empty((n_reloc, ndim), dtype=np_hsize_t)
+        count[:, 0] = old_size - old_floor_size
+        for j in range(1, ndim):
+            count[:, j] = np.minimum(
+                chunk_size[j], old_shape[j] - chunks[:, j] * chunk_size[j]
+            )
+
+        # read_many_slices() parameters of all the relocations, computed in bulk.
+        # Along the axes 1+ the chunks always sit at the top left corner of their
+        # slot on the slab; a single-row stride array is broadcast by
+        # read_many_slices() across all the slices of each TransferPlan.
+        src_start = np.empty((n_reloc, ndim), dtype=np_hsize_t)
+        src_start[:, 0] = chunks[:, ndim + 1]
+        src_start[:, 1:] = 0
+        dst_start = np.empty((n_reloc, ndim), dtype=np_hsize_t)
+        dst_start[:, 0] = dst_offsets
+        dst_start[:, 1:] = 0
+        stride = np.ones((1, ndim), dtype=np_hsize_t)
+
+        self.append_slabs.append((n_reloc * cs0, *chunk_size[1:]))
+
+        # chunks is sorted by source slab (see _chunks_in_selection); split it into
+        # one TransferPlan per source slab
+        start = 0
+        for stop in [*np.flatnonzero(np.diff(chunks[:, ndim])) + 1, n_reloc]:
+            self.transfers.append(
+                TransferPlan(
+                    src_slab_idx=int(chunks[start, ndim]),
+                    dst_slab_idx=n_slabs,
+                    src_start=src_start[start:stop],
+                    dst_start=dst_start[start:stop],
+                    count=count[start:stop],
+                    src_stride=stride,
+                    dst_stride=stride,
+                )
+            )
+            start = stop
+
+        # Shrink the slabs that had their last chunk relocated. A slab that only
+        # held the relocated chunk becomes empty; drop it so that
+        # (slab is None) == (hash table is None) still holds for commit().
+        for old_slab_idx in np.unique(chunks[:, ndim]).tolist():
+            old_size_i = slab_lengths[old_slab_idx]
+            trim = old_size_i % cs0
+            if trim == 0:
+                pass
+            elif trim == old_size_i:
+                self.drop_slabs.append(old_slab_idx)
+            else:
+                self.shrink_slabs.append((old_slab_idx, old_size_i - trim))
+
+        return n_slabs + 1
 
     @cython.cfunc
     def _load_edge_chunks_along_axis(
@@ -2235,18 +2425,22 @@ class CommitPlan(MutatingPlan):
                     old_to_new_chunk[cl_key] = hash_to_old_chunk[ch_key]
 
             if n_slab_transfers > 0:
-                tplan = TransferPlan.__new__(TransferPlan)
-                tplan.src_slab_idx = old_slab_idx
-                # slab_idx of the new base slab, before the staged slabs are removed
-                tplan.dst_slab_idx = len(hash_tables)
-                tplan.src_start = src_start[out_row - n_slab_transfers : out_row]
-                tplan.dst_start = dst_start[out_row - n_slab_transfers : out_row]
-                # Note: this is a view; it's important since we're going to refine
-                # tplan_count values later in this method.
-                tplan.count = tplan_count[out_row - n_slab_transfers : out_row]
-                tplan.src_stride = np.ones((n_slab_transfers, ndim), dtype=np_hsize_t)
-                tplan.dst_stride = tplan.src_stride
-                self.transfers.append(tplan)
+                stride = np.ones((n_slab_transfers, ndim), dtype=np_hsize_t)
+                self.transfers.append(
+                    TransferPlan(
+                        src_slab_idx=old_slab_idx,
+                        # slab_idx of the new base slab, before the staged
+                        # slabs are removed
+                        dst_slab_idx=len(hash_tables),
+                        src_start=src_start[out_row - n_slab_transfers : out_row],
+                        dst_start=dst_start[out_row - n_slab_transfers : out_row],
+                        # Note: this is a view; it's important since we're going to
+                        # refine tplan_count values later in this method.
+                        count=tplan_count[out_row - n_slab_transfers : out_row],
+                        src_stride=stride,
+                        dst_stride=stride,
+                    )
+                )
 
         # Append a single new base slab for the surviving unique staged chunks, but only
         # if there are any (they have not been found to be duplicates of chunks in the
@@ -2586,7 +2780,7 @@ def _make_transfer_plans(
         src_slab_offsets_group = src_slab_offsets_v[start:stop]
         dst_slab_offsets_group = dst_slab_offsets_v[start:stop]
 
-        yield TransferPlan(
+        yield TransferPlan.from_mappers(
             mappers,
             src_slab_idx=src_slab_idx_i,
             dst_slab_idx=dst_slab_idx_i,
