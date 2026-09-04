@@ -28,7 +28,8 @@ if TYPE_CHECKING:
 
 DEFAULT_CHUNK_SIZE = 2**12
 # Amount of RAM that rewrite_dataset() can allocate as a scratch area
-REWRITE_BUFFER_BYTES = 2**24  # 16 MiB
+# This is a compromise between minimizing RAM usage and runtime.
+REWRITE_BUFFER_BYTES = 2**26  # 64 MiB
 DATA_VERSION = 4
 # data_version 2 has broken hashtables, always need to rebuild
 # data_version 3 hash collisions for string arrays which, when concatenated,

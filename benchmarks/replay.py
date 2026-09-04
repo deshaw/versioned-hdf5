@@ -12,8 +12,8 @@ from versioned_hdf5.replay import recreate_dataset, tmp_group
 from .common import Benchmark
 
 #: Shape of the dataset in every version, and its chunk size:
-#: 64 MiB of float64 in 256 KiB chunks, i.e. 256 chunks
-SHAPE = (8192, 1024)
+#: 128 MiB of float64 in 256 KiB chunks, i.e. 256 chunks
+SHAPE = (8192, 2048)
 CHUNK_SIZE = (32, 1024)
 DATASET_BYTES = np.prod(SHAPE) * 8
 CHUNK_BYTES = np.prod(CHUNK_SIZE) * 8
