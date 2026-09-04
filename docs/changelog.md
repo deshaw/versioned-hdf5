@@ -1,10 +1,57 @@
 # Changelog
 
+## 2.5.0 (2026-09-04)
+
+### Major Changes
+
+- This release delivers the first phase of a performance overhaul in the commit phase.
+  Staged writes are now hashed, deduplicated, and written to disk fully in Cython
+  through the `StagedChangesArray` backend. The creation of the virtual datasets at the
+  end of commit is still using the legacy path and will be migrated in a future release.
+  `delete_versions()` also temporarily remains on the old, slow code path.
+
+  In short, this translates to:
+
+  - No changes to the user-facing API
+  - Major speed-ups (up to 40%) when committing a large number of small chunks
+  - Major speed-ups (up to 40%) when committing string datasets with prevalently very
+    short strings, regardless of chunk size
+  - No material speed-ups (for now) when only a small portion of a dataset changes
+
+- Sped up hot loops of many small `__setitem__` / `__getitem__` calls on
+  `InMemoryDataset` and `InMemorySparseDataset`.
+- Sped up the use case where a user first completely overwrites the contents of a
+  dataset with a single `__setitem__` call and then calls `resize()` to enlarge it.
+
+### Minor Changes
+
+- Removed the `ENABLE_CHUNK_REUSE_VALIDATION` environment variable. Its function is now
+  served by a much more thorough corpus of unit tests.
+- Scalar (0-d) datasets are now explicitly unsupported and raise `NotImplementedError`
+  on creation/access instead of failing obscurely downstream.
+- Fixed a data leak in `delete_versions()`: edge (corner) chunks rewritten after version
+  deletion could leave padding filled with data from the deleted versions instead of the
+  fill value.
+- Fixed bug where datasets with variable-length string dtype would, in certain cases,
+  end up with the default fillvalue set to integer `0` instead of an empty string.
+- Fixed a deadlock on Python <3.12 between `InMemoryDataset.staged_changes` and h5py's
+  global lock.
+- Fixed `get_version_by_timestamp()` failures on Windows caused by low filesystem
+  timestamp precision.
+- Added a build-time requirement for a C++ compiler (g++ / clang++).
+- Added support for Cython 3.2.6 and 3.3.
+
+### Developers-only Changes
+
+- Extensive improvements to the ASV benchmark coverage
+- Added `asv-compare` tool to produce side-by-side benchmarks between versions
+- Added AGENTS.md and development guidelines for AI-assisted contributions
+
 ## 2.4.0 (2026-04-28)
 
 ### Major Changes
 
-- This release reinstates Linux and MacOS binary wheels and adds Windows wheels. All
+- This release reinstates Linux and macOS binary wheels and adds Windows wheels. All
   wheels pin the exact version of h5py they were built against, in order to prevent
   future breakages due to hdf5 ABI incompatibility. If you want more flexibility on
   which version of h5py and hdf5 to use, you should install either from conda or
@@ -12,14 +59,14 @@
 
 ### Minor Changes
 
-- Fix regression where a ArrayDataset of fixed-size strings is incorrectly swapped with
-  a different array of a differently sized strings.
+- Fix regression where an ArrayDataset of fixed-size strings is incorrectly swapped
+  with a different array of differently sized strings.
 
 ## 2.3.1 (2026-03-05)
 
 ### Minor Changes
 
-- conda-forge packages are available for both hdf5 1.4 and 2.1.
+- conda-forge packages are available for both hdf5 1.14 and 2.1.
   The hdf5=2.1 build pins h5py>=3.16.
 - Added support for h5py >=3.16 to `Group` methods `get()`, `items()`, `values()`,
   and `repr()`
@@ -43,7 +90,7 @@
   | 2.2.1 Linux wheels | h5py >=3.15.0,<=3.15.1     |
   | 2.1.0 Linux wheels | h5py >=3.8.0,<3.15.0       |
 
-  MacOSX wheels, conda-forge binaries, and sources are compatible with all h5py releases.
+  macOS wheels, conda-forge binaries, and sources are compatible with all h5py releases.
 
 ### Minor Changes
 
@@ -56,14 +103,14 @@
 - The development workflow has been migrated to Pixi. This allows for fully reproducible
   builds between local environments and CI and makes dev deployment much easier.
 - Added support for editable installs (`pip install . --editable --no-build-isolation`)
-- The full unit tests suite now runs successfully on Windows and MacOS CI
+- The full unit tests suite now runs successfully on Windows and macOS CI
 
 ## 2.2.1 (2026-01-07)
 
 Fix wheels publishing issue on Linux.
 
 **Post-release note:** Linux wheels for this release are compatible with
-h5py >=3.15.0,<3.16.0 wheels; however the wheels don't include an upper pin. MacOSX
+h5py >=3.15.0,<3.16.0 wheels; however the wheels don't include an upper pin. macOS
 wheels, conda-forge binaries, and sources are compatible with all h5py releases.
 
 ## 2.2.0 (2026-01-07)
@@ -72,7 +119,7 @@ wheels, conda-forge binaries, and sources are compatible with all h5py releases.
 
 - Fixed binary incompatibility of versioned-hdf5 Linux wheels vs. the wheels for
   h5py >=3.15.0. Starting from this release, versioned-hdf5 wheels for Linux on PyPi
-  require h5py >=3.15.0 wheels. MacOSX wheels, conda-forge packages, and builds from
+  require h5py >=3.15.0 wheels. macOS wheels, conda-forge packages, and builds from
   source still require h5py >=3.8.0.
 - Added wheels for Python 3.14
 - Dropped support for Python 3.9
@@ -100,13 +147,13 @@ Filters have been overhauled:
 ### Major Changes
 
 - Binaries are now available:
-  - conda-forge packages for Linux, MacOSX, and Windows;
-  - pip wheels for Linux and MacOSX (but not Windows).
+  - conda-forge packages for Linux, macOS, and Windows;
+  - pip wheels for Linux and macOS (but not Windows).
 
   See [Installation](installation).
 
   **Post-release note:** Linux wheels for this release are compatible with
-  h5py >=3.8.0,<3.15.0 wheels; however the wheels don't include an upper pin. MacOSX
+  h5py >=3.8.0,<3.15.0 wheels; however the wheels don't include an upper pin. macOS
   wheels, conda-forge binaries, and sources are compatible with all h5py releases.
 
 - Added support for StringDType, a.k.a. NpyStrings.
@@ -422,7 +469,7 @@ Filters have been overhauled:
 
 ### Minor Changes
 
-- Improve the performance of reading a reading a dataset that hasn't been
+- Improve the performance of reading a dataset that hasn't been
   written to (e.g., reading from an already committed version).
 
 - Fix Versioned HDF5 to work with h5py 3.3.
