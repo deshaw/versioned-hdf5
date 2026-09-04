@@ -42,7 +42,7 @@ environments:
       - conda: https://prefix.dev/conda-forge/linux-64/comrak-0.54.0-hb17b654_0.conda
       - conda: https://prefix.dev/conda-forge/linux-64/conda-gcc-specs-16.2.0-hf8037ed_4.conda
       - conda: https://prefix.dev/conda-forge/linux-64/cryptography-50.0.1-py314hcc0303b_0.conda
-      - conda: https://prefix.dev/conda-forge/linux-64/cython-3.3.0-py314he5485c0_0.conda
+      - conda: https://prefix.dev/conda-forge/linux-64/cython-3.2.9-py314h1807b08_0.conda
       - conda: https://prefix.dev/conda-forge/linux-64/dbus-1.16.2-he8c428d_2.conda
       - conda: https://prefix.dev/conda-forge/linux-64/gcc-16.2.0-hc6a0c74_4.conda
       - conda: https://prefix.dev/conda-forge/linux-64/gcc_impl_linux-64-16.2.0-h176d5d0_4.conda
@@ -177,7 +177,7 @@ environments:
       - conda: https://prefix.dev/conda-forge/linux-aarch64/comrak-0.54.0-h069e38c_0.conda
       - conda: https://prefix.dev/conda-forge/linux-aarch64/conda-gcc-specs-16.2.0-h969d813_4.conda
       - conda: https://prefix.dev/conda-forge/linux-aarch64/cryptography-50.0.1-py314hd7a5414_0.conda
-      - conda: https://prefix.dev/conda-forge/linux-aarch64/cython-3.3.0-py314h1eee2f1_0.conda
+      - conda: https://prefix.dev/conda-forge/linux-aarch64/cython-3.2.9-py314hc6b4731_0.conda
       - conda: https://prefix.dev/conda-forge/linux-aarch64/dbus-1.16.2-h71d469a_2.conda
       - conda: https://prefix.dev/conda-forge/linux-aarch64/gcc-16.2.0-hfdd745d_4.conda
       - conda: https://prefix.dev/conda-forge/linux-aarch64/gcc_impl_linux-aarch64-16.2.0-hc438ef3_4.conda
@@ -383,7 +383,7 @@ environments:
       - conda: https://prefix.dev/conda-forge/osx-64/compiler-rt-23.1.0-h694c41f_0.conda
       - conda: https://prefix.dev/conda-forge/osx-64/compiler-rt23-23.1.0-h8c1e6b9_0.conda
       - conda: https://prefix.dev/conda-forge/osx-64/comrak-0.54.0-h19f9e61_0.conda
-      - conda: https://prefix.dev/conda-forge/osx-64/cython-3.3.0-py314h56d56b3_0.conda
+      - conda: https://prefix.dev/conda-forge/osx-64/cython-3.2.9-py314had81299_0.conda
       - conda: https://prefix.dev/conda-forge/osx-64/h5py-3.16.0-nompi_py314h703bb44_104.conda
       - conda: https://prefix.dev/conda-forge/osx-64/hdf5-1.14.6-nompi_h13accda_110.conda
       - conda: https://prefix.dev/conda-forge/osx-64/krb5-1.22.2-h69064fd_2.conda
@@ -522,7 +522,7 @@ environments:
       - conda: https://prefix.dev/conda-forge/osx-arm64/compiler-rt-23.1.0-hce30654_0.conda
       - conda: https://prefix.dev/conda-forge/osx-arm64/compiler-rt23-23.1.0-hdb3d66b_0.conda
       - conda: https://prefix.dev/conda-forge/osx-arm64/comrak-0.54.0-h6fdd925_0.conda
-      - conda: https://prefix.dev/conda-forge/osx-arm64/cython-3.3.0-py314ha551cab_0.conda
+      - conda: https://prefix.dev/conda-forge/osx-arm64/cython-3.2.9-py314h65f46a9_0.conda
       - conda: https://prefix.dev/conda-forge/osx-arm64/h5py-3.16.0-nompi_py314h5a1635a_104.conda
       - conda: https://prefix.dev/conda-forge/osx-arm64/hdf5-1.14.6-nompi_had3affe_110.conda
       - conda: https://prefix.dev/conda-forge/osx-arm64/icu-78.3-py310h579977c_2.conda
@@ -652,7 +652,7 @@ environments:
       - conda: https://prefix.dev/conda-forge/win-64/clangxx-22.1.8-default_nocfg_hbb9487a_2.conda
       - conda: https://prefix.dev/conda-forge/win-64/compiler-rt22-22.1.8-h49e36cd_2.conda
       - conda: https://prefix.dev/conda-forge/win-64/comrak-0.54.0-h18a1a76_0.conda
-      - conda: https://prefix.dev/conda-forge/win-64/cython-3.3.0-py314h344ed54_0.conda
+      - conda: https://prefix.dev/conda-forge/win-64/cython-3.2.9-py314h344ed54_0.conda
       - conda: https://prefix.dev/conda-forge/win-64/h5py-3.16.0-nompi_py314hc249e69_104.conda
       - conda: https://prefix.dev/conda-forge/win-64/hdf5-1.14.6-nompi_hae35d4c_110.conda
       - conda: https://prefix.dev/conda-forge/win-64/icu-78.3-h5112557_2.conda
@@ -11213,6 +11213,20 @@ packages:
   run_exports: {}
   size: 3224445
   timestamp: 1711834223300
+- conda: https://prefix.dev/conda-forge/linux-64/cython-3.2.9-py314h1807b08_0.conda
+  sha256: 46b24c9a7de27f16a36942d74fd305064a408da959c6e885680cb072ca5bcaed
+  md5: 09bf9e0921002ec563b5e7c710caada2
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - libgcc >=14
+  - libstdcxx >=14
+  - python >=3.14,<3.15.0a0
+  - python_abi 3.14.* *_cp314
+  license: Apache-2.0
+  license_family: APACHE
+  run_exports: {}
+  size: 3818345
+  timestamp: 1786935119541
 - conda: https://prefix.dev/conda-forge/linux-64/cython-3.3.0-py310h4ddbdcc_0.conda
   sha256: 1f805e6fae56bc881adb3a79fdc54a0cf24185bb3a222359446fb7b9cd20688e
   md5: 3b2c26883c5b95f5038459b1092280b8
@@ -15420,6 +15434,19 @@ packages:
   run_exports: {}
   size: 3154395
   timestamp: 1711834475838
+- conda: https://prefix.dev/conda-forge/linux-aarch64/cython-3.2.9-py314hc6b4731_0.conda
+  sha256: 84aebc300e4a0f4ea697d95ec97277301e83f0a457e61efb48b27a14cfb37bda
+  md5: 4a44c5167b358f22ae2cd89b07728797
+  depends:
+  - libgcc >=14
+  - libstdcxx >=14
+  - python >=3.14,<3.15.0a0
+  - python_abi 3.14.* *_cp314
+  license: Apache-2.0
+  license_family: APACHE
+  run_exports: {}
+  size: 3741802
+  timestamp: 1785016071504
 - conda: https://prefix.dev/conda-forge/linux-aarch64/cython-3.3.0-py310h7728a07_0.conda
   sha256: 5dcf39ac35382e6adb818e758893f30477538549cb821cb21ac8ea0b28c2e41f
   md5: 59ba063e92a456648bf982735450d821
@@ -21458,6 +21485,19 @@ packages:
   run_exports: {}
   size: 2946440
   timestamp: 1711834625699
+- conda: https://prefix.dev/conda-forge/osx-64/cython-3.2.9-py314had81299_0.conda
+  sha256: 6d8e1980fb50b7aa7974e277bca62e28a5cbd61b61156538c86b2c757edb2153
+  md5: 282ee2921a0481f183e4b1fefbeb69be
+  depends:
+  - __osx >=11.0
+  - libcxx >=19
+  - python >=3.14,<3.15.0a0
+  - python_abi 3.14.* *_cp314
+  license: Apache-2.0
+  license_family: APACHE
+  run_exports: {}
+  size: 3569857
+  timestamp: 1785016416713
 - conda: https://prefix.dev/conda-forge/osx-64/cython-3.3.0-py310he933713_0.conda
   sha256: 816dfb18527d61a50cf7d84cf8d71dd4aedc2de461f9a8495a3d72e7579b8016
   md5: 94f19b3b024b01fd7eee25fb155d5bf9
@@ -24810,6 +24850,19 @@ packages:
   run_exports: {}
   size: 2917849
   timestamp: 1711834587557
+- conda: https://prefix.dev/conda-forge/osx-arm64/cython-3.2.9-py314h65f46a9_0.conda
+  sha256: e6af78930a28e29863124d84195fd2120c67cdd39b1c19b9d9c91746acd83908
+  md5: 3cbce1d3a06f1ea39f1b0df49abfb3f2
+  depends:
+  - __osx >=11.0
+  - libcxx >=19
+  - python >=3.14,<3.15.0a0
+  - python_abi 3.14.* *_cp314
+  license: Apache-2.0
+  license_family: APACHE
+  run_exports: {}
+  size: 3520238
+  timestamp: 1785016069851
 - conda: https://prefix.dev/conda-forge/osx-arm64/cython-3.3.0-py310h445f1ff_0.conda
   sha256: 4e815c79420ef6492d7cdcaf0432b309ed8180ac0e6d2913491e4c20facb74c4
   md5: 1757799aa9cfac0cf4ec067eda4d6810
@@ -27966,6 +28019,20 @@ packages:
   run_exports: {}
   size: 2706545
   timestamp: 1711834705721
+- conda: https://prefix.dev/conda-forge/win-64/cython-3.2.9-py314h344ed54_0.conda
+  sha256: a061170102d6f1a0b64ed3be712ac653fd9c9e8b6bed6205f398dbf319dcc3c8
+  md5: 8ecd457018d6f302da0945cd2169167d
+  depends:
+  - python >=3.14,<3.15.0a0
+  - python_abi 3.14.* *_cp314
+  - ucrt >=10.0.20348.0
+  - vc >=14.3,<15
+  - vc14_runtime >=14.44.35208
+  license: Apache-2.0
+  license_family: APACHE
+  run_exports: {}
+  size: 3343814
+  timestamp: 1785016211855
 - conda: https://prefix.dev/conda-forge/win-64/cython-3.3.0-py310h23e71ea_0.conda
   sha256: 741fcc194050fa3689fd2a434e8de53f9d320f8a82338589c54b0497fedf9707
   md5: f0af393141fedc30fc11f658128866ad
