@@ -320,9 +320,13 @@ Enlarging edge chunks that don't lie on the full slab is more involved, as they 
 be physically filled with the fill_value:
 
 1. If a chunk lies on a base slab, it first needs to be transferred over to a staged
-   slab, which is created brand new for the occasion;
-2. then, there is a transfer from the full slab to the staged slab for the extra area
-   that needs to be filled with the fill_value.
+   slab, which is created brand new for the occasion.
+2. If an edge chunk along axis 0 lies at the bottom of a trimmed staged slab (see below)
+   and can't hold the enlarged chunk, it is relocated to a brand new staged slab, as the
+   fill of the next step would overflow the trimmed slab; the original slab is then
+   shrunk in place, or dropped if it became empty.
+3. Finally, there is a transfer from the full slab to the staged slab for the extra
+   area that needs to be filled with the fill_value.
 
 
 Trimmed staged slabs
@@ -330,11 +334,28 @@ Trimmed staged slabs
 ``from_array(as_base_slabs=False)`` creates staged slabs as views of the input array.
 When the input array's shape is not exactly divisible by the ``chunk_size``, these views
 may not be large enough to contain the chunks after ``resize()`` enlarges the array.
-``resize()`` deep-copies trimmed slabs into new ones padded with empty data. It's
-important that this happens lazily, only when and if needed, to avoid unnecessary
-deep-copies when the array is never enlarged over its lifetime - notably, when it's
-created and then immediately consumed and destroyed when committing an
+It's important that the slabs are fixed lazily, only when and if needed, to avoid
+unnecessary deep-copies when the array is never enlarged over its lifetime - notably,
+when it's created and then immediately consumed and destroyed when committing an
 ``InMemoryArrayDataset``.
+
+How ``resize()`` fixes the trimmed slabs depends on which axes are being enlarged:
+
+- When enlarging along axis 1+, each slab that is trimmed along any of those axes
+  is deep-copied into a new one padded with uninitialized data to a whole number of
+  chunks along all axes.
+- When enlarging along axis 0, each slab that is trimmed exclusively along axis 0 is
+  instead handled by ``ResizePlan``: its last chunk - the only one that would overflow -
+  is copied to a brand new staged slab; the original slab is then truncated in place
+  (using a no-op NumPy view) to a whole number of chunks. A slab that only held the
+  relocated chunk becomes empty and is dropped.
+
+The relocations are one ``TransferPlan`` per source slab, but they skip the
+``IndexChunkMapper`` machinery: the ``read_many_slices()`` parameters of all the
+relocated chunks are computed in bulk, and each ``TransferPlan`` is then initialized
+with a plain slice of them. This is because each source slab typically contributes a
+single tiny chunk, so the per-chunk index arithmetic would cost more than the copy
+itself.
 
 ``load()`` algorithm
 --------------------
