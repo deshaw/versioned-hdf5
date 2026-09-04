@@ -55,8 +55,11 @@ jobs:
           name: asv-results-${{ matrix.env }}
           path: .asv/results
 
+      # asv-compare builds each revision from a git worktree with the *current*
+      # environment, so every revision named here must still compile with the toolchain
+      # pinned in pixi.lock. HEAD always does; the baseline is frozen and must be moved
+      # forward whenever a toolchain upgrade stops it from building.
       - name: Smoke test asv-compare
         run: |
           pixi r -e ${{ matrix.env }} asv-compare -n 2 -b time_hash_slab \
-            61d331b307c6319accb43918ea199c0f28d54f78 \
-            0571a73b2ce3dea2098bf8377b7ca12a2a525547
+            197200014941e7be0a20731ff281e80a926ec59d HEAD
