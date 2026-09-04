@@ -10,7 +10,11 @@ cdef class IndexChunkMapper:
     cdef readonly hsize_t n_chunks
     cdef readonly hsize_t last_chunk_size
 
-    cpdef tuple[object, object | None] read_many_slices_params(self)
+    # Return type is deliberately unsubscripted. Cython >=3.3 enforces
+    # signature compatibility on the subscripts of tuple[...] annotations, and the
+    # overrides in subchunk_map.py annotate the elements as numpy arrays, which
+    # Cython does not recognise.
+    cpdef tuple read_many_slices_params(self)
 
     cpdef object chunks_indexer(self)
     cpdef object whole_chunks_idxidx(self)
