@@ -58,16 +58,16 @@ CASES = {
     # Single chunk, partially selected. __setitem__ must first copy the chunk
     # from the base slab onto a brand new staged slab.
     "one_point": ((0, 0), "base"),
-    # All 400 chunks, wholly selected. __setitem__ never reads the base slab.
+    # All chunks, wholly selected. __setitem__ never reads the base slab.
     "all": (ALL, "base"),
-    # All 400 chunks, partially selected. Worst case for __setitem__, which must
+    # All chunks, partially selected. Worst case for __setitem__, which must
     # first copy every single chunk from the base slab onto the staged slabs.
     "step": ((slice(None, None, 2), slice(None, None, 2)), "base"),
     # Three rows of points, selected with an advanced (fancy) index along
     "fancy": ((np.array([230, 520, 1000]), slice(None)), "base"),
-    # All 400 chunks of an array that is entirely full of the fill_value
+    # All chunks of an array that is entirely full of the fill_value
     "all_full": (ALL, "full"),
-    # All 400 chunks of an array where each chunk lies on a staged slab of its own
+    # All chunks of an array where each chunk lies on a staged slab of its own
     "all_fragmented": (ALL, "fragmented"),
 }
 
@@ -82,8 +82,9 @@ RESIZES = {
     # Append one row along axis 0; the typical pattern of a time series. This enlarges
     # the edge chunks along axis 0, which must be physically filled with fill_value.
     "append_row": (SHAPE[0] + 1, SHAPE[1]),
-    # Same as above, but append one column. This changes things when the
-    # StagedChangesArray's base slabs were created by from_array.
+    # Same as above, but append one column. This difference matters when the
+    # StagedChangesArray's base slabs were created by from_array as views of a NumPy
+    # array with a shape that's not exactly divisible by the chunk size.
     "append_col": (SHAPE[0], SHAPE[1] + 1),
     # Double the size along both axes, which also enlarges the edge chunks
     "enlarge": (SHAPE[0] * 2, SHAPE[1] * 2),
