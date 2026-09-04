@@ -761,12 +761,17 @@ class StagedChangesArray(MutableMapping[Any, T]):
 
         # Sanitize input (e.g. convert np.int64 to int)
         shape = tuple(int(s) for s in shape)
+        if len(self.shape) != len(shape):
+            raise ValueError(
+                f"Can't change dimensionality from {self.shape} to {shape}"
+            )
 
-        plan = self._resize_plan(shape, copy=False)
-
-        # When enlarging, add padding area to staged slabs that can't fit whole chunks
+        # When enlarging, add padding area to staged slabs that can't fit whole chunks.
+        # This must happen before the plan is created, so that the plan won't also
+        # relocate the last chunk of the slabs that were just deep-copied.
         self._untrim_staged_slabs(shape)
 
+        plan = self._resize_plan(shape, copy=False)
         # A resize may change the slab_indices and slab_offsets, but won't necessarily
         # impact any chunks. In such cases, this is a no-op.
         self._apply_mutating_plan(plan)

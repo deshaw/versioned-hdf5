@@ -1238,7 +1238,8 @@ def test_from_array_as_staged_slabs_2():
     All slabs are views of the original array, including the trimmed edge slabs.
     resize() enlarging along axis 0 relocates the trimmed last chunk of every
     trimmed slab and truncates the originals; the slabs that are also trimmed
-    along axis 1+ are deep-copied and padded first.
+    along axis 1+ are instead deep-copied and padded to a whole number of chunks
+    along all axes, which spares them the relocation.
     """
     arr = np.arange(15).reshape((3, 5))
     a = StagedChangesArray.from_array(arr, chunk_size=(2, 2), as_base_slabs=False)
@@ -1251,11 +1252,10 @@ def test_from_array_as_staged_slabs_2():
     assert_array_equal(a, np.full((3, 5), -1))
     assert_array_equal(arr, np.full((3, 5), -1))  # All slabs are views
     # resize() enlarging along both axes:
-    # - the last chunk of each of the 3 trimmed slabs is relocated to a brand new
-    #   (6, 2) slab
-    # - the width-trimmed slab is deep-copied and padded to (4, 2) first, so that
-    #   the fill of the enlarged edge fits; all trimmed slabs are then truncated
-    #   from 3 to 2 rows
+    # - the width-trimmed slab is deep-copied and padded from (3, 1) to (4, 2), so
+    #   that the fill of the enlarged edge fits in place
+    # - the last chunk of each of the other 2 trimmed slabs is relocated to a brand
+    #   new (4, 2) slab and the originals are truncated from 3 to 2 rows
     a.resize((4, 6))
     assert a.n_staged_slabs == 4
     for slab_idx in (1, 2):
@@ -1265,11 +1265,11 @@ def test_from_array_as_staged_slabs_2():
         assert np.shares_memory(slab, arr)  # untouched interior still a view
     slab = a.slabs[3]
     assert slab is not None
-    assert slab.shape == (2, 2)  # deep-copied to (4, 2), then truncated to (2, 2)
+    assert slab.shape == (4, 2)  # deep-copied and padded; not relocated
     assert not np.shares_memory(slab, arr)
     slab = a.slabs[4]
     assert slab is not None
-    assert slab.shape == (6, 2)  # brand new slab holding the 3 relocated chunks
+    assert slab.shape == (4, 2)  # brand new slab holding the 2 relocated chunks
     assert not np.shares_memory(slab, arr)
     a[0, -1] = 22
     a[-1, 0] = 33
@@ -1424,9 +1424,9 @@ def test_from_array_as_staged_slabs_resize_shrink_and_noop():
     for slab in b.staged_slabs:
         assert slab is not None
         assert np.shares_memory(slab, arr)  # still views
-    # Enlarging again works: the last chunk of each of the 3 trimmed slabs is
-    # relocated to a brand new slab; the width-trimmed slab is deep-copied and
-    # padded first, and all trimmed slabs are then truncated.
+    # Enlarging again works: the width-trimmed slab is deep-copied and padded, while
+    # the last chunk of each of the other 2 trimmed slabs is relocated to a brand new
+    # slab and the originals are truncated.
     b.resize((4, 6))
     expected = np.zeros((4, 6), dtype=arr.dtype)
     expected[:3, :5] = arr
@@ -1435,9 +1435,9 @@ def test_from_array_as_staged_slabs_resize_shrink_and_noop():
     assert np.shares_memory(b.slabs[1], arr)
     assert b.slabs[2].shape == (2, 2)
     assert np.shares_memory(b.slabs[2], arr)
-    assert b.slabs[3].shape == (2, 2)
+    assert b.slabs[3].shape == (4, 2)
     assert not np.shares_memory(b.slabs[3], arr)
-    assert b.slabs[4].shape == (6, 2)
+    assert b.slabs[4].shape == (4, 2)
     assert not np.shares_memory(b.slabs[4], arr)
 
 
@@ -1526,13 +1526,13 @@ def test_from_array_as_staged_slabs_resize_shrink_hash_tables():
     assert a.hash_tables[1].shape == (1, 4)
     assert a.slabs[2].shape == (2, 2)
     assert a.hash_tables[2].shape == (1, 4)
-    # Slab 3 was deep-copied by _untrim (width-trimmed) and truncated like the
-    # others; its surviving chunk was then partially overwritten by the fill of
-    # the enlarged edge, which invalidated its hash table
-    assert a.slabs[3].shape == (2, 2)
+    # Slab 3 was deep-copied and padded by _untrim (width-trimmed), so it wasn't
+    # relocated; both its chunks were then partially overwritten by the fill of the
+    # enlarged edges, which invalidated its hash table
+    assert a.slabs[3].shape == (4, 2)
     assert a.hash_tables[3] is None
     # New slab holding relocated chunks has no hashes yet
-    assert a.slabs[4].shape == (6, 2)
+    assert a.slabs[4].shape == (4, 2)
     assert a.hash_tables[4] is None
     # Data is unchanged and commit() still works (rehashes everything)
     expected = np.zeros((4, 6), dtype=arr.dtype)
