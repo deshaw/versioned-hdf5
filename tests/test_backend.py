@@ -9,9 +9,11 @@ from numpy.testing import assert_equal
 from versioned_hdf5.backend import (
     DEFAULT_CHUNK_SIZE,
     Filters,
+    _chunk_blocks,
     _data_v4_to_sc_hash_table,
     create_base_dataset,
     create_virtual_dataset,
+    rewrite_dataset,
     write_dataset,
 )
 
@@ -953,3 +955,93 @@ def test_commit_staged_changes_out_of_order_hashtable(vfile):
     raw_data, hash_table = _raw_data_hashtable(vfile, "x")
     assert raw_data.shape == (4,)  # No new chunk was written
     assert hash_table.attrs["largest_index"] == 2
+
+
+@pytest.mark.parametrize(
+    ("shape", "chunk_size", "max_bytes", "expect"),
+    [
+        # A generous budget yields a single block covering everything
+        ((5,), (2,), 1000, [(slice(0, 5),)]),
+        # One chunk per block; the last block is trimmed to the edge of the array
+        ((5,), (2,), 16, [(slice(0, 2),), (slice(2, 4),), (slice(4, 5),)]),
+        # Two chunks per block
+        ((7,), (2,), 32, [(slice(0, 4),), (slice(4, 7),)]),
+        # max_bytes is rounded up to one whole chunk
+        ((4,), (2,), 0, [(slice(0, 2),), (slice(2, 4),)]),
+        # Blocks grow from the last axis, so that they are as contiguous as possible
+        (
+            (4, 6),
+            (2, 2),
+            64,
+            [
+                (slice(0, 2), slice(0, 4)),
+                (slice(0, 2), slice(4, 6)),
+                (slice(2, 4), slice(0, 4)),
+                (slice(2, 4), slice(4, 6)),
+            ],
+        ),
+        # Axis 1 fits entirely, so axis 0 starts growing too
+        ((4, 6), (2, 2), 96, [(slice(0, 2), slice(0, 6)), (slice(2, 4), slice(0, 6))]),
+        ((4, 6), (2, 2), 192, [(slice(0, 4), slice(0, 6))]),
+        # Size-0 arrays have no chunks at all
+        ((0,), (2,), 1000, []),
+        ((4, 0), (2, 2), 1000, []),
+    ],
+)
+def test_chunk_blocks(shape, chunk_size, max_bytes, expect):
+    assert list(_chunk_blocks(shape, chunk_size, 8, max_bytes)) == expect
+
+
+# One whole chunk, one chunk row, and the whole array at a time
+@pytest.mark.parametrize("max_bytes", [0, 8, 24, 1000])
+def test_rewrite_dataset(vfile, max_bytes):
+    """rewrite_dataset() copies every chunk of an array into a brand new raw_data,
+    deduplicating them, and returns the same {virtual index: raw_data slice} mapping
+    regardless of how many chunks it buffers at a time.
+    """
+    # Chunk (1, 0) is a duplicate of chunk (0, 1) and chunk (1, 1) of chunk (0, 0);
+    # the last row is a pair of edge chunks.
+    data = np.array(
+        [
+            [1, 2, 3, 4],
+            [5, 6, 7, 8],
+            [3, 4, 1, 2],
+            [7, 8, 5, 6],
+            [9, 9, 0, 0],
+        ]
+    )
+    create_base_dataset(vfile.f, "x", data=data[:0], chunks=(2, 2), fillvalue=0)
+    slices = rewrite_dataset(
+        vfile.f, "x", data, chunks=(2, 2), fillvalue=0, max_bytes=max_bytes
+    )
+
+    assert slices == {
+        Tuple(Slice(0, 2, 1), Slice(0, 2, 1)): Slice(0, 2, 1),
+        Tuple(Slice(0, 2, 1), Slice(2, 4, 1)): Slice(2, 4, 1),
+        Tuple(Slice(2, 4, 1), Slice(0, 2, 1)): Slice(2, 4, 1),
+        Tuple(Slice(2, 4, 1), Slice(2, 4, 1)): Slice(0, 2, 1),
+        Tuple(Slice(4, 5, 1), Slice(0, 2, 1)): Slice(4, 5, 1),
+        Tuple(Slice(4, 5, 1), Slice(2, 4, 1)): Slice(6, 7, 1),
+    }
+
+    # Only 4 chunks were written; the two duplicates were deduplicated away.
+    # raw_data always grows by whole chunks, so the two edge chunks are padded.
+    raw_data, hash_table = _raw_data_hashtable(vfile, "x")
+    assert hash_table.attrs["largest_index"] == 4
+    assert_equal(
+        raw_data[:],
+        [[1, 2], [5, 6], [3, 4], [7, 8], [9, 9], [0, 0], [0, 0], [0, 0]],
+    )
+
+    # The mapping stitches the original array back together
+    vfile.f["_version_data/versions"].create_group("r0")
+    create_virtual_dataset(vfile.f, "r0", "x", data.shape, slices, fillvalue=0)
+    assert_equal(vfile.f["_version_data/versions/r0/x"][:], data)
+
+
+@pytest.mark.parametrize("max_bytes", [0, 1000])
+def test_rewrite_dataset_empty(vfile, max_bytes):
+    """A size-0 dataset has no chunks to rewrite."""
+    data = np.empty((0, 3))
+    create_base_dataset(vfile.f, "x", data=data, chunks=(2, 2))
+    assert rewrite_dataset(vfile.f, "x", data, chunks=(2, 2), max_bytes=max_bytes) == {}

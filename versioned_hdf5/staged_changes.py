@@ -367,6 +367,19 @@ class StagedChangesArray(MutableMapping[Any, T]):
         return self.hash_tables[self.staged_slabs_start :]
 
     @property
+    def has_base_chunks(self) -> bool:
+        """If any chunks lay on a base slab."""
+        if self.n_base_slabs == 0:
+            return False
+        if self.n_staged_slabs == 0:
+            return (self.slab_indices > 0).any()
+        # base chunks may no longer be referenced by slab_indices, but base slabs are
+        # retained for the purpose of hashing.
+        return (
+            (self.slab_indices > 0) & (self.slab_indices <= self.n_base_slabs)
+        ).any()
+
+    @property
     def has_changes(self) -> bool:
         """Return True if any chunks have been modified or if a lazy transformation
         took place; False otherwise.
