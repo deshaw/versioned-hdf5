@@ -58,5 +58,4 @@ jobs:
       - name: Smoke test asv-compare
         run: |
           pixi r -e ${{ matrix.env }} asv-compare -n 2 -b time_hash_slab \
-            61d331b307c6319accb43918ea199c0f28d54f78 \
-            0571a73b2ce3dea2098bf8377b7ca12a2a525547
+            v2.4.0 HEAD

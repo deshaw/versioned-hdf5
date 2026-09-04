@@ -26,7 +26,7 @@ ASV_BENCHMARK_FAILED = 2
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="pixi r asv-compare",
+        prog="asv_compare",
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
