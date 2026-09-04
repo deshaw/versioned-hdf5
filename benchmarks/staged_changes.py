@@ -16,16 +16,19 @@ import numpy as np
 with suppress(ImportError):  # Allow asv-compare vs. older releases
     from versioned_hdf5.staged_changes import StagedChangesArray
 
-#: Deliberately not divisible by the chunk size, so that every benchmark exercises the
-#: edge chunks code paths
-SHAPE = (301, 302)
-CHUNK_SIZE = (3, 3)
-DTYPE = "i2"
+# Deliberately not divisible by the chunk size, so that every benchmark exercises the
+# edge chunks code paths
+SHAPE = (4001, 4002)  # 122 MiB
+CHUNK_SIZES = {
+    "8 kiB": (32, 32),  # (126, 126) chunks -> 15_876 chunks
+    "512 kiB": (256, 256),  # (16, 16) chunks -> 256 chunks
+}
+DTYPE = "f8"
 
-#: Index that selects the whole array
+# Index that selects the whole array
 ALL = (slice(None), slice(None))
 
-#: How the chunks are laid out on the slabs before a benchmark runs
+# How the chunks are laid out on the slabs before a benchmark runs
 STATES = [
     # Empty array; every chunk points to the full slab (a.k.a. the fill_value).
     # This is what backs a brand new InMemorySparseDataset.
@@ -45,14 +48,14 @@ STATES = [
     "from_array",
 ]
 
-#: (index, initial state) pairs for __getitem__ and __setitem__.
-#: This is deliberately not the full cross product of indices and states, which would
-#: be far too slow to run; the first five cases vary the index on the most typical
-#: state, whereas the last two vary the state on the most demanding index.
+# (index, initial state) pairs for __getitem__ and __setitem__.
+# This is deliberately not the full cross product of indices and states, which would
+# be far too slow to run; the first five cases vary the index on the most typical
+# state, whereas the last two vary the state on the most demanding index.
 CASES = {
-    # 1 chunk out of 400, wholly selected
-    "one_chunk": ((slice(0, 10), slice(0, 10)), "base"),
-    # 1 chunk out of 400, partially selected. __setitem__ must first copy the chunk
+    # Select one to a few whole chunks
+    "few_chunks": ((slice(256), slice(256)), "base"),
+    # Single chunk, partially selected. __setitem__ must first copy the chunk
     # from the base slab onto a brand new staged slab.
     "one_point": ((0, 0), "base"),
     # All 400 chunks, wholly selected. __setitem__ never reads the base slab.
@@ -60,32 +63,35 @@ CASES = {
     # All 400 chunks, partially selected. Worst case for __setitem__, which must
     # first copy every single chunk from the base slab onto the staged slabs.
     "step": ((slice(None, None, 2), slice(None, None, 2)), "base"),
-    # 60 chunks, selected with an advanced (fancy) index along axis 0
-    "fancy": ((np.array([3, 55, 194]), slice(None)), "base"),
+    # Three rows of points, selected with an advanced (fancy) index along
+    "fancy": ((np.array([230, 520, 1000]), slice(None)), "base"),
     # All 400 chunks of an array that is entirely full of the fill_value
     "all_full": (ALL, "full"),
     # All 400 chunks of an array where each chunk lies on a staged slab of its own
     "all_fragmented": (ALL, "fragmented"),
 }
 
-#: Subset of CASES for __getitem__, which unlike __setitem__ makes no distinction
-#: between wholly and partially selected chunks; the cases that only differ by that
-#: are omitted to keep the runtime of the module in check.
-GETITEM_CASES = ["one_chunk", "all", "fancy", "all_full", "all_fragmented"]
+# Subset of CASES for __getitem__, which unlike __setitem__ makes no distinction
+# between wholly and partially selected chunks; the cases that only differ by that
+# are omitted to keep the runtime of the module in check.
+GETITEM_CASES = ["few_chunks", "all", "fancy", "all_full", "all_fragmented"]
 assert not set(GETITEM_CASES) - set(CASES)
 
-#: New shapes for resize()
+# New shapes for resize()
 RESIZES = {
     # Append one row along axis 0; the typical pattern of a time series. This enlarges
     # the edge chunks along axis 0, which must be physically filled with fill_value.
-    "append": (SHAPE[0] + 1, SHAPE[1]),
+    "append_row": (SHAPE[0] + 1, SHAPE[1]),
+    # Same as above, but append one column. This changes things when the
+    # StagedChangesArray's base slabs were created by from_array.
+    "append_col": (SHAPE[0], SHAPE[1] + 1),
     # Double the size along both axes, which also enlarges the edge chunks
     "enlarge": (SHAPE[0] * 2, SHAPE[1] * 2),
     # Halve the size along both axes, which dereferences the chunks beyond the edge
     "shrink": (SHAPE[0] // 2, SHAPE[1] // 2),
 }
 
-#: What has been staged before commit() runs
+# What has been staged before commit() runs
 COMMIT_SCENARIOS = [
     # Nothing was modified; commit() must not write anything
     "no_changes",
@@ -114,13 +120,15 @@ COMMIT_SCENARIOS = [
 N_OBSOLETE_CHUNKS = 3600
 
 
-def _commit_random(shape: tuple[int, ...], seed: int) -> StagedChangesArray:
+def _commit_random(
+    shape: tuple[int, ...], chunk_size: tuple[int, ...], seed: int
+) -> StagedChangesArray:
     """Return a StagedChangesArray covering shape, with all of its chunks on a single
     base slab complete with hash table, built by staging random data and committing it
     """
     rng = np.random.default_rng(seed)
     arr = StagedChangesArray.from_array(
-        rng.random(shape), chunk_size=CHUNK_SIZE, as_base_slabs=False
+        rng.random(shape), chunk_size=chunk_size, as_base_slabs=False
     )
     # Consolidate the staged slabs into a single base slab, complete with hashes
     # This is unlike as_base_slabs, which would not compute the hashes.
@@ -130,7 +138,7 @@ def _commit_random(shape: tuple[int, ...], seed: int) -> StagedChangesArray:
 
 
 @cache
-def _buffer() -> np.ndarray:
+def buffer() -> np.ndarray:
     """Return a writeable buffer of random data, of shape SHAPE.
 
     This mimics the _buffer attribute of an InMemoryArrayDataset, the input to
@@ -141,7 +149,8 @@ def _buffer() -> np.ndarray:
 
 
 @cache
-def _base_slab(
+def base_slab(
+    chunk_size: tuple[int, ...],
     n_obsolete_chunks: int = 0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Return (slab, hash_table, slab_indices, slab_offsets) of a single base slab
@@ -153,7 +162,7 @@ def _base_slab(
     came before. The slab is read-only and its hash table is never updated, so both
     are memoized and shared by all the benchmarks in this module.
     """
-    tmp = _commit_random(SHAPE, seed=42)
+    tmp = _commit_random(SHAPE, chunk_size, seed=42)
     (slab,) = tmp.base_slabs
     (hash_table,) = tmp.base_hash_tables
     assert slab is not None
@@ -166,7 +175,9 @@ def _base_slab(
         # that commit() has to scan larger. Prepend them, as the chunks of the
         # current version are the most recently appended ones.
         obsolete = _commit_random(
-            (n_obsolete_chunks * CHUNK_SIZE[0], CHUNK_SIZE[1]), seed=43
+            shape=(n_obsolete_chunks * chunk_size[0], *chunk_size[1:]),
+            chunk_size=chunk_size,
+            seed=43,
         )
         (obsolete_slab,) = obsolete.base_slabs
         (obsolete_hash_table,) = obsolete.base_hash_tables
@@ -180,35 +191,35 @@ def _base_slab(
     return slab, hash_table, slab_indices, slab_offsets
 
 
-def make_array(state: str, n_obsolete_chunks: int = 0) -> StagedChangesArray:
+def make_array(
+    state: str, chunk_size: tuple[int, ...], n_obsolete_chunks: int = 0
+) -> StagedChangesArray:
     """Create a StagedChangesArray with the chunks laid out as described by STATES"""
     assert state in STATES
 
     if state == "from_array":
         return StagedChangesArray.from_array(
-            _buffer(), chunk_size=CHUNK_SIZE, fill_value=0, as_base_slabs=False
+            buffer(), chunk_size=chunk_size, fill_value=0, as_base_slabs=False
         )
 
-    if state in ("full", "fragmented"):
-        arr = StagedChangesArray.full(SHAPE, chunk_size=CHUNK_SIZE, dtype=DTYPE)
-        if state == "fragmented":
-            # This is the same state you get by looping on the chunks and setting each
-            # of them to a different value with a separate __setitem__ call, only much
-            # faster to build. Values must be unique so that commit() can't
-            # deduplicate the chunks, and must differ from the fill_value for the
-            # same reason.
-            n = np.prod(arr.n_chunks)
-            arr.slabs += [
-                np.full(CHUNK_SIZE, float(i + 1), dtype=DTYPE) for i in range(n)
-            ]
-            arr.hash_tables += [None] * n
-            arr.slab_indices[()] = np.arange(1, n + 1).reshape(arr.n_chunks)
+    if state == "full":
+        return StagedChangesArray.full(SHAPE, chunk_size=chunk_size, dtype=DTYPE)
+
+    if state == "fragmented":
+        # Array has been modified through 256 individual __setitem__ calls that
+        # hit different chunks; each call creates a separate slab.
+        arr = StagedChangesArray.full(SHAPE, chunk_size=chunk_size, dtype=DTYPE)
+        for r in range(1, 4000, 256):
+            for c in range(2, 4000, 256):
+                arr[r, c] = r + c
         return arr
 
-    slab, hash_table, slab_indices, slab_offsets = _base_slab(n_obsolete_chunks)
+    slab, hash_table, slab_indices, slab_offsets = base_slab(
+        chunk_size, n_obsolete_chunks
+    )
     arr = StagedChangesArray(
         shape=SHAPE,
-        chunk_size=CHUNK_SIZE,
+        chunk_size=chunk_size,
         base_slabs=[slab],
         # __init__ modifies these in place
         slab_indices=slab_indices.copy(),
@@ -222,15 +233,15 @@ def make_array(state: str, n_obsolete_chunks: int = 0) -> StagedChangesArray:
     return arr
 
 
-def make_committable(scenario: str) -> StagedChangesArray:
+def make_committable(scenario: str, chunk_size: tuple[int, ...]) -> StagedChangesArray:
     """Create a StagedChangesArray with staged changes as described by
     COMMIT_SCENARIOS, ready to be committed
     """
     if scenario in ("fragmented", "from_array"):
-        return make_array(scenario)
+        return make_array(scenario, chunk_size)
 
     n_obsolete_chunks = N_OBSOLETE_CHUNKS if scenario == "obsolete_base" else 0
-    arr = make_array("base", n_obsolete_chunks=n_obsolete_chunks)
+    arr = make_array("base", chunk_size, n_obsolete_chunks=n_obsolete_chunks)
     if scenario == "no_changes":
         pass
     elif scenario == "one_chunk":
@@ -261,17 +272,17 @@ class _MutatingBenchmark:
 class TimeGetItem:
     """Benchmark GetItemPlan creation and execution"""
 
-    params = [GETITEM_CASES]
-    param_names = ["case"]
+    params = [GETITEM_CASES, list(CHUNK_SIZES)]
+    param_names = ["case", "chunk_size"]
 
-    def setup(self, case):
+    def setup(self, case: str, chunk_size: str) -> None:
         self.idx, state = CASES[case]
-        self.arr = make_array(state)
+        self.arr = make_array(state, CHUNK_SIZES[chunk_size])
 
-    def time_getitem_plan(self, case):
+    def time_getitem_plan(self, case: str, chunk_size: str) -> None:
         self.arr._getitem_plan(self.idx)
 
-    def time_getitem(self, case):
+    def time_getitem(self, case: str, chunk_size: str) -> None:
         # Internally calls _getitem_plan() and then executes the plan
         self.arr[self.idx]
 
@@ -279,18 +290,18 @@ class TimeGetItem:
 class TimeSetItem(_MutatingBenchmark):
     """Benchmark SetItemPlan creation and execution"""
 
-    params = [list(CASES)]
-    param_names = ["case"]
+    params = [list(CASES), list(CHUNK_SIZES)]
+    param_names = ["case", "chunk_size"]
 
-    def setup(self, case):
+    def setup(self, case: str, chunk_size: str) -> None:
         self.idx, state = CASES[case]
-        self.arr = make_array(state)
+        self.arr = make_array(state, CHUNK_SIZES[chunk_size])
         self.value = np.asarray(self.arr[self.idx]) + 1.0
 
-    def time_setitem_plan(self, case):
+    def time_setitem_plan(self, case: str, chunk_size: str) -> None:
         self.arr._setitem_plan(self.idx, copy=False)
 
-    def time_setitem(self, case):
+    def time_setitem(self, case: str, chunk_size: str) -> None:
         # Internally calls _setitem_plan() and then executes the plan
         self.arr[self.idx] = self.value
 
@@ -302,17 +313,17 @@ class TimeResize(_MutatingBenchmark):
     as in the resize() of an InMemoryArrayDataset.
     """
 
-    params = [list(RESIZES), ["base", "from_array"]]
-    param_names = ["resize", "state"]
+    params = [list(RESIZES), ["base", "from_array"], list(CHUNK_SIZES)]
+    param_names = ["resize", "state", "chunk_size"]
 
-    def setup(self, resize, state):
-        self.arr = make_array(state)
+    def setup(self, resize: str, state: str, chunk_size: str) -> None:
+        self.arr = make_array(state, CHUNK_SIZES[chunk_size])
         self.shape = RESIZES[resize]
 
-    def time_resize_plan(self, resize, state):
+    def time_resize_plan(self, resize: str, state: str, chunk_size: str) -> None:
         self.arr._resize_plan(self.shape, copy=False)
 
-    def time_resize(self, resize, state):
+    def time_resize(self, resize: str, state: str, chunk_size: str) -> None:
         # Internally calls _resize_plan() and then executes the plan
         self.arr.resize(self.shape)
 
@@ -326,16 +337,16 @@ class TimeFromArray:
     deep-copied, and only later, upon resize() or first write.
     """
 
-    params = [["base", "staged"]]
-    param_names = ["as_base_slabs"]
+    params = [["base", "staged"], list(CHUNK_SIZES)]
+    param_names = ["as_base_slabs", "chunk_size"]
 
-    def setup(self, as_base_slabs):
-        self.arr = _buffer()
+    def setup(self, as_base_slabs: str, chunk_size: str) -> None:
+        self.arr = buffer()
 
-    def time_from_array(self, as_base_slabs):
+    def time_from_array(self, as_base_slabs: str, chunk_size: str) -> None:
         _ = StagedChangesArray.from_array(
             self.arr,
-            chunk_size=CHUNK_SIZE,
+            chunk_size=CHUNK_SIZES[chunk_size],
             as_base_slabs=as_base_slabs == "base",
         )
 
@@ -347,16 +358,16 @@ class TimeLoad(_MutatingBenchmark):
     the states other than "base".
     """
 
-    params = [["base", "staged"]]
-    param_names = ["state"]
+    params = [["base", "staged"], list(CHUNK_SIZES)]
+    param_names = ["state", "chunk_size"]
 
-    def setup(self, state):
-        self.arr = make_array(state)
+    def setup(self, state: str, chunk_size: str) -> None:
+        self.arr = make_array(state, CHUNK_SIZES[chunk_size])
 
-    def time_load_plan(self, state):
+    def time_load_plan(self, state: str, chunk_size: str) -> None:
         self.arr._load_plan(copy=False)
 
-    def time_load(self, state):
+    def time_load(self, state: str, chunk_size: str) -> None:
         # Internally calls _load_plan() and then executes the plan
         self.arr.load()
 
@@ -368,16 +379,16 @@ class TimeChanges:
     are yielded as numpy arrays; these are the two states that matter here.
     """
 
-    params = [["base", "staged"]]
-    param_names = ["state"]
+    params = [["base", "staged"], list(CHUNK_SIZES)]
+    param_names = ["state", "chunk_size"]
 
-    def setup(self, state):
-        self.arr = make_array(state)
+    def setup(self, state: str, chunk_size: str) -> None:
+        self.arr = make_array(state, CHUNK_SIZES[chunk_size])
 
-    def time_changes_plan(self, state):
+    def time_changes_plan(self, state: str, chunk_size: str) -> None:
         self.arr._changes_plan()
 
-    def time_changes(self, state):
+    def time_changes(self, state: str, chunk_size: str) -> None:
         # Internally calls _changes_plan() and then executes the plan
         for _ in self.arr.changes():
             pass
@@ -386,20 +397,20 @@ class TimeChanges:
 class TimeCommit(_MutatingBenchmark):
     """Benchmark HashPlan creation and execution, and the whole of commit()"""
 
-    params = [COMMIT_SCENARIOS]
-    param_names = ["scenario"]
+    params = [COMMIT_SCENARIOS, list(CHUNK_SIZES)]
+    param_names = ["scenario", "chunk_size"]
 
-    def setup(self, scenario):
-        self.arr = make_committable(scenario)
+    def setup(self, scenario: str, chunk_size: str) -> None:
+        self.arr = make_committable(scenario, CHUNK_SIZES[chunk_size])
 
-    def time_hash_plan(self, scenario):
+    def time_hash_plan(self, scenario: str, chunk_size: str) -> None:
         self.arr._hash_plan()
 
-    def time_calc_hashes(self, scenario):
+    def time_calc_hashes(self, scenario: str, chunk_size: str) -> None:
         # Internally calls _hash_plan() then executes the plan
         self.arr._calc_hashes()
 
-    def time_commit(self, scenario):
+    def time_commit(self, scenario: str, chunk_size: str) -> None:
         # Internally calls _calc_hashes(), then calls
         # _commit_plan() and executes the plan
         self.arr.commit()
@@ -411,12 +422,12 @@ class TimeCommitPlan:
     requires all the hashes to be already up to date.
     """
 
-    params = [COMMIT_SCENARIOS]
-    param_names = ["scenario"]
+    params = [COMMIT_SCENARIOS, list(CHUNK_SIZES)]
+    param_names = ["scenario", "chunk_size"]
 
-    def setup(self, scenario):
-        self.arr = make_committable(scenario)
+    def setup(self, scenario: str, chunk_size: str) -> None:
+        self.arr = make_committable(scenario, CHUNK_SIZES[chunk_size])
         self.arr._calc_hashes()
 
-    def time_commit_plan(self, scenario):
+    def time_commit_plan(self, scenario: str, chunk_size: str) -> None:
         self.arr._commit_plan(copy=False)
