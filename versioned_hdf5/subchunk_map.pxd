@@ -10,7 +10,7 @@ cdef class IndexChunkMapper:
     cdef readonly hsize_t n_chunks
     cdef readonly hsize_t last_chunk_size
 
-    cpdef tuple[object, object | None] read_many_slices_params(self)
+    cpdef tuple read_many_slices_params(self)
 
     cpdef object chunks_indexer(self)
     cpdef object whole_chunks_idxidx(self)
