@@ -23,6 +23,7 @@ from versioned_hdf5.backend import (
     create_base_dataset,
     create_virtual_dataset,
     initialize,
+    rewrite_dataset,
 )
 from versioned_hdf5.hashtable import Hashtable
 from versioned_hdf5.slicetools import spaceid_to_slice
@@ -105,28 +106,37 @@ def recreate_dataset(f, name, newf, callback=None):
                     filters=filters,
                 )
                 first = False
-            # Read in all the chunks of the dataset (we can't assume the new
+            if not isinstance(chunks, tuple):
+                chunks = tuple(newf["_version_data"][name]["raw_data"].attrs["chunks"])
+
+            # Rewrite all the chunks of the dataset (we can't assume the new
             # hash table has the raw data in the same locations, even if the
             # data is unchanged).
             if isinstance(dataset, DatasetWrapper):
                 dataset = dataset.dataset
-            if isinstance(dataset, (InMemoryDataset, InMemorySparseDataset)):
-                dataset.staged_changes.load()
-                slices = commit_staged_changes(newf, name, dataset.staged_changes)
-            elif isinstance(dataset, InMemoryArrayDataset):
-                if not isinstance(chunks, tuple):
-                    chunks = tuple(
-                        newf["_version_data"][name]["raw_data"].attrs["chunks"]
-                    )
+            if isinstance(dataset, InMemoryArrayDataset):
                 staged_changes = StagedChangesArray.from_array(
                     dataset._buffer,
                     chunk_size=chunks,
                     fill_value=fillvalue,
                     as_base_slabs=False,
                 )
-                slices = commit_staged_changes(newf, name, staged_changes)
+            elif isinstance(dataset, (InMemoryDataset, InMemorySparseDataset)):
+                staged_changes = dataset.staged_changes
             else:
                 raise TypeError(f"Unexpected: {type(dataset)}")  # pragma: no cover
+
+            if staged_changes.has_base_chunks:
+                # Some or all chunks lie on the raw_data of the *source* file, which
+                # the hash table of newf knows nothing about, so they must all be
+                # rewritten. Stream them a block of chunks at a time; loading them all
+                # in memory first would make peak memory usage O(dataset size).
+                slices = rewrite_dataset(
+                    newf, name, dataset, chunks=chunks, fillvalue=fillvalue
+                )
+            else:
+                # Every chunk is already in memory
+                slices = commit_staged_changes(newf, name, staged_changes)
 
             create_virtual_dataset(
                 newf,

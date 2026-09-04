@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import datetime
+import itertools
 import logging
+import math
 import textwrap
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -14,16 +16,20 @@ from h5py._hl.selections import select
 from h5py._selector import Selector
 from ndindex import ChunkSize, Slice, Tuple
 
+from versioned_hdf5.cytools import ceil_a_over_b
 from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS, h5py_astype
 from versioned_hdf5.hashtable import Hashtable
 from versioned_hdf5.slicetools import RawDataView
+from versioned_hdf5.staged_changes import StagedChangesArray
 from versioned_hdf5.typing_ import DEFAULT, Default
 
 if TYPE_CHECKING:
-    from versioned_hdf5.staged_changes import StagedChangesArray
     from versioned_hdf5.wrappers import FiltersMixin
 
 DEFAULT_CHUNK_SIZE = 2**12
+# Amount of RAM that rewrite_dataset() can allocate as a scratch area
+# This is a compromise between minimizing RAM usage and runtime.
+REWRITE_BUFFER_BYTES = 2**26  # 64 MiB
 DATA_VERSION = 4
 # data_version 2 has broken hashtables, always need to rebuild
 # data_version 3 hash collisions for string arrays which, when concatenated,
@@ -571,6 +577,117 @@ def commit_staged_changes(
         Tuple(*vds_slice): Slice(raw_data_slice[0])
         for vds_slice, _, raw_data_slice in sc.changes()
     }
+
+
+def _chunk_blocks(
+    shape: tuple[int, ...],
+    chunk_size: tuple[int, ...],
+    itemsize: int,
+    max_bytes: int,
+) -> Iterator[tuple[slice, ...]]:
+    """Tile `shape` into blocks of whole chunks, each at most `max_bytes` in size.
+
+    Blocks are grown one axis at a time, starting from the last one, so that each of
+    them is as contiguous as possible in both the source dataset and raw_data. A block
+    always contains at least one chunk, even if a single chunk is larger than
+    `max_bytes`.
+    """
+    n_chunks = [ceil_a_over_b(s, c) for s, c in zip(shape, chunk_size, strict=True)]
+    if not all(n_chunks):
+        return
+
+    # Number of chunks along each axis of a block
+    block = [1] * len(shape)
+    nbytes = itemsize * math.prod(chunk_size)
+    for axis in reversed(range(len(shape))):
+        block[axis] = max(1, min(n_chunks[axis], max_bytes // nbytes))
+        nbytes *= block[axis]
+        if block[axis] < n_chunks[axis]:
+            break
+
+    for start in itertools.product(
+        *[range(0, n, b) for n, b in zip(n_chunks, block, strict=True)]
+    ):
+        yield tuple(
+            slice(i * c, min((i + b) * c, s))
+            for i, b, c, s in zip(start, block, chunk_size, shape, strict=True)
+        )
+
+
+def rewrite_dataset(
+    f,
+    name: str,
+    data,
+    *,
+    chunks: tuple[int, ...],
+    fillvalue: Any = None,
+    max_bytes: int = REWRITE_BUFFER_BYTES,
+) -> dict[Tuple, Slice]:
+    """Copy every chunk of `data` into the `raw_data` of `f`, deduplicating it against
+    the chunks already there, and return the `{chunk_index: raw_data slice}` dict to be
+    passed to `create_virtual_dataset`.
+
+    Unlike `commit_staged_changes`, which updates the `raw_data` that its
+    StagedChangesArray is already built on top of, this rewrites `data` from scratch
+    into an unrelated `raw_data`, which may live in another file. This is what
+    `recreate_dataset` needs: it can't assume that the new hash table maps the chunks
+    to the same locations as the old one, even where the data is unchanged.
+
+    `data` is read one block of chunks at a time, so that peak memory usage is
+    O(max_bytes) instead of O(data.size). Deduplication is unaffected: each block is
+    deduplicated against the on-disk hash table, which by then already describes every
+    chunk written by the previous blocks and by the previous versions.
+
+    Parameters
+    ----------
+    f:
+        Versioned hdf5 file or group, already initialized, which must contain
+        ``_version_data/<name>/{raw_data,hash_table}``
+    name:
+        Name of the dataset
+    data:
+        Any NumPy-like object supporting ``__getitem__`` with a tuple of slices,
+        e.g. a NumPy array, a h5py Dataset, or any of versioned-hdf5's dataset wrappers
+    chunks:
+        shape of a single chunk
+    fillvalue:
+        Fill value of the dataset. Chunks that are entirely full of it are not
+        written to raw_data at all.
+    max_bytes:
+        Maximum amount of memory, in bytes, to use to buffer the chunks in transit.
+        Rounded up to one chunk. This is only indicative for object string dtypes,
+        where the size of the buffer doesn't account for the strings themselves.
+
+    See Also
+    --------
+    commit_staged_changes
+    """
+    slices = {}
+
+    for block in _chunk_blocks(data.shape, chunks, data.dtype.itemsize, max_bytes):
+        staged_changes = StagedChangesArray.from_array(
+            data[block],
+            chunk_size=chunks,
+            fill_value=fillvalue,
+            as_base_slabs=False,
+        )
+        block_slices = commit_staged_changes(f, name, staged_changes)
+
+        # The chunk indices are relative to the block; shift them back to `data`
+        offsets = [s.start for s in block]
+        if any(offsets):
+            block_slices = {
+                Tuple(
+                    *[
+                        Slice(c.args[0] + o, c.args[1] + o, c.args[2])
+                        for c, o in zip(idx.args, offsets, strict=True)
+                    ]
+                ): raw_data_slice
+                for idx, raw_data_slice in block_slices.items()
+            }
+        slices.update(block_slices)
+
+    return slices
 
 
 def create_virtual_dataset(
