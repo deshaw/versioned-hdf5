@@ -648,6 +648,8 @@ def rewrite_dataset(
     data:
         Any NumPy-like object supporting ``__getitem__`` with a tuple of slices,
         e.g. a NumPy array, a h5py Dataset, or any of versioned-hdf5's dataset wrappers
+    chunks:
+        shape of a single chunk
     fillvalue:
         Fill value of the dataset. Chunks that are entirely full of it are not
         written to raw_data at all.
