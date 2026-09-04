@@ -75,7 +75,7 @@ These commands are available in the `default` and `mindeps` environments.
 
 ### Comparing revisions
 
-`pixi r asv-compare <rev1> <rev2> [... <revn>]` benchmarks two or more git revisions and
+`pixi r -b bench asv-compare <rev1> <rev2> [... <revn>]` benchmarks two or more git revisions and
 prints `asv compare` of each of them against the first one:
 
 ```console
