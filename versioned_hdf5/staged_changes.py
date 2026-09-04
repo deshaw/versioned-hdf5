@@ -471,6 +471,11 @@ class StagedChangesArray(MutableMapping[Any, T]):
         """
         copy = copy or not self.slab_indices.flags.writeable
 
+        if shape[0] > self.shape[0] and self.shape[0] % self.chunk_size[0]:
+            slab_lengths = [0 if slab is None else slab.shape[0] for slab in self.slabs]
+        else:
+            slab_lengths = None
+
         return ResizePlan(
             old_shape=self.shape,
             new_shape=shape,
@@ -479,7 +484,7 @@ class StagedChangesArray(MutableMapping[Any, T]):
             slab_offsets=self.slab_offsets.copy() if copy else self.slab_offsets,
             n_slabs=self.n_slabs,
             n_base_slabs=self.n_base_slabs,
-            slab_lengths=[0 if slab is None else slab.shape[0] for slab in self.slabs],
+            slab_lengths=slab_lengths,
         )
 
     def _load_plan(self, copy: bool = True) -> LoadPlan:
@@ -1757,7 +1762,7 @@ class ResizePlan(MutatingPlan):
         slab_offsets: NDArray[np_hsize_t],
         n_slabs: int,
         n_base_slabs: int,
-        slab_lengths: list[int],
+        slab_lengths: list[int] | None,
     ):
         """Generate instructions to execute StagedChangesArray.resize().
 
@@ -1768,7 +1773,8 @@ class ResizePlan(MutatingPlan):
         new_shape:
             StagedChangesArray.shape after the resize operation
         slab_lengths:
-            Size along axis 0 of each slab (0 where slab is None)
+            Size along axis 0 of each slab (0 where slab is None). Mandatory when
+            enlarging an array that can't be exactly divided by chunk_size.
 
         All other parameters are the matching attributes of StagedChangesArray.
         """
@@ -1899,7 +1905,7 @@ class ResizePlan(MutatingPlan):
         axis: ssize_t,
         n_slabs: int,
         n_base_slabs: int,
-        slab_lengths: list[int],
+        slab_lengths: list[int] | None,
     ):
         """Enlarge along a single axis"""
         old_size = old_shape[axis]
@@ -1937,6 +1943,7 @@ class ResizePlan(MutatingPlan):
 
         # Step 2
         if axis == 0:
+            assert slab_lengths is not None
             n_slabs = self._relocate_trimmed_staged_chunks_along_axis0(
                 old_shape=old_shape,
                 new_shape=new_shape,
