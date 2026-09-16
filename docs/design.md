@@ -181,13 +181,15 @@ dataset are concatenated along the first axis only). All chunks that do not
 exist in the hashtable already are appended to the raw dataset and added to
 the hashtable.
 
-`versioned_hdf5.backend.create_virtual_dataset()` creates a virtual dataset
-in the version group pointing to corresponding chunks in the raw dataset.
 `versioned_hdf5.backend` also has various functions for initializing a
 dataset the first time it is created in a version.
 
 `versioned_hdf5.hashtable` contains a `Hashtable` object that wraps the
 hashtable dataset in HDF5 as a dict-like object.
+
+`versioned_hdf5.slicetools.create_virtual_dataset()` creates a virtual dataset in the
+version group pointing to corresponding chunks in the raw dataset, as described by
+`slab_indices` and `slab_offsets` of the `StagedChangesArray` of the committed data.
 
 ### Versions
 

@@ -433,9 +433,7 @@ def _raw_data_as_base_slab(raw_data: Dataset, dtype: np.dtype):
     return raw_data if dtype == raw_data.dtype else h5py_astype(raw_data, dtype)
 
 
-def commit_staged_changes(
-    f, name: str, staged_changes: StagedChangesArray
-) -> dict[Tuple, Slice]:
+def commit_staged_changes(f, name: str, staged_changes: StagedChangesArray) -> None:
     """Commit a StagedChangesArray into `raw_data` and its on-disk hash table.
 
     1. Load the on-disk hash table dataset that hashes all chunks of `raw_data`
@@ -451,8 +449,10 @@ def commit_staged_changes(
     5. Append the new chunks' hashes and slices to the on-disk hash table
     6. Shift staged_changes.slab_offsets for the new virtual base slab, so that
        offsets are correct for raw_data.
-    7. Tail-call `staged_changes.changes`, which returns the
-       `{chunk_index: raw_data slice}` dict to be passed to `create_virtual_dataset`.
+
+    `staged_changes` is updated in place: on return it has no staged slabs and at most
+    one base slab, so it is ready to be consumed by
+    :func:`versioned_hdf5.slicetools.create_virtual_dataset`.
 
     **TRANSITION NOTES**
 
@@ -466,7 +466,7 @@ def commit_staged_changes(
         - modify_metadata
 
     Legacy code path
-        - delete_versions (Hashtable, _recreate_raw_data)
+        - delete_versions (Hashtable, _recreate_raw_data, _recreate_virtual_dataset)
         - VersionedHDF5.rebuild_hashtables (Hashtable)
     """
     sc = staged_changes
@@ -561,8 +561,9 @@ def commit_staged_changes(
         # StagedChangesArray is structurally identical to a freshly-loaded
         # InMemoryDataset.
         sc.slabs = [sc.slabs[0], _raw_data_as_base_slab(raw_data, sc.dtype)]
-        sc.hash_tables = [None, None]
         sc.n_base_slabs = 1
+
+    sc.hash_tables = sc.hash_tables[:1] + [None] * sc.n_base_slabs
 
     logging.debug(
         "  %s: New chunks written: %d; Number of chunks reused: %d",
@@ -570,13 +571,6 @@ def commit_staged_changes(
         n_appended_chunks,
         np.prod(sc.slab_indices.shape) - n_appended_chunks,
     )
-
-    # Build the {virtual dataset index: raw_data slice} mapping
-    # TODO Migrated to a Cythonized loop that reads sc.slab_offsets directly
-    return {
-        Tuple(*vds_slice): Slice(raw_data_slice[0])
-        for vds_slice, _, raw_data_slice in sc.changes()
-    }
 
 
 def _chunk_blocks(
@@ -622,10 +616,11 @@ def rewrite_dataset(
     chunks: tuple[int, ...],
     fillvalue: Any = None,
     max_bytes: int = REWRITE_BUFFER_BYTES,
-) -> dict[Tuple, Slice]:
+) -> StagedChangesArray:
     """Copy every chunk of `data` into the `raw_data` of `f`, deduplicating it against
-    the chunks already there, and return the `{chunk_index: raw_data slice}` dict to be
-    passed to `create_virtual_dataset`.
+    the chunks already there, and return the committed StagedChangesArray describing
+    where every chunk of the result lies, ready to be passed to
+    :func:`versioned_hdf5.slicetools.create_virtual_dataset`.
 
     Unlike `commit_staged_changes`, which updates the `raw_data` that its
     StagedChangesArray is already built on top of, this rewrites `data` from scratch
@@ -662,32 +657,25 @@ def rewrite_dataset(
     --------
     commit_staged_changes
     """
-    slices = {}
+    # The full-sized array starts with every chunk on the full slab. Each block's
+    # chunks are staged and committed into raw_data one block at a time; downstream
+    # of commit_staged_changes() they lie on the raw_data base slab (index 1) or on
+    # the full slab (index 0).
+    staged_changes = StagedChangesArray.full(
+        data.shape, chunk_size=chunks, fill_value=fillvalue, dtype=data.dtype
+    )
 
     for block in _chunk_blocks(data.shape, chunks, data.dtype.itemsize, max_bytes):
-        staged_changes = StagedChangesArray.from_array(
-            data[block],
-            chunk_size=chunks,
-            fill_value=fillvalue,
-            as_base_slabs=False,
-        )
-        block_slices = commit_staged_changes(f, name, staged_changes)
+        # The blocks are chunk-aligned, so the write stages exactly the block's chunks
+        staged_changes[block] = data[block]
+        # commit_staged_changes() deduplicates them against every chunk already on
+        # raw_data, including those written by the previous blocks
+        #
+        # FIXME this currently repeatedly writes and immediately reads back the hash
+        # table from disk, which is inefficient.
+        commit_staged_changes(f, name, staged_changes)
 
-        # The chunk indices are relative to the block; shift them back to `data`
-        offsets = [s.start for s in block]
-        if any(offsets):
-            block_slices = {
-                Tuple(
-                    *[
-                        Slice(c.args[0] + o, c.args[1] + o, c.args[2])
-                        for c, o in zip(idx.args, offsets, strict=True)
-                    ]
-                ): raw_data_slice
-                for idx, raw_data_slice in block_slices.items()
-            }
-        slices.update(block_slices)
-
-    return slices
+    return staged_changes
 
 
 def create_virtual_dataset(
@@ -696,9 +684,16 @@ def create_virtual_dataset(
     """Create a new virtual dataset by stitching the chunks of the
     raw dataset together, as indicated by the slices dict.
 
+    Notes
+    -----
+    This is the legacy, slices-dict-based API. It is no longer used by any
+    production code path; use the StagedChangesArray-based
+    :func:`versioned_hdf5.slicetools.create_virtual_dataset` instead.
+
     See Also
     --------
     _recreate_virtual_dataset
+    versioned_hdf5.slicetools.create_virtual_dataset
     """
     raw_data = f["_version_data"][name]["raw_data"]
     raw_data_shape = raw_data.shape
