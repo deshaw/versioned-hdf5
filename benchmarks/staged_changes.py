@@ -373,28 +373,6 @@ class TimeLoad(_MutatingBenchmark):
         self.arr.load()
 
 
-class TimeChanges:
-    """Benchmark ChangesPlan creation and execution.
-
-    Chunks that lie on the base slabs are yielded as slices, whereas the staged ones
-    are yielded as numpy arrays; these are the two states that matter here.
-    """
-
-    params = [["base", "staged"], list(CHUNK_SIZES)]
-    param_names = ["state", "chunk_size"]
-
-    def setup(self, state: str, chunk_size: str) -> None:
-        self.arr = make_array(state, CHUNK_SIZES[chunk_size])
-
-    def time_changes_plan(self, state: str, chunk_size: str) -> None:
-        self.arr._changes_plan()
-
-    def time_changes(self, state: str, chunk_size: str) -> None:
-        # Internally calls _changes_plan() and then executes the plan
-        for _ in self.arr.changes():
-            pass
-
-
 class TimeCommit(_MutatingBenchmark):
     """Benchmark HashPlan creation and execution, and the whole of commit()"""
 

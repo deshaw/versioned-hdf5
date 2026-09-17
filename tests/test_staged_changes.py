@@ -172,32 +172,33 @@ def test_staged_array(args):
     # One final __getitem__ of everything
     assert_array_equal(arr, expect, strict=True)
 
-    # Reconstruct the array starting from the base + changes
+    # Reconstruct the array from the slab bookkeeping alone: every chunk flagged as
+    # not-full (slab_indices != 0) must hold its data, and every chunk on the full slab
+    # must be pure fill_value.
     final = np.full(expect.shape, fill_value, dtype=base.dtype)
-    shapes = [base.shape] + [arg for label, arg in actions if label == "resize"]
-    common_idx = tuple(slice(min(sizes)) for sizes in zip(*shapes, strict=True))
-    final[common_idx] = base[common_idx]
-    for value_idx, _, chunk in arr.changes():
-        if not isinstance(chunk, tuple):
-            assert chunk.dtype == base.dtype
-            final[value_idx] = chunk
+    for chunk_idx in np.ndindex(*arr.n_chunks):
+        if not arr.slab_indices[chunk_idx]:
+            continue
+        value_idx = tuple(
+            slice(start := int(c) * s, min(start + s, n))
+            for c, s, n in zip(chunk_idx, arr.chunk_size, arr.shape, strict=True)
+        )
+        chunk = arr[value_idx]
+        assert chunk.dtype == base.dtype
+        final[value_idx] = chunk
     assert_array_equal(final, expect, strict=True)
 
     # Test __iter__
     assert_array_equal(list(arr), list(expect), strict=True)
 
     # Commit: consolidate all staged chunks into a new base slab. The data must be
-    # unchanged, there must be no staged slabs left, and changes() (now reading from
-    # base slabs only) must still reconstruct the array.
+    # unchanged, there must be no staged slabs left, and every remaining chunk must
+    # be read from a base slab.
     prev_base_slabs = arr.n_base_slabs
     arr.commit()
     assert arr.n_base_slabs in (prev_base_slabs, prev_base_slabs + 1)
     assert arr.n_staged_slabs == 0
-
-    for _, slab_idx, chunk in arr.changes():
-        assert slab_idx in list(range(1, prev_base_slabs + 2))
-        assert isinstance(chunk, tuple)
-        assert all(isinstance(s, slice) for s in chunk)
+    assert (arr.slab_indices <= arr.n_base_slabs).all()
 
     for i, (slab, ht) in enumerate(zip(arr.slabs, arr.hash_tables, strict=True)):
         if slab is None:
@@ -265,8 +266,9 @@ def test_array_protocol_from_slabs():
     np.testing.assert_array_equal(arr[:, :], expect, strict=True)  # __getitem__
     np.testing.assert_array_equal(np.stack(list(arr)), expect, strict=True)  # __iter__
 
-    for _, _, chunk_or_slices in arr.changes():
-        assert isinstance(chunk_or_slices, tuple)
+    # Nothing has been modified yet, so every chunk lies on a base slab or on the
+    # full slab, and no staged slabs exist
+    assert arr.n_staged_slabs == 0
 
     # StagedChangesArray.__setitem__, resize(), refill()  # noqa: ERA001
     arr[0, 0] = 42
@@ -428,7 +430,7 @@ def test_resize_through_size_zero():
 
 
 def test_size_zero_with_base_slabs():
-    """load() and changes() on a size-0 array that has base slabs"""
+    """load() on a size-0 array that has base slabs"""
     a = StagedChangesArray(
         shape=(0,),
         chunk_size=(2,),
@@ -436,7 +438,7 @@ def test_size_zero_with_base_slabs():
         slab_indices=[],
         slab_offsets=[],
     )
-    assert list(a.changes()) == []
+    assert a.n_chunks == (0,)
     a.load()  # No-op
     assert a.n_slabs == 2
     assert_array_equal(a, np.empty((0,), dtype="i8"), strict=True)
@@ -708,17 +710,6 @@ class TestAsTypeLazy:
         assert self.a.staged_slabs[0].dtype == "i2"
         assert self.a.staged_slabs[1].dtype == "i1"
         assert_array_equal(self.a[:2], np.array([1000, 1], dtype="i2"))
-
-    def test_changes(self):
-        """changes() changes chunk dtype upon first access."""
-        changes = list(self.a.changes())
-        assert len(changes) == 2
-        assert changes[0][:2] == ((slice(0, 2, 1),), 1)
-        assert changes[1][:2] == ((slice(2, 4, 1),), 2)
-        assert_array_equal(changes[0][2], np.array([0, 1], dtype="i2"), strict=True)
-        assert_array_equal(changes[1][2], np.array([2, 3], dtype="i2"), strict=True)
-        assert self.a.staged_slabs[0].dtype == "i2"
-        assert self.a.staged_slabs[1].dtype == "i2"
 
     def test_refill(self):
         """refill() changes chunk dtype upon first access.
@@ -1027,11 +1018,7 @@ def test_repr():
     assert "slabs[2][0:1, 0:2] = slabs[1][0:1, 0:2]" in r, r
     assert "slabs[1] = None" not in r, r
 
-    a[0, 0] = 5
-    r = repr(a._changes_plan())
-    assert "2 chunks" in r, r
-    assert "base[0:1, 0:2] = slabs[2][0:1, 0:2]" in r, r
-    assert "base[1:2, 0:2] = slabs[1][1:2, 0:2]" in r, r
+    a[0, 0] = 5  # Create staged slab 2
 
     # MutatingPlan.__repr__ with no appended slabs
     r = repr(a._resize_plan((0, 2)))
@@ -1654,19 +1641,6 @@ def test_from_array_as_staged_slabs_resize_axis0_enlarge_axis1_shrink_drop():
     assert_array_equal(a, expected)
 
 
-def test_from_array_as_staged_slabs_changes():
-    """changes() yields edge chunks trimmed to the exact edge size."""
-    arr = np.arange(15).reshape((3, 5))
-    a = StagedChangesArray.from_array(arr, chunk_size=(2, 2), as_base_slabs=False)
-
-    a[1, 1] = -1
-    final = np.zeros_like(arr)
-    for idx, _, chunk in a.changes():
-        assert not isinstance(chunk, tuple)  # all chunks lie on staged slabs
-        final[idx] = chunk  # chunk.shape must match the size of idx
-    assert_array_equal(final, a)
-
-
 def test_from_array_as_staged_slabs_commit():
     """commit() hashes, deduplicates, and consolidates trimmed staged slabs."""
     arr = np.arange(15).reshape((3, 5))
@@ -1685,9 +1659,8 @@ def test_from_array_as_staged_slabs_commit():
             ]
         ),
     )
-    for _, slab_idx, chunk in a.changes():
-        assert slab_idx == 1
-        assert isinstance(chunk, tuple)  # now read from the base slab
+    # Every chunk now lies on the single base slab
+    assert (a.slab_indices == 1).all()
 
     # Identical trimmed chunks are deduplicated at commit time
     arr2 = np.full((7, 1), 5)

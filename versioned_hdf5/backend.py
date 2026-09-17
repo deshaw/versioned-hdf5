@@ -10,10 +10,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from h5py import Dataset, VirtualLayout, h5s, h5z
+from h5py import Dataset, h5z
 from h5py._hl.filters import guess_chunk
-from h5py._hl.selections import select
-from h5py._selector import Selector
 from ndindex import ChunkSize, Slice, Tuple
 
 from versioned_hdf5.cytools import ceil_a_over_b
@@ -311,7 +309,7 @@ def write_dataset(
         fillvalue is not None
         and fillvalue != ds.fillvalue
         # For variable length string dtypes, ds.fillvalue will be None in
-        # this case (see create_virtual_dataset() below)
+        # this case (see create_base_dataset() above)
         and not is_vstring_dtype(ds.dtype)
     ):
         raise ValueError(f"fillvalues do not match ({fillvalue} != {ds.fillvalue})")
@@ -676,77 +674,6 @@ def rewrite_dataset(
         commit_staged_changes(f, name, staged_changes)
 
     return staged_changes
-
-
-def create_virtual_dataset(
-    f, version_name, name, shape, slices, attrs=None, fillvalue=None
-):
-    """Create a new virtual dataset by stitching the chunks of the
-    raw dataset together, as indicated by the slices dict.
-
-    Notes
-    -----
-    This is the legacy, slices-dict-based API. It is no longer used by any
-    production code path; use the StagedChangesArray-based
-    :func:`versioned_hdf5.slicetools.create_virtual_dataset` instead.
-
-    See Also
-    --------
-    _recreate_virtual_dataset
-    versioned_hdf5.slicetools.create_virtual_dataset
-    """
-    raw_data = f["_version_data"][name]["raw_data"]
-    raw_data_shape = raw_data.shape
-    raw_data_name = raw_data.name.encode("utf-8")
-
-    layout = VirtualLayout(shape=shape, dtype=raw_data.dtype)
-    if len(raw_data) == 0:
-        assert all(c.isempty() for c in slices)
-    else:
-        layout._src_filenames.add(b".")
-        space = h5s.create_simple(shape)
-        selector = Selector(space)
-
-        # Chunks in the raw dataset are expanded along the first dimension only.
-        # Since the chunks are pointed to by virtual datasets, it doesn't make
-        # sense to expand the chunks in the raw dataset along multiple dimensions
-        # (the true layout of the chunks in the raw dataset is irrelevant).
-        for c, s0 in slices.items():
-            if len(c.args[0]) != len(s0):
-                raise ValueError(f"Inconsistent slices dictionary ({c.args[0]}, {s0})")
-            if c.isempty():
-                continue
-
-            s = (s0.reduce().raw, *(slice(0, len(ci), 1) for ci in c.args[1:]))
-
-            # This is equivalent to `layout[c] = vs[s]`,
-            # but faster because vs[s] deep-copies vs, which is slow.
-            vs_sel = select(raw_data_shape, s, dataset=None)
-            sel = selector.make_selection(c.raw)
-            layout.dcpl.set_virtual(sel.id, b".", raw_data_name, vs_sel.id)
-
-    dtype_meta = raw_data.dtype.metadata
-    if dtype_meta and ("vlen" in dtype_meta or "h5py_encoding" in dtype_meta):
-        # Variable length string dtype
-        # (https://h5py.readthedocs.io/en/2.10.0/strings.html). Setting the
-        # fillvalue in this case doesn't work
-        # (https://github.com/h5py/h5py/issues/941).
-        if fillvalue not in [0, "", b"", None]:
-            raise ValueError(
-                "Non-default fillvalue not supported for variable length strings"
-            )
-        fillvalue = None
-
-    virtual_data = f["_version_data/versions"][version_name].create_virtual_dataset(
-        name, layout, fillvalue=fillvalue
-    )
-
-    if attrs:
-        for k, v in attrs.items():
-            virtual_data.attrs[k] = v
-    virtual_data.attrs["raw_data"] = raw_data.name
-    virtual_data.attrs["chunks"] = raw_data.chunks
-    return virtual_data
 
 
 def get_available_filters() -> Iterator[int]:

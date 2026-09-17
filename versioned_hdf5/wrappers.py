@@ -22,7 +22,7 @@ import numpy as np
 from h5py import Dataset, Empty, Group, h5a, h5d, h5g, h5i, h5r, h5s, h5t, string_dtype
 from h5py._hl.base import guess_dtype, phil, with_phil
 from h5py._hl.selections import guess_shape
-from ndindex import Slice, Tuple, ndindex
+from ndindex import Tuple, ndindex
 from numpy.typing import ArrayLike, DTypeLike
 
 from versioned_hdf5.backend import (
@@ -686,10 +686,6 @@ class InMemoryDataset(BufferMixin, FiltersMixin, Dataset):
         )
 
     @property
-    def data_dict(self) -> dict[Tuple, Slice | np.ndarray]:
-        return _staged_changes_to_data_dict(self.staged_changes)
-
-    @property
     def dtype(self):
         """Override Dataset.dtype to allow hot-swapping
         equivalent dtypes, e.g. NpyStrings <-> object strings
@@ -1092,10 +1088,6 @@ class InMemorySparseDataset(BufferMixin, FiltersMixin, DatasetLike):
         )
 
     @property
-    def data_dict(self) -> dict[Tuple, Slice | np.ndarray]:
-        return _staged_changes_to_data_dict(self.staged_changes)
-
-    @property
     def shape(self) -> tuple[int, ...]:  # type: ignore[override]
         return self.staged_changes.shape
 
@@ -1138,26 +1130,6 @@ class InMemorySparseDataset(BufferMixin, FiltersMixin, DatasetLike):
     def resize(self, size, axis=None):
         new_shape = _normalize_resize_args(self.shape, size, axis)
         self.staged_changes.resize(new_shape)
-
-
-def _staged_changes_to_data_dict(
-    staged_changes: StagedChangesArray,
-) -> dict[Tuple, Slice | np.ndarray]:
-    """Transitional hack that converts a StagedChangsArray to a legacy data_dict.
-
-    This was introduced when replacing the legacy system, which was wholly designed
-    around the data_dict, with StagedChangesArray and it allowed not to modify from the
-    get go all the code that is triggered upon commit.
-
-    We intend to clean this up eventually.
-    """
-    # InMemoryDataset has exactly one raw_data buffer underlying
-    # InMemorySparseDataset has none
-    assert staged_changes.n_base_slabs < 2
-    return {
-        Tuple(*k): Slice(v[0]) if isinstance(v, tuple) else v
-        for k, _, v in staged_changes.changes()
-    }
 
 
 def _normalize_resize_args(

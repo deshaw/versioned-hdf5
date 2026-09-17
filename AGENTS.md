@@ -89,7 +89,7 @@ datasets like `raw_data`; staged slabs = writable numpy arrays). Two metadata ar
 `slab_indices` and `slab_offsets` track which slab each chunk lives in.
 
 Every mutating operation goes through a `*Plan` object (`GetItemPlan`,
-`SetItemPlan`, `ResizePlan`, `LoadPlan`, `ChangesPlan`) that encapsulates the
+`SetItemPlan`, `ResizePlan`, `LoadPlan`) that encapsulates the
 index/chunk math and ultimately calls `read_many_slices` (Cython, maps directly to
 libhdf5 `H5Sselect_hyperslab` + `H5Dread`). Plans can be inspected via
 `StagedChangesArray._*_plan(...)` for debugging without executing.
