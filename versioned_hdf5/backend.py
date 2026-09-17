@@ -400,7 +400,11 @@ def _data_v4_to_sc_hash_table(hash_table: Dataset, chunk_size0: int) -> np.ndarr
     # chunk index, leaving all-zeros (which means "no chunk here") in the gaps.
     rows = records["shape"][:, 0] // chunk_size0
     if not np.array_equal(rows, np.arange(largest_index)):
-        reordered = np.zeros((int(rows.max()) + 1, 4), dtype=np.uint64)
+        # Reorder by chunk index, leaving all-zeros (which means "no chunk here") in the
+        # gaps. Ensure there are enough rows for the full raw_data to allow reusing the
+        # table in memory across commits (see rewrite_dataset).
+        n_hash_rows = max(largest_index, int(rows.max()) + 1)
+        reordered = np.zeros((n_hash_rows, 4), dtype=np.uint64)
         reordered[rows] = hashes
         hashes = reordered
 
@@ -435,7 +439,8 @@ def commit_staged_changes(f, name: str, staged_changes: StagedChangesArray) -> N
     """Commit a StagedChangesArray into `raw_data` and its on-disk hash table.
 
     1. Load the on-disk hash table dataset that hashes all chunks of `raw_data`
-       into memory
+       into memory; if the StagedChangesArray already carries the hash table of a
+       previous commit (see `rewrite_dataset`), it is reused as is instead
     2. Inject it as the hash table of `staged_changes.base_slabs[0]`, which is
        `raw_data`
     3. Define a callback function that mocks `numpy.empty`. The callback internally
@@ -450,7 +455,10 @@ def commit_staged_changes(f, name: str, staged_changes: StagedChangesArray) -> N
 
     `staged_changes` is updated in place: on return it has no staged slabs and at most
     one base slab, so it is ready to be consumed by
-    :func:`versioned_hdf5.slicetools.create_virtual_dataset`.
+    :func:`versioned_hdf5.slicetools.create_virtual_dataset`. The in-memory hash table
+    of `raw_data` is left attached to `staged_changes` as well, so that a subsequent
+    call on the same object (see `rewrite_dataset`) doesn't need to read it back
+    from disk.
 
     **TRANSITION NOTES**
 
@@ -495,8 +503,11 @@ def commit_staged_changes(f, name: str, staged_changes: StagedChangesArray) -> N
 
     n_base_before = sc.n_base_slabs
 
-    if n_base_before == 1:
-        assert sc.hash_tables[1] is None
+    if n_base_before == 1 and (
+        sc.hash_tables[1] is None or sc.hash_tables[1].shape[0] != prev_n_chunks
+    ):
+        # First commit on this StagedChangesArray: load the hashes of the chunks already
+        # on raw_data from disk. This is skipped on iteration 2+ of rewrite_dataset().
         sc.hash_tables[1] = _data_v4_to_sc_hash_table(hash_table, chunk_size0)
 
     def empty(shape: tuple[int, ...], dtype) -> RawDataView:
@@ -546,6 +557,12 @@ def commit_staged_changes(f, name: str, staged_changes: StagedChangesArray) -> N
         # raw_data or raw_data+hash_table larger than this.
         hash_table.attrs["largest_index"] = new_n_chunks
 
+        # Keep the hash table of raw_data in memory, so that a subsequent
+        # commit_staged_changes() call on the same StagedChangesArray (see
+        # rewrite_dataset) doesn't need to read it back from disk.
+        if n_base_before:
+            sc.hash_tables[1] = np.concatenate([sc.hash_tables[1], new_hashes])
+
         # commit() wrote the new chunks through a RawDataView onto
         # raw_data[prev_len:], so their slab_offsets are relative to prev_len.
         # Shift them to absolute raw_data offsets and collapse the new base slab onto
@@ -561,7 +578,7 @@ def commit_staged_changes(f, name: str, staged_changes: StagedChangesArray) -> N
         sc.slabs = [sc.slabs[0], _raw_data_as_base_slab(raw_data, sc.dtype)]
         sc.n_base_slabs = 1
 
-    sc.hash_tables = sc.hash_tables[:1] + [None] * sc.n_base_slabs
+    sc.hash_tables = sc.hash_tables[:2]
 
     logging.debug(
         "  %s: New chunks written: %d; Number of chunks reused: %d",
@@ -667,10 +684,8 @@ def rewrite_dataset(
         # The blocks are chunk-aligned, so the write stages exactly the block's chunks
         staged_changes[block] = data[block]
         # commit_staged_changes() deduplicates them against every chunk already on
-        # raw_data, including those written by the previous blocks
-        #
-        # FIXME this currently repeatedly writes and immediately reads back the hash
-        # table from disk, which is inefficient.
+        # raw_data, including those written by the previous blocks. It reuses the
+        # in-memory hash table left by the previous iteration.
         commit_staged_changes(f, name, staged_changes)
 
     return staged_changes
