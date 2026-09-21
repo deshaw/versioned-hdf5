@@ -3,11 +3,11 @@ from functools import lru_cache
 
 import cython
 import h5py
-from h5py import h5d
+from h5py import VirtualLayout, h5d
 
 cimport cython
 cimport numpy as np
-from numpy cimport NPY_MAXDIMS
+from numpy cimport NPY_MAXDIMS, npy_intp
 
 import numpy as np
 from cython import void
@@ -73,6 +73,13 @@ cdef extern from "hdf5.h":
     # virtual Dataset functions
     cdef hid_t H5Pget_virtual_vspace(hid_t dcpl_id, size_t index) nogil
     cdef hid_t H5Pget_virtual_srcspace(hid_t dcpl_id, size_t index) nogil
+    cdef herr_t H5Pset_virtual(
+        hid_t dcpl_id,
+        hid_t vspace_id,
+        const char* src_file_name,
+        const char* src_dset_name,
+        hid_t src_space_id,
+    ) nogil
 
     ctypedef enum H5S_sel_type:
         H5S_SEL_ERROR = -1,  # Error
@@ -294,6 +301,212 @@ cdef Exception HDF5Error():
     fclose(stream)
     msg = buf.decode("utf-8", errors="replace")
     return RuntimeError(msg)
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _fill_virtual_layout(
+    hid_t dcpl_id,
+    hid_t vspace_id,
+    hid_t srcspace_id,
+    const char* raw_data_name,
+    ssize_t ndim,
+    const hsize_t* shape_arr,
+    const hsize_t* chunk_size_arr,
+    const hsize_t* nchunks_arr,
+    hsize_t raw_rows0,
+    char* slab_indices_ptr,
+    char* slab_offsets_ptr,
+    npy_intp* slab_indices_strides,
+    npy_intp* slab_offsets_strides,
+) except * nogil:
+    """Add one virtual source to a virtual dataset creation property list for each
+    chunk of a committed StagedChangesArray that doesn't lie on the full slab.
+
+    This is the hot loop of create_virtual_dataset(), which runs with the GIL released.
+    See create_virtual_dataset() for the parameters.
+    """
+    cdef:
+        hsize_t[NPY_MAXDIMS] vstart, vcount, sstart
+        hsize_t[NPY_MAXDIMS] chunk_idx
+        hsize_t slab_idx, slab_offset, start
+        npy_intp si_off = 0
+        npy_intp so_off = 0
+        ssize_t j
+
+    for j in range(ndim):
+        if nchunks_arr[j] == 0:
+            return  # Zero-length axis; there are no chunks to point at
+        chunk_idx[j] = 0
+        # Chunks are concatenated along axis 0 of raw_data only, so a chunk spans the
+        # whole extent of raw_data along all the other axes
+        sstart[j] = 0
+
+    # Note: vspace_id and srcspace_id are simple dataspaces covering the full extents
+    # of the virtual dataset and of raw_data respectively. H5Pset_virtual() copies them
+    # into dcpl_id, so they can be safely recycled with H5S_SELECT_SET for each chunk,
+    # which avoids one pair of allocations per chunk.
+    with nogil:
+        while True:
+            # Chunks on the full slab are left to the fill_value of the virtual dataset
+            slab_idx = (<hsize_t*>(slab_indices_ptr + si_off))[0]
+            if slab_idx > 1:
+                with gil:
+                    raise AssertionError(
+                        "Inconsistent StagedChangesArray: chunk lies on slab "
+                        f"{slab_idx}, but there is at most one base slab"
+                    )
+
+            if slab_idx == 1:
+                for j in range(ndim):
+                    start = chunk_idx[j] * chunk_size_arr[j]
+                    vstart[j] = start
+                    # Edge chunks along the outer axes are shorter than chunk_size
+                    vcount[j] = min(shape_arr[j] - start, chunk_size_arr[j])
+                slab_offset = (<hsize_t*>(slab_offsets_ptr + so_off))[0]
+                sstart[0] = slab_offset
+
+                if slab_offset + vcount[0] > raw_rows0:
+                    with gil:
+                        raise AssertionError(
+                            "Inconsistent StagedChangesArray: chunk points to "
+                            f"raw_data[{slab_offset}:{slab_offset + vcount[0]}], "
+                            f"but raw_data has only {raw_rows0} rows"
+                        )
+
+                if H5Sselect_hyperslab(
+                    vspace_id, H5S_SELECT_SET, vstart, NULL, vcount, NULL
+                ) < 0:
+                    raise HDF5Error()
+                if H5Sselect_hyperslab(
+                    srcspace_id, H5S_SELECT_SET, sstart, NULL, vcount, NULL
+                ) < 0:
+                    raise HDF5Error()
+                if H5Pset_virtual(
+                    dcpl_id, vspace_id, ".", raw_data_name, srcspace_id
+                ) < 0:
+                    raise HDF5Error()
+
+            # Advance the chunk index offsets, C-order.
+            # Note that slab_indices and slab_offsets may be strided views,
+            # e.g. after resize() shrunk the array.
+            for j in range(ndim - 1, -1, -1):
+                chunk_idx[j] += 1
+                si_off += slab_indices_strides[j]
+                so_off += slab_offsets_strides[j]
+                if chunk_idx[j] < nchunks_arr[j]:
+                    break
+                chunk_idx[j] = 0
+                si_off -= <npy_intp>nchunks_arr[j] * slab_indices_strides[j]
+                so_off -= <npy_intp>nchunks_arr[j] * slab_offsets_strides[j]
+            else:
+                break
+
+
+def create_virtual_dataset(
+    f, version_name, name, staged_changes, attrs=None, fillvalue=None
+):
+    """Create a new virtual dataset by stitching the chunks of raw_data together, as
+    described by a StagedChangesArray.
+
+    This function should be called immediately downstream of commit_staged_changes(),
+    which leaves the StagedChangesArray with no staged slabs and at most one base slab;
+    in other words the slab_indices are always 0 (full slab) or 1 (single raw_data base
+    slab).
+
+    Parameters
+    ----------
+    f:
+        h5py File or group, already initialized, containing both
+        ``_version_data/<name>/raw_data`` and ``_version_data/versions/<version_name>``
+    version_name:
+        Name of the version
+    name:
+        Name of the dataset
+    staged_changes: StagedChangesArray
+        A committed StagedChangesArray, i.e. one with no staged slabs and at most one
+        base slab.
+    attrs: dict, optional
+        Attributes to attach to the new virtual dataset
+    fillvalue: optional
+        Fill value of the new virtual dataset
+
+    See Also
+    --------
+    versioned_hdf5.backend.commit_staged_changes
+    """
+    raw_data = f["_version_data"][name]["raw_data"]
+
+    # Must be downstream of commit_staged_changes().
+    assert staged_changes.n_staged_slabs == 0
+    assert staged_changes.n_base_slabs in (0, 1)
+    assert raw_data.shape[1:] == staged_changes.chunk_size[1:]
+    cdef np.ndarray slab_indices = staged_changes.slab_indices
+    cdef np.ndarray slab_offsets = staged_changes.slab_offsets
+    assert slab_indices.dtype == np_hsize_t
+    assert slab_offsets.dtype == np_hsize_t
+
+    dtype_meta = raw_data.dtype.metadata
+    if dtype_meta and ("vlen" in dtype_meta or "h5py_encoding" in dtype_meta):
+        # Variable length string dtype
+        # (https://h5py.readthedocs.io/en/2.10.0/strings.html).
+        # Setting the fillvalue in this case doesn't work
+        # (https://github.com/h5py/h5py/issues/941).
+        if fillvalue not in [0, "", b"", None]:
+            raise ValueError(
+                "Non-default fillvalue not supported for variable length strings"
+            )
+        fillvalue = None
+
+    layout = VirtualLayout(shape=staged_changes.shape, dtype=raw_data.dtype)
+    layout._src_filenames.add(b".")
+
+    # Copy tuples into C arrays
+    cdef ssize_t j
+    cdef hsize_t[NPY_MAXDIMS] shape_arr
+    cdef hsize_t[NPY_MAXDIMS] chunk_size_arr
+    cdef hsize_t[NPY_MAXDIMS] nchunks_arr
+    for j, (s, c) in enumerate(
+        zip(staged_changes.shape, staged_changes.chunk_size, strict=True)
+    ):
+        shape_arr[j] = s
+        chunk_size_arr[j] = c
+        nchunks_arr[j] = ceil_a_over_b(s, c)
+
+    cdef bytes raw_data_name = raw_data.name.encode("utf-8")
+
+    with phil:
+        vspace = h5s.create_simple(staged_changes.shape)
+        srcspace = h5s.create_simple(raw_data.shape)
+        _fill_virtual_layout(
+            layout.dcpl.id,
+            vspace.id,
+            srcspace.id,
+            raw_data_name,
+            staged_changes.ndim,
+            shape_arr,
+            chunk_size_arr,
+            nchunks_arr,
+            raw_data.shape[0],
+            # Note: .data and .strides resolve to the NumPy C API, not to the Python
+            # attributes of the same name, because slab_indices and slab_offsets are
+            # declared as np.ndarray
+            slab_indices.data,
+            slab_offsets.data,
+            slab_indices.strides,
+            slab_offsets.strides,
+        )
+
+    virtual_data = f["_version_data/versions"][version_name].create_virtual_dataset(
+        name, layout, fillvalue=fillvalue
+    )
+
+    if attrs:
+        for k, v in attrs.items():
+            virtual_data.attrs[k] = v
+    virtual_data.attrs["raw_data"] = raw_data.name
+    virtual_data.attrs["chunks"] = raw_data.chunks
+    return virtual_data
 
 
 class RawDataView:

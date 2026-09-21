@@ -6,6 +6,7 @@ from h5py._hl.filters import guess_chunk
 from ndindex import ChunkSize, Slice, Tuple
 from numpy.testing import assert_equal
 
+from versioned_hdf5 import slicetools
 from versioned_hdf5.backend import (
     DEFAULT_CHUNK_SIZE,
     Filters,
@@ -996,7 +997,7 @@ def test_chunk_blocks(shape, chunk_size, max_bytes, expect):
 @pytest.mark.parametrize("max_bytes", [0, 8, 24, 1000])
 def test_rewrite_dataset(vfile, max_bytes):
     """rewrite_dataset() copies every chunk of an array into a brand new raw_data,
-    deduplicating them, and returns the same {virtual index: raw_data slice} mapping
+    deduplicating them, and returns the same committed StagedChangesArray
     regardless of how many chunks it buffers at a time.
     """
     # Chunk (1, 0) is a duplicate of chunk (0, 1) and chunk (1, 1) of chunk (0, 0);
@@ -1011,18 +1012,21 @@ def test_rewrite_dataset(vfile, max_bytes):
         ]
     )
     create_base_dataset(vfile.f, "x", data=data[:0], chunks=(2, 2), fillvalue=0)
-    slices = rewrite_dataset(
+    staged_changes = rewrite_dataset(
         vfile.f, "x", data, chunks=(2, 2), fillvalue=0, max_bytes=max_bytes
     )
 
-    assert slices == {
-        Tuple(Slice(0, 2, 1), Slice(0, 2, 1)): Slice(0, 2, 1),
-        Tuple(Slice(0, 2, 1), Slice(2, 4, 1)): Slice(2, 4, 1),
-        Tuple(Slice(2, 4, 1), Slice(0, 2, 1)): Slice(2, 4, 1),
-        Tuple(Slice(2, 4, 1), Slice(2, 4, 1)): Slice(0, 2, 1),
-        Tuple(Slice(4, 5, 1), Slice(0, 2, 1)): Slice(4, 5, 1),
-        Tuple(Slice(4, 5, 1), Slice(2, 4, 1)): Slice(6, 7, 1),
-    }
+    # Chunks (1, 0) and (1, 1) are deduplicated against (0, 1) and (0, 0).
+    # Chunk (2, 1) is written despite being entirely fillvalue: edge chunks are
+    # hashed over their visible cells only, so they can never match the full slab
+    assert_equal(
+        staged_changes.slab_indices,
+        [[1, 1], [1, 1], [1, 1]],
+    )
+    assert_equal(
+        staged_changes.slab_offsets,
+        [[0, 2], [2, 0], [4, 6]],
+    )
 
     # Only 4 chunks were written; the two duplicates were deduplicated away.
     # raw_data always grows by whole chunks, so the two edge chunks are padded.
@@ -1033,9 +1037,9 @@ def test_rewrite_dataset(vfile, max_bytes):
         [[1, 2], [5, 6], [3, 4], [7, 8], [9, 9], [0, 0], [0, 0], [0, 0]],
     )
 
-    # The mapping stitches the original array back together
+    # The StagedChangesArray stitches the original array back together
     vfile.f["_version_data/versions"].create_group("r0")
-    create_virtual_dataset(vfile.f, "r0", "x", data.shape, slices, fillvalue=0)
+    slicetools.create_virtual_dataset(vfile.f, "r0", "x", staged_changes, fillvalue=0)
     assert_equal(vfile.f["_version_data/versions/r0/x"][:], data)
 
 
@@ -1044,4 +1048,8 @@ def test_rewrite_dataset_empty(vfile, max_bytes):
     """A size-0 dataset has no chunks to rewrite."""
     data = np.empty((0, 3))
     create_base_dataset(vfile.f, "x", data=data, chunks=(2, 2))
-    assert rewrite_dataset(vfile.f, "x", data, chunks=(2, 2), max_bytes=max_bytes) == {}
+    staged_changes = rewrite_dataset(
+        vfile.f, "x", data, chunks=(2, 2), max_bytes=max_bytes
+    )
+    assert staged_changes.shape == (0, 3)
+    assert not staged_changes.has_base_chunks

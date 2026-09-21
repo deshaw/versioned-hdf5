@@ -1,6 +1,7 @@
 import enum
 from typing import Literal, NamedTuple
 
+import h5py
 import hypothesis
 import numpy as np
 import pytest
@@ -12,12 +13,16 @@ from numpy.typing import DTypeLike
 from versioned_hdf5.slicetools import (
     RawDataView,
     build_slab_indices_and_offsets,
+    create_virtual_dataset,
     read_many_slices,
     spaceid_to_slice,
 )
 
 from versioned_hdf5 import VersionedHDF5File
-from versioned_hdf5.cytools import count2stop
+from versioned_hdf5.backend import commit_staged_changes, create_base_dataset
+from versioned_hdf5.cytools import count2stop, np_hsize_t
+from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS, h5py_astype
+from versioned_hdf5.staged_changes import StagedChangesArray
 
 from .test_typing import MinimalArray
 
@@ -690,3 +695,314 @@ def test_read_many_slices_fail():
     dst.setflags(write=False)
     with pytest.raises(ValueError, match="writeable"):
         read_many_slices(src, dst, [[0]], [[0]], [[1]])
+
+
+def n_virtual_sources(vds: h5py.Dataset) -> int:
+    """Number of source mappings of a virtual dataset.
+
+    libhdf5<2 creates a dataset with zero mappings as a plain contiguous dataset, which
+    h5py then refuses to introspect as virtual; newer versions create a genuine virtual
+    dataset with no sources. Either way the dataset reads back as all fillvalue.
+    """
+    return len(vds.virtual_sources()) if vds.is_virtual else 0
+
+
+@pytest.mark.parametrize(
+    ("shape", "chunk_size"),
+    [
+        ((25,), (10,)),
+        ((10,), (10,)),
+        ((10,), (11,)),
+        ((7, 5), (3, 4)),
+        ((6, 8), (3, 4)),
+        ((2, 3, 4), (1, 2, 2)),
+    ],
+)
+def test_create_virtual_dataset(setup_vfile, shape, chunk_size):
+    """Mix data chunks and fill_value chunks in any geometry, including edge chunks
+    along any axis, and check that the virtual dataset reads back exactly as expected.
+    """
+    grid = tuple(-(-s // c) for s, c in zip(shape, chunk_size, strict=True))
+    rng = np.random.default_rng(0)
+    data = rng.integers(0, 100, size=shape).astype(np.int32)
+    mask = rng.random(grid) > 0.5
+    mask[(0,) * len(grid)] = True  # Keep at least one chunk
+
+    with setup_vfile(version_name="v") as f:
+        create_base_dataset(
+            f,
+            "x",
+            data=np.empty((0, *shape[1:]), np.int32),
+            chunks=chunk_size,
+            fillvalue=-1,
+        )
+        sc = StagedChangesArray.from_array(
+            data, chunk_size=chunk_size, fill_value=-1, as_base_slabs=False
+        )
+        commit_staged_changes(f, "x", sc)
+        # Revert a random subset of the chunks to the fill_value
+        sc.slab_indices[~mask] = 0
+
+        vds = create_virtual_dataset(f, "v", "x", sc, fillvalue=-1)
+
+        assert vds.shape == shape
+        assert vds.dtype == np.int32
+        assert n_virtual_sources(vds) == mask.sum()
+
+        expect = np.full(shape, -1, dtype=np.int32)
+        for chunk_idx in np.ndindex(*grid):
+            if mask[chunk_idx]:
+                sl = tuple(
+                    slice(c * s, min((c + 1) * s, n))
+                    for c, s, n in zip(chunk_idx, chunk_size, shape, strict=True)
+                )
+                expect[sl] = data[sl]
+        assert_equal(vds[()], expect)
+
+
+@pytest.mark.parametrize(
+    ("shape", "chunk_size"), [((0,), (10,)), ((0, 0), (10, 10)), ((0, 3), (2, 2))]
+)
+def test_create_virtual_dataset_empty(setup_vfile, shape, chunk_size):
+    """A dataset with a zero-length axis has no chunks to point at."""
+    with setup_vfile(version_name="v") as f:
+        create_base_dataset(f, "x", data=np.empty(shape), chunks=chunk_size)
+        sc = StagedChangesArray.full(shape, chunk_size=chunk_size, dtype=np.float64)
+        vds = create_virtual_dataset(f, "v", "x", sc)
+
+        assert vds.shape == shape
+        assert n_virtual_sources(vds) == 0
+
+
+def test_create_virtual_dataset_arbitrary_offsets(setup_vfile):
+    """The same chunk of raw_data can be referenced by an arbitrary number
+    of chunks of the virtual dataset.
+    """
+    with setup_vfile(version_name="v") as f:
+        create_base_dataset(f, "x", data=np.arange(100.0), chunks=(10,))
+        sc = StagedChangesArray(
+            (40,),
+            (10,),
+            [f["_version_data/x/raw_data"]],
+            np.ones(4, np_hsize_t),
+            np.array([0, 5, 20, 0], np_hsize_t),
+        )
+        vds = create_virtual_dataset(f, "v", "x", sc)
+
+        assert n_virtual_sources(vds) == 4
+        assert_equal(
+            vds[:],
+            np.concatenate(
+                [
+                    np.arange(0.0, 10.0),
+                    np.arange(5.0, 15.0),
+                    np.arange(20.0, 30.0),
+                    np.arange(0.0, 10.0),
+                ]
+            ),
+        )
+
+
+def test_create_virtual_dataset_strided_indices(setup_vfile):
+    """slab_indices and slab_offsets aren't always C-contiguous:
+    shrinking a StagedChangesArray leaves them as [:a, :b] slices of the
+    original contiguous arrays.
+    """
+    chunk_size = (10, 10)
+    offsets = np.arange(9, dtype=np_hsize_t).reshape((3, 3)) * chunk_size[0]
+    indices = np.ones((3, 3), np_hsize_t)
+    indices[0, 0] = 0
+    indices = indices[:2, :2]
+    offsets = offsets[:2, :2]
+
+    with setup_vfile(version_name="v") as f:
+        create_base_dataset(
+            f, "x", data=np.arange(900.0).reshape(90, 10), chunks=chunk_size
+        )
+        raw_data = f["_version_data/x/raw_data"]
+        sc = StagedChangesArray((20, 20), chunk_size, [raw_data], indices, offsets)
+        vds = create_virtual_dataset(f, "v", "x", sc)
+
+        # Chunk (i, j) sits at raw_data[o:o + chunk_size[0]], where o follows the
+        # layout of the offsets array; chunk (0, 0) lies on the full slab
+        expect = np.empty((20, 20))
+        for i, j in np.ndindex(indices.shape):
+            sl = (
+                slice(i * chunk_size[0], (i + 1) * chunk_size[0]),
+                slice(j * chunk_size[1], (j + 1) * chunk_size[1]),
+            )
+            if indices[i, j] == 0:
+                expect[sl] = 0.0
+                continue
+            o = int(offsets[i, j])
+            expect[sl] = raw_data[o : o + chunk_size[0]]
+        assert_equal(vds[:], expect)
+
+
+def _vlen_strings_raw_data(f):
+    """Create the raw_data of a dataset "x" of h5py object strings, 5 points long,
+    with 2 points per chunk.
+    """
+    raw_data = (
+        f["_version_data"]
+        .create_group("x")
+        .create_dataset(
+            "raw_data",
+            data=np.array(["aa", "bb", "cc", "dd", "ee"], dtype=object),
+            chunks=(2,),
+            dtype=h5py.string_dtype(),
+        )
+    )
+    raw_data.attrs["chunks"] = (2,)
+    return raw_data
+
+
+def test_create_virtual_dataset_vlen_strings(setup_vfile):
+    """Variable-length strings: the fillvalue is silently ignored, as setting it on a
+    virtual dataset of vlen strings is an h5py bug.
+    """
+    with setup_vfile(version_name=["v", "v2"]) as f:
+        raw_data = _vlen_strings_raw_data(f)
+        sc = StagedChangesArray(
+            (5,),
+            (2,),
+            [raw_data],
+            np.ones(3, np_hsize_t),
+            np.array([0, 0, 2], np_hsize_t),
+            fill_value="",
+        )
+        vds = create_virtual_dataset(f, "v", "x", sc)
+        assert list(vds.asstr()[:]) == ["aa", "bb", "aa", "bb", "cc"]
+
+        # The default fillvalue is accepted and ignored; any other one is rejected
+        create_virtual_dataset(f, "v2", "x", sc, fillvalue="")
+        with pytest.raises(
+            ValueError, match="Non-default fillvalue not supported for variable"
+        ):
+            create_virtual_dataset(f, "v2", "x", sc, fillvalue="zzz")
+
+
+@pytest.mark.skipif(not HAS_NPYSTRINGS, reason="requires NpyStrings support")
+def test_create_virtual_dataset_npystrings(setup_vfile):
+    """The base slab of sc may be an astype() view of raw_data, as it is when the
+    StagedChangesArray uses StringDType while raw_data uses h5py object strings.
+    """
+    with setup_vfile(version_name="v") as f:
+        raw_data = _vlen_strings_raw_data(f)
+        sc = StagedChangesArray(
+            (5,),
+            (2,),
+            [h5py_astype(raw_data, np.dtypes.StringDType())],
+            np.ones(3, np_hsize_t),
+            np.array([0, 0, 2], np_hsize_t),
+            fill_value="",
+        )
+        assert sc.dtype == np.dtypes.StringDType()
+        vds = create_virtual_dataset(f, "v", "x", sc)
+
+        # The virtual dataset has the dtype of raw_data, not of sc
+        assert list(vds.asstr()[:]) == ["aa", "bb", "aa", "bb", "cc"]
+
+
+def test_create_virtual_dataset_commit_roundtrip(setup_vfile):
+    """End-to-end: commit_staged_changes() followed by create_virtual_dataset(), twice
+    in a row on the same StagedChangesArray.
+    """
+    with setup_vfile(version_name=["r0", "r1"]) as f:
+        create_base_dataset(f, "x", data=np.empty((0,)), chunks=(10,))
+        sc = StagedChangesArray.from_array(
+            np.arange(25.0), chunk_size=(10,), as_base_slabs=False
+        )
+        commit_staged_changes(f, "x", sc)
+        vds = create_virtual_dataset(f, "r0", "x", sc, attrs={"attribute": "value"})
+        assert dict(vds.attrs) == {
+            "attribute": "value",
+            "raw_data": "/_version_data/x/raw_data",
+            "chunks": np.array([10]),
+        }
+
+        # Modify one chunk and rewrite the last (edge) chunk, then commit again
+        sc[5] = 999
+        sc[20:] = -1
+        commit_staged_changes(f, "x", sc)
+        create_virtual_dataset(f, "r1", "x", sc)
+
+        assert_equal(f["_version_data/versions/r0/x"][:], np.arange(25.0))
+        expect = np.arange(25.0)
+        expect[5] = 999
+        expect[20:] = -1
+        assert_equal(f["_version_data/versions/r1/x"][:], expect)
+
+
+def test_create_virtual_dataset_fill_only(setup_vfile):
+    """commit_staged_changes() of an array that is entirely fill_value leaves no base
+    slab behind; create_virtual_dataset() handles zero base slabs.
+    """
+    with setup_vfile(version_name="r0") as f:
+        create_base_dataset(f, "x", data=np.empty((0,)), chunks=(10,))
+        sc = StagedChangesArray.from_array(
+            np.zeros(20), chunk_size=(10,), fill_value=0.0, as_base_slabs=False
+        )
+        commit_staged_changes(f, "x", sc)
+        assert sc.n_base_slabs == 0
+        vds = create_virtual_dataset(f, "r0", "x", sc)
+
+        assert_equal(vds[:], 0.0)
+        assert n_virtual_sources(vds) == 0
+
+
+def test_create_virtual_dataset_not_committed(setup_vfile):
+    """A StagedChangesArray with staged slabs, or with more than one base slab, is not
+    downstream of commit_staged_changes() and is rejected.
+    """
+    with setup_vfile(version_name="v") as f:
+        create_base_dataset(f, "x", data=np.arange(30.0), chunks=(10,))
+        raw_data = f["_version_data/x/raw_data"]
+
+        sc = StagedChangesArray.from_array(
+            np.arange(30.0), chunk_size=(10,), as_base_slabs=False
+        )
+        assert sc.n_staged_slabs == 1
+        with pytest.raises(AssertionError):
+            create_virtual_dataset(f, "v", "x", sc)
+
+        sc = StagedChangesArray(
+            (30,),
+            (10,),
+            [raw_data, raw_data],
+            np.ones(3, np_hsize_t),
+            np.zeros(3, np_hsize_t),
+        )
+        assert sc.n_base_slabs == 2
+        with pytest.raises(AssertionError):
+            create_virtual_dataset(f, "v", "x", sc)
+
+
+def test_create_virtual_dataset_inconsistent(setup_vfile):
+    """slab_indices and slab_offsets are validated against raw_data."""
+    with setup_vfile(version_name="v") as f:
+        create_base_dataset(f, "x", data=np.arange(20.0), chunks=(10,))
+        raw_data = f["_version_data/x/raw_data"]
+
+        # A chunk lies on a slab that doesn't exist
+        sc = StagedChangesArray(
+            (30,),
+            (10,),
+            [raw_data],
+            np.array([1, 2, 1], np_hsize_t),
+            np.zeros(3, np_hsize_t),
+        )
+        with pytest.raises(AssertionError, match="chunk lies on slab 2"):
+            create_virtual_dataset(f, "v", "x", sc)
+
+        # A chunk points past the end of raw_data. This is also what catches a
+        # StagedChangesArray that references raw_data while raw_data is still empty.
+        sc = StagedChangesArray(
+            (30,),
+            (10,),
+            [raw_data],
+            np.ones(3, np_hsize_t),
+            np.array([0, 10, 20], np_hsize_t),
+        )
+        with pytest.raises(AssertionError, match=r"raw_data\[20:30\].*20 rows"):
+            create_virtual_dataset(f, "v", "x", sc)

@@ -21,12 +21,11 @@ from versioned_hdf5.backend import (
     Filters,
     commit_staged_changes,
     create_base_dataset,
-    create_virtual_dataset,
     initialize,
     rewrite_dataset,
 )
 from versioned_hdf5.hashtable import Hashtable
-from versioned_hdf5.slicetools import spaceid_to_slice
+from versioned_hdf5.slicetools import create_virtual_dataset, spaceid_to_slice
 from versioned_hdf5.staged_changes import StagedChangesArray
 from versioned_hdf5.typing_ import DEFAULT, Default
 from versioned_hdf5.versions import all_versions
@@ -89,7 +88,6 @@ def recreate_dataset(f, name, newf, callback=None):
                     continue
 
             dtype = dataset.dtype
-            shape = dataset.shape
             chunks = dataset.chunks
 
             filters = Filters.from_dataset(dataset)
@@ -131,19 +129,18 @@ def recreate_dataset(f, name, newf, callback=None):
                 # the hash table of newf knows nothing about, so they must all be
                 # rewritten. Stream them a block of chunks at a time; loading them all
                 # in memory first would make peak memory usage O(dataset size).
-                slices = rewrite_dataset(
+                staged_changes = rewrite_dataset(
                     newf, name, dataset, chunks=chunks, fillvalue=fillvalue
                 )
             else:
                 # Every chunk is already in memory
-                slices = commit_staged_changes(newf, name, staged_changes)
+                commit_staged_changes(newf, name, staged_changes)
 
             create_virtual_dataset(
                 newf,
                 version_name,
                 name,
-                shape,
-                slices,
+                staged_changes,
                 attrs=attrs,
                 fillvalue=fillvalue,
             )
@@ -336,7 +333,7 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
 
     See Also
     --------
-    create_virtual_dataset
+    versioned_hdf5.backend.create_virtual_dataset
     """
     raw_data = f["_version_data"][name]["raw_data"]
 

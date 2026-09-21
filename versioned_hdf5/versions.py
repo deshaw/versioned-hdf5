@@ -12,10 +12,10 @@ from h5py import Dataset, Group
 from versioned_hdf5.backend import (
     Filters,
     commit_staged_changes,
-    create_virtual_dataset,
     normalize_chunks,
     write_dataset,
 )
+from versioned_hdf5.slicetools import create_virtual_dataset
 from versioned_hdf5.staged_changes import StagedChangesArray
 from versioned_hdf5.wrappers import (
     DatasetLike,
@@ -143,8 +143,7 @@ def commit_version(
                 for k, v in data.attrs.items():
                     data_copy.attrs[k] = v
                 continue
-            # Commit the staged changes straight into raw_data + the on-disk hash table.
-            slices = commit_staged_changes(f, name, data.staged_changes)
+            staged_changes = data.staged_changes
         elif isinstance(data, InMemorySparseDataset):
             # Either a new sparse dataset or DatasetWrapper performing a hotswap of its
             # inner dataset. Create the (empty) raw_data + hash table if they don't
@@ -158,7 +157,7 @@ def commit_version(
                 filters=filters[name],
                 fillvalue=data.fillvalue,
             )
-            slices = commit_staged_changes(f, name, data.staged_changes)
+            staged_changes = data.staged_changes
         elif isinstance(data, InMemoryArrayDataset):
             # Either a new dense dataset or DatasetWrapper performing a hotswap of its
             # inner dataset.
@@ -188,16 +187,15 @@ def commit_version(
                 fill_value=data.fillvalue,
                 as_base_slabs=False,
             )
-            slices = commit_staged_changes(f, name, staged_changes)
         else:
             raise AssertionError("Unreachable")
 
+        commit_staged_changes(f, name, staged_changes)
         create_virtual_dataset(
             f,
             version_name,
             name,
-            data.shape,
-            slices,
+            staged_changes,
             attrs=data.attrs,
             fillvalue=data.fillvalue,
         )

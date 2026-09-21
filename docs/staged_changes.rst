@@ -552,9 +552,11 @@ API interaction
 
           build_slab_indices_and_offsets;
           read_many_slices;
+          create_virtual_dataset;
           hdf5_c [label="libhdf5 C API (via Cython)"];
           build_slab_indices_and_offsets -> hdf5_c;
           read_many_slices -> hdf5_c;
+          create_virtual_dataset -> hdf5_c;
       }
 
       subgraph cluster_4 {
@@ -583,7 +585,7 @@ API interaction
 
       h5py;
       commit_version -> h5py;
-      commit_version -> changes;
+      commit_version -> create_virtual_dataset;
       commit_version -> commit;
       hdf5_file [label="HDF5 file"; shape=cylinder];
       h5py -> hdf5_file;
@@ -597,6 +599,11 @@ API interaction
 - Likewise, ``build_slab_indices_and_offsets`` knows about the format of the
   ``slab_indices`` and ``slab_offsets`` of ``StagedChangesArray``, but does not directly
   interact with it.
+- ``commit_version`` consumes a *committed* ``StagedChangesArray`` (no staged slabs,
+  at most one base slab; see ``backend.commit_staged_changes()``) and passes it to
+  ``slicetools.create_virtual_dataset``, which reads its ``slab_indices`` and
+  ``slab_offsets`` - but never its slabs - to stitch the virtual dataset together in
+  pure C.
 
 
 .. _H5Sselect_hyperslab: https://support.hdfgroup.org/documentation/hdf5/latest/group___h5_s.html#ga6adfdf1b95dc108a65bf66e97d38536d
