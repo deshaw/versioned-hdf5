@@ -330,10 +330,6 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
     If tmp is True, the new virtual datasets are named `'_tmp_' + name` and
     are placed alongside the existing ones. Otherwise the existing virtual
     datasets are replaced.
-
-    See Also
-    --------
-    versioned_hdf5.backend.create_virtual_dataset
     """
     raw_data = f["_version_data"][name]["raw_data"]
 

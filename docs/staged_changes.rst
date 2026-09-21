@@ -525,7 +525,6 @@ API interaction
           setitem [label="__setitem__()"]
           resize [label="resize()"]
           load [label="load()"]
-          changes [label="changes()"]
           commit [label="commit()"]
           all_plans [label="All \*Plan classes", style="dashed"]
 
@@ -533,7 +532,6 @@ API interaction
           StagedChangesArray -> setitem -> SetItemPlan -> TransferPlan;
           StagedChangesArray -> resize -> ResizePlan -> TransferPlan;
           StagedChangesArray -> load -> LoadPlan -> TransferPlan;
-          StagedChangesArray -> changes -> ChangesPlan;
           StagedChangesArray -> commit -> CommitPlan -> TransferPlan;
           commit -> HashPlan -> HashSlabPlan;
 

@@ -416,18 +416,6 @@ class StagedChangesArray(MutableMapping[Any, T]):
     # for debugging purposes. Note that all plan feature a __repr__ method that is
     # intended to be used during demo or debugging sessions, e.g. in a Jupyter notebook.
 
-    def _changes_plan(self) -> ChangesPlan:
-        """Formulate a plan to export all the staged and unchanged chunks.
-
-        This is a read-only operation.
-        """
-        return ChangesPlan(
-            shape=self.shape,
-            chunk_size=self.chunk_size,
-            slab_indices=self.slab_indices,
-            slab_offsets=self.slab_offsets,
-        )
-
     def _getitem_plan(self, idx: Any) -> GetItemPlan:
         """Formulate a plan to get a slice of the array.
 
@@ -614,38 +602,6 @@ class StagedChangesArray(MutableMapping[Any, T]):
             self.slabs[idx] = slab
 
         return slab
-
-    def changes(
-        self,
-    ) -> Iterator[tuple[tuple[slice, ...], int, NDArray[T] | tuple[slice, ...]]]:
-        """Yield all the changed chunks so far, as tuples of
-
-        - slice index in the base virtual array
-        - index of the slab in the slabs list
-        - chunk value array, if a staged slab, or slice of the base slab otherwise
-
-        Chunks that are completely full of the fill_value are not yielded.
-
-        This lets you update the base virtual array:
-
-        >> for idx, _, value in staged_array.changes():
-        ..     if isinstance(value, np.ndarray):
-        ..         virtual_base[idx] = value
-
-        This is functionally a read-only operation; however chunks that were lazily
-        converted with :meth:`astype` are going to be actually replaced in
-        ``self.slabs``.
-        """
-        plan = self._changes_plan()
-
-        for base_slice, slab_idx, slab_slice in plan.chunks:
-            assert slab_idx > 0  # No full chunks
-            if slab_idx <= self.n_base_slabs:
-                yield base_slice, slab_idx, slab_slice
-            else:
-                slab = self._get_slab(slab_idx)
-                chunk = slab[slab_slice]
-                yield base_slice, slab_idx, chunk
 
     def __getitem__(self, idx: Any):
         """Get a slice of data from the array. This reads from the staged slabs
@@ -1055,9 +1011,14 @@ class StagedChangesArray(MutableMapping[Any, T]):
             dtype=self.dtype,
         )
         inmem.load()
-        for idx, _, chunk in inmem.changes():
-            assert isinstance(chunk, np.ndarray)  # Thanks to load()
-            out[idx] = chunk
+        # Skip the chunks that lie on the full slab (index 0), so that they stay on the
+        # full slab of the output array instead of being staged into memory.
+        for coord in np.argwhere(inmem.slab_indices):
+            idx = tuple(
+                slice(start := int(c) * s, min(start + s, n))
+                for c, s, n in zip(coord, inmem.chunk_size, self.shape, strict=True)
+            )
+            out[idx] = inmem[idx]
 
         return out
 
@@ -1659,111 +1620,6 @@ class LoadPlan(MutatingPlan):
     @property
     def head(self) -> str:
         return "LoadPlan<" + super().head
-
-
-@cython.cclass
-@dataclass(init=False, repr=False, kw_only=True)
-class ChangesPlan:
-    """Instructions to execute StagedChangesArray.changes()."""
-
-    #: List of all chunks that aren't full of the fill_value.
-    #:
-    #: List of tuples of
-    #: - index to slice the base array with
-    #: - index of StagedChangesArray.slabs
-    #: - index to slice the slab to retrieve the chunk value
-    chunks: list[tuple[tuple[slice, ...], int, tuple[slice, ...]]]
-
-    def __init__(
-        self,
-        shape: tuple[int, ...],
-        chunk_size: tuple[int, ...],
-        slab_indices: NDArray[np_hsize_t],
-        slab_offsets: NDArray[np_hsize_t],
-    ):
-        """Generate instructions to execute StagedChangesArray.changes().
-
-        All parameters are the matching attributes of StagedChangesArray.
-        """
-        self.chunks = []
-
-        _, mappers = index_chunk_mappers((), shape, chunk_size)
-        if not mappers:
-            return  # size 0
-
-        # Build rulers of slices for each axis
-        dst_slices: list[list[slice]] = []  # Slices in the represented array
-        slab_slices: list[list[slice]] = [[]]  # Slices in the slab (except axis 0)
-
-        mapper: IndexChunkMapper
-        for mapper in mappers:
-            dst_slices_ix = []
-            a: hsize_t = 0
-            assert mapper.n_chunks > 0  # not size 0
-            for _ in range(mapper.n_chunks - 1):
-                b = a + mapper.chunk_size
-                dst_slices_ix.append(slice(a, b, 1))
-                a = b
-            b = a + mapper.last_chunk_size
-            dst_slices_ix.append(slice(a, b, 1))
-            dst_slices.append(dst_slices_ix)
-
-        # slab slices on axis 0 must be built on the fly for each chunk,
-        # as each chunk has a different slab offset
-        mapper = mappers[0]
-        axis0_chunk_sizes: hsize_t[:] = np.full(
-            mapper.n_chunks, mapper.chunk_size, dtype=np_hsize_t
-        )
-        axis0_chunk_sizes[mapper.n_chunks - 1] = mapper.last_chunk_size
-
-        # slab slices on the other axes can be built with a ruler
-        # (and they'll be all the same except for the last chunk)
-        for mapper in mappers[1:]:
-            n_chunks = cython.cast(ssize_t, mapper.n_chunks)
-            slab_slices.append(
-                [slice(0, mapper.chunk_size, 1)] * (n_chunks - 1)
-                + [slice(0, mapper.last_chunk_size, 1)]
-            )
-
-        # Find all non-full chunks
-        chunks = _chunks_in_selection(
-            slab_indices,
-            slab_offsets,
-            mappers,
-            filter=lambda slab_idx: slab_idx > 0,
-            idxidx=False,
-            sort_by_slab=False,
-        )
-        nchunks = chunks.shape[0]
-        ndim = chunks.shape[1] - 2
-
-        for i in range(nchunks):
-            dst_ndslice = []
-            for j in range(ndim):
-                chunk_idx = chunks[i, j]
-                dst_ndslice.append(dst_slices[j][chunk_idx])
-
-            chunk_idx = chunks[i, 0]
-            slab_idx = chunks[i, ndim]  # slab_indices[chunk_idx]
-            start = chunks[i, ndim + 1]  # slab_offsets[chunk_idx]
-            stop = start + axis0_chunk_sizes[chunk_idx]
-            slab_ndslice = [slice(start, stop, 1)]
-            for j in range(1, ndim):
-                chunk_idx = chunks[i, j]
-                slab_ndslice.append(slab_slices[j][chunk_idx])
-
-            self.chunks.append((tuple(dst_ndslice), slab_idx, tuple(slab_ndslice)))
-
-    @property
-    def head(self) -> str:
-        return f"ChangesPlan<{len(self.chunks)} chunks>"
-
-    def __repr__(self) -> str:
-        s = self.head
-        fmt = format_ndindex
-        for base_slice, slab_idx, slab_slice in self.chunks:
-            s += f"\n  base[{fmt(base_slice)}] = slabs[{slab_idx}][{fmt(slab_slice)}]"
-        return s
 
 
 @cython.cclass
