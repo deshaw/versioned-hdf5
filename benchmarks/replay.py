@@ -134,6 +134,8 @@ class TimeRecreateDatasetLarge(Benchmark):
 
     number = 1
     warmup_time = 0
+    # The setup creates 1M chunks and one sample takes ~30 s
+    timeout = 3600
 
     # 1 GiB in 1 kiB chunks, i.e. 1,048,576 chunks
     # REWRITE_BUFFER_BYTES = 64 MiB, so the dataset is split in 16 blocks.
