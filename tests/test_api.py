@@ -748,6 +748,44 @@ def test_resize_sparse(vfile):
     assert_equal(ds[:], expect)
 
 
+def test_resize_after_whole_dataset_assignment(vfile):
+    """Enlarging a dataset that ``sv[name] = arr`` replaced wholesale in the same
+    version must keep the chunk size of the replaced dataset (regression test for
+    #569).
+    """
+    with vfile.stage_version("v0") as sv:
+        sv.create_dataset("x", data=np.arange(10.0), chunks=(4,))
+
+    with vfile.stage_version("v1") as sv:
+        sv["x"] = np.arange(10.0) + 1  # replaces the whole dataset
+        sv["x"].resize((12,))
+        assert sv["x"].chunks == (4,)
+        expected = np.zeros(12)
+        expected[:10] = np.arange(10.0) + 1
+        assert_equal(sv["x"][:], expected)
+
+    assert vfile["v1"]["x"].chunks == (4,)
+    assert_equal(vfile["v1"]["x"][:], expected)
+    assert_equal(vfile["v0"]["x"][:], np.arange(10.0))
+
+
+def test_resize_after_new_dataset_assignment(vfile):
+    """Enlarging a brand new dataset created as ``sv[name] = arr`` must guess a
+    chunk size instead of raising AssertionError (regression test for #569).
+    """
+    with vfile.stage_version("v0") as sv:
+        sv["x"] = np.arange(10.0)
+        sv["x"].resize((12,))
+        chunks = sv["x"].chunks
+        expected = np.zeros(12)
+        expected[:10] = np.arange(10.0)
+        assert_equal(sv["x"][:], expected)
+
+    assert isinstance(chunks, tuple)
+    assert vfile["v0"]["x"].chunks == chunks
+    assert_equal(vfile["v0"]["x"][:], expected)
+
+
 def test_resize_axis(vfile):
     # test axis= parameter of resize
     with vfile.stage_version("v0") as sv:
