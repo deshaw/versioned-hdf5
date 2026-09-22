@@ -64,6 +64,12 @@ def recreate_dataset(f, name, newf, callback=None):
     -----
     This function is only for advanced usage. Typical use-cases should
     use :func:`delete_version()` or :func:`modify_metadata()`.
+
+    The wrappers of each version are freed before the next version is processed, which
+    requires a full garbage collection per version. The heap is frozen for the
+    duration of the call so that those collections do not have to scan it; a heap that
+    the caller had already frozen (e.g. before a fork) is left alone, as there is no
+    way to restore a freeze set that has been thawed.
     """
     if isinstance(f, VersionedHDF5File):
         f = f.f
@@ -75,75 +81,111 @@ def recreate_dataset(f, name, newf, callback=None):
     fillvalue = raw_data.fillvalue
 
     first = True
-    for version_name in all_versions(f):
-        if name in f["_version_data/versions"][version_name]:
-            group = InMemoryGroup(
-                f["_version_data/versions"][version_name].id, _committed=True
-            )
+    # The per-version gc.collect() below must break the reference cycles created by
+    # each iteration (see the comment at the end of the loop body), but a full
+    # collection is O(process heap). Collect once here and freeze the heap for the
+    # duration of the loop, so that the per-version collections only have to scan the
+    # objects created by the loop itself, instead of the whole process heap.
+    #
+    # Don't touch the freeze set of a caller that froze the heap itself (typically
+    # before forking): gc.unfreeze() would thaw it for good, and its objects are
+    # excluded from the collections below anyway.
+    we_froze = not gc.get_freeze_count()
+    if we_froze:
+        gc.collect()
+        gc.freeze()
+    try:
+        for version_name in all_versions(f):
+            if name in f["_version_data/versions"][version_name]:
+                group = InMemoryGroup(
+                    f["_version_data/versions"][version_name].id, _committed=True
+                )
 
-            dataset = group[name]
-            if callback:
-                dataset = callback(dataset, version_name)
-                if dataset is None:
-                    continue
+                dataset = group[name]
+                if callback:
+                    dataset = callback(dataset, version_name)
+                    if dataset is None:
+                        # The callback dropped this version; free its wrappers now (see
+                        # the gc.collect() at the end of the loop body)
+                        del dataset, group
+                        gc.collect()
+                        continue
 
-            dtype = dataset.dtype
-            chunks = dataset.chunks
+                dtype = dataset.dtype
+                chunks = dataset.chunks
 
-            filters = Filters.from_dataset(dataset)
-            fillvalue = dataset.fillvalue
-            attrs = dataset.attrs
-            if first:
-                create_base_dataset(
+                filters = Filters.from_dataset(dataset)
+                fillvalue = dataset.fillvalue
+                attrs = dataset.attrs
+                if first:
+                    create_base_dataset(
+                        newf,
+                        name,
+                        data=np.empty((0,) * len(dataset.shape), dtype=dtype),
+                        dtype=dtype,
+                        chunks=chunks,
+                        fillvalue=fillvalue,
+                        filters=filters,
+                    )
+                    first = False
+                if not isinstance(chunks, tuple):
+                    chunks = tuple(
+                        newf["_version_data"][name]["raw_data"].attrs["chunks"]
+                    )
+
+                # Rewrite all the chunks of the dataset (we can't assume the new
+                # hash table has the raw data in the same locations, even if the
+                # data is unchanged).
+                if isinstance(dataset, DatasetWrapper):
+                    dataset = dataset.dataset
+                if isinstance(dataset, InMemoryArrayDataset):
+                    staged_changes = StagedChangesArray.from_array(
+                        dataset._buffer,
+                        chunk_size=chunks,
+                        fill_value=fillvalue,
+                        as_base_slabs=False,
+                    )
+                elif isinstance(dataset, (InMemoryDataset, InMemorySparseDataset)):
+                    staged_changes = dataset.staged_changes
+                else:
+                    raise TypeError(f"Unexpected: {type(dataset)}")  # pragma: no cover
+
+                if staged_changes.has_base_chunks:
+                    # Some or all chunks lie on the raw_data of the *source* file, which
+                    # the hash table of newf knows nothing about, so they must all be
+                    # rewritten. Stream them a block of chunks at a time; loading
+                    # them all in memory first would make peak memory usage O(dataset
+                    # size).
+                    staged_changes = rewrite_dataset(
+                        newf, name, dataset, chunks=chunks, fillvalue=fillvalue
+                    )
+                else:
+                    # Every chunk is already in memory
+                    commit_staged_changes(newf, name, staged_changes)
+
+                create_virtual_dataset(
                     newf,
+                    version_name,
                     name,
-                    data=np.empty((0,) * len(dataset.shape), dtype=dtype),
-                    dtype=dtype,
-                    chunks=chunks,
+                    staged_changes,
+                    attrs=attrs,
                     fillvalue=fillvalue,
-                    filters=filters,
                 )
-                first = False
-            if not isinstance(chunks, tuple):
-                chunks = tuple(newf["_version_data"][name]["raw_data"].attrs["chunks"])
 
-            # Rewrite all the chunks of the dataset (we can't assume the new
-            # hash table has the raw data in the same locations, even if the
-            # data is unchanged).
-            if isinstance(dataset, DatasetWrapper):
-                dataset = dataset.dataset
-            if isinstance(dataset, InMemoryArrayDataset):
-                staged_changes = StagedChangesArray.from_array(
-                    dataset._buffer,
-                    chunk_size=chunks,
-                    fill_value=fillvalue,
-                    as_base_slabs=False,
-                )
-            elif isinstance(dataset, (InMemoryDataset, InMemorySparseDataset)):
-                staged_changes = dataset.staged_changes
-            else:
-                raise TypeError(f"Unexpected: {type(dataset)}")  # pragma: no cover
-
-            if staged_changes.has_base_chunks:
-                # Some or all chunks lie on the raw_data of the *source* file, which
-                # the hash table of newf knows nothing about, so they must all be
-                # rewritten. Stream them a block of chunks at a time; loading them all
-                # in memory first would make peak memory usage O(dataset size).
-                staged_changes = rewrite_dataset(
-                    newf, name, dataset, chunks=chunks, fillvalue=fillvalue
-                )
-            else:
-                # Every chunk is already in memory
-                commit_staged_changes(newf, name, staged_changes)
-
-            create_virtual_dataset(
-                newf,
-                version_name,
-                name,
-                staged_changes,
-                attrs=attrs,
-                fillvalue=fillvalue,
-            )
+                # The wrappers created above reference each other in cycles
+                # (InMemoryGroup._data[] <-> InMemoryDataset._parent and
+                # InMemoryGroup._subgroups[] <-> InMemoryGroup._parent), so dropping
+                # the last external reference to them only makes them unreachable:
+                # their virtual datasets, with their libhdf5 chunk mappings (~18 kiB
+                # per chunk), would stay open until the cyclic garbage collector
+                # happens to run, and peak memory would grow with the number of
+                # versions. Collect the cycles now instead (same rationale as the
+                # gc.collect() in delete_versions(); see #570).
+                del dataset, group, staged_changes, attrs, filters
+                gc.collect()
+    finally:
+        if we_froze:
+            gc.unfreeze()
 
 
 def tmp_group(f):

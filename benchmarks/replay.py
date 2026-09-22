@@ -124,3 +124,56 @@ class TimeModifyMetadata(_ReplayBenchmark):
         modify_metadata(self.file, NAME, **self.kwargs)
 
     peakmem_modify_metadata = time_modify_metadata
+
+
+class _ManyVersionsBenchmark(Benchmark):
+    """Common setup for the benchmarks of the #570 use case: several versions of a
+    dataset with a large number of chunks.
+
+    Each version's virtual dataset costs ~18 kiB per chunk in libhdf5 (~75 MiB here),
+    so peak memory would grow by ~75 MiB per version if they were all kept open until
+    the end of the call.
+    """
+
+    number = 1
+    warmup_time = 0
+
+    # 32 MiB of float64 in 8 kiB chunks, i.e. 4,096 chunks per version
+    shape = (4_194_304,)
+    chunks = (1024,)
+    n_versions = 4
+
+    def setup(self):
+        super().setup()
+        with self.vfile.stage_version("v0") as sv:
+            sv.create_dataset(
+                NAME, data=self.rng.random(self.shape), chunks=self.chunks
+            )
+        for i in range(1, self.n_versions):
+            with self.vfile.stage_version(f"v{i}") as sv:
+                sv[NAME][i] = -1.0
+        gc.collect()
+
+
+class TimeRecreateDatasetManyVersions(_ManyVersionsBenchmark):
+    """recreate_dataset() over several versions of a dataset with many chunks"""
+
+    def setup(self):
+        super().setup()
+        self.newf = tmp_group(self.file)
+
+    def time_recreate_dataset_many_versions(self):
+        self.assert_clean_setup()
+        recreate_dataset(self.file, NAME, self.newf)
+
+    peakmem_recreate_dataset_many_versions = time_recreate_dataset_many_versions
+
+
+class TimeModifyMetadataManyVersions(_ManyVersionsBenchmark):
+    """modify_metadata() over several versions of a dataset with many chunks"""
+
+    def time_modify_metadata_many_versions(self):
+        self.assert_clean_setup()
+        modify_metadata(self.file, NAME, fillvalue=1.5)
+
+    peakmem_modify_metadata_many_versions = time_modify_metadata_many_versions
