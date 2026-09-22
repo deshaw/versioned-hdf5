@@ -419,11 +419,6 @@ Committing is broken down into the following stages:
 7. Return control to the wrapper, which just needs to append the new ``hash_table`` to
    ``raw_data``'s hash table on h5py.
 
-Afterwards, the wrapper drops the view and collapses the array back onto a single naked
-``raw_data`` base slab; it also replaces ``hash_tables[1]`` with the concatenation of
-the hashes of all the chunks now on ``raw_data``, i.e. the ones it loaded at the
-beginning plus the new ones.
-
 Nuances and caveats
 ^^^^^^^^^^^^^^^^^^^
 Because ``hash_tables[i][j, :]`` always contains the hash of ``slabs[i][j *

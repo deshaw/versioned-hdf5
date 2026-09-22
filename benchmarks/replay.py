@@ -1,4 +1,5 @@
-"""Benchmarks for replay.py: delete_versions, modify_metadata, recreate_dataset"""
+"""Benchmarks for replay.py: delete_versions, modify_metadata, recreate_dataset,
+as well as the rewrite_dataset() core that recreate_dataset() streams through."""
 
 from __future__ import annotations
 
@@ -124,3 +125,30 @@ class TimeModifyMetadata(_ReplayBenchmark):
         modify_metadata(self.file, NAME, **self.kwargs)
 
     peakmem_modify_metadata = time_modify_metadata
+
+
+class TimeRecreateDatasetLarge(Benchmark):
+    """Measure recreate_dataset() in the worst case scenario, when there are many blocks
+    of chunks and the chunk size is small.
+    """
+
+    number = 1
+    warmup_time = 0
+
+    # 1 GiB in 1 kiB chunks, i.e. 1,048,576 chunks
+    # REWRITE_BUFFER_BYTES = 64 MiB, so the dataset is split in 16 blocks.
+    shape = (32768, 2048)
+    chunks = (2, 64)
+
+    def setup(self):
+        super().setup()
+        data = self.rng.random(self.shape)
+        with self.vfile.stage_version("v0") as sv:
+            sv.create_dataset(NAME, data=data, chunks=self.chunks)
+        self.newf = tmp_group(self.file)
+
+    def time_recreate_dataset(self):
+        self.assert_clean_setup()
+        recreate_dataset(self.file, NAME, self.newf)
+
+    peakmem_recreate_dataset = time_recreate_dataset
