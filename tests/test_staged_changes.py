@@ -1980,6 +1980,85 @@ def test_commit_dedup_edge_chunks():
     assert a.slabs[1].shape == (4, 2)  # Two unique chunks
 
 
+def test_commit_after_resize_shrink_trailing_axis_dedup_to_full():
+    """A resize() that shrinks a trailing axis turns slab_indices and slab_offsets
+    into strided views. When every staged chunk then deduplicates against the full
+    slab, commit() transfers no data but must still propagate the deduplication remap
+    back onto those arrays.
+
+    Regression test for https://github.com/deshaw/versioned-hdf5/issues/568
+    """
+    a = StagedChangesArray(
+        shape=(10, 2),
+        chunk_size=(4, 1),
+        # A single (2, 1) edge chunk on a raw_data-like base slab
+        base_slabs=[np.full((2, 1), -1.5)],
+        slab_indices=[[0, 0], [0, 0], [1, 1]],
+        slab_offsets=[[0, 0], [0, 0], [0, 0]],
+        fill_value=-1.5,
+    )
+    a.resize((12, 1))  # Shrink axis 1, grow axis 0 within the last chunk row
+    # Regression precondition: shrinking left the metadata arrays as strided views,
+    # which commit() used to fail to write through
+    assert not a.slab_indices.flags.contiguous
+    assert not a.slab_offsets.flags.contiguous
+
+    a.commit()
+    assert a.n_staged_slabs == 0
+    # The grown edge chunk is full of fill_value and deduplicates against the full
+    # slab: no data is transferred and no new base slab is appended
+    assert a.n_base_slabs == 1
+    assert_array_equal(a.slab_indices, [[0], [0], [0]])
+    assert_array_equal(a.slab_offsets, [[0], [0], [0]])
+    assert_array_equal(a, np.full((12, 1), -1.5))
+
+
+def test_commit_after_resize_shrink_trailing_axis_dedup_to_base():
+    """#568, variant: same as above, but the grown edge chunk deduplicates against a
+    chunk on the base slab instead of the full slab.
+    """
+    base = np.array([[7.0], [8.0], [0.0], [0.0], [7.0], [8.0]])
+    # Chunk at offset 0 is (4, 1); the chunk at offset 4 is the (2, 1) edge chunk
+    ht = np.zeros((2, 4), dtype=np.uint64)
+    ht[0] = _baseline_hash_row(base[0:4])
+    ht[1] = _baseline_hash_row(base[4:6])
+    a = StagedChangesArray(
+        shape=(10, 2),
+        chunk_size=(4, 1),
+        base_slabs=[base],
+        slab_indices=[[1, 1], [0, 0], [1, 1]],
+        slab_offsets=[[0, 0], [0, 0], [4, 4]],
+        fill_value=0.0,
+        base_hash_tables=[ht],
+    )
+    a.resize((12, 1))  # Shrink axis 1, grow axis 0 within the last chunk row
+
+    a.commit()
+    # The grown edge chunk [7, 8, 0, 0] duplicates the base chunk at offset 0:
+    # nothing is written
+    assert a.n_staged_slabs == 0
+    assert a.n_base_slabs == 1
+    assert len(a.slabs) == 2
+    assert_array_equal(a.slab_indices, [[1], [0], [1]])
+    assert_array_equal(a.slab_offsets, [[0], [0], [0]])
+    expected = np.zeros((12, 1))
+    expected[0:4] = expected[8:12] = [[7.0], [8.0], [0.0], [0.0]]
+    assert_array_equal(a, expected)
+
+
+def test_commit_plan_reports_remapping_as_mutation():
+    """A CommitPlan that only repoints deduplicated chunks without transferring any
+    data still mutates the state (see #568).
+    """
+    a = StagedChangesArray.full((2,), chunk_size=(2,), fill_value=0)
+    a[:] = [0, 0]  # Staged chunk identical to the full chunk
+    a._calc_hashes()
+    cplan = a._commit_plan()
+    assert not cplan.transfers  # Nothing to write...
+    assert cplan.n_remapped == 1
+    assert cplan.mutates  # ...but the deduplication remap is a mutation nonetheless
+
+
 def test_commit_multidim_and_edges():
     """commit() works for multidimensional arrays with edge chunks."""
     rng = np.random.default_rng(0)
