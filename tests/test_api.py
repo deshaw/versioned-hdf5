@@ -644,6 +644,10 @@ def test_resize_shrink_trailing_axis_all_fillvalue(vfile):
 def test_resize_shrink_trailing_axis(vfile):
     """#568 with real data: shrink axis 1 and grow axis 0 within the last chunk row.
     The semantics are checked against raw h5py.
+
+    Unlike test_resize_shrink_trailing_axis_all_fillvalue(), this one passes even
+    without the fix: the partial edge chunk is loaded into a staged slab, so the
+    CommitPlan does transfer data and the remap used to be applied by accident.
     """
     data = np.arange(20).reshape(10, 2)
     with vfile.stage_version("v0") as group:

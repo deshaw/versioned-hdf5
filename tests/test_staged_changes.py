@@ -2046,17 +2046,17 @@ def test_commit_after_resize_shrink_trailing_axis_dedup_to_base():
     assert_array_equal(a, expected)
 
 
-def test_commit_plan_reports_remapping_as_mutation():
-    """A CommitPlan that only repoints deduplicated chunks without transferring any
-    data still mutates the state (see #568).
+def test_commit_plan_dedup_only_transfers_nothing():
+    """A CommitPlan that deduplicates every staged chunk plans no data transfer and no
+    new base slab - yet it still repoints those chunks, and commit() must therefore
+    apply it unconditionally (see #568).
     """
     a = StagedChangesArray.full((2,), chunk_size=(2,), fill_value=0)
     a[:] = [0, 0]  # Staged chunk identical to the full chunk
     a._calc_hashes()
     cplan = a._commit_plan()
-    assert not cplan.transfers  # Nothing to write...
-    assert cplan.n_remapped == 1
-    assert cplan.mutates  # ...but the deduplication remap is a mutation nonetheless
+    assert not cplan.transfers
+    assert cplan.new_hash_table is None
 
 
 def test_commit_multidim_and_edges():

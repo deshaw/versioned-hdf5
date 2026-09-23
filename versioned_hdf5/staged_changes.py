@@ -853,11 +853,13 @@ class StagedChangesArray(MutableMapping[Any, T]):
         # base/full chunk. A new base slab is appended only if at least one staged chunk
         # survived deduplication.
         cplan = self._commit_plan(copy=False)
-        # Always apply the plan, even when cplan.mutates is False: CommitPlan
-        # repoints every deduplicated chunk at its duplicate, and it may do so on
-        # contiguous copies of slab_indices/slab_offsets rather than in place (e.g.
-        # after resize() shrank a trailing axis and left them as strided views).
+        # Always apply the plan, even when cplan.mutates is False. The plan's
+        # slab_indices and slab_offsets are authoritative: it repoints every
+        # deduplicated chunk at its duplicate, and it may do so on contiguous copies
+        # of the arrays rather than in place (e.g. after resize() shrank a trailing
+        # axis and left the originals as strided views).
         # _apply_mutating_plan() propagates the remapped arrays back to self.
+        # Skipping it when there is nothing to transfer loses the remap. See #568.
         self._apply_mutating_plan(cplan, None, empty)
 
         drop_start = self.n_base_slabs + 1
@@ -873,6 +875,11 @@ class StagedChangesArray(MutableMapping[Any, T]):
             # on the base slabs or the full slab
             del self.slabs[drop_start:]
             del self.hash_tables[drop_start:]
+
+        # Defensive check: no chunk may reference a slab that has just been dropped.
+        # A CommitPlan whose remap is not propagated would only blow up much later, in
+        # create_virtual_dataset(). See #568.
+        assert int(self.slab_indices.max(initial=0)) < len(self.slabs)
 
     def copy(self) -> StagedChangesArray[T]:
         """Return a writeable Copy-on-Write (CoW) copy of self.
@@ -2200,11 +2207,6 @@ class CommitPlan(MutatingPlan):
     #: Hash table for the new base slab; one row per surviving unique chunk.
     new_hash_table: NDArray[np.uint64] | None
 
-    #: Number of chunks that were repointed at a different slab/offset while
-    #: deduplicating. Unlike the other plans, a CommitPlan can alter slab_indices and
-    #: slab_offsets without any transfer of data.
-    n_remapped: ssize_t
-
     def __init__(
         self,
         shape: tuple[int, ...],
@@ -2216,7 +2218,6 @@ class CommitPlan(MutatingPlan):
     ):
         super().__init__(slab_indices, slab_offsets)
         self.transfers = []
-        self.n_remapped = 0
         np_chunk_size = np.asarray(chunk_size, dtype=np_hsize_t).reshape((1, -1))
 
         ndim: hsize_t = len(chunk_size)
@@ -2357,7 +2358,6 @@ class CommitPlan(MutatingPlan):
                 mapped = old_to_new_chunk[loc]
                 slab_indices_flat_view[i] = mapped.slab_idx
                 slab_offsets_flat_view[i] = mapped.slab_offset
-                self.n_remapped += 1
 
         # Trim the edge chunks, so that the transfers never read the uninitialised
         # padding beyond the edge of a staged slab (which would then be written to
@@ -2375,18 +2375,6 @@ class CommitPlan(MutatingPlan):
                 self.slab_indices[edge] == new_slab_idx
             ]
             tplan_count[edge_offsets // cs0, dim] = trim
-
-    @property
-    def mutates(self) -> bool:
-        """True if this plan alters the state of the StagedChangesArray.
-
-        On top of the data transfers, this includes the chunks that are merely
-        repointed at a duplicate: the remap may replace slab_indices and slab_offsets
-        with contiguous copies of themselves instead of editing them in place, so the
-        caller must propagate plan.slab_indices/plan.slab_offsets back to the
-        StagedChangesArray even when nothing is transferred.
-        """
-        return self.n_remapped > 0 or super().mutates
 
     @property
     def head(self) -> str:
