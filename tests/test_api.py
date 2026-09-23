@@ -843,6 +843,29 @@ def test_resize_multidim_after_new_dataset_assignment(vfile):
         sv["x"].resize((8, 5))
 
 
+def test_whole_dataset_assignment_keeps_metadata(vfile):
+    """``sv[name] = arr`` keeps the fillvalue and the attributes of the dataset it
+    replaces, just like it keeps its chunk size (regression test for #569).
+    """
+    with vfile.stage_version("v0") as sv:
+        sv.create_dataset("x", data=np.arange(10.0), chunks=(4,), fillvalue=3.0)
+        sv["x"].attrs["units"] = "m"
+
+    with vfile.stage_version("v1") as sv:
+        sv["x"] = np.arange(10.0) + 1
+        assert sv["x"].fillvalue == 3.0
+        assert sv["x"].attrs["units"] == "m"
+        sv["x"].resize((12,))
+        expected = np.full(12, 3.0)
+        expected[:10] = np.arange(10.0) + 1
+        assert_equal(sv["x"][:], expected)
+
+    assert vfile["v1"]["x"].fillvalue == 3.0
+    assert vfile["v1"]["x"].attrs["units"] == "m"
+    assert_equal(vfile["v1"]["x"][:], expected)
+    assert_equal(vfile["v0"]["x"][:], np.arange(10.0))
+
+
 def test_resize_axis(vfile):
     # test axis= parameter of resize
     with vfile.stage_version("v0") as sv:

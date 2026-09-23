@@ -203,8 +203,22 @@ class InMemoryGroup(Group):
                 self._set_filters(name, Filters.from_dataset(raw_data))
                 self._set_chunks(name, obj.dataset.chunks)
         else:
+            # A wholesale replacement (``group[name] = array``) keeps the metadata of
+            # the dataset it replaces, like ``group[name][:] = array`` does: the
+            # fillvalue and the attributes are pinned in ``_version_data`` by the first
+            # version that committed the dataset. The chunk size is resolved by
+            # InMemoryArrayDataset from _chunks.
+            old = self._data.get(name)
+            fillvalue = old.fillvalue if isinstance(old, DatasetLike) else None
+            attrs = dict(old.attrs) if isinstance(old, DatasetLike) else None
             wrapped_dataset = DatasetWrapper(
-                InMemoryArrayDataset(name, np.asarray(obj), parent=self)
+                InMemoryArrayDataset(
+                    name,
+                    np.asarray(obj),
+                    parent=self,
+                    fillvalue=fillvalue,
+                    attrs=attrs,
+                )
             )
             if wrapped_dataset.ndim == 0:
                 raise NotImplementedError("Scalar datasets are not implemented.")
