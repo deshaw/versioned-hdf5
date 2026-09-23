@@ -787,27 +787,52 @@ def test_resize_after_new_dataset_assignment(vfile):
 
 def test_resize_after_delete_and_recreate(vfile):
     """Enlarging a dataset that was deleted in a previous version and re-created with
-    ``sv[name] = arr`` must reuse the chunk size pinned by the first version that
-    committed it (regression test for #569).
+    ``sv[name] = arr`` must reuse the chunk size and fillvalue pinned by the first
+    version that committed it (regression test for #569).
     """
     with vfile.stage_version("v0") as sv:
-        sv.create_dataset("x", data=np.arange(10.0), chunks=(4,))
+        sv.create_dataset("x", data=np.arange(10.0), chunks=(4,), fillvalue=3.0)
+        sv["x"].attrs["units"] = "m"
 
     with vfile.stage_version("v1") as sv:
         del sv["x"]
 
     with vfile.stage_version("v2") as sv:
         sv["x"] = np.arange(7.0)
+        assert sv["x"].fillvalue == 3.0
+        assert "units" not in sv["x"].attrs
         sv["x"].resize((12,))
         assert sv["x"].chunks == (4,)
-        expected = np.zeros(12)
+        expected = np.full(12, 3.0)
         expected[:7] = np.arange(7.0)
         assert_equal(sv["x"][:], expected)
 
     assert "x" not in vfile["v1"]
     assert vfile["v2"]["x"].chunks == (4,)
+    assert vfile["v2"]["x"].fillvalue == 3.0
+    assert "units" not in vfile["v2"]["x"].attrs
     assert_equal(vfile["v2"]["x"][:], expected)
     assert_equal(vfile["v0"]["x"][:], np.arange(10.0))
+
+
+def test_resize_after_recreating_in_versions_subgroup(vfile):
+    """A user subgroup named 'versions' must not mask the real versions group
+    when looking up the chunk size pinned by an older version.
+    """
+    with vfile.stage_version("v0") as sv:
+        sv.create_dataset("versions/x", data=np.arange(10), chunks=(4,))
+
+    with vfile.stage_version("v1") as sv:
+        del sv["versions/x"]
+
+    with vfile.stage_version("v2") as sv:
+        sv["versions/x"] = np.arange(7)
+        sv["versions/x"].resize((12,))
+        assert sv["versions/x"].chunks == (4,)
+
+    expected = np.zeros(12, dtype=int)
+    expected[:7] = np.arange(7)
+    assert_equal(vfile["v2"]["versions/x"][:], expected)
 
 
 def test_resize_multidim_after_whole_dataset_assignment(vfile):
