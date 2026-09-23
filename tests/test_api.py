@@ -781,9 +781,66 @@ def test_resize_after_new_dataset_assignment(vfile):
         expected[:10] = np.arange(10.0)
         assert_equal(sv["x"][:], expected)
 
-    assert isinstance(chunks, tuple)
     assert vfile["v0"]["x"].chunks == chunks
     assert_equal(vfile["v0"]["x"][:], expected)
+
+
+def test_resize_after_delete_and_recreate(vfile):
+    """Enlarging a dataset that was deleted in a previous version and re-created with
+    ``sv[name] = arr`` must reuse the chunk size pinned by the first version that
+    committed it (regression test for #569).
+    """
+    with vfile.stage_version("v0") as sv:
+        sv.create_dataset("x", data=np.arange(10.0), chunks=(4,))
+
+    with vfile.stage_version("v1") as sv:
+        del sv["x"]
+
+    with vfile.stage_version("v2") as sv:
+        sv["x"] = np.arange(7.0)
+        sv["x"].resize((12,))
+        assert sv["x"].chunks == (4,)
+        expected = np.zeros(12)
+        expected[:7] = np.arange(7.0)
+        assert_equal(sv["x"][:], expected)
+
+    assert "x" not in vfile["v1"]
+    assert vfile["v2"]["x"].chunks == (4,)
+    assert_equal(vfile["v2"]["x"][:], expected)
+    assert_equal(vfile["v0"]["x"][:], np.arange(10.0))
+
+
+def test_resize_multidim_after_whole_dataset_assignment(vfile):
+    """Multi-dimensional counterpart of test_resize_after_whole_dataset_assignment:
+    the pinned chunk size must be reused along every axis (regression test for #569).
+    """
+    with vfile.stage_version("v0") as sv:
+        sv.create_dataset("sub/x", data=np.zeros((4, 5)), chunks=(2, 5))
+
+    with vfile.stage_version("v1") as sv:
+        sv["sub/x"] = np.ones((4, 5))
+        sv["sub/x"].resize((8, 5))
+        assert sv["sub/x"].chunks == (2, 5)
+        expected = np.zeros((8, 5))
+        expected[:4] = 1
+        assert_equal(sv["sub/x"][:], expected)
+
+    assert vfile["v1"]["sub/x"].chunks == (2, 5)
+    assert_equal(vfile["v1"]["sub/x"][:], expected)
+    assert_equal(vfile["v0"]["sub/x"][:], np.zeros((4, 5)))
+
+
+def test_resize_multidim_after_new_dataset_assignment(vfile):
+    """``group[name] = arr`` cannot guess a chunk size for multi-dimensional data, so
+    enlarging it fails the same way as committing it does. Use
+    create_dataset(chunks=...) instead.
+    """
+    with (  # noqa: PT012
+        pytest.raises(NotImplementedError, match="chunks must be specified"),
+        vfile.stage_version("v0") as sv,
+    ):
+        sv["x"] = np.ones((4, 5))
+        sv["x"].resize((8, 5))
 
 
 def test_resize_axis(vfile):

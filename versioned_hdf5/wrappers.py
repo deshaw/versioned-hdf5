@@ -191,6 +191,10 @@ class InMemoryGroup(Group):
             )
             raw_data = wrapped_dataset.dataset.id.raw_data
             self._set_filters(name, Filters.from_dataset(raw_data))
+            # Register the chunk size of a dataset inherited from the previous version.
+            # It is pinned by the first version that committed the dataset (see
+            # backend.write_dataset()), so any wholesale replacement
+            # (``group[name] = array``) or enlargement in this version must reuse it.
             self._set_chunks(name, wrapped_dataset.dataset.chunks)
         elif isinstance(obj, DatasetLike):
             self._data[name] = obj
@@ -448,6 +452,34 @@ class InMemoryGroup(Group):
             parent_basename = posixpath.basename(p.name)
             full_name = parent_basename + "/" + full_name
             p = p._parent
+
+    def _pinned_chunks(self, name: str) -> tuple[int, ...] | None:
+        """Return the chunk size pinned in ``_version_data`` for a dataset, or None if
+        the dataset has never been committed.
+
+        The chunk size of a versioned dataset is fixed by the first version that
+        commits it (see backend.write_dataset()). A dataset that is not inherited from
+        the previous version (e.g. it was deleted and re-created, or the new version was
+        staged from an older ``prev_version``) still has to reuse that chunk size.
+        """
+        # Find the version group that contains this group, and the _version_data group
+        # above it. Do not assume that they are at the root of the file.
+        group: Group | None = self
+        version_group: Group | None = None
+        while group is not None and posixpath.basename(group.name) != "versions":
+            version_group = group
+            group = group.parent
+        if version_group is None or group is None or group.parent is None:
+            return None
+
+        rel = posixpath.relpath(
+            posixpath.join(self.name, posixpath.basename(name)), version_group.name
+        )
+        try:
+            raw_data = group.parent[posixpath.join(rel, "raw_data")]
+        except KeyError:
+            return None
+        return tuple(raw_data.attrs["chunks"])
 
     def _set_chunks(self, dataset_name: str, value: tuple[int, ...] | None) -> None:
         def cb(node: InMemoryGroup, name: str) -> None:
@@ -925,6 +957,8 @@ class DatasetLike:
 
     name: str
     shape: tuple[int, ...]
+    # None if the chunk size is not known yet. It is pinned by the first version that
+    # commits the dataset (see backend.write_dataset()).
     chunks: tuple[int, ...] | None
     dtype: np.dtype
     attrs: dict[str, Any]
@@ -1011,13 +1045,7 @@ class InMemoryArrayDataset(BufferMixin, FiltersMixin, DatasetLike):
         self.parent = parent
         self._fillvalue = fillvalue
         if chunks is None:
-            chunks = parent._chunks[posixpath.basename(name)]
-        if chunks is None:
-            # A wholesale replacement (``group[name] = array``) must keep the chunk
-            # size of the dataset it replaces: once the first version of a dataset has
-            # been committed, its chunk size is pinned (see backend.write_dataset()).
-            old = parent._data.get(posixpath.basename(name))
-            chunks = old.chunks if isinstance(old, DatasetLike) else None
+            chunks = parent._chunks[name]
         self.chunks = chunks
 
         # If dtype was explicitly provided and has the string metadata
@@ -1233,9 +1261,16 @@ class DatasetWrapper(DatasetLike):
         # committed and all need to go through hashing.
         chunks = self.dataset.chunks
         if chunks is None:
-            # No chunk size was inherited from a previous version nor registered by
-            # create_dataset() (e.g. a brand new ``group[name] = array`` dataset);
-            # guess one like commit_version() would.
+            # The dataset was neither inherited from the previous version nor
+            # registered by create_dataset(). It may still have been committed by an
+            # older version though (e.g. it was deleted and re-created, or this version
+            # was staged from an older prev_version), which pinned its chunk size.
+            pinned = self.dataset.parent._pinned_chunks(self.dataset.name)
+            if pinned is not None and len(pinned) == self.dataset.ndim:
+                chunks = pinned
+        if chunks is None:
+            # No chunk size is pinned (e.g. a brand new ``group[name] = array``
+            # dataset); guess one like commit_version() would.
             chunks = normalize_chunks(
                 None, self.dataset.shape, self.dataset._buffer.dtype
             )
