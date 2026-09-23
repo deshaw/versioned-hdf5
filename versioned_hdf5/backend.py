@@ -667,16 +667,15 @@ def rewrite_dataset(
     for block in _chunk_blocks(data.shape, chunks, data.dtype.itemsize, max_bytes):
         # The block read from `data` becomes the staged slabs, as views: nothing is
         # copied. commit_staged_changes() deduplicates them against every chunk already
-        # on raw_data, including those written by the previous blocks.
-        # Note it reloads raw_data's hash table from disk at every block and writes back
-        # the new rows as it goes. Keeping the table in memory across blocks instead was
-        # measured to buy nothing at realistic block sizes (a ~5% ceiling at 1024
-        # toy-sized blocks), at the cost of O(n_chunks) extra peak memory.
+        # on raw_data, including those written by the previous blocks. Note it reloads
+        # raw_data's hash table from disk at every block and writes back the new rows as
+        # it goes. Keeping the table in memory across blocks was measured to buy nothing
+        # at realistic block sizes.
         block_sc = StagedChangesArray.from_array(
             data[block], chunk_size=chunks, fill_value=fillvalue, as_base_slabs=False
         )
         commit_staged_changes(f, name, block_sc)
-        # The blocks are chunk-aligned. After the commit the block's chunks lie on
+        # The blocks are chunk-aligned. After the commit, the block's chunks lie on
         # raw_data (slab 1) or on the full slab (0); copy that into the full-size map.
         block_chunks = tuple(
             slice(b.start // c, ceil_a_over_b(b.stop, c))
