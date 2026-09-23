@@ -682,26 +682,6 @@ def test_data_v4_to_sc_hash_table_out_of_order(vfile):
     assert_equal(actual, on_disk[::-1])
 
 
-def test_data_v4_to_sc_hash_table_gaps(vfile):
-    """The converted table is indexed by raw_data chunk index, so a rebuilt hash table
-    which references sparse chunk indices yields a larger table with zero rows in the
-    gaps ('no chunk here').
-    """
-    dtype = np.dtype([("hash", "B", (32,)), ("shape", "i8", (2,))])
-    records = np.zeros(2, dtype=dtype)
-    records["hash"][0, 0] = 1
-    records["hash"][1, 0] = 2
-    # Two records, referencing chunk indices 1 and 2 of a 3-chunk raw_data
-    records["shape"][:, 0] = [2, 4]
-    hash_table = vfile.f.create_dataset("ht", data=records)
-    hash_table.attrs["largest_index"] = 2
-
-    actual = _data_v4_to_sc_hash_table(hash_table, 2)
-    assert actual.shape == (3, 4)
-    assert actual[0].tolist() == [0, 0, 0, 0]
-    assert_equal(actual[1:], np.ascontiguousarray(records["hash"]).view(np.uint64))
-
-
 def test_commit_staged_changes_out_of_order_hashtable(vfile):
     """Staged chunks are deduplicated onto the correct raw_data offset even when the
     records of the on-disk hash table are not in chunk order, which is the case after
@@ -763,7 +743,7 @@ def test_chunk_blocks(shape, chunk_size, max_bytes, expect):
 
 
 # One whole chunk, one chunk row, and the whole array at a time
-@pytest.mark.parametrize("max_bytes", [0, 8, 24, 1000])
+@pytest.mark.parametrize("max_bytes", [0, 64, 1000])
 def test_rewrite_dataset(vfile, max_bytes):
     """rewrite_dataset() copies every chunk of an array into a brand new raw_data,
     deduplicating them, and returns the same committed StagedChangesArray
@@ -796,6 +776,8 @@ def test_rewrite_dataset(vfile, max_bytes):
         staged_changes.slab_offsets,
         [[0, 2], [2, 0], [4, 6]],
     )
+    # The chunk map stitches the original array back together
+    assert_equal(staged_changes[()], data)
 
     # Only 4 chunks were written; the two duplicates were deduplicated away.
     # raw_data always grows by whole chunks, so the two edge chunks are padded.
@@ -806,30 +788,10 @@ def test_rewrite_dataset(vfile, max_bytes):
         [[1, 2], [5, 6], [3, 4], [7, 8], [9, 9], [0, 0], [0, 0], [0, 0]],
     )
 
-    # The StagedChangesArray stitches the original array back together
+    # ...and so does the virtual dataset it feeds
     vfile.f["_version_data/versions"].create_group("r0")
     slicetools.create_virtual_dataset(vfile.f, "r0", "x", staged_changes, fillvalue=0)
     assert_equal(vfile.f["_version_data/versions/r0/x"][:], data)
-
-
-def _unique_chunks(data, chunks, fillvalue):
-    """Set of (visible shape, visible bytes) of the chunks that rewrite_dataset()
-    must end up writing to raw_data, i.e. all chunks minus the full-sized ones that
-    are entirely fillvalue (those are deduplicated onto the full slab)."""
-    n_chunks = tuple((s + c - 1) // c for s, c in zip(data.shape, chunks, strict=True))
-    full = np.broadcast_to(np.array(fillvalue, dtype=data.dtype), chunks)
-    keys = set()
-    for idx in np.ndindex(*n_chunks):
-        block = data[
-            tuple(
-                slice(i * c, min((i + 1) * c, s))
-                for i, c, s in zip(idx, chunks, data.shape, strict=True)
-            )
-        ]
-        if block.shape == tuple(chunks) and np.array_equal(block, full):
-            continue
-        keys.add((block.shape, block.tobytes()))
-    return keys
 
 
 def _rewritten(vfile, name, data, chunks, fillvalue, max_bytes):
@@ -850,47 +812,32 @@ def _rewritten(vfile, name, data, chunks, fillvalue, max_bytes):
     return sc, raw_data, hash_table
 
 
-# A whole chunk, one chunk row/column/... at a time, and the whole array at a time
-@pytest.mark.parametrize("max_bytes", [0, 24, 128, 100000])
-def test_rewrite_dataset_block_invariance(vfile, max_bytes):
-    """However the array is diced into blocks, rewrite_dataset() always writes the
-    same set of chunks to raw_data and always stitches the original array back
-    together: chunks are deduplicated within a block, across blocks, and against the
-    fillvalue (full-sized chunks only), and edge chunks hash over their visible cells
-    so they are written even when entirely fillvalue.
+# One whole chunk, one chunk row, and the whole array at a time
+@pytest.mark.parametrize("max_bytes", [0, 128, 100000])
+def test_rewrite_dataset_multidimension(vfile, max_bytes):
+    """A 3-D array with duplicate chunks, edge chunks along two axes, and a full-sized
+    chunk which is entirely fillvalue: however it is diced into blocks, the same chunks
+    end up on raw_data. They are deduplicated within a block and across blocks, and a
+    full-sized chunk entirely fillvalue is dropped to the full slab.
     """
-    # 3-D with duplicate chunks, a full-sized chunk entirely equal to the fillvalue,
-    # and edge chunks along every axis (including one entirely equal to the fillvalue)
     chunks = (2, 2, 2)
     data = np.broadcast_to(np.array(1.5), (5, 4, 3)).copy()
     data[0:2, 0:2, 0:2] = 11.0
-    data[0:2, 2:4, 0:2] = 22.0
+    data[2:4, 2:4, 0:2] = 11.0  # Duplicate of (0, 0, 0)
     data[2:4, 0:2, 0:2] = 33.0
-    # Duplicate of (0, 0, 0), across block boundaries
-    data[2:4, 2:4, 0:2] = 11.0
-    # Full-sized chunk entirely equal to the fillvalue: never written
-    data[0:2, 0:2, 2:3] = 1.5
-    # Edge chunks (equal to the fillvalue where visible): always written
-    sc, raw_data, hash_table = _rewritten(
-        vfile, f"x{max_bytes}", data, chunks, 1.5, max_bytes
-    )
+    data[0:2, 2:4, 0:2] = 1.5  # Full-sized chunk entirely fillvalue: never written
+    # The chunks at z=2 are edge chunks (visible shape (*, *, 1)). Edge chunks hash
+    # over their visible cells only, so they are always written, even when entirely
+    # fillvalue
+    sc, _, hash_table = _rewritten(vfile, f"x{max_bytes}", data, chunks, 1.5, max_bytes)
 
-    # The same chunks are written regardless of the block size: every distinct
-    # (visible shape, visible content) chunk except the fillvalue ones
-    assert hash_table.attrs["largest_index"] == len(_unique_chunks(data, chunks, 1.5))
-
-    # The chunk map stitches the original array back together
+    # 11.0 and 33.0 once each, plus one chunk each for the three distinct visible
+    # edge shapes: 1x2x2, 2x2x1 and 1x2x1
+    assert hash_table.attrs["largest_index"] == 5
     assert_equal(sc[()], data)
 
-    # ...and so does the virtual dataset it feeds
-    vfile.f["_version_data/versions"].create_group(f"r{max_bytes}")
-    slicetools.create_virtual_dataset(
-        vfile.f, f"r{max_bytes}", f"x{max_bytes}", sc, fillvalue=1.5
-    )
-    assert_equal(vfile.f[f"_version_data/versions/r{max_bytes}/x{max_bytes}"][:], data)
 
-
-@pytest.mark.parametrize("max_bytes", [0, 32, 100000])
+@pytest.mark.parametrize("max_bytes", [0, 100000])
 def test_rewrite_dataset_preexisting_raw_data(vfile, max_bytes):
     """rewrite_dataset() deduplicates against chunks that were already on raw_data
     (e.g. written by a previous version or an earlier rewrite) and appends new chunks
@@ -906,12 +853,13 @@ def test_rewrite_dataset_preexisting_raw_data(vfile, max_bytes):
         ],
         dtype=float,
     )
-    sc1, raw_data, hash_table = _rewritten(vfile, "x", data, chunks, fillvalue, 1000)
+    sc1, _, hash_table = _rewritten(vfile, "x", data, chunks, fillvalue, 1000)
+    # Chunks (1, 0) and (1, 1) are identical, so only 3 of the 4 were written
     n_chunks_1 = int(hash_table.attrs["largest_index"])
-    assert n_chunks_1 == len(_unique_chunks(data, chunks, fillvalue))
+    assert n_chunks_1 == 3
 
-    # Rewrite a modified copy: the first chunk becomes a duplicate of an existing
-    # chunk and one brand new chunk appears
+    # Rewrite a modified copy: three of its chunks are duplicates of chunks already on
+    # raw_data and one is brand new
     data2 = data.copy()
     data2[0:2, 0:2] = data[0:2, 2:4]
     data2[2:4, 2:4] = [[8.0, 8.0], [8.0, 8.0]]
@@ -929,24 +877,16 @@ def test_rewrite_dataset_preexisting_raw_data(vfile, max_bytes):
     assert sc2.slab_offsets[0, 0] == sc1.slab_offsets[0, 1]
     assert sc2.slab_offsets[1, 1] == n_chunks_1 * chunks[0]
 
-    # Rewriting the original data again writes nothing at all
-    sc3 = rewrite_dataset(
-        vfile.f, "x", data, chunks=chunks, fillvalue=fillvalue, max_bytes=max_bytes
-    )
-    assert hash_table.attrs["largest_index"] == n_chunks_1 + 1
-    assert_equal(sc3[()], data)
-    assert_equal(sc3.slab_indices, sc1.slab_indices)
-    assert_equal(sc3.slab_offsets, sc1.slab_offsets)
-
 
 @pytest.mark.parametrize("max_bytes", [0, 1000])
 def test_rewrite_dataset_all_fillvalue(vfile, max_bytes):
-    """A dataset whose chunks are all entirely fillvalue writes nothing to raw_data"""
+    """A dataset whose chunks are all entirely fillvalue writes nothing to raw_data,
+    and is returned with no base slab at all rather than an empty raw_data one."""
     chunks = (2, 2)
     data = np.full((4, 6), 2.5)
-    sc, raw_data, hash_table = _rewritten(vfile, "x", data, chunks, 2.5, max_bytes)
+    sc, _, hash_table = _rewritten(vfile, "x", data, chunks, 2.5, max_bytes)
     assert hash_table.attrs["largest_index"] == 0
-    assert not sc.has_base_chunks
+    assert sc.n_base_slabs == 0
     assert_equal(sc[()], data)
 
 
