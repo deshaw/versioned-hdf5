@@ -80,6 +80,10 @@ def test_asarray_np2_strings():
     b = asarray(a, dtype="T")
     assert_array_equal(b, np.array(["foo", "bar"], dtype="T"), strict=True)
 
+    # Scalar bytes have the same conversion bug as object arrays.
+    assert asarray(b"", dtype="T")[()] == ""
+    assert asarray(b"foo", dtype="T")[()] == "foo"
+
 
 @st.composite
 def ix_idx_st(draw, max_ndim: int = 4) -> tuple[tuple[int, ...], tuple]:

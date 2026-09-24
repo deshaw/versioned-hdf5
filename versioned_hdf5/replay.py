@@ -22,6 +22,7 @@ from versioned_hdf5.backend import (
     commit_staged_changes,
     create_base_dataset,
     initialize,
+    is_vstring_dtype,
     rewrite_dataset,
 )
 from versioned_hdf5.hashtable import Hashtable
@@ -797,6 +798,12 @@ def swap(old: InMemoryGroup, new: InMemoryGroup) -> None:
             new_layout = _new_vds_layout(newd, new.name, old.name)
             old_fillvalue = old[name].fillvalue
             new_fillvalue = new[name].fillvalue
+            # h5py cannot safely set a fill value on a variable-width string
+            # dataset (https://github.com/h5py/h5py/issues/941). Passing the
+            # DatasetWrapper's b"" fillvalue here corrupts the VDS creation plist.
+            if is_vstring_dtype(oldd.dtype) or is_vstring_dtype(newd.dtype):
+                old_fillvalue = None
+                new_fillvalue = None
             old_attrs = dict(old[name].attrs)
             new_attrs = dict(new[name].attrs)
             del old[name]
