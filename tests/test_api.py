@@ -14,7 +14,7 @@ from numpy.testing import assert_equal
 from versioned_hdf5 import VersionedHDF5File
 from versioned_hdf5.backend import DATA_VERSION, DEFAULT_CHUNK_SIZE
 from versioned_hdf5.h5py_compat import H5PY_VERSION
-from versioned_hdf5.replay import delete_versions
+from versioned_hdf5.replay import delete_versions, modify_metadata
 from versioned_hdf5.versions import TIMESTAMP_FMT, all_versions
 from versioned_hdf5.wrappers import (
     AxisError,
@@ -816,23 +816,23 @@ def test_resize_after_delete_and_recreate(vfile):
 
 
 def test_resize_after_recreating_in_versions_subgroup(vfile):
-    """A user subgroup named 'versions' must not mask the real versions group
+    """A nested user subgroup named 'versions' must not mask the real versions group
     when looking up the chunk size pinned by an older version.
     """
     with vfile.stage_version("v0") as sv:
-        sv.create_dataset("versions/x", data=np.arange(10), chunks=(4,))
+        sv.create_dataset("a/versions/x", data=np.arange(10), chunks=(4,))
 
     with vfile.stage_version("v1") as sv:
-        del sv["versions/x"]
+        del sv["a/versions/x"]
 
     with vfile.stage_version("v2") as sv:
-        sv["versions/x"] = np.arange(7)
-        sv["versions/x"].resize((12,))
-        assert sv["versions/x"].chunks == (4,)
+        sv["a/versions/x"] = np.arange(7)
+        sv["a/versions/x"].resize((12,))
+        assert sv["a/versions/x"].chunks == (4,)
 
     expected = np.zeros(12, dtype=int)
     expected[:7] = np.arange(7)
-    assert_equal(vfile["v2"]["versions/x"][:], expected)
+    assert_equal(vfile["v2"]["a/versions/x"][:], expected)
 
 
 def test_resize_multidim_after_whole_dataset_assignment(vfile):
@@ -1105,6 +1105,58 @@ def test_getitem_by_timestamp(vfile):
         vfile.get_version_by_timestamp(dt0)
     with pytest.raises(KeyError):
         vfile.get_version_by_timestamp(dt0, exact=True)
+
+
+def test_top_level_versions_dataset_name_rejected(vfile):
+    timestamp = datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc)
+    with vfile.stage_version("x", timestamp=timestamp) as group:
+        group.create_dataset("raw_data", data=np.arange(5), chunks=(2,))
+
+    v0_timestamp = timestamp + datetime.timedelta(minutes=1)
+    with vfile.stage_version("v0", timestamp=v0_timestamp) as group:
+        group.create_dataset("a/versions/x", data=[1, 2, 3], chunks=(2,))
+
+    with (
+        pytest.raises(ValueError, match="forbidden dataset or group name"),
+        vfile.stage_version("v1", prev_version="x") as group,
+    ):
+        group.create_dataset("versions/x", data=np.arange(7), chunks=(3,))
+
+    # Failed staging removes its uncommitted version, preserves the current version,
+    # and does not write raw data into the existing version named x.
+    assert "v1" not in vfile
+    assert set(vfile) == {"x", "v0"}
+    assert vfile.current_version == "v0"
+    assert set(vfile["v0"]) == {"raw_data", "a"}
+    assert set(vfile["x"]) == {"raw_data"}
+    assert set(vfile.f["_version_data/versions/x"]) == {"raw_data"}
+    np.testing.assert_array_equal(vfile["x"]["raw_data"][:], np.arange(5))
+    assert vfile["x"]["raw_data"].chunks == (2,)
+
+    # Timestamp lookups and metadata changes still see only valid version groups.
+    assert vfile.get_version_by_timestamp(timestamp, exact=True) == vfile["x"]
+    assert vfile.get_version_by_timestamp(v0_timestamp, exact=True) == vfile["v0"]
+    between_timestamps = timestamp + datetime.timedelta(seconds=1)
+    assert vfile[between_timestamps] == vfile["x"]
+
+    modify_metadata(vfile, "raw_data", chunks=(3,))
+    assert vfile["x"]["raw_data"].chunks == (3,)
+
+    # A rejected top-level versions path does not prevent later operations. A deeper
+    # versions path is valid because only the first path component is reserved.
+    v2_timestamp = v0_timestamp + datetime.timedelta(minutes=1)
+    with vfile.stage_version("v2", prev_version="v0", timestamp=v2_timestamp):
+        pass
+    np.testing.assert_array_equal(vfile["v2"]["a/versions/x"][:], [1, 2, 3])
+
+    delete_versions(vfile.f, ["v0"])
+    assert set(vfile) == {"x", "v2"}
+    assert vfile.current_version == "v2"
+    np.testing.assert_array_equal(vfile["v2"]["a/versions/x"][:], [1, 2, 3])
+
+    with vfile.stage_version("v3", prev_version="v2") as group:
+        group["raw_data"][0] = 100
+    np.testing.assert_array_equal(vfile["v3"]["raw_data"][:2], [100, 1])
 
 
 def test_nonroot(vfile):
