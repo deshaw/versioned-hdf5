@@ -847,6 +847,48 @@ def test_recreate_dataset_bounded_memory(vfile, monkeypatch):
     assert peak < np.prod(shape) * 8 // 2
 
 
+@pytest.mark.parametrize(
+    ("metadata", "expected"),
+    [
+        ({}, lambda data: data),
+        ({"fillvalue": -1.5}, lambda data: np.where(data == 0, -1.5, data)),
+        ({"dtype": np.float64}, lambda data: data.astype(np.float64)),
+        (
+            {"dtype": np.float64, "fillvalue": -1.5},
+            lambda data: np.where(data.astype(np.float64) == 0, -1.5, data),
+        ),
+    ],
+)
+def test_modify_metadata_dense_streams_transforms(
+    vfile, monkeypatch, metadata, expected
+):
+    """Metadata transforms read committed data one rewrite block at a time."""
+    shape = (2048, 128)
+    chunks = (32, 128)
+    max_bytes = 128 * 1024
+    monkeypatch.setattr(
+        replay,
+        "rewrite_dataset",
+        functools.partial(rewrite_dataset, max_bytes=max_bytes),
+    )
+
+    data = np.arange(np.prod(shape), dtype=np.float32).reshape(shape)
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("x", data=data, chunks=chunks)
+
+    f = vfile.f
+    gc.collect()
+    tracemalloc.start()
+    try:
+        modify_metadata(f, "x", **metadata)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert peak < np.prod(shape) * 8 // 2
+    assert_array_equal(vfile["r0"]["x"][:], expected(data))
+
+
 def test_recreate_dataset_frees_each_version(vfile):
     """The wrappers of a version reference each other in cycles
     (InMemoryGroup._data[] <-> InMemoryDataset._parent); recreate_dataset() must not
