@@ -1,5 +1,6 @@
 import itertools
 
+import h5py
 import numpy as np
 import pytest
 from h5py._hl.filters import guess_chunk
@@ -916,6 +917,32 @@ def test_commit_state_rejects_different_target(h5file):
     )
     with pytest.raises(ValueError, match="different target or chunk size"):
         backend.commit_staged_changes(h5file, "y", second, state)
+
+
+def test_commit_state_rejects_different_file(h5file, tmp_path):
+    create_base_dataset(h5file, "x", data=np.empty(0, dtype=np.int64), chunks=(2,))
+    state = backend.CommitState()
+    backend.commit_staged_changes(
+        h5file,
+        "x",
+        StagedChangesArray.from_array(
+            np.array([1, 2]), chunk_size=(2,), as_base_slabs=False
+        ),
+        state,
+    )
+
+    with h5py.File(tmp_path / "other.h5", "w") as other:
+        backend.initialize(other)
+        create_base_dataset(other, "x", data=np.empty(0, dtype=np.int64), chunks=(2,))
+        with pytest.raises(ValueError, match="different target or chunk size"):
+            backend.commit_staged_changes(
+                other,
+                "x",
+                StagedChangesArray.from_array(
+                    np.array([3, 4]), chunk_size=(2,), as_base_slabs=False
+                ),
+                state,
+            )
 
 
 def test_commit_state_resets_after_failed_commit(h5file, monkeypatch):

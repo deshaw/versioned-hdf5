@@ -2220,7 +2220,7 @@ class CommitState:
 
     hash_to_old_chunk: ChunkHashMap
     initialized: cython.bint
-    target_key: object
+    target_key: tuple[object, str, tuple[int, ...]] | None
 
     def __init__(self):
         self.hash_to_old_chunk = ChunkHashMap()
@@ -2229,10 +2229,18 @@ class CommitState:
 
     def bind_target(self, f, name: str, chunk_size: tuple[int, ...]) -> None:
         """Bind this state to one ``raw_data`` target and chunk size."""
-        key = (id(f), name, tuple(chunk_size))
         if self.target_key is None:
-            self.target_key = key
-        elif self.target_key != key:
+            # Keep the file itself alive so its identity cannot be recycled while
+            # this state exists.
+            self.target_key = (f, name, tuple(chunk_size))
+            return
+
+        bound_file, bound_name, bound_chunk_size = self.target_key
+        if (
+            bound_file is not f
+            or bound_name != name
+            or bound_chunk_size != tuple(chunk_size)
+        ):
             raise ValueError(
                 "CommitState cannot be reused for a different target or chunk size"
             )
@@ -2303,8 +2311,7 @@ class CommitPlan(MutatingPlan):
         # and Python dicts when it is not compiled.
         hash_to_old_chunk: ChunkHashMap = ChunkHashMap()
         old_to_new_chunk: ChunkLocMap = ChunkLocMap()
-        if state is None:
-            state = CommitState()
+        persistent_state: CommitState | None = state
 
         old_slab_idx: ssize_t
         inp_row: ssize_t
@@ -2336,7 +2343,12 @@ class CommitPlan(MutatingPlan):
             is_staged_slab = old_slab_idx > cython.cast(ssize_t, n_base_slabs)
             # A reused state already contains full/base hashes from the first block.
             # Do not rescan those rows; only the full slab is still per-commit state.
-            if state.initialized and not is_staged_slab and old_slab_idx != 0:
+            if (
+                persistent_state is not None
+                and persistent_state.initialized
+                and not is_staged_slab
+                and old_slab_idx != 0
+            ):
                 continue
             ht_view: cython.const[cython.ulonglong][:, ::1] = ht  # type: ignore[valid-type]
             n_slab_transfers = 0
@@ -2360,10 +2372,13 @@ class CommitPlan(MutatingPlan):
                 if (
                     is_staged_slab
                     and hash_to_old_chunk.count(ch_key) == 0
-                    and state.initialized
-                    and state.hash_to_old_chunk.count(ch_key) != 0
+                    and persistent_state is not None
+                    and persistent_state.initialized
+                    and persistent_state.hash_to_old_chunk.count(ch_key) != 0
                 ):
-                    old_to_new_chunk[cl_key] = state.hash_to_old_chunk[ch_key]
+                    old_to_new_chunk[cl_key] = persistent_state.hash_to_old_chunk[
+                        ch_key
+                    ]
                     n_total_transfers -= 1
                     continue
                 if hash_to_old_chunk.count(ch_key) == 0:  # std::unordered_map syntax
@@ -2373,11 +2388,12 @@ class CommitPlan(MutatingPlan):
 
                         cl_val = ChunkLoc(new_slab_idx, out_offset)
                         hash_to_old_chunk[ch_key] = cl_val
-                        # Persistent locations are absolute offsets on the target's
-                        # base slab, unlike the transient new-slab locations above.
-                        state.hash_to_old_chunk[ch_key] = ChunkLoc(
-                            1, new_base_offset + out_offset
-                        )
+                        if persistent_state is not None:
+                            # Persistent locations are absolute offsets on the target's
+                            # base slab, unlike transient new-slab locations above.
+                            persistent_state.hash_to_old_chunk[ch_key] = ChunkLoc(
+                                1, new_base_offset + out_offset
+                            )
                         old_to_new_chunk[cl_key] = cl_val
 
                         new_hash_table[out_row, 0] = h0
@@ -2392,8 +2408,8 @@ class CommitPlan(MutatingPlan):
                         # Save hash of base or full chunk so that it can potentially
                         # be used to deduplicate a staged chunk
                         hash_to_old_chunk[ch_key] = cl_key
-                        if not is_staged_slab:
-                            state.hash_to_old_chunk[ch_key] = cl_key
+                        if persistent_state is not None and not is_staged_slab:
+                            persistent_state.hash_to_old_chunk[ch_key] = cl_key
                 elif is_staged_slab:
                     # Schedule for deduplication
                     n_total_transfers -= 1
@@ -2417,10 +2433,12 @@ class CommitPlan(MutatingPlan):
                     )
                 )
 
-        # State now contains all full/base hashes and every unique chunk scheduled for
-        # this commit. Future commits on the same target can use it without rereading
-        # or rebuilding the map.
-        state.initialized = True
+        # An explicit state now contains all full/base hashes and every unique chunk
+        # scheduled for this commit. Future commits on the same target can use it
+        # without rereading or rebuilding the map. The default path only needs the
+        # local map above.
+        if persistent_state is not None:
+            persistent_state.initialized = True
 
         # Append a single new base slab for the surviving unique staged chunks, but only
         # if there are any (they have not been found to be duplicates of chunks in the
