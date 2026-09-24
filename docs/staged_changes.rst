@@ -408,8 +408,8 @@ Committing is broken down into the following stages:
       or the new base slab. This remap happens even when no data transfer is needed
       (e.g. when every staged chunk is deduplicated) and may replace the arrays with
       contiguous copies of themselves (e.g. after ``resize()`` left them as strided
-      views), so ``commit()`` must always propagate the plan's arrays back to the
-      ``StagedChangesArray``.
+      views), so the plan reports it in ``mutates`` and ``commit()`` propagates its
+      arrays back to the ``StagedChangesArray`` even when nothing is transferred.
 
 4. Allocate a new base slab with a `np.empty`-like callback that was provided by the
    wrapper. Under the hood, the function extends the h5py `raw_data` dataset and returns
