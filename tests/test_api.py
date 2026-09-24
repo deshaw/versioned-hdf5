@@ -2000,11 +2000,14 @@ def test_read_only_handle_does_not_reuse_wrapper(tmp_path):
         first = VersionedHDF5File(f)
         second = VersionedHDF5File(f2)
 
+        first_group = first["v0"]
+        first_x = first_group["x"]
+
         # Exercise second handle's wrapper cache, including the InMemoryDataset.
         second["v0"]["x"]
         f2.close()
 
-        assert_equal(first["v0"]["x"][:], data)
+        assert_equal(first_x[:], data)
 
 
 def test_writable_handles_do_not_reuse_wrapper(tmp_path):
