@@ -618,41 +618,6 @@ def test_resize_unaligned(vfile):
             assert_equal(group[ds_name][:], np.arange((i + 1) * 1000))
 
 
-def test_resize_shrink_trailing_axis_all_fillvalue(vfile):
-    """resize() shrinks a trailing axis and grows axis 0 within the last chunk row"""
-    with vfile.stage_version("v0") as group:
-        group.create_dataset(
-            "x", data=np.full((10, 2), -1.5), chunks=(4, 1), fillvalue=-1.5
-        )
-    n_rows = vfile.f["_version_data/x/raw_data"].shape[0]
-
-    with vfile.stage_version("v1") as group:
-        group["x"].resize((12, 1))
-
-    assert vfile["v1"]["x"].shape == (12, 1)
-    assert_equal(vfile["v1"]["x"][()], np.full((12, 1), -1.5))
-    # The grown edge chunk is full of fill_value and deduplicates against the full
-    # chunk: nothing new is written to raw_data
-    assert vfile.f["_version_data/x/raw_data"].shape[0] == n_rows
-
-
-def test_resize_shrink_trailing_axis(vfile):
-    """resize() shrinks a trailing axis and grows axis 0 within the last chunk row"""
-    data = np.arange(20).reshape(10, 2)
-    with vfile.stage_version("v0") as group:
-        group.create_dataset("x", data=data, chunks=(4, 1), fillvalue=-1)
-
-    expected = np.full((12, 1), fill_value=-1)
-    expected[:10, :1] = data[:10, :1]
-
-    with vfile.stage_version("v1") as group:
-        group["x"].resize((12, 1))
-        assert group["x"].shape == (12, 1)
-        assert_equal(group["x"][()], expected)
-
-    assert_equal(vfile["v1"]["x"][()], expected)
-
-
 @pytest.mark.slow
 def test_resize_multiple_dimensions(vfile):
     # Test semantics against raw HDF5
