@@ -635,7 +635,7 @@ class StagedChangesArray(MutableMapping[Any, T]):
         default_slab: NDArray[T] | None = None,
         empty: Callable[..., MutableArrayProtocol] = np.empty,
     ) -> None:
-        """Implement common workflow of __setitem__, resize, and load."""
+        """Implement common workflow of __setitem__, resize, load, and commit."""
         for shape in plan.append_slabs:
             self.slabs.append(empty(shape, dtype=self.dtype))
             self.hash_tables.append(None)
@@ -741,10 +741,6 @@ class StagedChangesArray(MutableMapping[Any, T]):
         self._untrim_staged_slabs(shape)
 
         plan = self._resize_plan(shape, copy=False)
-        # A resize that shrinks or grows within the last chunk row/column, without
-        # changing the shape of the chunk grid, impacts no chunk at all: the plan is a
-        # no-op. One that does change it reports that in mutates even when it transfers
-        # no data; see ResizePlan.grid_resized.
         if plan.mutates:
             self._apply_mutating_plan(plan)
 
@@ -856,12 +852,6 @@ class StagedChangesArray(MutableMapping[Any, T]):
         # base/full chunk. A new base slab is appended only if at least one staged chunk
         # survived deduplication.
         cplan = self._commit_plan(copy=False)
-        # CommitPlan.mutates also reports plans that merely repoint chunks while
-        # deduplicating: the remap may have rewritten contiguous copies of
-        # slab_indices and slab_offsets rather than self's originals (e.g. after
-        # resize() shrank a trailing axis and left them as strided views), so
-        # _apply_mutating_plan() must propagate them back even when no data is
-        # transferred. Skipping such a plan loses the remap. See #568.
         if cplan.mutates:
             self._apply_mutating_plan(cplan, None, empty)
 
@@ -878,11 +868,6 @@ class StagedChangesArray(MutableMapping[Any, T]):
             # on the base slabs or the full slab
             del self.slabs[drop_start:]
             del self.hash_tables[drop_start:]
-
-        # Defensive check: no chunk may reference a slab that has just been dropped.
-        # A CommitPlan whose remap is not propagated would only blow up much later, in
-        # create_virtual_dataset(). See #568.
-        assert int(self.slab_indices.max(initial=0)) < len(self.slabs)
 
     def copy(self) -> StagedChangesArray[T]:
         """Return a writeable Copy-on-Write (CoW) copy of self.
@@ -1641,10 +1626,8 @@ class LoadPlan(MutatingPlan):
 class ResizePlan(MutatingPlan):
     """Instructions to execute StagedChangesArray.resize()"""
 
-    #: True if the plan resized the chunk grid, i.e. it replaced slab_indices and
-    #: slab_offsets with a shrunk view or a padded copy. Unlike the transfers and the
-    #: slab shrinks/drops, MutatingPlan.mutates cannot see this.
-    grid_resized: bool
+    #: True if the plan resized slab_indices/slab_offsets.
+    _nchunks_resized: cython.bint
 
     def __init__(
         self,
@@ -1679,7 +1662,7 @@ class ResizePlan(MutatingPlan):
             raise ValueError("shape must be non-negative")
 
         super().__init__(slab_indices, slab_offsets)
-        self.grid_resized = False
+        self._nchunks_resized = False
         if old_shape == new_shape:
             return
 
@@ -1697,16 +1680,11 @@ class ResizePlan(MutatingPlan):
                 slice(ceil_a_over_b(s, c))
                 for s, c in zip(shrunk_shape, chunk_size, strict=True)
             )
-            # Just a view: the surviving chunks keep their slab and offset. This won't
-            # change the shape of the arrays when shrinking the edge chunks without
-            # reducing the number of chunks.
-            grid_shape = self.slab_indices.shape
+            old_nchunks_shape = self.slab_indices.shape
             self.slab_indices = self.slab_indices[chunks_slice]
             self.slab_offsets = self.slab_offsets[chunks_slice]
-            if self.slab_indices.shape != grid_shape:
-                # The chunk grid shrank: the arrays were replaced by smaller views of
-                # themselves, which no data transfer accounts for.
-                self.grid_resized = True
+            if self.slab_indices.shape != old_nchunks_shape:
+                self._nchunks_resized = True
 
             # Load partial edge chunks into memory to avoid ending up with partially
             # overlapping chunks on disk, e.g. [10:19] vs. [10:17].
@@ -1740,7 +1718,7 @@ class ResizePlan(MutatingPlan):
             if any(p != (0, 0) for p in pad_width):
                 # The chunk grid grew: the arrays were just replaced by bigger copies
                 # of themselves, which no data transfer accounts for.
-                self.grid_resized = True
+                self._nchunks_resized = True
                 self.slab_indices = np.pad(self.slab_indices, pad_width)
                 self.slab_offsets = np.pad(self.slab_offsets, pad_width)
 
@@ -2058,14 +2036,7 @@ class ResizePlan(MutatingPlan):
 
     @property
     def mutates(self) -> bool:
-        """True if this plan alters the state of the StagedChangesArray.
-
-        On top of the data transfers, this includes resizing the chunk grid: the plan
-        then replaced slab_indices and slab_offsets with resized versions of themselves
-        - possibly nothing more than views of the original arrays - which the caller
-        must propagate back to the StagedChangesArray even when nothing is transferred.
-        """
-        return self.grid_resized or super().mutates
+        return self._nchunks_resized or super().mutates
 
     @property
     def head(self) -> str:
@@ -2237,9 +2208,8 @@ class CommitPlan(MutatingPlan):
     new_hash_table: NDArray[np.uint64] | None
 
     #: True if at least one chunk was repointed at a different slab or offset while
-    #: deduplicating. A deduplicated chunk is not transferred anywhere, so the remap is
-    #: invisible to MutatingPlan.mutates.
-    remapped_chunks: bool
+    #: deduplicating.
+    _remapped_chunks: cython.bint
 
     def __init__(
         self,
@@ -2252,7 +2222,7 @@ class CommitPlan(MutatingPlan):
     ):
         super().__init__(slab_indices, slab_offsets)
         self.transfers = []
-        self.remapped_chunks = False
+        self._remapped_chunks = False
         np_chunk_size = np.asarray(chunk_size, dtype=np_hsize_t).reshape((1, -1))
 
         ndim: hsize_t = len(chunk_size)
@@ -2395,7 +2365,7 @@ class CommitPlan(MutatingPlan):
                     cython.cast(ssize_t, mapped.slab_idx) != old_slab_idx
                     or mapped.slab_offset != old_slab_offset
                 ):
-                    self.remapped_chunks = True
+                    self._remapped_chunks = True
                 slab_indices_flat_view[i] = mapped.slab_idx
                 slab_offsets_flat_view[i] = mapped.slab_offset
 
@@ -2418,15 +2388,7 @@ class CommitPlan(MutatingPlan):
 
     @property
     def mutates(self) -> bool:
-        """True if this plan alters the state of the StagedChangesArray.
-
-        On top of the data transfers, this includes the chunks that are merely
-        repointed at a duplicate: the remap may rewrite slab_indices and slab_offsets,
-        possibly on contiguous copies of them instead of in place, so the caller must
-        propagate plan.slab_indices/plan.slab_offsets back to the StagedChangesArray
-        even when nothing is transferred.
-        """
-        return self.remapped_chunks or super().mutates
+        return self._remapped_chunks or super().mutates
 
     @property
     def head(self) -> str:

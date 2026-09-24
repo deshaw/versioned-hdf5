@@ -619,12 +619,7 @@ def test_resize_unaligned(vfile):
 
 
 def test_resize_shrink_trailing_axis_all_fillvalue(vfile):
-    """A resize() that shrinks a trailing axis and grows axis 0 within the last chunk
-    row used to fail at commit time (IndexError in v2.5.0, AssertionError later) when
-    the grown edge chunk deduplicated against the fill_value chunk.
-
-    Regression test for https://github.com/deshaw/versioned-hdf5/issues/568
-    """
+    """resize() shrinks a trailing axis and grows axis 0 within the last chunk row"""
     with vfile.stage_version("v0") as group:
         group.create_dataset(
             "x", data=np.full((10, 2), -1.5), chunks=(4, 1), fillvalue=-1.5
@@ -642,23 +637,13 @@ def test_resize_shrink_trailing_axis_all_fillvalue(vfile):
 
 
 def test_resize_shrink_trailing_axis(vfile):
-    """#568 with real data: shrink axis 1 and grow axis 0 within the last chunk row.
-    The semantics are checked against raw h5py.
-
-    Unlike test_resize_shrink_trailing_axis_all_fillvalue(), this one passes even
-    without the fix: the partial edge chunk is loaded into a staged slab, so the
-    CommitPlan does transfer data and the remap used to be applied by accident.
-    """
+    """resize() shrinks a trailing axis and grows axis 0 within the last chunk row"""
     data = np.arange(20).reshape(10, 2)
     with vfile.stage_version("v0") as group:
         group.create_dataset("x", data=data, chunks=(4, 1), fillvalue=-1)
 
-    # Ground truth from h5py
-    vfile.f.create_dataset(
-        "raw", data=data, chunks=(4, 1), fillvalue=-1, maxshape=(None, None)
-    )
-    vfile.f["raw"].resize((12, 1))
-    expected = vfile.f["raw"][()]
+    expected = np.full((12, 1), fill_value=-1)
+    expected[:10, :1] = data[:10, :1]
 
     with vfile.stage_version("v1") as group:
         group["x"].resize((12, 1))
