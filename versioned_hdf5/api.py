@@ -218,7 +218,7 @@ class VersionedHDF5File:
             )
         if self.f.file.mode == "r":
             return g
-        return InMemoryGroup(g._id, _committed=True)
+        return InMemoryGroup(g._id, _committed=True, file=self.f)
 
     def get_version_by_timestamp(self, timestamp, exact=False):
         version = get_version_by_timestamp(self.f, timestamp, exact=exact)
@@ -230,7 +230,7 @@ class VersionedHDF5File:
             )
         if self.f.file.mode == "r":
             return g
-        return InMemoryGroup(g._id, _committed=True)
+        return InMemoryGroup(g._id, _committed=True, file=self.f)
 
     def __getitem__(self, item):
         if self.closed:
@@ -342,6 +342,8 @@ class VersionedHDF5File:
         Make sure the VersionedHDF5File object is no longer reachable.
         """
         if not self._closed:
+            InMemoryGroup._invalidate_file(self.f)
+            self._version_cache.clear()
             del self.f
             self._closed = True
 

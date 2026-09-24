@@ -1987,6 +1987,26 @@ def test_read_only(setup_vfile):
             file[timestamp]["data2"] = [1, 2, 3]
 
 
+def test_read_only_handle_does_not_reuse_wrapper(tmp_path):
+    filename = tmp_path / "file.h5"
+    data = np.arange(5)
+    with (
+        h5py.File(filename, "w") as f,
+        VersionedHDF5File(f).stage_version("v0") as group,
+    ):
+        group["x"] = data
+
+    with h5py.File(filename, "r+") as f, h5py.File(filename, "r") as f2:
+        first = VersionedHDF5File(f)
+        second = VersionedHDF5File(f2)
+
+        # Exercise second handle's wrapper cache, including the InMemoryDataset.
+        second["v0"]["x"]
+        f2.close()
+
+        assert_equal(first["v0"]["x"][:], data)
+
+
 def test_delete_datasets(vfile):
     data1 = np.arange(10)
     data2 = np.zeros(20, dtype=int)

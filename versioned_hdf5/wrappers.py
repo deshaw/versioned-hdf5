@@ -16,7 +16,7 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable
 from contextlib import suppress
 from typing import Any, ClassVar, Generic, Literal, TypeVar
-from weakref import WeakValueDictionary
+from weakref import ReferenceType, WeakValueDictionary, ref
 
 import numpy as np
 from h5py import Dataset, Empty, Group, h5a, h5d, h5g, h5i, h5r, h5s, h5t, string_dtype
@@ -47,9 +47,33 @@ T = TypeVar("T")
 
 
 class InMemoryGroup(Group):
-    _instances: ClassVar[WeakValueDictionary[h5g.GroupID, InMemoryGroup]] = (
-        WeakValueDictionary({})
-    )
+    # HDF5 object IDs compare equal for objects opened through different h5py
+    # handles.  Keep separate caches for each Python handle so IDs from one
+    # handle can never supply wrappers to another handle.
+    _instances: ClassVar[
+        dict[
+            int,
+            tuple[ReferenceType[Any], WeakValueDictionary[h5g.GroupID, InMemoryGroup]],
+        ]
+    ] = {}
+
+    @classmethod
+    def _cache_for_file(
+        cls, file: Any
+    ) -> WeakValueDictionary[h5g.GroupID, InMemoryGroup]:
+        key = id(file)
+        entry = cls._instances.get(key)
+        if entry is not None and entry[0]() is file:
+            return entry[1]
+
+        def remove(ref: ReferenceType[Any]) -> None:
+            current = cls._instances.get(key)
+            if current is not None and current[0] is ref:
+                del cls._instances[key]
+
+        cache: WeakValueDictionary[h5g.GroupID, InMemoryGroup] = WeakValueDictionary()
+        cls._instances[key] = (ref(file, remove), cache)
+        return cache
 
     _subgroups: dict[str, InMemoryGroup]
     _data: dict[str, DatasetLike]
@@ -59,18 +83,25 @@ class InMemoryGroup(Group):
     _initialized: bool
     _committed: bool
 
-    def __new__(cls, bind: h5g.GroupID, _committed: bool = False):
-        # Make sure each group only corresponds to one InMemoryGroup instance.
-        # Otherwise a new instance would lose track of any datasets or
-        # subgroups created in the old one.
-        if bind in cls._instances:
-            return cls._instances[bind]
+    def __new__(
+        cls, bind: h5g.GroupID, _committed: bool = False, file: Any | None = None
+    ):
+        # Make sure each group only corresponds to one InMemoryGroup instance per
+        # Python file handle. Otherwise a new instance would lose track of any
+        # datasets or subgroups created in the old one.
+        owner = bind if file is None else file
+        cache = cls._cache_for_file(owner)
+        if bind in cache:
+            return cache[bind]
         obj = super().__new__(cls)
         obj._initialized = False
-        cls._instances[bind] = obj
+        obj._file = owner
+        cache[bind] = obj
         return obj
 
-    def __init__(self, bind: h5g.GroupID, _committed: bool = False):
+    def __init__(
+        self, bind: h5g.GroupID, _committed: bool = False, file: Any | None = None
+    ):
         """Create a new InMemoryGroup object by binding to a low-level GroupID.
 
         Parameters
@@ -87,6 +118,7 @@ class InMemoryGroup(Group):
         self._chunks = defaultdict(type(None))
         self._filters = defaultdict(Filters)
         self._parent = None
+        self._file = bind if file is None else file
         self._initialized = True
         self._committed = _committed
         super().__init__(bind)
@@ -108,13 +140,26 @@ class InMemoryGroup(Group):
         moves the chunks of ``raw_data`` around and recreates all virtual datasets
         pointing to them.
         """
-        for group in list(cls._instances.values()):
-            # Uncommitted groups hold data that only exists in memory; dropping it
-            # would silently discard the user's staged changes.
+        for _, cache in list(cls._instances.values()):
+            for group in list(cache.values()):
+                # Uncommitted groups hold data that only exists in memory; dropping it
+                # would silently discard the user's staged changes.
+                if group._committed:
+                    group._data.clear()
+                    group._subgroups.clear()
+        cls._instances.clear()
+
+    @classmethod
+    def _invalidate_file(cls, file: Any) -> None:
+        """Forget cached wrappers associated with one Python file handle."""
+        entry = cls._instances.get(id(file))
+        if entry is None or entry[0]() is not file:
+            return
+        for group in list(entry[1].values()):
             if group._committed:
                 group._data.clear()
                 group._subgroups.clear()
-        cls._instances.clear()
+        del cls._instances[id(file)]
 
     # Based on Group.__repr__
     def __repr__(self):
@@ -151,7 +196,7 @@ class InMemoryGroup(Group):
         # h5py.Group, (i.e. the file itself).
         res = super().__getitem__(name)
         if isinstance(res, Group):
-            self._subgroups[name] = self.__class__(res.id)
+            self._subgroups[name] = self.__class__(res.id, file=self._file)
             return self._subgroups[name]
         if isinstance(res, Dataset):
             self._add_to_data(name, res)
@@ -180,7 +225,7 @@ class InMemoryGroup(Group):
             self._subgroups[name] = obj
             return
         if isinstance(obj, Group):
-            self._subgroups[name] = InMemoryGroup(obj.id)
+            self._subgroups[name] = InMemoryGroup(obj.id, file=self._file)
             return
 
         if isinstance(obj, Dataset):
@@ -269,7 +314,9 @@ class InMemoryGroup(Group):
             raise ValueError(
                 "Root level groups cannot be created inside of versioned groups"
             )
-        group = type(self)(super().create_group(name, track_order=track_order).id)
+        group = type(self)(
+            super().create_group(name, track_order=track_order).id, file=self._file
+        )
         g = group
         n = name
         while n:
@@ -277,7 +324,7 @@ class InMemoryGroup(Group):
             if not dirname:
                 parent = self
             else:
-                parent = type(self)(g.parent.id)
+                parent = type(self)(g.parent.id, file=self._file)
             parent._subgroups[basename] = g
             g.parent = parent
             g = parent
