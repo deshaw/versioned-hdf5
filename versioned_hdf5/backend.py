@@ -482,6 +482,8 @@ def commit_staged_changes(
     raw_data = group["raw_data"]
     hash_table = group["hash_table"]
     assert sc.chunk_size == tuple(raw_data.chunks)
+    if commit_state is not None:
+        commit_state.bind_target(f, name, sc.chunk_size)
     chunk_size0 = sc.chunk_size[0]
 
     # Number of chunks that the previous versions committed to raw_data.
@@ -517,62 +519,76 @@ def commit_staged_changes(
         raw_data.resize((prev_len + shape[0], *raw_data.shape[1:]))
         return RawDataView(raw_data, prev_len, dtype)
 
-    # Calculate hashes, deduplicate staged chunks, and write to raw_data
-    sc.commit(empty=empty, state=commit_state, new_base_offset=prev_len)
+    # Calculate hashes, deduplicate staged chunks, and write to raw_data. State is
+    # updated while planning the transfer, so any failure must invalidate it before
+    # allowing a retry to reuse uncommitted offsets.
+    try:
+        sc.commit(empty=empty, state=commit_state, new_base_offset=prev_len)
 
-    n_appended_chunks = 0
-    if sc.n_base_slabs > n_base_before:
-        # At least one staged chunk is original (neither identical to a chunk
-        # already on raw_data nor full of fill_value)
-        # === Steps 6-10: a new base slab was appended; record its chunks on disk ===
-        assert sc.n_base_slabs == n_base_before + 1
-        new_slab_idx = sc.n_base_slabs
-        new_hashes = sc.hash_tables[new_slab_idx]
-        assert new_hashes is not None
-        n_appended_chunks = new_hashes.shape[0]
-        new_n_chunks = prev_n_chunks + n_appended_chunks
+        n_appended_chunks = 0
+        if sc.n_base_slabs > n_base_before:
+            # At least one staged chunk is original (neither identical to a chunk
+            # already on raw_data nor full of fill_value)
+            # === Steps 6-10: a new base slab was appended; record its chunks
+            # on disk ===
+            assert sc.n_base_slabs == n_base_before + 1
+            new_slab_idx = sc.n_base_slabs
+            new_hashes = sc.hash_tables[new_slab_idx]
+            assert new_hashes is not None
+            n_appended_chunks = new_hashes.shape[0]
+            new_n_chunks = prev_n_chunks + n_appended_chunks
 
-        # Calculate (start, stop) offsets of the chunks on raw_data
-        starts = np.arange(
-            prev_n_chunks * chunk_size0,
-            new_n_chunks * chunk_size0,
-            chunk_size0,
-            dtype=np.int64,
-        )
-        stops = starts + chunk_size0
-        if sc.shape[0] % chunk_size0:
-            # Edge chunks along axis 0 are not full chunks; trim stops.
-            # This matters when modify_metadata() recalculates the hashes.
-            n_whole_chunks0 = sc.slab_indices.shape[0] - 1
-            last_chunk_trim = chunk_size0 - sc.shape[0] + n_whole_chunks0 * chunk_size0
-            new_edge_chunks_idx = (
-                sc.slab_offsets[-1][sc.slab_indices[-1] == new_slab_idx] // chunk_size0
+            # Calculate (start, stop) offsets of the chunks on raw_data
+            starts = np.arange(
+                prev_n_chunks * chunk_size0,
+                new_n_chunks * chunk_size0,
+                chunk_size0,
+                dtype=np.int64,
             )
-            stops[new_edge_chunks_idx] -= last_chunk_trim
+            stops = starts + chunk_size0
+            if sc.shape[0] % chunk_size0:
+                # Edge chunks along axis 0 are not full chunks; trim stops.
+                # This matters when modify_metadata() recalculates the hashes.
+                n_whole_chunks0 = sc.slab_indices.shape[0] - 1
+                last_chunk_trim = (
+                    chunk_size0 - sc.shape[0] + n_whole_chunks0 * chunk_size0
+                )
+                new_edge_chunks_idx = (
+                    sc.slab_offsets[-1][sc.slab_indices[-1] == new_slab_idx]
+                    // chunk_size0
+                )
+                stops[new_edge_chunks_idx] -= last_chunk_trim
 
-        # Append the new records to the on-disk hash table in a single write.
-        disk = _sc_hash_table_to_data_v4(new_hashes, starts, stops, hash_table.dtype)
-        hash_table.resize((new_n_chunks,))
-        hash_table[prev_n_chunks:] = disk
-        # Atomic update marking the successful commit (except the VDS creation).
-        # In case of a crash halfway through commit, you will have the
-        # raw_data or raw_data+hash_table larger than this.
-        hash_table.attrs["largest_index"] = new_n_chunks
+            # Append the new records to the on-disk hash table in a single write.
+            disk = _sc_hash_table_to_data_v4(
+                new_hashes, starts, stops, hash_table.dtype
+            )
+            hash_table.resize((new_n_chunks,))
+            hash_table[prev_n_chunks:] = disk
+            # Atomic update marking the successful commit (except the VDS creation).
+            # In case of a crash halfway through commit, you will have the
+            # raw_data or raw_data+hash_table larger than this.
+            hash_table.attrs["largest_index"] = new_n_chunks
 
-        # commit() wrote the new chunks through a RawDataView onto
-        # raw_data[prev_len:], so their slab_offsets are relative to prev_len.
-        # Shift them to absolute raw_data offsets and collapse the new base slab onto
-        # slab 1 (raw_data).
-        if n_base_before:
-            new_slab_mask = sc.slab_indices == new_slab_idx
-            sc.slab_indices[new_slab_mask] = 1
-            sc.slab_offsets[new_slab_mask] += prev_len
+            # commit() wrote the new chunks through a RawDataView onto
+            # raw_data[prev_len:], so their slab_offsets are relative to prev_len.
+            # Shift them to absolute raw_data offsets and collapse the new base
+            # slab onto slab 1 (raw_data).
+            if n_base_before:
+                new_slab_mask = sc.slab_indices == new_slab_idx
+                sc.slab_indices[new_slab_mask] = 1
+                sc.slab_offsets[new_slab_mask] += prev_len
 
-        # Collapse back to a single raw_data base slab, so the committed
-        # StagedChangesArray is structurally identical to a freshly-loaded
-        # InMemoryDataset.
-        sc.slabs = [sc.slabs[0], _raw_data_as_base_slab(raw_data, sc.dtype)]
-        sc.n_base_slabs = 1
+            # Collapse back to a single raw_data base slab, so the committed
+            # StagedChangesArray is structurally identical to a freshly-loaded
+            # InMemoryDataset.
+            sc.slabs = [sc.slabs[0], _raw_data_as_base_slab(raw_data, sc.dtype)]
+            sc.n_base_slabs = 1
+
+    except BaseException:
+        if commit_state is not None:
+            commit_state.reset()
+        raise
 
     sc.hash_tables = sc.hash_tables[:1] + [None] * sc.n_base_slabs
 

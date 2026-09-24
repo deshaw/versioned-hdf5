@@ -2220,9 +2220,26 @@ class CommitState:
 
     hash_to_old_chunk: ChunkHashMap
     initialized: cython.bint
+    target_key: object
 
     def __init__(self):
         self.hash_to_old_chunk = ChunkHashMap()
+        self.initialized = False
+        self.target_key = None
+
+    def bind_target(self, f, name: str, chunk_size: tuple[int, ...]) -> None:
+        """Bind this state to one ``raw_data`` target and chunk size."""
+        key = (id(f), name, tuple(chunk_size))
+        if self.target_key is None:
+            self.target_key = key
+        elif self.target_key != key:
+            raise ValueError(
+                "CommitState cannot be reused for a different target or chunk size"
+            )
+
+    def reset(self) -> None:
+        """Discard locations from an uncommitted attempt, retaining target ownership."""
+        self.hash_to_old_chunk.clear()
         self.initialized = False
 
     def is_initialized(self) -> cython.bint:

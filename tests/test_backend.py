@@ -16,6 +16,7 @@ from versioned_hdf5.backend import (
     rewrite_dataset,
     write_dataset,
 )
+from versioned_hdf5.staged_changes import StagedChangesArray
 
 CHUNK_SIZE_3D = 2**4  # = cbrt(DEFAULT_CHUNK_SIZE)
 
@@ -891,13 +892,60 @@ def test_rewrite_dataset_reuses_hash_state_across_blocks(vfile, monkeypatch):
 
     monkeypatch.setattr(backend, "_data_v4_to_sc_hash_table", counted_read)
     data = np.array([10, 11, 0, 1, 2, 3, 30, 31])
-    rewrite_dataset(vfile.f, "x", data, chunks=(2,), max_bytes=16)
+    sc = rewrite_dataset(vfile.f, "x", data, chunks=(2,), max_bytes=16)
 
     assert reads == 1
     raw_data, hash_table = _raw_data_hashtable(vfile, "x")
     assert raw_data.shape == (8,)
     assert hash_table.attrs["largest_index"] == 4
     assert_equal(raw_data[:], np.array([0, 1, 2, 3, 10, 11, 30, 31]))
+    assert_equal(sc[()], data)
+
+
+def test_commit_state_rejects_different_target(h5file):
+    create_base_dataset(h5file, "x", data=np.empty(0, dtype=np.int64), chunks=(2,))
+    create_base_dataset(h5file, "y", data=np.empty(0, dtype=np.int64), chunks=(4,))
+    state = backend.CommitState()
+    first = StagedChangesArray.from_array(
+        np.array([1, 2]), chunk_size=(2,), as_base_slabs=False
+    )
+    backend.commit_staged_changes(h5file, "x", first, state)
+
+    second = StagedChangesArray.from_array(
+        np.array([1, 2, 3, 4]), chunk_size=(4,), as_base_slabs=False
+    )
+    with pytest.raises(ValueError, match="different target or chunk size"):
+        backend.commit_staged_changes(h5file, "y", second, state)
+
+
+def test_commit_state_resets_after_failed_commit(h5file, monkeypatch):
+    create_base_dataset(h5file, "x", data=np.empty(0, dtype=np.int64), chunks=(2,))
+    state = backend.CommitState()
+    data = np.array([10, 11])
+    original = backend._sc_hash_table_to_data_v4
+    calls = 0
+
+    def fail_once(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("simulated hash-table failure")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(backend, "_sc_hash_table_to_data_v4", fail_once)
+    with pytest.raises(RuntimeError, match="simulated hash-table failure"):
+        backend.commit_staged_changes(
+            h5file,
+            "x",
+            StagedChangesArray.from_array(data, chunk_size=(2,), as_base_slabs=False),
+            state,
+        )
+    assert not state.is_initialized()
+
+    retried = StagedChangesArray.from_array(data, chunk_size=(2,), as_base_slabs=False)
+    backend.commit_staged_changes(h5file, "x", retried, state)
+    assert_equal(retried[()], data)
+    assert state.is_initialized()
 
 
 @pytest.mark.parametrize("max_bytes", [0, 1000])

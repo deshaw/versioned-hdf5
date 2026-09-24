@@ -404,8 +404,10 @@ Committing is broken down into the following stages:
       sequence (for example, one block at a time while rewriting a dataset), callers may
       pass an explicit ``CommitState`` to ``commit()``. The first call loads the base
       hashes into its Cython map; later calls reuse that map and only inspect newly
-      staged chunks. State is scoped to that sequence and must not be shared between
-      targets.
+      staged chunks. State is scoped to that sequence, binds itself to the target
+      file/dataset and chunk size on first use, and must not be shared between
+      targets. If a commit fails, the state map is cleared before the error is
+      re-raised so a retry reloads the on-disk table.
    b. drops duplicate staged chunks (any that are identical to the full chunk, a base
       chunk on HDF5, or another staged chunk);
    c. plans to copy the unique staged chunks to a new base slab;
