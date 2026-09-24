@@ -2272,6 +2272,9 @@ class CommitState:
         key = ChunkHash(h0, h1, h2, h3)
         self.hash_to_old_chunk[key] = ChunkLoc(slab_idx, slab_offset)
 
+    def mark_initialized(self) -> None:
+        self.initialized = True
+
     def is_initialized(self) -> cython.bint:
         return self.initialized
 
@@ -2470,7 +2473,7 @@ class CommitPlan(MutatingPlan):
         # without rereading or rebuilding the map. The default path only needs the
         # local map above.
         if persistent_state is not None:
-            persistent_state.initialized = True
+            persistent_state.mark_initialized()
 
         # Append a single new base slab for the surviving unique staged chunks, but only
         # if there are any (they have not been found to be duplicates of chunks in the
