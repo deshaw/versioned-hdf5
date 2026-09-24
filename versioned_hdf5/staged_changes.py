@@ -2239,6 +2239,39 @@ class CommitState:
         self.hash_to_old_chunk.clear()
         self.initialized = False
 
+    def contains_hash(
+        self,
+        h0: cython.ulonglong,
+        h1: cython.ulonglong,
+        h2: cython.ulonglong,
+        h3: cython.ulonglong,
+    ) -> cython.bint:
+        key = ChunkHash(h0, h1, h2, h3)
+        return self.hash_to_old_chunk.count(key) != 0
+
+    def get_chunk_parts(
+        self,
+        h0: cython.ulonglong,
+        h1: cython.ulonglong,
+        h2: cython.ulonglong,
+        h3: cython.ulonglong,
+    ) -> tuple[int, int]:
+        key = ChunkHash(h0, h1, h2, h3)
+        location: ChunkLoc = self.hash_to_old_chunk[key]
+        return int(location.slab_idx), int(location.slab_offset)
+
+    def set_chunk(
+        self,
+        h0: cython.ulonglong,
+        h1: cython.ulonglong,
+        h2: cython.ulonglong,
+        h3: cython.ulonglong,
+        slab_idx: cython.ulonglong,
+        slab_offset: cython.ulonglong,
+    ) -> None:
+        key = ChunkHash(h0, h1, h2, h3)
+        self.hash_to_old_chunk[key] = ChunkLoc(slab_idx, slab_offset)
+
     def is_initialized(self) -> cython.bint:
         return self.initialized
 
@@ -2358,11 +2391,14 @@ class CommitPlan(MutatingPlan):
                     and hash_to_old_chunk.count(ch_key) == 0
                     and persistent_state is not None
                     and persistent_state.initialized
-                    and persistent_state.hash_to_old_chunk.count(ch_key) != 0
+                    and persistent_state.contains_hash(h0, h1, h2, h3)
                 ):
-                    old_to_new_chunk[cl_key] = persistent_state.hash_to_old_chunk[
-                        ch_key
-                    ]
+                    persistent_slab_idx, persistent_slab_offset = (
+                        persistent_state.get_chunk_parts(h0, h1, h2, h3)
+                    )
+                    old_to_new_chunk[cl_key] = ChunkLoc(
+                        persistent_slab_idx, persistent_slab_offset
+                    )
                     n_total_transfers -= 1
                     continue
                 if hash_to_old_chunk.count(ch_key) == 0:  # std::unordered_map syntax
@@ -2375,8 +2411,13 @@ class CommitPlan(MutatingPlan):
                         if persistent_state is not None:
                             # Persistent locations are absolute offsets on the target's
                             # base slab, unlike transient new-slab locations above.
-                            persistent_state.hash_to_old_chunk[ch_key] = ChunkLoc(
-                                1, new_base_offset + out_offset
+                            persistent_state.set_chunk(
+                                h0,
+                                h1,
+                                h2,
+                                h3,
+                                1,
+                                new_base_offset + out_offset,
                             )
                         old_to_new_chunk[cl_key] = cl_val
 
@@ -2393,7 +2434,14 @@ class CommitPlan(MutatingPlan):
                         # be used to deduplicate a staged chunk
                         hash_to_old_chunk[ch_key] = cl_key
                         if persistent_state is not None and not is_staged_slab:
-                            persistent_state.hash_to_old_chunk[ch_key] = cl_key
+                            persistent_state.set_chunk(
+                                h0,
+                                h1,
+                                h2,
+                                h3,
+                                cl_key.slab_idx,
+                                cl_key.slab_offset,
+                            )
                 elif is_staged_slab:
                     # Schedule for deduplication
                     n_total_transfers -= 1
