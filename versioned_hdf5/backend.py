@@ -595,6 +595,10 @@ def commit_staged_changes(
         raw_data.resize((prev_len, *raw_data.shape[1:]))
         hash_table.resize((prev_n_chunks,))
         hash_table.attrs["largest_index"] = prev_n_chunks
+        # Flush extent and metadata changes before a retry. In particular, HDF5 1.14
+        # on Windows can otherwise expose uninitialized contents from the re-extended
+        # raw_data chunk on the next commit attempt.
+        f.flush()
         if commit_state is not None:
             commit_state.reset()
         raise
