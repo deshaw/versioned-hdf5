@@ -460,6 +460,40 @@ def test_modify_metadata_dtype2(vfile):
     assert set(f["_version_data"]["group"]) == {"test_data4"}
 
 
+@pytest.mark.parametrize(
+    ("storage", "dtype"),
+    [("dense", np.float64), ("sparse", np.int64)],
+)
+def test_modify_metadata_attrs(vfile, storage, dtype):
+    """Test that modifying dtype preserves per-version user attributes."""
+    with vfile.stage_version("v0") as sv:
+        if storage == "dense":
+            sv.create_dataset("x", data=[1, 2, 3], dtype=np.int64, chunks=(2,))
+        else:
+            sv.create_dataset("x", shape=(5,), dtype=np.int32, chunks=(2,))
+            # HDF5 < 1.14 cannot create virtual datasets containing only fill values.
+            sv["x"][0] = 1
+        sv["x"].attrs["source"] = "v0"
+        sv["x"].attrs["values"] = np.array([1, 2])
+
+    with vfile.stage_version("v1") as sv:
+        sv["x"][0] = 10
+        sv["x"].attrs["source"] = "v1"
+
+    modify_metadata(vfile, "x", dtype=dtype)
+
+    assert vfile["v0"]["x"].dtype == dtype
+    assert vfile["v1"]["x"].dtype == dtype
+    assert vfile["v0"]["x"].attrs["source"] == "v0"
+    assert vfile["v1"]["x"].attrs["source"] == "v1"
+    np.testing.assert_array_equal(vfile["v0"]["x"].attrs["values"], [1, 2])
+    np.testing.assert_array_equal(vfile["v1"]["x"].attrs["values"], [1, 2])
+
+    # Rewritten versions must retain independent attribute stores.
+    vfile["v0"]["x"].attrs["only_v0"] = True
+    assert "only_v0" not in vfile["v1"]["x"].attrs
+
+
 @pytest.mark.parametrize("new_fillvalue", [0, 3])
 def test_modify_metadata_fillvalue1(vfile, new_fillvalue):
     setup_vfile(vfile)
