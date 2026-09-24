@@ -413,6 +413,53 @@ def test_resize_noop():
     assert_array_equal(a, np.arange(4))
 
 
+def test_resize_plan_reports_grid_resize_as_mutation():
+    """A resize that changes the number of chunks replaces slab_indices and
+    slab_offsets - with a shrunk view or with an np.pad copy - while transferring no
+    data at all. The plan must report it in mutates, so that resize() applies it.
+    """
+    # Shrinking away the last chunk row
+    a = StagedChangesArray.full((10,), chunk_size=(4,), fill_value=0)
+    plan = a._resize_plan((8,))
+    assert not plan.transfers
+    assert plan._nchunks_resized
+    assert plan.mutates
+    a.resize((8,))
+    assert a.slab_indices.shape == (2,)
+    assert_array_equal(a, np.zeros(8))
+
+    # Enlarging into brand new chunks, filled with fill_value
+    b = StagedChangesArray.full((8,), chunk_size=(4,), fill_value=0)
+    plan = b._resize_plan((12,))
+    assert not plan.transfers
+    assert plan._nchunks_resized
+    assert plan.mutates
+    b.resize((12,))
+    assert b.slab_indices.shape == (3,)
+    assert_array_equal(b, np.zeros(12))
+
+    # Moving the edge of the last chunk, without changing the chunk grid: there is
+    # nothing for resize() to apply
+    c = StagedChangesArray.full((12,), chunk_size=(4,), fill_value=0)
+    plan = c._resize_plan((10,))
+    assert not plan.transfers
+    assert not plan._nchunks_resized
+    assert not plan.mutates
+    c.resize((10,))
+    assert c.slab_indices.shape == (3,)
+    assert_array_equal(c, np.zeros(10))
+
+    # A zero-extent grid can change shape without changing its (empty) size
+    d = StagedChangesArray.full((0, 2), chunk_size=(1, 1), fill_value=0)
+    plan = d._resize_plan((0, 0))
+    assert not plan.transfers
+    assert plan._nchunks_resized
+    assert plan.mutates
+    d.resize((0, 0))
+    assert d.slab_indices.shape == (0, 0)
+    d.commit()
+
+
 def test_resize_through_size_zero():
     """Enlarge or shrink partial edge chunks along an axis while another axis is
     size 0, so that no chunks are actually transferred.
@@ -1978,6 +2025,80 @@ def test_commit_dedup_edge_chunks():
     assert_array_equal(a.slab_indices, [[1, 0, 1], [0, 0, 1]])
     assert_array_equal(a.slab_offsets, [[2, 0, 0], [0, 0, 0]])
     assert a.slabs[1].shape == (4, 2)  # Two unique chunks
+
+
+def test_commit_after_resize_shrink_trailing_axis_dedup_to_full():
+    """A resize() that shrinks a trailing axis turns slab_indices and slab_offsets
+    into strided views. When every staged chunk then deduplicates against the full slab,
+    commit() transfers no data but must still propagate the deduplication remap back
+    onto those arrays.
+    """
+    a = StagedChangesArray(
+        shape=(10, 2),
+        chunk_size=(4, 1),
+        # A single (2, 1) edge chunk on a raw_data-like base slab
+        base_slabs=[np.full((2, 1), -1.5)],
+        slab_indices=[[0, 0], [0, 0], [1, 1]],
+        slab_offsets=[[0, 0], [0, 0], [0, 0]],
+        fill_value=-1.5,
+    )
+    a.resize((12, 1))  # Shrink axis 1, grow axis 0 within the last chunk row
+    a.commit()
+    assert a.n_staged_slabs == 0
+    # The grown edge chunk is full of fill_value and deduplicates against the full
+    # slab: no data is transferred and no new base slab is appended
+    assert a.n_base_slabs == 1
+    assert_array_equal(a.slab_indices, [[0], [0], [0]])
+    assert_array_equal(a.slab_offsets, [[0], [0], [0]])
+    assert_array_equal(a, np.full((12, 1), -1.5))
+
+
+def test_commit_after_resize_shrink_trailing_axis_dedup_to_base():
+    """Same as above, but the grown edge chunk deduplicates against a
+    chunk on the base slab instead of the full slab.
+    """
+    base = np.array([[7.0], [8.0], [0.0], [0.0], [7.0], [8.0]])
+    # Chunk at offset 0 is (4, 1); the chunk at offset 4 is the (2, 1) edge chunk
+    ht = np.zeros((2, 4), dtype=np.uint64)
+    ht[0] = _baseline_hash_row(base[0:4])
+    ht[1] = _baseline_hash_row(base[4:6])
+    a = StagedChangesArray(
+        shape=(10, 2),
+        chunk_size=(4, 1),
+        base_slabs=[base],
+        slab_indices=[[1, 1], [0, 0], [1, 1]],
+        slab_offsets=[[0, 0], [0, 0], [4, 4]],
+        fill_value=0.0,
+        base_hash_tables=[ht],
+    )
+    a.resize((12, 1))  # Shrink axis 1, grow axis 0 within the last chunk row
+    a.commit()
+    # The grown edge chunk [7, 8, 0, 0] duplicates the base chunk at offset 0:
+    # nothing is written
+    assert a.n_staged_slabs == 0
+    assert a.n_base_slabs == 1
+    assert len(a.slabs) == 2
+    assert_array_equal(a.slab_indices, [[1], [0], [1]])
+    assert_array_equal(a.slab_offsets, [[0], [0], [0]])
+    expected = np.zeros((12, 1))
+    expected[0:4] = expected[8:12] = [[7.0], [8.0], [0.0], [0.0]]
+    assert_array_equal(a, expected)
+
+
+@pytest.mark.parametrize("set_chunk", [False, True])
+def test_commit_plan_dedup_only_changes_metadata(set_chunk):
+    """A CommitPlan that deduplicates every staged chunk plans no data transfer and no
+    new base slab - yet it still repoints those chunks, and it must report that in
+    mutates so that commit() applies it.
+    """
+    a = StagedChangesArray.full((2,), chunk_size=(2,), fill_value=0)
+    if set_chunk:
+        a[:] = [0, 0]  # Staged chunk identical to the full chunk
+    a._calc_hashes()
+    cplan = a._commit_plan()
+    assert not cplan.transfers
+    assert cplan.new_hash_table is None
+    assert cplan.mutates is set_chunk
 
 
 def test_commit_multidim_and_edges():
