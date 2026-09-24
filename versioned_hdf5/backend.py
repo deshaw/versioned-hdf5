@@ -662,17 +662,35 @@ def rewrite_dataset(
     staged_changes = StagedChangesArray.full(
         data.shape, chunk_size=chunks, fill_value=fillvalue, dtype=data.dtype
     )
+    raw_data = f["_version_data"][name]["raw_data"]
 
     for block in _chunk_blocks(data.shape, chunks, data.dtype.itemsize, max_bytes):
-        # The blocks are chunk-aligned, so the write stages exactly the block's chunks
-        staged_changes[block] = data[block]
-        # commit_staged_changes() deduplicates them against every chunk already on
-        # raw_data, including those written by the previous blocks
-        #
-        # FIXME this currently repeatedly writes and immediately reads back the hash
-        # table from disk, which is inefficient.
-        commit_staged_changes(f, name, staged_changes)
+        # The block read from `data` becomes the staged slabs, as views: nothing is
+        # copied. commit_staged_changes() deduplicates them against every chunk already
+        # on raw_data, including those written by the previous blocks. Note it reloads
+        # raw_data's hash table from disk at every block and writes back the new rows as
+        # it goes. Keeping the table in memory across blocks was measured to buy nothing
+        # at realistic block sizes.
+        block_sc = StagedChangesArray.from_array(
+            data[block], chunk_size=chunks, fill_value=fillvalue, as_base_slabs=False
+        )
+        commit_staged_changes(f, name, block_sc)
+        # The blocks are chunk-aligned. After the commit, the block's chunks lie on
+        # raw_data (slab 1) or on the full slab (0); copy that into the full-size map.
+        block_chunks = tuple(
+            slice(b.start // c, ceil_a_over_b(b.stop, c))
+            for b, c in zip(block, chunks, strict=True)
+        )
+        staged_changes.slab_indices[block_chunks] = block_sc.slab_indices
+        staged_changes.slab_offsets[block_chunks] = block_sc.slab_offsets
 
+    if (staged_changes.slab_indices > 0).any():
+        # Give the full-size array the single base slab its chunk map points into
+        staged_changes.slabs.append(
+            _raw_data_as_base_slab(raw_data, staged_changes.dtype)
+        )
+        staged_changes.hash_tables.append(None)
+        staged_changes.n_base_slabs = 1
     return staged_changes
 
 
