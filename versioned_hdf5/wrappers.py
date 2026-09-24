@@ -1287,9 +1287,7 @@ class DatasetWrapper(DatasetLike):
         if chunks is None:
             # No chunk size is pinned (e.g. a brand new ``group[name] = array``
             # dataset); guess one like commit_version() would.
-            chunks = normalize_chunks(
-                None, new_shape, self.dataset._buffer.dtype
-            )
+            chunks = normalize_chunks(None, new_shape, self.dataset._buffer.dtype)
         new_ds = InMemorySparseDataset(
             name=self.dataset.name,
             shape=self.dataset.shape,
