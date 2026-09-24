@@ -127,7 +127,8 @@ def recreate_dataset(f, name, newf, callback=None):
     # Freeze the heap for the duration of the loop, so that the per-version collections
     # only have to scan the objects created by the loop itself, instead of the whole
     # process heap.
-    we_froze = not gc.get_freeze_count()
+    get_freeze_count = getattr(gc, "get_freeze_count", None)
+    we_froze = get_freeze_count is not None and not get_freeze_count()
     if we_froze:
         gc.collect()
         gc.freeze()

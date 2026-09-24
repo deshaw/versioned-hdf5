@@ -939,6 +939,33 @@ def test_recreate_dataset_frees_each_version(vfile):
     assert n_open_datasets[2:] == [n_open_datasets[1]] * (len(n_open_datasets) - 2)
 
 
+def test_recreate_dataset_without_get_freeze_count(vfile, monkeypatch):
+    """recreate_dataset() skips heap freezing when gc.get_freeze_count is
+    unavailable."""
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("x", data=np.arange(40.0), chunks=(5,))
+
+    expected = vfile["r0"]["x"][:]
+    f = vfile.f
+    newf = tmp_group(f)
+    monkeypatch.delattr(gc, "get_freeze_count", raising=False)
+
+    with (
+        mock.patch.object(gc, "freeze") as freeze,
+        mock.patch.object(gc, "unfreeze") as unfreeze,
+    ):
+        recreate_dataset(f, "x", newf)
+        freeze.assert_not_called()
+        unfreeze.assert_not_called()
+
+    swap(f, newf)
+    assert_array_equal(vfile["r0"]["x"][:], expected)
+
+
+@pytest.mark.skipif(
+    not hasattr(gc, "get_freeze_count"),
+    reason="gc.get_freeze_count was added in Python 3.13",
+)
 def test_recreate_dataset_preserves_frozen_heap(vfile):
     """recreate_dataset() freezes the heap to keep its per-version collections cheap,
     but it must leave the freeze set of a caller that froze the heap itself alone: gc
