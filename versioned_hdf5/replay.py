@@ -64,12 +64,6 @@ def recreate_dataset(f, name, newf, callback=None):
     -----
     This function is only for advanced usage. Typical use-cases should
     use :func:`delete_version()` or :func:`modify_metadata()`.
-
-    The wrappers of each version are freed before the next version is processed, which
-    requires a full garbage collection per version. The heap is frozen for the
-    duration of the call so that those collections do not have to scan it; a heap that
-    the caller had already frozen (e.g. before a fork) is left alone, as there is no
-    way to restore a freeze set that has been thawed.
     """
     if isinstance(f, VersionedHDF5File):
         f = f.f
@@ -81,15 +75,17 @@ def recreate_dataset(f, name, newf, callback=None):
     fillvalue = raw_data.fillvalue
 
     first = True
-    # The per-version gc.collect() below must break the reference cycles created by
-    # each iteration (see the comment at the end of the loop body), but a full
-    # collection is O(process heap). Collect once here and freeze the heap for the
-    # duration of the loop, so that the per-version collections only have to scan the
-    # objects created by the loop itself, instead of the whole process heap.
-    #
-    # Don't touch the freeze set of a caller that froze the heap itself (typically
-    # before forking): gc.unfreeze() would thaw it for good, and its objects are
-    # excluded from the collections below anyway.
+    # There are cyclic references involved:
+    # - InMemoryGroup._data[] <-> InMemoryDataset._parent
+    # - InMemoryGroup._subgroups[] <-> InMemoryGroup._parent
+    # So dropping the last external reference to them only makes them unreachable: their
+    # virtual datasets, with their libhdf5 chunk mappings (~18 kiB per chunk), would
+    # stay open until the cyclic garbage collector happens to run, and peak memory would
+    # grow with the number of versions. Call gc.collect() at every iteration instead
+    # (same as in delete_versions).
+    # Freeze the heap for the duration of the loop, so that the per-version collections
+    # only have to scan the objects created by the loop itself, instead of the whole
+    # process heap.
     we_froze = not gc.get_freeze_count()
     if we_froze:
         gc.collect()
@@ -102,12 +98,13 @@ def recreate_dataset(f, name, newf, callback=None):
                 )
 
                 dataset = group[name]
+                del group
                 if callback:
                     dataset = callback(dataset, version_name)
                     if dataset is None:
-                        # The callback dropped this version; free its wrappers now (see
-                        # the gc.collect() at the end of the loop body)
-                        del dataset, group
+                        # The callback dropped this version; ensure it's no longer in
+                        # memory. This also causes libhdf5 to free the memory for the
+                        # old virtual dataset.
                         gc.collect()
                         continue
 
@@ -153,9 +150,8 @@ def recreate_dataset(f, name, newf, callback=None):
                 if staged_changes.has_base_chunks:
                     # Some or all chunks lie on the raw_data of the *source* file, which
                     # the hash table of newf knows nothing about, so they must all be
-                    # rewritten. Stream them a block of chunks at a time; loading
-                    # them all in memory first would make peak memory usage O(dataset
-                    # size).
+                    # rewritten. Stream them a block of chunks at a time; loading them
+                    # all in memory first would make peak memory usage O(dataset size).
                     staged_changes = rewrite_dataset(
                         newf, name, dataset, chunks=chunks, fillvalue=fillvalue
                     )
@@ -172,16 +168,7 @@ def recreate_dataset(f, name, newf, callback=None):
                     fillvalue=fillvalue,
                 )
 
-                # The wrappers created above reference each other in cycles
-                # (InMemoryGroup._data[] <-> InMemoryDataset._parent and
-                # InMemoryGroup._subgroups[] <-> InMemoryGroup._parent), so dropping
-                # the last external reference to them only makes them unreachable:
-                # their virtual datasets, with their libhdf5 chunk mappings (~18 kiB
-                # per chunk), would stay open until the cyclic garbage collector
-                # happens to run, and peak memory would grow with the number of
-                # versions. Collect the cycles now instead (same rationale as the
-                # gc.collect() in delete_versions(); see #570).
-                del dataset, group, staged_changes, attrs, filters
+                del dataset, staged_changes, attrs, filters
                 gc.collect()
     finally:
         if we_froze:
