@@ -2362,7 +2362,7 @@ class CommitPlan(MutatingPlan):
             # Do not rescan those rows; only the full slab is still per-commit state.
             if (
                 persistent_state is not None
-                and persistent_state.initialized
+                and persistent_state.is_initialized()
                 and not is_staged_slab
                 and old_slab_idx != 0
             ):
@@ -2390,7 +2390,7 @@ class CommitPlan(MutatingPlan):
                     is_staged_slab
                     and hash_to_old_chunk.count(ch_key) == 0
                     and persistent_state is not None
-                    and persistent_state.initialized
+                    and persistent_state.is_initialized()
                     and persistent_state.contains_hash(h0, h1, h2, h3)
                 ):
                     persistent_slab_idx, persistent_slab_offset = (
