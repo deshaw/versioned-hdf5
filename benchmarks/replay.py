@@ -130,8 +130,8 @@ class TimeManyVersions(Benchmark):
     number = 1
     warmup_time = 0
 
-    # 32 MiB of float64 in 8 kiB chunks, i.e. 4,096 chunks per version
-    shape = (4_194_304,)
+    # 16 MiB of float64 in 8 kiB chunks, i.e. 2,048 chunks per version
+    shape = (2 * 1024 * 1024,)
     chunks = (1024,)
     n_versions = 4
 
