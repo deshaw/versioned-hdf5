@@ -18,7 +18,7 @@ from versioned_hdf5.cytools import ceil_a_over_b
 from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS, h5py_astype
 from versioned_hdf5.hashtable import Hashtable
 from versioned_hdf5.slicetools import RawDataView
-from versioned_hdf5.staged_changes import StagedChangesArray
+from versioned_hdf5.staged_changes import CommitState, StagedChangesArray
 from versioned_hdf5.typing_ import DEFAULT, Default
 
 if TYPE_CHECKING:
@@ -431,16 +431,26 @@ def _raw_data_as_base_slab(raw_data: Dataset, dtype: np.dtype):
     return raw_data if dtype == raw_data.dtype else h5py_astype(raw_data, dtype)
 
 
-def commit_staged_changes(f, name: str, staged_changes: StagedChangesArray) -> None:
+def commit_staged_changes(
+    f,
+    name: str,
+    staged_changes: StagedChangesArray,
+    commit_state: CommitState | None = None,
+) -> CommitState | None:
     """Commit a StagedChangesArray into `raw_data` and its on-disk hash table.
 
+    ``commit_state`` is explicit, call-scoped state for a sequence of commits to one
+    target dataset. Pass the returned state to the next block to avoid rereading and
+    rebuilding its hash table. State must not be shared between targets or files.
+
     1. Load the on-disk hash table dataset that hashes all chunks of `raw_data`
-       into memory
+       into memory (only on the first call when ``commit_state`` is supplied)
     2. Inject it as the hash table of `staged_changes.base_slabs[0]`, which is
        `raw_data`
     3. Define a callback function that mocks `numpy.empty`. The callback internally
        extends `raw_data` and returns a view to the new empty surface.
-    4. Call staged_changes.commit, passing the callback above.
+    4. Call staged_changes.commit, passing the callback above and the explicit state
+       (when supplied).
        This hashes all staged chunks vs. all present and past chunks in `raw_data`,
        saving the hashes of all unique staged chunks to a new np.ndarray, then
        writes to `raw_data` on disk. See docs/staged_changes.rst for details.
@@ -497,7 +507,10 @@ def commit_staged_changes(f, name: str, staged_changes: StagedChangesArray) -> N
 
     if n_base_before == 1:
         assert sc.hash_tables[1] is None
-        sc.hash_tables[1] = _data_v4_to_sc_hash_table(hash_table, chunk_size0)
+        if commit_state is None or not commit_state.is_initialized():
+            sc.hash_tables[1] = _data_v4_to_sc_hash_table(hash_table, chunk_size0)
+        # A reused state already contains every base hash. Avoid reloading the table;
+        # CommitPlan still receives no base candidates from this slab.
 
     def empty(shape: tuple[int, ...], dtype) -> RawDataView:
         """Mock API of np.empty. Extend raw_data and return view to the new area."""
@@ -505,7 +518,7 @@ def commit_staged_changes(f, name: str, staged_changes: StagedChangesArray) -> N
         return RawDataView(raw_data, prev_len, dtype)
 
     # Calculate hashes, deduplicate staged chunks, and write to raw_data
-    sc.commit(empty=empty)
+    sc.commit(empty=empty, state=commit_state, new_base_offset=prev_len)
 
     n_appended_chunks = 0
     if sc.n_base_slabs > n_base_before:
@@ -570,6 +583,8 @@ def commit_staged_changes(f, name: str, staged_changes: StagedChangesArray) -> N
         np.prod(sc.slab_indices.shape) - n_appended_chunks,
     )
 
+    return commit_state
+
 
 def _chunk_blocks(
     shape: tuple[int, ...],
@@ -627,9 +642,9 @@ def rewrite_dataset(
     to the same locations as the old one, even where the data is unchanged.
 
     `data` is read one block of chunks at a time, so that peak memory usage is
-    O(max_bytes) instead of O(data.size). Deduplication is unaffected: each block is
-    deduplicated against the on-disk hash table, which by then already describes every
-    chunk written by the previous blocks and by the previous versions.
+    O(max_bytes) instead of O(data.size). Deduplication is unaffected: each block uses
+    explicit call-scoped state that contains chunks written by previous blocks and by
+    previous versions. State is never global and is discarded after this rewrite.
 
     Parameters
     ----------
@@ -663,18 +678,17 @@ def rewrite_dataset(
         data.shape, chunk_size=chunks, fill_value=fillvalue, dtype=data.dtype
     )
     raw_data = f["_version_data"][name]["raw_data"]
+    commit_state = CommitState()
 
     for block in _chunk_blocks(data.shape, chunks, data.dtype.itemsize, max_bytes):
         # The block read from `data` becomes the staged slabs, as views: nothing is
-        # copied. commit_staged_changes() deduplicates them against every chunk already
-        # on raw_data, including those written by the previous blocks. Note it reloads
-        # raw_data's hash table from disk at every block and writes back the new rows as
-        # it goes. Keeping the table in memory across blocks was measured to buy nothing
-        # at realistic block sizes.
+        # copied. The explicit state deduplicates every block against all chunks
+        # already on raw_data, including those written by previous blocks, without
+        # rereading or rebuilding the hash table.
         block_sc = StagedChangesArray.from_array(
             data[block], chunk_size=chunks, fill_value=fillvalue, as_base_slabs=False
         )
-        commit_staged_changes(f, name, block_sc)
+        commit_staged_changes(f, name, block_sc, commit_state)
         # The blocks are chunk-aligned. After the commit, the block's chunks lie on
         # raw_data (slab 1) or on the full slab (0); copy that into the full-size map.
         block_chunks = tuple(

@@ -400,7 +400,12 @@ Committing is broken down into the following stages:
 3. Define a ``CommitPlan``, which:
 
    a. reads the hashes of the staged chunks that were just generated, plus the hashes of
-      all the chunks on the base slabs from HDF5;
+      all the chunks on the base slabs from HDF5. When commits are processed as a
+      sequence (for example, one block at a time while rewriting a dataset), callers may
+      pass an explicit ``CommitState`` to ``commit()``. The first call loads the base
+      hashes into its Cython map; later calls reuse that map and only inspect newly
+      staged chunks. State is scoped to that sequence and must not be shared between
+      targets.
    b. drops duplicate staged chunks (any that are identical to the full chunk, a base
       chunk on HDF5, or another staged chunk);
    c. plans to copy the unique staged chunks to a new base slab;

@@ -6,7 +6,7 @@ from h5py._hl.filters import guess_chunk
 from ndindex import ChunkSize, Slice, Tuple
 from numpy.testing import assert_equal
 
-from versioned_hdf5 import slicetools
+from versioned_hdf5 import backend, slicetools
 from versioned_hdf5.backend import (
     DEFAULT_CHUNK_SIZE,
     Filters,
@@ -876,6 +876,28 @@ def test_rewrite_dataset_preexisting_raw_data(vfile, max_bytes):
     assert sc2.slab_indices[0, 0] == 1
     assert sc2.slab_offsets[0, 0] == sc1.slab_offsets[0, 1]
     assert sc2.slab_offsets[1, 1] == n_chunks_1 * chunks[0]
+
+
+def test_rewrite_dataset_reuses_hash_state_across_blocks(vfile, monkeypatch):
+    """Each rewrite block shares one explicit hash state, but reads disk table once."""
+    create_base_dataset(vfile.f, "x", data=np.arange(4), chunks=(2,))
+    reads = 0
+    original = backend._data_v4_to_sc_hash_table
+
+    def counted_read(*args, **kwargs):
+        nonlocal reads
+        reads += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(backend, "_data_v4_to_sc_hash_table", counted_read)
+    data = np.array([10, 11, 0, 1, 2, 3, 30, 31])
+    rewrite_dataset(vfile.f, "x", data, chunks=(2,), max_bytes=16)
+
+    assert reads == 1
+    raw_data, hash_table = _raw_data_hashtable(vfile, "x")
+    assert raw_data.shape == (8,)
+    assert hash_table.attrs["largest_index"] == 4
+    assert_equal(raw_data[:], np.array([0, 1, 2, 3, 10, 11, 30, 31]))
 
 
 @pytest.mark.parametrize("max_bytes", [0, 1000])
