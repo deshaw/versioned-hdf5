@@ -341,11 +341,11 @@ class VersionedHDF5File:
         """
         Make sure the VersionedHDF5File object is no longer reachable.
         """
-        if not self._closed:
+        if hasattr(self, "f"):
             InMemoryGroup._invalidate_file(self.f)
             self._version_cache.clear()
             del self.f
-            self._closed = True
+        self._closed = True
 
     def __repr__(self):
         """

@@ -1741,6 +1741,28 @@ def test_closes(vfile):
     assert repr(vfile) == "<Closed VersionedHDF5File>"
 
 
+def test_close_after_underlying_file_closed(vfile):
+    with vfile.stage_version("version1") as group:
+        group["data"] = np.arange(5)
+
+    version = vfile["version1"]
+    h5py_file = vfile.f
+    file_id = id(h5py_file)
+
+    entry = InMemoryGroup._instances[file_id]
+    assert entry[0]() is h5py_file
+    assert version.id in entry[1]
+
+    h5py_file.close()
+    assert vfile.closed
+
+    vfile.close()
+
+    assert file_id not in InMemoryGroup._instances
+    assert not hasattr(vfile, "f")
+    vfile.close()
+
+
 def test_scalar_dataset(vfile):
     """Scalar (ndim=0) datasets are supported by h5py, but implementing them in
     versioned_hdf5 would take a lot of special-casing as raw_data can't go below
