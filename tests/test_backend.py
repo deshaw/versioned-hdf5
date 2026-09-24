@@ -969,9 +969,17 @@ def test_commit_state_resets_after_failed_commit(h5file, monkeypatch):
         )
     assert not state.is_initialized()
 
+    raw_data = h5file["_version_data/x/raw_data"]
+    hash_table = h5file["_version_data/x/hash_table"]
+    assert raw_data.shape == (0,)
+    assert hash_table.shape == (0,)
+    assert hash_table.attrs["largest_index"] == 0
+
     retried = StagedChangesArray.from_array(data, chunk_size=(2,), as_base_slabs=False)
     backend.commit_staged_changes(h5file, "x", retried, state)
     assert_equal(retried[()], data)
+    assert_equal(raw_data[:], data)
+    assert hash_table.attrs["largest_index"] == 1
     assert state.is_initialized()
 
 

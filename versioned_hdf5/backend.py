@@ -586,6 +586,15 @@ def commit_staged_changes(
             sc.n_base_slabs = 1
 
     except BaseException:
+        # Discard every extent change from this attempt. Besides avoiding stale hash
+        # rows, this makes a retry extend the trusted portion of raw_data again instead
+        # of writing into the same newly allocated extent a second time. In particular,
+        # HDF5 1.14 on Windows can expose the uninitialized contents of a re-extended
+        # chunk after another commit attempt fails between the data and hash-table
+        # writes.
+        raw_data.resize((prev_len, *raw_data.shape[1:]))
+        hash_table.resize((prev_n_chunks,))
+        hash_table.attrs["largest_index"] = prev_n_chunks
         if commit_state is not None:
             commit_state.reset()
         raise
