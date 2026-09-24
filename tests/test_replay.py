@@ -306,6 +306,24 @@ def test_modify_metadata_chunks(vfile):
     assert set(f["_version_data"]["group"]) == {"test_data4"}
 
 
+def test_modify_metadata_chunks_fixed_string(vfile):
+    """Fixed-width string dtypes have h5py encoding metadata, but are not variable
+    length strings. Rewriting their chunks must not reject their fillvalue.
+    """
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("d", data=np.array([b"a"], dtype="S4"), chunks=(2,))
+
+    modify_metadata(vfile.f, "d", chunks=(4,))
+
+    assert vfile["r0"]["d"].chunks == (4,)
+    assert vfile["r0"]["d"].dtype == np.dtype("S4")
+
+    with vfile.stage_version("r1") as sv:
+        sv["d"][0] = b"b"
+
+    assert_array_equal(vfile["r1"]["d"][:], np.array([b"b"], dtype="S4"))
+
+
 def test_modify_metadata_chunk2(vfile):
     setup_vfile(vfile)
 
@@ -1198,6 +1216,30 @@ def test_delete_versions_variable_length_strings(vfile):
             sv["bar"][i] = "foo"
 
     delete_versions(vfile, ["r2", "r4", "r6"])
+
+
+@pytest.mark.parametrize(("fillvalue", "expected"), [(None, b""), (b"x", b"x")])
+def test_delete_versions_fillvalue_only_fixed_string(vfile, fillvalue, expected):
+    """Recreated fixed-string VDSs use fillvalue pinned on raw_data, not a bogus value
+    reported by the VDS.
+    """
+    for version in ("r0", "r1"):
+        with vfile.stage_version(version) as sv:
+            sv.create_dataset(
+                "x",
+                shape=(4,),
+                dtype="S2",
+                data=None,
+                maxshape=(None,),
+                chunks=(2,),
+                fillvalue=fillvalue,
+            )
+
+    delete_versions(vfile, ["r0"])
+
+    dataset = vfile["r1"]["x"]
+    assert dataset.fillvalue == expected
+    assert_array_equal(dataset[:], np.full(4, expected, dtype="S2"))
 
 
 def test_delete_versions_fillvalue_only_dataset(vfile):
