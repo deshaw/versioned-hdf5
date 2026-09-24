@@ -2007,6 +2007,31 @@ def test_read_only_handle_does_not_reuse_wrapper(tmp_path):
         assert_equal(first["v0"]["x"][:], data)
 
 
+def test_writable_handles_do_not_reuse_wrapper(tmp_path):
+    filename = tmp_path / "file.h5"
+    data = np.arange(5)
+    with (
+        h5py.File(filename, "w") as f,
+        VersionedHDF5File(f).stage_version("v0") as group,
+    ):
+        group["x"] = data
+
+    with h5py.File(filename, "r+") as f1, h5py.File(filename, "r+") as f2:
+        first = VersionedHDF5File(f1)
+        second = VersionedHDF5File(f2)
+
+        first_group = first["v0"]
+        second_group = second["v0"]
+        first_x = first_group["x"]
+        second_x = second_group["x"]
+
+        assert first_group is not second_group
+        assert first_x is not second_x
+
+        f2.close()
+        assert_equal(first_x[:], data)
+
+
 def test_delete_datasets(vfile):
     data1 = np.arange(10)
     data2 = np.zeros(20, dtype=int)
