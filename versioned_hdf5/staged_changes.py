@@ -741,9 +741,12 @@ class StagedChangesArray(MutableMapping[Any, T]):
         self._untrim_staged_slabs(shape)
 
         plan = self._resize_plan(shape, copy=False)
-        # A resize may change the slab_indices and slab_offsets, but won't necessarily
-        # impact any chunks. In such cases, this is a no-op.
-        self._apply_mutating_plan(plan)
+        # A resize that shrinks or grows within the last chunk row/column, without
+        # changing the shape of the chunk grid, impacts no chunk at all: the plan is a
+        # no-op. One that does change it reports that in mutates even when it transfers
+        # no data; see ResizePlan.grid_resized.
+        if plan.mutates:
+            self._apply_mutating_plan(plan)
 
         if shape != self.shape:
             self.shape = shape
@@ -1638,6 +1641,11 @@ class LoadPlan(MutatingPlan):
 class ResizePlan(MutatingPlan):
     """Instructions to execute StagedChangesArray.resize()"""
 
+    #: True if the plan resized the chunk grid, i.e. it replaced slab_indices and
+    #: slab_offsets with a shrunk view or a padded copy. Unlike the transfers and the
+    #: slab shrinks/drops, MutatingPlan.mutates cannot see this.
+    grid_resized: bool
+
     def __init__(
         self,
         old_shape: tuple[int, ...],
@@ -1671,6 +1679,7 @@ class ResizePlan(MutatingPlan):
             raise ValueError("shape must be non-negative")
 
         super().__init__(slab_indices, slab_offsets)
+        self.grid_resized = False
         if old_shape == new_shape:
             return
 
@@ -1688,10 +1697,16 @@ class ResizePlan(MutatingPlan):
                 slice(ceil_a_over_b(s, c))
                 for s, c in zip(shrunk_shape, chunk_size, strict=True)
             )
-            # Just a view. This won't change the shape of the arrays when shrinking the
-            # edge chunks without reducing the number of chunks.
+            # Just a view: the surviving chunks keep their slab and offset. This won't
+            # change the shape of the arrays when shrinking the edge chunks without
+            # reducing the number of chunks.
+            grid_shape = self.slab_indices.shape
             self.slab_indices = self.slab_indices[chunks_slice]
             self.slab_offsets = self.slab_offsets[chunks_slice]
+            if self.slab_indices.shape != grid_shape:
+                # The chunk grid shrank: the arrays were replaced by smaller views of
+                # themselves, which no data transfer accounts for.
+                self.grid_resized = True
 
             # Load partial edge chunks into memory to avoid ending up with partially
             # overlapping chunks on disk, e.g. [10:19] vs. [10:17].
@@ -1723,6 +1738,9 @@ class ResizePlan(MutatingPlan):
             ]
             # np.pad is a deep-copy; skip if unnecessary.
             if any(p != (0, 0) for p in pad_width):
+                # The chunk grid grew: the arrays were just replaced by bigger copies
+                # of themselves, which no data transfer accounts for.
+                self.grid_resized = True
                 self.slab_indices = np.pad(self.slab_indices, pad_width)
                 self.slab_offsets = np.pad(self.slab_offsets, pad_width)
 
@@ -2037,6 +2055,17 @@ class ResizePlan(MutatingPlan):
                     slab_offsets=self.slab_offsets,  # Modified in place
                 )
             )
+
+    @property
+    def mutates(self) -> bool:
+        """True if this plan alters the state of the StagedChangesArray.
+
+        On top of the data transfers, this includes resizing the chunk grid: the plan
+        then replaced slab_indices and slab_offsets with resized versions of themselves
+        - possibly nothing more than views of the original arrays - which the caller
+        must propagate back to the StagedChangesArray even when nothing is transferred.
+        """
+        return self.grid_resized or super().mutates
 
     @property
     def head(self) -> str:
@@ -2363,7 +2392,7 @@ class CommitPlan(MutatingPlan):
             if old_to_new_chunk.count(loc) != 0:
                 mapped = old_to_new_chunk[loc]
                 if (
-                    mapped.slab_idx != old_slab_idx
+                    cython.cast(ssize_t, mapped.slab_idx) != old_slab_idx
                     or mapped.slab_offset != old_slab_offset
                 ):
                     self.remapped_chunks = True

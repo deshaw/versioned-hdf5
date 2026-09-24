@@ -413,6 +413,54 @@ def test_resize_noop():
     assert_array_equal(a, np.arange(4))
 
 
+def test_resize_plan_reports_grid_resize_as_mutation():
+    """A resize that changes the number of chunks replaces slab_indices and
+    slab_offsets - with a shrunk view or with an np.pad copy - while transferring no
+    data at all. The plan must report it in mutates, so that resize() applies it
+    (see #568).
+    """
+    # Shrinking away the last chunk row
+    a = StagedChangesArray.full((10,), chunk_size=(4,), fill_value=0)
+    plan = a._resize_plan((8,))
+    assert not plan.transfers
+    assert plan.grid_resized
+    assert plan.mutates
+    a.resize((8,))
+    assert a.slab_indices.shape == (2,)
+    assert_array_equal(a, np.zeros(8))
+
+    # Enlarging into brand new chunks, filled with fill_value
+    b = StagedChangesArray.full((8,), chunk_size=(4,), fill_value=0)
+    plan = b._resize_plan((12,))
+    assert not plan.transfers
+    assert plan.grid_resized
+    assert plan.mutates
+    b.resize((12,))
+    assert b.slab_indices.shape == (3,)
+    assert_array_equal(b, np.zeros(12))
+
+    # Moving the edge of the last chunk, without changing the chunk grid: there is
+    # nothing for resize() to apply
+    c = StagedChangesArray.full((12,), chunk_size=(4,), fill_value=0)
+    plan = c._resize_plan((10,))
+    assert not plan.transfers
+    assert not plan.grid_resized
+    assert not plan.mutates
+    c.resize((10,))
+    assert c.slab_indices.shape == (3,)
+    assert_array_equal(c, np.zeros(10))
+
+    # A zero-extent grid can change shape without changing its (empty) size
+    d = StagedChangesArray.full((0, 2), chunk_size=(1, 1), fill_value=0)
+    plan = d._resize_plan((0, 0))
+    assert not plan.transfers
+    assert plan.grid_resized
+    assert plan.mutates
+    d.resize((0, 0))
+    assert d.slab_indices.shape == (0, 0)
+    d.commit()
+
+
 def test_resize_through_size_zero():
     """Enlarge or shrink partial edge chunks along an axis while another axis is
     size 0, so that no chunks are actually transferred.

@@ -300,7 +300,10 @@ The ``SetItemPlan`` thus runs the general algorithm twice:
 
 ``ResizePlan`` iterates along all axes and resizes the array independently for each axis
 that changed shape. This typically causes the ``slab_indices`` and ``slab_offsets``
-arrays to change shape too.
+arrays to change shape too. A resize that changes the chunk grid alters the state of the
+``StagedChangesArray`` even when it transfers no data, and the plan reports it in
+``mutates`` so that ``resize()`` is not skipped as a no-op - unlike a resize that only
+moves the edge of the grid without changing its shape.
 
 Special attention needs to be paid to *edge chunks*, that is the last row or column of
 chunks along one axis, which may not be exactly divisible by the ``chunk_size`` before
