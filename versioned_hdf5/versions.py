@@ -149,11 +149,17 @@ def commit_version(
             # inner dataset. Create the (empty) raw_data + hash table if they don't
             # exist yet; otherwise validate chunks, filters, fillvalue, and dtype
             # against them.
+            ds_chunks = chunks[name]
+            if ds_chunks is None:
+                # write_dataset() would otherwise guess the chunk size from the empty
+                # array below instead of using the one baked into staged_changes, which
+                # commit_staged_changes() asserts on.
+                ds_chunks = data.chunks
             write_dataset(
                 f,
                 name,
                 np.empty((0,) * len(data.shape), dtype=data._buffer.dtype),
-                chunks=chunks[name],
+                chunks=ds_chunks,
                 filters=filters[name],
                 fillvalue=data.fillvalue,
             )

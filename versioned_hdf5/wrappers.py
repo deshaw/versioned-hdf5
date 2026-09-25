@@ -30,6 +30,7 @@ from versioned_hdf5.backend import (
     Filters,
     are_compatible_dtypes,
     is_vstring_dtype,
+    normalize_chunks,
 )
 from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS, h5py_astype
 from versioned_hdf5.slicetools import build_slab_indices_and_offsets
@@ -190,14 +191,43 @@ class InMemoryGroup(Group):
             )
             raw_data = wrapped_dataset.dataset.id.raw_data
             self._set_filters(name, Filters.from_dataset(raw_data))
+            # Register the chunk size of a dataset inherited from the previous version.
+            # It is pinned by the first version that committed the dataset (see
+            # backend.write_dataset()), so any wholesale replacement
+            # (``group[name] = array``) or enlargement in this version must reuse it.
+            self._set_chunks(name, wrapped_dataset.dataset.chunks)
         elif isinstance(obj, DatasetLike):
             self._data[name] = obj
             if isinstance(obj, DatasetWrapper) and isinstance(obj.dataset, Dataset):
                 raw_data = obj.dataset.id.raw_data
                 self._set_filters(name, Filters.from_dataset(raw_data))
+                self._set_chunks(name, obj.dataset.chunks)
         else:
+            # A wholesale replacement (``group[name] = array``) keeps the metadata of
+            # the dataset it replaces, like ``group[name][:] = array`` does. The
+            # fillvalue is pinned in ``_version_data`` even if the previous version
+            # did not contain the dataset. The chunk size is resolved by
+            # InMemoryArrayDataset from _chunks.
+            old = self._data.get(name)
+            if isinstance(old, DatasetLike):
+                fillvalue = old.fillvalue
+                attrs = dict(old.attrs)
+            else:
+                # Deleting a dataset in an earlier version doesn't delete its
+                # raw_data. Its fillvalue remains pinned even without an inherited
+                # dataset to copy metadata from. Attributes, unlike the fillvalue,
+                # are specific to each version and must not be resurrected.
+                raw_data = self._pinned_raw_data(name)
+                fillvalue = raw_data.fillvalue if raw_data is not None else None
+                attrs = None
             wrapped_dataset = DatasetWrapper(
-                InMemoryArrayDataset(name, np.asarray(obj), parent=self)
+                InMemoryArrayDataset(
+                    name,
+                    np.asarray(obj),
+                    parent=self,
+                    fillvalue=fillvalue,
+                    attrs=attrs,
+                )
             )
             if wrapped_dataset.ndim == 0:
                 raise NotImplementedError("Scalar datasets are not implemented.")
@@ -445,6 +475,25 @@ class InMemoryGroup(Group):
             parent_basename = posixpath.basename(p.name)
             full_name = parent_basename + "/" + full_name
             p = p._parent
+
+    def _pinned_raw_data(self, name: str) -> Dataset | None:
+        """Return raw_data for a previously committed dataset, if any.
+
+        Chunk size and fillvalue are pinned by the first version that commits the
+        dataset (see backend.write_dataset()), even when it is not inherited from the
+        previous version.
+        """
+        # Use the staged version's root rather than looking for a group named
+        # "versions": a dataset may itself live in a subgroup with that name.
+        version_group = self.versioned_root
+        version_data = version_group.parent.parent
+        rel = posixpath.relpath(
+            posixpath.join(self.name, posixpath.basename(name)), version_group.name
+        )
+        try:
+            return version_data[posixpath.join(rel, "raw_data")]
+        except KeyError:
+            return None
 
     def _set_chunks(self, dataset_name: str, value: tuple[int, ...] | None) -> None:
         def cb(node: InMemoryGroup, name: str) -> None:
@@ -913,6 +962,7 @@ class DatasetLike:
 
     name
     shape
+    chunks
     dtype
     attrs
     _fillvalue
@@ -921,6 +971,9 @@ class DatasetLike:
 
     name: str
     shape: tuple[int, ...]
+    # None if the chunk size is not known yet. It is pinned by the first version that
+    # commits the dataset (see backend.write_dataset()).
+    chunks: tuple[int, ...] | None
     dtype: np.dtype
     attrs: dict[str, Any]
     _fillvalue: Any | None
@@ -1092,7 +1145,7 @@ class InMemorySparseDataset(BufferMixin, FiltersMixin, DatasetLike):
         return self.staged_changes.shape
 
     @property
-    def chunks(self) -> tuple[int, ...]:
+    def chunks(self) -> tuple[int, ...]:  # type: ignore[override]
         return self.staged_changes.chunk_size
 
     def _astype_impl(self, dtype: np.dtype, writeable: bool) -> MutableArrayProtocol:
@@ -1220,12 +1273,27 @@ class DatasetWrapper(DatasetLike):
         # resize() but then does not completely fill it up with data before they commit,
         # resulting in empty chunks that needlessly occupy RAM until the time they are
         # committed and all need to go through hashing.
+        chunks = self.dataset.chunks
+        if chunks is None:
+            # The dataset was neither inherited from the previous version nor
+            # registered by create_dataset(). It may still have been committed by an
+            # older version though (e.g. it was deleted and re-created, or this version
+            # was staged from an older prev_version), which pinned its chunk size.
+            raw_data = self.dataset.parent._pinned_raw_data(self.dataset.name)
+            if raw_data is not None:
+                pinned = tuple(raw_data.attrs["chunks"])
+                if len(pinned) == self.dataset.ndim:
+                    chunks = pinned
+        if chunks is None:
+            # No chunk size is pinned (e.g. a brand new ``group[name] = array``
+            # dataset); guess one like commit_version() would.
+            chunks = normalize_chunks(None, new_shape, self.dataset._buffer.dtype)
         new_ds = InMemorySparseDataset(
             name=self.dataset.name,
             shape=self.dataset.shape,
             dtype=self.dataset.dtype,
             parent=self.dataset.parent,
-            chunks=self.dataset.chunks,
+            chunks=chunks,
             fillvalue=self.dataset.fillvalue,
             attrs=self.dataset.attrs,
         )
@@ -1234,7 +1302,7 @@ class DatasetWrapper(DatasetLike):
             # Note: in case of variable-width strings, _buffer.dtype may be different
             # from dataset.dtype
             self.dataset._buffer,
-            chunk_size=self.dataset.chunks,
+            chunk_size=chunks,
             fill_value=self.dataset.fillvalue,
             as_base_slabs=False,
         )
