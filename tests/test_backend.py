@@ -982,6 +982,7 @@ def test_commit_state_resets_after_failed_commit(h5file, monkeypatch):
     # commit/rewrite tests cover payload values without that artificial interruption.
     assert hash_table.attrs["largest_index"] == 1
     assert state.is_initialized()
+    assert_equal(raw_data[:], data)
 
 
 @pytest.mark.parametrize("max_bytes", [0, 1000])
