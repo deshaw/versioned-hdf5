@@ -2246,7 +2246,11 @@ class CommitState:
             )
 
     def reset(self) -> None:
-        """Discard locations from an uncommitted attempt, retaining target ownership."""
+        """Discard all cached locations, retaining target ownership.
+
+        Called after a failed commit: the map may contain offsets for chunks that
+        were never durably appended, so the next attempt reloads the on-disk table.
+        """
         self.hash_to_old_chunk.clear()
         self.initialized = False
 
