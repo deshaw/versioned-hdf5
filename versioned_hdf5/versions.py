@@ -96,8 +96,8 @@ def commit_version(
 
     If make_current is True, the new version will be set as the current version.
 
-    If the user specifies a dataset name found in FORBIDDEN_NAMES, a ValueError
-    will be raised.
+    If the first component of a dataset path is found in FORBIDDEN_NAMES, raise
+    ValueError.
 
     Returns the group for the new version.
     """
@@ -112,6 +112,14 @@ def commit_version(
     f = versions.parent.parent
     prev_version = versions[version_group.attrs["prev_version"]]
 
+    # The internal dataset storage is rooted at _version_data, so a dataset in the
+    # top-level versions group would collide with the versions group itself.
+    # Sanity-check the path.
+    for name in datasets:
+        name = posixpath.normpath(name.lstrip("/")).partition("/")[0]
+        if name in FORBIDDEN_NAMES:
+            raise ValueError(f"{name} is a forbidden dataset or group name; aborting.")
+
     if not isinstance(chunks, defaultdict):
         chunks = defaultdict(type(None), **(chunks or {}))
     if not isinstance(filters, defaultdict):
@@ -119,11 +127,6 @@ def commit_version(
 
     if make_current:
         versions.attrs["current_version"] = version_name
-
-    # Check all dataset names for forbidden names before attempting any data writes
-    for name in datasets:
-        if name in FORBIDDEN_NAMES:
-            raise ValueError(f"{name} is a forbidden dataset name; aborting.")
 
     for name, data in datasets.items():
         if isinstance(data, DatasetWrapper):
