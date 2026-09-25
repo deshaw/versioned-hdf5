@@ -654,6 +654,7 @@ def modify_metadata(
     def callback(dataset, version_name):  # noqa: ARG001
         _chunks = chunks if chunks is not None else dataset.chunks
         _fillvalue = fillvalue if fillvalue is not None else dataset.fillvalue
+        attrs = dict(dataset.attrs)
 
         if isinstance(dataset, DatasetWrapper):
             dataset = dataset.dataset
@@ -666,6 +667,7 @@ def modify_metadata(
                 parent=tmp_parent,
                 fillvalue=_fillvalue,
                 chunks=_chunks,
+                attrs=attrs,
             )
             if _fillvalue not in (None, dataset.fillvalue):
                 new_dataset[new_dataset == dataset.fillvalue] = _fillvalue
@@ -696,6 +698,7 @@ def modify_metadata(
                 dtype=staged_changes.dtype,
                 chunks=_chunks,
                 fillvalue=_fillvalue,
+                attrs=attrs,
             )
             new_dataset.staged_changes = staged_changes
 
