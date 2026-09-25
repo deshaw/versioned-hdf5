@@ -440,7 +440,8 @@ def commit_staged_changes(
     """Commit a StagedChangesArray into `raw_data` and its on-disk hash table.
 
     ``commit_state`` is explicit, call-scoped state for a sequence of commits to one
-    target dataset. Pass the returned state to the next block to avoid rereading and
+    target dataset. It is mutated in place; pass the same object (the return value
+    is identical) to the next block to avoid rereading and
     rebuilding its hash table. State must not be shared between targets or files.
 
     1. Load the on-disk hash table dataset that hashes all chunks of `raw_data`
@@ -718,7 +719,7 @@ def rewrite_dataset(
         block_sc = StagedChangesArray.from_array(
             data[block], chunk_size=chunks, fill_value=fillvalue, as_base_slabs=False
         )
-        commit_state = commit_staged_changes(f, name, block_sc, commit_state)
+        commit_staged_changes(f, name, block_sc, commit_state)
         # The blocks are chunk-aligned. After the commit, the block's chunks lie on
         # raw_data (slab 1) or on the full slab (0); copy that into the full-size map.
         block_chunks = tuple(
