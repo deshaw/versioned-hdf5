@@ -598,7 +598,8 @@ def commit_staged_changes(
         # Flush extent and metadata changes before a retry. In particular, HDF5 1.14
         # on Windows can otherwise expose uninitialized contents from the re-extended
         # raw_data chunk on the next commit attempt.
-        f.flush()
+        # NB: f may be a Group (e.g. tmp_group); only File has flush().
+        raw_data.file.flush()
         if commit_state is not None:
             commit_state.reset()
         raise
