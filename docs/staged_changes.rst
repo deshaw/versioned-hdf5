@@ -300,7 +300,8 @@ The ``SetItemPlan`` thus runs the general algorithm twice:
 
 ``ResizePlan`` iterates along all axes and resizes the array independently for each axis
 that changed shape. This typically causes the ``slab_indices`` and ``slab_offsets``
-arrays to change shape too.
+arrays to change shape too. A resize that changes the chunk grid alters the state of the
+``StagedChangesArray`` even when it transfers no data.
 
 Special attention needs to be paid to *edge chunks*, that is the last row or column of
 chunks along one axis, which may not be exactly divisible by the ``chunk_size`` before
@@ -412,7 +413,8 @@ Committing is broken down into the following stages:
    c. plans to copy the unique staged chunks to a new base slab;
    d. updates ``slab_indices`` and ``slab_offsets`` so that all chunks that were
       previously pointing to a staged slab now point to the full slab, an old base slab,
-      or the new base slab.
+      or the new base slab. This remap happens even when no data transfer is needed
+      (e.g. when every staged chunk is deduplicated).
 
 4. Allocate a new base slab with a `np.empty`-like callback that was provided by the
    wrapper. Under the hood, the function extends the h5py `raw_data` dataset and returns
