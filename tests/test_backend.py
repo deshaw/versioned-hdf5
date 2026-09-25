@@ -903,6 +903,28 @@ def test_rewrite_dataset_reuses_hash_state_across_blocks(vfile, monkeypatch):
     assert_equal(sc[()], data)
 
 
+def test_rewrite_dataset_dedups_across_blocks(vfile):
+    """A chunk written by an earlier block deduplicates against an identical chunk
+    staged by a later block. The reused CommitState holds the chunks appended by the
+    previous blocks with their *absolute* offset in raw_data, so the deduplicated
+    chunks must be remapped onto those locations and not onto relative offsets.
+    """
+    create_base_dataset(vfile.f, "x", data=np.empty(0, dtype=np.int64), chunks=(2,))
+    # Four blocks of one chunk each (a chunk is 16 bytes == max_bytes): block 2
+    # duplicates block 1 and block 3 duplicates block 0
+    data = np.array([10, 11, 20, 21, 20, 21, 10, 11])
+    sc = rewrite_dataset(vfile.f, "x", data, chunks=(2,), max_bytes=16)
+
+    raw_data, hash_table = _raw_data_hashtable(vfile, "x")
+    # Only two of the four chunks are original; the other two are not written again
+    assert raw_data.shape == (4,)
+    assert hash_table.attrs["largest_index"] == 2
+    assert_equal(raw_data[:], np.array([10, 11, 20, 21]))
+    assert_equal(sc[()], data)
+    # Block 1 landed at offset 2 and block 2 deduplicates onto it, not onto offset 0
+    assert_equal(sc.slab_offsets, np.array([0, 2, 2, 0], dtype=sc.slab_offsets.dtype))
+
+
 def test_commit_state_rejects_different_target(h5file):
     create_base_dataset(h5file, "x", data=np.empty(0, dtype=np.int64), chunks=(2,))
     create_base_dataset(h5file, "y", data=np.empty(0, dtype=np.int64), chunks=(4,))
