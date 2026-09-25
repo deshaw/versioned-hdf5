@@ -22,6 +22,7 @@ from versioned_hdf5.backend import (
     commit_staged_changes,
     create_base_dataset,
     initialize,
+    is_vstring_dtype,
     rewrite_dataset,
 )
 from versioned_hdf5.hashtable import Hashtable
@@ -372,9 +373,15 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
         tmp_path = posixpath.join(head, tmp_name)
         dtype = raw_data.dtype
         fillvalue = dataset.fillvalue
-        if dtype.metadata and (
-            "vlen" in dtype.metadata or "h5py_encoding" in dtype.metadata
-        ):
+        if dtype.kind == "S":
+            # A fixed-string VDS can report its first data byte as its fillvalue. The
+            # fillvalue pinned on raw_data is authoritative.
+            fillvalue = raw_data.fillvalue
+            if fillvalue == b"":
+                # h5py cannot create a fixed-string VDS with an explicit empty
+                # fillvalue.
+                fillvalue = None
+        if is_vstring_dtype(dtype):
             # Variable length string dtype
             # (https://h5py.readthedocs.io/en/2.10.0/strings.html). Setting the
             # fillvalue in this case doesn't work

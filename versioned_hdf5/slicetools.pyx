@@ -446,8 +446,7 @@ def create_virtual_dataset(
     assert slab_indices.dtype == np_hsize_t
     assert slab_offsets.dtype == np_hsize_t
 
-    dtype_meta = raw_data.dtype.metadata
-    if dtype_meta and ("vlen" in dtype_meta or "h5py_encoding" in dtype_meta):
+    if h5py.check_vlen_dtype(raw_data.dtype) is not None:
         # Variable length string dtype
         # (https://h5py.readthedocs.io/en/2.10.0/strings.html).
         # Setting the fillvalue in this case doesn't work
@@ -456,6 +455,9 @@ def create_virtual_dataset(
             raise ValueError(
                 "Non-default fillvalue not supported for variable length strings"
             )
+        fillvalue = None
+    elif raw_data.dtype.kind == "S" and fillvalue == b"":
+        # h5py cannot create a fixed-string VDS with an explicit empty fillvalue.
         fillvalue = None
 
     layout = VirtualLayout(shape=staged_changes.shape, dtype=raw_data.dtype)

@@ -1873,6 +1873,29 @@ def test_string_dtypes(setup_vfile, dt):
         assert f["name"][10] == b"", dt.metadata
 
 
+@pytest.mark.parametrize("dtype", ["S1", "S4"])
+@pytest.mark.parametrize(
+    ("fillvalue", "expected_fillvalue"), [(None, b""), (b"x", b"x")]
+)
+def test_fixed_string_identical_whole_dataset_update(
+    vfile, dtype, fillvalue, expected_fillvalue
+):
+    """A fixed-string VDS reports a bogus fillvalue; whole-dataset replacement must
+    use the value pinned on raw_data instead.
+    """
+    data = np.array([b"a", b"b"], dtype=dtype)
+
+    with vfile.stage_version("v0") as sv:
+        sv.create_dataset("x", data=data, chunks=(2,), fillvalue=fillvalue)
+
+    with vfile.stage_version("v1") as sv:
+        assert sv["x"].fillvalue == expected_fillvalue
+        sv["x"] = data
+
+    assert_equal(vfile["v1"]["x"][:], data)
+    assert vfile["v1"]["x"].fillvalue == expected_fillvalue
+
+
 def test_mismatched_fixed_string_dtypes(vfile):
     dt1 = h5py.string_dtype(length=30)
     dt2 = h5py.string_dtype(length=20)
