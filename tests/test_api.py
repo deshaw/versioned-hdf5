@@ -618,6 +618,41 @@ def test_resize_unaligned(vfile):
             assert_equal(group[ds_name][:], np.arange((i + 1) * 1000))
 
 
+def test_resize_shrink_trailing_axis_all_fillvalue(vfile):
+    """resize() shrinks a trailing axis and grows axis 0 within the last chunk row"""
+    with vfile.stage_version("v0") as group:
+        group.create_dataset(
+            "x", data=np.full((10, 2), -1.5), chunks=(4, 1), fillvalue=-1.5
+        )
+    n_rows = vfile.f["_version_data/x/raw_data"].shape[0]
+
+    with vfile.stage_version("v1") as group:
+        group["x"].resize((12, 1))
+
+    assert vfile["v1"]["x"].shape == (12, 1)
+    assert_equal(vfile["v1"]["x"][()], np.full((12, 1), -1.5))
+    # The grown edge chunk is full of fill_value and deduplicates against the full
+    # chunk: nothing new is written to raw_data
+    assert vfile.f["_version_data/x/raw_data"].shape[0] == n_rows
+
+
+def test_resize_shrink_trailing_axis(vfile):
+    """resize() shrinks a trailing axis and grows axis 0 within the last chunk row"""
+    data = np.arange(20).reshape(10, 2)
+    with vfile.stage_version("v0") as group:
+        group.create_dataset("x", data=data, chunks=(4, 1), fillvalue=-1)
+
+    expected = np.full((12, 1), fill_value=-1)
+    expected[:10, :1] = data[:10, :1]
+
+    with vfile.stage_version("v1") as group:
+        group["x"].resize((12, 1))
+        assert group["x"].shape == (12, 1)
+        assert_equal(group["x"][()], expected)
+
+    assert_equal(vfile["v1"]["x"][()], expected)
+
+
 @pytest.mark.slow
 def test_resize_multiple_dimensions(vfile):
     # Test semantics against raw HDF5
@@ -1706,6 +1741,28 @@ def test_closes(vfile):
     assert repr(vfile) == "<Closed VersionedHDF5File>"
 
 
+def test_close_after_underlying_file_closed(vfile):
+    with vfile.stage_version("version1") as group:
+        group["data"] = np.arange(5)
+
+    version = vfile["version1"]
+    h5py_file = vfile.f
+    file_id = id(h5py_file)
+
+    entry = InMemoryGroup._instances[file_id]
+    assert entry[0]() is h5py_file
+    assert version.id in entry[1]
+
+    h5py_file.close()
+    assert vfile.closed
+
+    vfile.close()
+
+    assert file_id not in InMemoryGroup._instances
+    assert not hasattr(vfile, "f")
+    vfile.close()
+
+
 def test_scalar_dataset(vfile):
     """Scalar (ndim=0) datasets are supported by h5py, but implementing them in
     versioned_hdf5 would take a lot of special-casing as raw_data can't go below
@@ -1950,6 +2007,59 @@ def test_read_only(setup_vfile):
             file[timestamp]["data"][0] = 1
         with pytest.raises(ValueError):
             file[timestamp]["data2"] = [1, 2, 3]
+
+
+def test_read_only_handle_does_not_reuse_wrapper(tmp_path):
+    filename = tmp_path / "file.h5"
+    data = np.arange(5)
+    with (
+        h5py.File(filename, "w") as f,
+        VersionedHDF5File(f).stage_version("v0") as group,
+    ):
+        group["x"] = data
+
+    with h5py.File(filename, "r+") as f, h5py.File(filename, "r") as f2:
+        first = VersionedHDF5File(f)
+        first_x = first["v0"]["x"]
+
+        if f2.mode == "r":
+            pytest.skip(
+                "h5py shares mode 'r' across handles; read-only access returns raw "
+                "groups, so wrapper-reuse regression path is unavailable"
+            )
+        assert f2.mode == "r+"
+
+        second = VersionedHDF5File(f2)
+        # Exercise second handle's wrapper cache when h5py reports shared r+ mode.
+        second["v0"]["x"]
+        f2.close()
+
+        assert_equal(first_x[:], data)
+
+
+def test_writable_handles_do_not_reuse_wrapper(tmp_path):
+    filename = tmp_path / "file.h5"
+    data = np.arange(5)
+    with (
+        h5py.File(filename, "w") as f,
+        VersionedHDF5File(f).stage_version("v0") as group,
+    ):
+        group["x"] = data
+
+    with h5py.File(filename, "r+") as f1, h5py.File(filename, "r+") as f2:
+        first = VersionedHDF5File(f1)
+        second = VersionedHDF5File(f2)
+
+        first_group = first["v0"]
+        second_group = second["v0"]
+        first_x = first_group["x"]
+        second_x = second_group["x"]
+
+        assert first_group is not second_group
+        assert first_x is not second_x
+
+        f2.close()
+        assert_equal(first_x[:], data)
 
 
 def test_delete_datasets(vfile):

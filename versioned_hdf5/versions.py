@@ -53,7 +53,7 @@ def create_version_group(f, version_name, prev_version=None):
     if prev_version not in versions:
         raise ValueError(f"Previous version {prev_version!r} not found")
 
-    group = InMemoryGroup(versions.create_group(version_name).id)
+    group = InMemoryGroup(versions.create_group(version_name).id, file=f)
     group.attrs["prev_version"] = prev_version
     group.attrs["committed"] = False
 

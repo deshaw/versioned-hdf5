@@ -75,75 +75,106 @@ def recreate_dataset(f, name, newf, callback=None):
     fillvalue = raw_data.fillvalue
 
     first = True
-    for version_name in all_versions(f):
-        if name in f["_version_data/versions"][version_name]:
-            group = InMemoryGroup(
-                f["_version_data/versions"][version_name].id, _committed=True
-            )
+    # There are cyclic references involved:
+    # - InMemoryGroup._data[] <-> InMemoryDataset._parent
+    # - InMemoryGroup._subgroups[] <-> InMemoryGroup._parent
+    # So dropping the last external reference to them only makes them unreachable: their
+    # virtual datasets, with their libhdf5 chunk mappings (~18 kiB per chunk), would
+    # stay open until the cyclic garbage collector happens to run, and peak memory would
+    # grow with the number of versions. Call gc.collect() at every iteration instead
+    # (same as in delete_versions).
+    # Freeze the heap for the duration of the loop, so that the per-version collections
+    # only have to scan the objects created by the loop itself, instead of the whole
+    # process heap.
+    we_froze = not gc.get_freeze_count()
+    if we_froze:
+        gc.collect()
+        gc.freeze()
+    try:
+        for version_name in all_versions(f):
+            if name in f["_version_data/versions"][version_name]:
+                group = InMemoryGroup(
+                    f["_version_data/versions"][version_name].id,
+                    _committed=True,
+                    file=f,
+                )
 
-            dataset = group[name]
-            if callback:
-                dataset = callback(dataset, version_name)
-                if dataset is None:
-                    continue
+                dataset = group[name]
+                del group
+                if callback:
+                    dataset = callback(dataset, version_name)
+                    if dataset is None:
+                        # The callback dropped this version; ensure it's no longer in
+                        # memory. This also causes libhdf5 to free the memory for the
+                        # old virtual dataset.
+                        gc.collect()
+                        continue
 
-            dtype = dataset.dtype
-            chunks = dataset.chunks
+                dtype = dataset.dtype
+                chunks = dataset.chunks
 
-            filters = Filters.from_dataset(dataset)
-            fillvalue = dataset.fillvalue
-            attrs = dataset.attrs
-            if first:
-                create_base_dataset(
+                filters = Filters.from_dataset(dataset)
+                fillvalue = dataset.fillvalue
+                attrs = dataset.attrs
+                if first:
+                    create_base_dataset(
+                        newf,
+                        name,
+                        data=np.empty((0,) * len(dataset.shape), dtype=dtype),
+                        dtype=dtype,
+                        chunks=chunks,
+                        fillvalue=fillvalue,
+                        filters=filters,
+                    )
+                    first = False
+                if not isinstance(chunks, tuple):
+                    chunks = tuple(
+                        newf["_version_data"][name]["raw_data"].attrs["chunks"]
+                    )
+
+                # Rewrite all the chunks of the dataset (we can't assume the new
+                # hash table has the raw data in the same locations, even if the
+                # data is unchanged).
+                if isinstance(dataset, DatasetWrapper):
+                    dataset = dataset.dataset
+                if isinstance(dataset, InMemoryArrayDataset):
+                    staged_changes = StagedChangesArray.from_array(
+                        dataset._buffer,
+                        chunk_size=chunks,
+                        fill_value=fillvalue,
+                        as_base_slabs=False,
+                    )
+                elif isinstance(dataset, (InMemoryDataset, InMemorySparseDataset)):
+                    staged_changes = dataset.staged_changes
+                else:
+                    raise TypeError(f"Unexpected: {type(dataset)}")  # pragma: no cover
+
+                if staged_changes.has_base_chunks:
+                    # Some or all chunks lie on the raw_data of the *source* file, which
+                    # the hash table of newf knows nothing about, so they must all be
+                    # rewritten. Stream them a block of chunks at a time; loading them
+                    # all in memory first would make peak memory usage O(dataset size).
+                    staged_changes = rewrite_dataset(
+                        newf, name, dataset, chunks=chunks, fillvalue=fillvalue
+                    )
+                else:
+                    # Every chunk is already in memory
+                    commit_staged_changes(newf, name, staged_changes)
+
+                create_virtual_dataset(
                     newf,
+                    version_name,
                     name,
-                    data=np.empty((0,) * len(dataset.shape), dtype=dtype),
-                    dtype=dtype,
-                    chunks=chunks,
+                    staged_changes,
+                    attrs=attrs,
                     fillvalue=fillvalue,
-                    filters=filters,
                 )
-                first = False
-            if not isinstance(chunks, tuple):
-                chunks = tuple(newf["_version_data"][name]["raw_data"].attrs["chunks"])
 
-            # Rewrite all the chunks of the dataset (we can't assume the new
-            # hash table has the raw data in the same locations, even if the
-            # data is unchanged).
-            if isinstance(dataset, DatasetWrapper):
-                dataset = dataset.dataset
-            if isinstance(dataset, InMemoryArrayDataset):
-                staged_changes = StagedChangesArray.from_array(
-                    dataset._buffer,
-                    chunk_size=chunks,
-                    fill_value=fillvalue,
-                    as_base_slabs=False,
-                )
-            elif isinstance(dataset, (InMemoryDataset, InMemorySparseDataset)):
-                staged_changes = dataset.staged_changes
-            else:
-                raise TypeError(f"Unexpected: {type(dataset)}")  # pragma: no cover
-
-            if staged_changes.has_base_chunks:
-                # Some or all chunks lie on the raw_data of the *source* file, which
-                # the hash table of newf knows nothing about, so they must all be
-                # rewritten. Stream them a block of chunks at a time; loading them all
-                # in memory first would make peak memory usage O(dataset size).
-                staged_changes = rewrite_dataset(
-                    newf, name, dataset, chunks=chunks, fillvalue=fillvalue
-                )
-            else:
-                # Every chunk is already in memory
-                commit_staged_changes(newf, name, staged_changes)
-
-            create_virtual_dataset(
-                newf,
-                version_name,
-                name,
-                staged_changes,
-                attrs=attrs,
-                fillvalue=fillvalue,
-            )
+                del dataset, staged_changes, attrs, filters
+                gc.collect()
+    finally:
+        if we_froze:
+            gc.unfreeze()
 
 
 def tmp_group(f):
@@ -724,7 +755,7 @@ def modify_metadata(
         return new_dataset
 
     newf = tmp_group(f)
-    tmp_parent = InMemoryGroup(newf.create_group("__tmp_parent__").id)
+    tmp_parent = InMemoryGroup(newf.create_group("__tmp_parent__").id, file=newf)
 
     try:
         recreate_dataset(f, dataset_name, newf, callback=callback)
@@ -814,14 +845,15 @@ def swap(old: InMemoryGroup, new: InMemoryGroup) -> None:
         else:
             # Invalidate any InMemoryGroups that point to these groups
             delete = []
-            for bind in InMemoryGroup._instances:
-                if get_name(bind) and (
-                    get_name(bind).startswith(get_name(old.id))
-                    or get_name(bind).startswith(get_name(new.id))
-                ):
-                    delete.append(bind)
-            for d in delete:
-                del InMemoryGroup._instances[d]
+            for _, cache in InMemoryGroup._instances.values():
+                for bind in cache:
+                    if get_name(bind) and (
+                        get_name(bind).startswith(get_name(old.id))
+                        or get_name(bind).startswith(get_name(new.id))
+                    ):
+                        delete.append((cache, bind))
+            for cache, bind in delete:
+                del cache[bind]
             old.move(name, posixpath.join(new.name, name + "__tmp"))
             new.move(name, posixpath.join(old.name, name))
             new.move(name + "__tmp", name)

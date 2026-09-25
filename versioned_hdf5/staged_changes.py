@@ -635,7 +635,7 @@ class StagedChangesArray(MutableMapping[Any, T]):
         default_slab: NDArray[T] | None = None,
         empty: Callable[..., MutableArrayProtocol] = np.empty,
     ) -> None:
-        """Implement common workflow of __setitem__, resize, and load."""
+        """Implement common workflow of __setitem__, resize, load, and commit."""
         for shape in plan.append_slabs:
             self.slabs.append(empty(shape, dtype=self.dtype))
             self.hash_tables.append(None)
@@ -741,9 +741,8 @@ class StagedChangesArray(MutableMapping[Any, T]):
         self._untrim_staged_slabs(shape)
 
         plan = self._resize_plan(shape, copy=False)
-        # A resize may change the slab_indices and slab_offsets, but won't necessarily
-        # impact any chunks. In such cases, this is a no-op.
-        self._apply_mutating_plan(plan)
+        if plan.mutates:
+            self._apply_mutating_plan(plan)
 
         if shape != self.shape:
             self.shape = shape
@@ -1627,6 +1626,9 @@ class LoadPlan(MutatingPlan):
 class ResizePlan(MutatingPlan):
     """Instructions to execute StagedChangesArray.resize()"""
 
+    #: True if the plan resized slab_indices/slab_offsets.
+    _nchunks_resized: cython.bint
+
     def __init__(
         self,
         old_shape: tuple[int, ...],
@@ -1660,6 +1662,7 @@ class ResizePlan(MutatingPlan):
             raise ValueError("shape must be non-negative")
 
         super().__init__(slab_indices, slab_offsets)
+        self._nchunks_resized = False
         if old_shape == new_shape:
             return
 
@@ -1677,10 +1680,11 @@ class ResizePlan(MutatingPlan):
                 slice(ceil_a_over_b(s, c))
                 for s, c in zip(shrunk_shape, chunk_size, strict=True)
             )
-            # Just a view. This won't change the shape of the arrays when shrinking the
-            # edge chunks without reducing the number of chunks.
+            old_nchunks_shape = self.slab_indices.shape
             self.slab_indices = self.slab_indices[chunks_slice]
             self.slab_offsets = self.slab_offsets[chunks_slice]
+            if self.slab_indices.shape != old_nchunks_shape:
+                self._nchunks_resized = True
 
             # Load partial edge chunks into memory to avoid ending up with partially
             # overlapping chunks on disk, e.g. [10:19] vs. [10:17].
@@ -1712,6 +1716,9 @@ class ResizePlan(MutatingPlan):
             ]
             # np.pad is a deep-copy; skip if unnecessary.
             if any(p != (0, 0) for p in pad_width):
+                # The chunk grid grew: the arrays were just replaced by bigger copies
+                # of themselves, which no data transfer accounts for.
+                self._nchunks_resized = True
                 self.slab_indices = np.pad(self.slab_indices, pad_width)
                 self.slab_offsets = np.pad(self.slab_offsets, pad_width)
 
@@ -2028,6 +2035,10 @@ class ResizePlan(MutatingPlan):
             )
 
     @property
+    def mutates(self) -> bool:
+        return self._nchunks_resized or super().mutates
+
+    @property
     def head(self) -> str:
         return "ResizePlan<" + super().head
 
@@ -2196,6 +2207,10 @@ class CommitPlan(MutatingPlan):
     #: Hash table for the new base slab; one row per surviving unique chunk.
     new_hash_table: NDArray[np.uint64] | None
 
+    #: True if at least one chunk was repointed at a different slab or offset while
+    #: deduplicating.
+    _remapped_chunks: cython.bint
+
     def __init__(
         self,
         shape: tuple[int, ...],
@@ -2207,6 +2222,7 @@ class CommitPlan(MutatingPlan):
     ):
         super().__init__(slab_indices, slab_offsets)
         self.transfers = []
+        self._remapped_chunks = False
         np_chunk_size = np.asarray(chunk_size, dtype=np_hsize_t).reshape((1, -1))
 
         ndim: hsize_t = len(chunk_size)
@@ -2345,6 +2361,11 @@ class CommitPlan(MutatingPlan):
             loc = ChunkLoc(old_slab_idx, old_slab_offset)
             if old_to_new_chunk.count(loc) != 0:
                 mapped = old_to_new_chunk[loc]
+                if (
+                    cython.cast(ssize_t, mapped.slab_idx) != old_slab_idx
+                    or mapped.slab_offset != old_slab_offset
+                ):
+                    self._remapped_chunks = True
                 slab_indices_flat_view[i] = mapped.slab_idx
                 slab_offsets_flat_view[i] = mapped.slab_offset
 
@@ -2364,6 +2385,10 @@ class CommitPlan(MutatingPlan):
                 self.slab_indices[edge] == new_slab_idx
             ]
             tplan_count[edge_offsets // cs0, dim] = trim
+
+    @property
+    def mutates(self) -> bool:
+        return self._remapped_chunks or super().mutates
 
     @property
     def head(self) -> str:
