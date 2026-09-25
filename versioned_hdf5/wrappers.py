@@ -56,6 +56,11 @@ class InMemoryGroup(Group):
             tuple[ReferenceType[Any], WeakValueDictionary[h5g.GroupID, InMemoryGroup]],
         ]
     ] = {}
+    # Callers that do not pass `file` (tests and pre-existing external use)
+    # keep the historical global cache keyed by HDF5 object identity.
+    _fallback_cache: ClassVar[WeakValueDictionary[h5g.GroupID, InMemoryGroup]] = (
+        WeakValueDictionary()
+    )
 
     @classmethod
     def _cache_for_file(
@@ -89,8 +94,15 @@ class InMemoryGroup(Group):
         # Make sure each group only corresponds to one InMemoryGroup instance per
         # Python file handle. Otherwise a new instance would lose track of any
         # datasets or subgroups created in the old one.
-        owner = bind if file is None else file
-        cache = cls._cache_for_file(owner)
+        # Wrappers created without `file` (and their children, which propagate
+        # a low-level GroupID as `_file`) share the historical global cache so
+        # equal HDF5 object IDs still deduplicate across Python objects.
+        if file is None or isinstance(file, h5g.GroupID):
+            cache = cls._fallback_cache
+            owner = bind if file is None else file
+        else:
+            owner = file
+            cache = cls._cache_for_file(owner)
         if bind in cache:
             return cache[bind]
         obj = super().__new__(cls)
@@ -147,7 +159,12 @@ class InMemoryGroup(Group):
                 if group._committed:
                     group._data.clear()
                     group._subgroups.clear()
+        for group in list(cls._fallback_cache.values()):
+            if group._committed:
+                group._data.clear()
+                group._subgroups.clear()
         cls._instances.clear()
+        cls._fallback_cache.clear()
 
     @classmethod
     def _invalidate_file(cls, file: Any) -> None:
