@@ -21,7 +21,7 @@ Common commands:
 
 - `pixi r test` — full test suite in the default env (auto runs editable-install first).
 - `pixi r -e <env> test` — test under a specific env (e.g. `mindeps`, `hdf5-112`,
-  `hdf5-114`, `np126`, `np200`, `py310`–`py314`, `h5py-dev`). See `docs/development.md`
+  `hdf5-114`, `hdf5-21`, `np126`, `np200`, `py310`–`py314`, `h5py-dev`). See `docs/development.md`
   for the matrix.
 - `pixi r lint` — run all linters (ruff, mypy, codespell, dprint, blacken-docs,
   actionlint, cython-lint, sphinx-lint, validate-pyproject) via lefthook.

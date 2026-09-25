@@ -25,6 +25,7 @@ jobs:
           # pinned build stack
           - hdf5-112 # Python 3.10, NumPy 1.24.4, hdf5 1.12, h5py 3.8
           - hdf5-114 # Python 3.10, NumPy 2.2, hdf5 1.14
+          - hdf5-21 # Python 3.10, NumPy 2.2, hdf5 2.1
           - np126 # Python 3.10, NumPy 1.26
           - np200 # Python 3.10, NumPy 2.0
           # (Note: NumPy 2.0 has special cases not present in other versions)

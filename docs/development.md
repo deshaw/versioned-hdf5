@@ -24,6 +24,7 @@ You can choose among the following:
 | `mindeps`   | 3.10   | 1.24.4 | 1.10 ~ 1.14 | 3.8 ~ 3.9 | 1.5.1   | Versions depend on platform; pinned build stack |
 | `hdf5-112`  | 3.10   | 1.24.4 | 1.12        | 3.8       | latest  | Not available on Windows                        |
 | `hdf5-114`  | 3.10   | 2.2    | 1.14        | latest    | latest  |                                                 |
+| `hdf5-21`   | 3.10   | 2.2    | 2.1         | latest    | latest  |                                                 |
 | `np126`     | 3.10   | 1.26   | latest      | latest    | latest  |                                                 |
 | `np200`     | 3.10   | 2.0    | latest      | latest    | latest  |                                                 |
 | `py310`     | 3.10   | 2.2    | latest      | latest    | latest  |                                                 |
