@@ -300,7 +300,8 @@ The ``SetItemPlan`` thus runs the general algorithm twice:
 
 ``ResizePlan`` iterates along all axes and resizes the array independently for each axis
 that changed shape. This typically causes the ``slab_indices`` and ``slab_offsets``
-arrays to change shape too.
+arrays to change shape too. A resize that changes the chunk grid alters the state of the
+``StagedChangesArray`` even when it transfers no data.
 
 Special attention needs to be paid to *edge chunks*, that is the last row or column of
 chunks along one axis, which may not be exactly divisible by the ``chunk_size`` before
@@ -399,13 +400,21 @@ Committing is broken down into the following stages:
 3. Define a ``CommitPlan``, which:
 
    a. reads the hashes of the staged chunks that were just generated, plus the hashes of
-      all the chunks on the base slabs from HDF5;
+      all the chunks on the base slabs from HDF5. When commits are processed as a
+      sequence (for example, one block at a time while rewriting a dataset), callers may
+      pass an explicit ``CommitState`` to ``commit()``. The first call loads the base
+      hashes into its Cython map; later calls reuse that map and only inspect newly
+      staged chunks. State is scoped to that sequence, binds itself to the target
+      file/dataset and chunk size on first use, and must not be shared between
+      targets. If a commit fails, the state map is cleared before the error is
+      re-raised so a retry reloads the on-disk table.
    b. drops duplicate staged chunks (any that are identical to the full chunk, a base
       chunk on HDF5, or another staged chunk);
    c. plans to copy the unique staged chunks to a new base slab;
    d. updates ``slab_indices`` and ``slab_offsets`` so that all chunks that were
       previously pointing to a staged slab now point to the full slab, an old base slab,
-      or the new base slab.
+      or the new base slab. This remap happens even when no data transfer is needed
+      (e.g. when every staged chunk is deduplicated).
 
 4. Allocate a new base slab with a `np.empty`-like callback that was provided by the
    wrapper. Under the hood, the function extends the h5py `raw_data` dataset and returns

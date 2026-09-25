@@ -1,12 +1,13 @@
 import itertools
 
+import h5py
 import numpy as np
 import pytest
 from h5py._hl.filters import guess_chunk
 from ndindex import ChunkSize, Slice, Tuple
 from numpy.testing import assert_equal
 
-from versioned_hdf5 import slicetools
+from versioned_hdf5 import backend, slicetools
 from versioned_hdf5.backend import (
     DEFAULT_CHUNK_SIZE,
     Filters,
@@ -16,6 +17,7 @@ from versioned_hdf5.backend import (
     rewrite_dataset,
     write_dataset,
 )
+from versioned_hdf5.staged_changes import StagedChangesArray
 
 CHUNK_SIZE_3D = 2**4  # = cbrt(DEFAULT_CHUNK_SIZE)
 
@@ -876,6 +878,133 @@ def test_rewrite_dataset_preexisting_raw_data(vfile, max_bytes):
     assert sc2.slab_indices[0, 0] == 1
     assert sc2.slab_offsets[0, 0] == sc1.slab_offsets[0, 1]
     assert sc2.slab_offsets[1, 1] == n_chunks_1 * chunks[0]
+
+
+def test_rewrite_dataset_reuses_hash_state_across_blocks(vfile, monkeypatch):
+    """Each rewrite block shares one explicit hash state, but reads disk table once."""
+    create_base_dataset(vfile.f, "x", data=np.arange(4), chunks=(2,))
+    reads = 0
+    original = backend._data_v4_to_sc_hash_table
+
+    def counted_read(*args, **kwargs):
+        nonlocal reads
+        reads += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(backend, "_data_v4_to_sc_hash_table", counted_read)
+    data = np.array([10, 11, 0, 1, 2, 3, 30, 31])
+    sc = rewrite_dataset(vfile.f, "x", data, chunks=(2,), max_bytes=16)
+
+    assert reads == 1
+    raw_data, hash_table = _raw_data_hashtable(vfile, "x")
+    assert raw_data.shape == (8,)
+    assert hash_table.attrs["largest_index"] == 4
+    assert_equal(raw_data[:], np.array([0, 1, 2, 3, 10, 11, 30, 31]))
+    assert_equal(sc[()], data)
+
+
+def test_rewrite_dataset_dedups_across_blocks(vfile):
+    """A chunk written by an earlier block deduplicates against an identical chunk
+    staged by a later block. The reused CommitState holds the chunks appended by the
+    previous blocks with their *absolute* offset in raw_data, so the deduplicated
+    chunks must be remapped onto those locations and not onto relative offsets.
+    """
+    create_base_dataset(vfile.f, "x", data=np.empty(0, dtype=np.int64), chunks=(2,))
+    # Four blocks of one chunk each (a chunk is 16 bytes == max_bytes): block 2
+    # duplicates block 1 and block 3 duplicates block 0. Pin the dtype: the default
+    # integer is 32-bit on Windows, and the target raw_data is int64 everywhere.
+    data = np.array([10, 11, 20, 21, 20, 21, 10, 11], dtype=np.int64)
+    sc = rewrite_dataset(vfile.f, "x", data, chunks=(2,), max_bytes=16)
+
+    raw_data, hash_table = _raw_data_hashtable(vfile, "x")
+    # Only two of the four chunks are original; the other two are not written again
+    assert raw_data.shape == (4,)
+    assert hash_table.attrs["largest_index"] == 2
+    assert_equal(raw_data[:], np.array([10, 11, 20, 21], dtype=np.int64))
+    assert_equal(sc[()], data)
+    # Block 1 landed at offset 2 and block 2 deduplicates onto it, not onto offset 0
+    assert_equal(sc.slab_offsets, np.array([0, 2, 2, 0], dtype=sc.slab_offsets.dtype))
+
+
+def test_commit_state_rejects_different_target(h5file):
+    create_base_dataset(h5file, "x", data=np.empty(0, dtype=np.int64), chunks=(2,))
+    create_base_dataset(h5file, "y", data=np.empty(0, dtype=np.int64), chunks=(4,))
+    state = backend.CommitState()
+    first = StagedChangesArray.from_array(
+        np.array([1, 2]), chunk_size=(2,), as_base_slabs=False
+    )
+    backend.commit_staged_changes(h5file, "x", first, state)
+
+    second = StagedChangesArray.from_array(
+        np.array([1, 2, 3, 4]), chunk_size=(4,), as_base_slabs=False
+    )
+    with pytest.raises(ValueError, match="different target or chunk size"):
+        backend.commit_staged_changes(h5file, "y", second, state)
+
+
+def test_commit_state_rejects_different_file(h5file, tmp_path):
+    create_base_dataset(h5file, "x", data=np.empty(0, dtype=np.int64), chunks=(2,))
+    state = backend.CommitState()
+    backend.commit_staged_changes(
+        h5file,
+        "x",
+        StagedChangesArray.from_array(
+            np.array([1, 2]), chunk_size=(2,), as_base_slabs=False
+        ),
+        state,
+    )
+
+    with h5py.File(tmp_path / "other.h5", "w") as other:
+        backend.initialize(other)
+        create_base_dataset(other, "x", data=np.empty(0, dtype=np.int64), chunks=(2,))
+        with pytest.raises(ValueError, match="different target or chunk size"):
+            backend.commit_staged_changes(
+                other,
+                "x",
+                StagedChangesArray.from_array(
+                    np.array([3, 4]), chunk_size=(2,), as_base_slabs=False
+                ),
+                state,
+            )
+
+
+def test_commit_state_resets_after_failed_commit(h5file, monkeypatch):
+    create_base_dataset(h5file, "x", data=np.empty(0, dtype=np.int64), chunks=(2,))
+    state = backend.CommitState()
+    data = np.array([10, 11])
+    original = backend._sc_hash_table_to_data_v4
+    calls = 0
+
+    def fail_once(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("simulated hash-table failure")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(backend, "_sc_hash_table_to_data_v4", fail_once)
+    with pytest.raises(RuntimeError, match="simulated hash-table failure"):
+        backend.commit_staged_changes(
+            h5file,
+            "x",
+            StagedChangesArray.from_array(data, chunk_size=(2,), as_base_slabs=False),
+            state,
+        )
+    assert not state.is_initialized()
+
+    raw_data = h5file["_version_data/x/raw_data"]
+    hash_table = h5file["_version_data/x/hash_table"]
+    assert raw_data.shape == (0,)
+    assert hash_table.shape == (0,)
+    assert hash_table.attrs["largest_index"] == 0
+
+    retried = StagedChangesArray.from_array(data, chunk_size=(2,), as_base_slabs=False)
+    backend.commit_staged_changes(h5file, "x", retried, state)
+    # The failed append is deliberately interrupted between raw-data and hash-table
+    # writes. State and durable extents are the contract under test here; normal
+    # commit/rewrite tests cover payload values without that artificial interruption.
+    assert hash_table.attrs["largest_index"] == 1
+    assert state.is_initialized()
 
 
 @pytest.mark.parametrize("max_bytes", [0, 1000])
