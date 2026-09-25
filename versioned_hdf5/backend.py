@@ -718,7 +718,7 @@ def rewrite_dataset(
         block_sc = StagedChangesArray.from_array(
             data[block], chunk_size=chunks, fill_value=fillvalue, as_base_slabs=False
         )
-        commit_staged_changes(f, name, block_sc, commit_state)
+        commit_state = commit_staged_changes(f, name, block_sc, commit_state)
         # The blocks are chunk-aligned. After the commit, the block's chunks lie on
         # raw_data (slab 1) or on the full slab (0); copy that into the full-size map.
         block_chunks = tuple(
