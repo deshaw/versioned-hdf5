@@ -52,15 +52,15 @@ class _MetadataTransformView(DatasetLike, FiltersMixin):
     for the other dataset wrappers.
     """
 
-    def __init__(self, dataset, *, dtype, fillvalue, chunks, parent):
+    def __init__(self, dataset, name, *, dtype, fillvalue, chunks, parent):
         self.dataset = dataset
         self.dtype = np.dtype(dtype)
         self._fillvalue = fillvalue
         self.shape = dataset.shape
         self.chunks = chunks
-        self.attrs = dataset.attrs
+        self.attrs = dict(dataset.attrs)
         self.parent = parent
-        self.name = dataset.name
+        self.name = name
         self._data_transform = (
             self.dtype != dataset.dtype or fillvalue != dataset.fillvalue
         )
@@ -76,7 +76,11 @@ class _MetadataTransformView(DatasetLike, FiltersMixin):
         if self._fillvalue != self._source_fillvalue:
             # Preserve modify_metadata's dtype-then-fill semantics.  The copy is
             # bounded to this block, rather than materializing a whole version.
-            data = np.array(data, dtype=self.dtype, copy=True)
+            # Skip the second copy when the dtype conversion above already
+            # produced a writeable array in the target dtype.
+            writeable = getattr(getattr(data, "flags", None), "writeable", False)
+            if data.dtype != self.dtype or not writeable:
+                data = np.array(data, dtype=self.dtype, copy=True)
             data[data == self._source_fillvalue] = self._fillvalue
         return data
 
@@ -760,6 +764,7 @@ def modify_metadata(
         if isinstance(dataset, (InMemoryDataset, InMemoryArrayDataset)):
             new_dataset = _MetadataTransformView(
                 dataset,
+                name,
                 dtype=dataset.dtype if dtype is None else dtype,
                 fillvalue=_fillvalue,
                 chunks=_chunks,
