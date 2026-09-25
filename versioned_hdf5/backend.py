@@ -626,10 +626,14 @@ def rewrite_dataset(
     `recreate_dataset` needs: it can't assume that the new hash table maps the chunks
     to the same locations as the old one, even where the data is unchanged.
 
-    `data` is read one block of chunks at a time, so that peak memory usage is
-    O(max_bytes) instead of O(data.size). Deduplication is unaffected: each block is
-    deduplicated against the on-disk hash table, which by then already describes every
-    chunk written by the previous blocks and by the previous versions.
+    `data` is read one block of chunks at a time, which bounds data-payload buffering
+    by `max_bytes` (rounded up to one chunk) instead of materializing the whole dataset.
+    This is not a bound on total memory: the returned StagedChangesArray's chunk maps
+    and temporary data for the chunk-count-sized on-disk hash table also scale with the
+    number of chunks. See #562 for the planned chunk-map and hash-table storage changes.
+    Deduplication is unaffected: each block is deduplicated against the on-disk hash
+    table, which by then already describes every chunk written by the previous blocks
+    and by the previous versions.
 
     Parameters
     ----------

@@ -30,7 +30,9 @@ from versioned_hdf5.staged_changes import StagedChangesArray
 from versioned_hdf5.typing_ import DEFAULT, Default
 from versioned_hdf5.versions import all_versions
 from versioned_hdf5.wrappers import (
+    DatasetLike,
     DatasetWrapper,
+    FiltersMixin,
     InMemoryArrayDataset,
     InMemoryDataset,
     InMemoryGroup,
@@ -38,6 +40,49 @@ from versioned_hdf5.wrappers import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class _MetadataTransformView(DatasetLike, FiltersMixin):
+    """Disk-backed dataset view used for data-changing metadata rewrites.
+
+    ``modify_metadata`` used to copy a committed dense dataset into an
+    ``InMemoryArrayDataset`` before replaying it.  Keep the source dataset on disk and
+    apply dtype and fillvalue changes to each block instead.  The view carries the
+    target metadata so ``recreate_dataset`` can use the same orchestration for it as
+    for the other dataset wrappers.
+    """
+
+    def __init__(self, dataset, name, *, dtype, fillvalue, chunks, parent):
+        self.dataset = dataset
+        self.dtype = np.dtype(dtype)
+        self._fillvalue = fillvalue
+        self.shape = dataset.shape
+        self.chunks = chunks
+        self.attrs = dict(dataset.attrs)
+        self.parent = parent
+        self.name = name
+        self._data_transform = (
+            self.dtype != dataset.dtype or fillvalue != dataset.fillvalue
+        )
+
+    @property
+    def _source_fillvalue(self):
+        return self.dataset.fillvalue
+
+    def __getitem__(self, index):
+        data = self.dataset[index]
+        if self.dtype != self.dataset.dtype:
+            data = np.asarray(data, dtype=self.dtype)
+        if self._fillvalue != self._source_fillvalue:
+            # Preserve modify_metadata's dtype-then-fill semantics.  The copy is
+            # bounded to this block, rather than materializing a whole version.
+            # Skip the second copy when the dtype conversion above already
+            # produced a writeable array in the target dtype.
+            writeable = getattr(getattr(data, "flags", None), "writeable", False)
+            if data.dtype != self.dtype or not writeable:
+                data = np.array(data, dtype=self.dtype, copy=True)
+            data[data == self._source_fillvalue] = self._fillvalue
+        return data
 
 
 def recreate_dataset(f, name, newf, callback=None):
@@ -75,75 +120,132 @@ def recreate_dataset(f, name, newf, callback=None):
     fillvalue = raw_data.fillvalue
 
     first = True
-    for version_name in all_versions(f):
-        if name in f["_version_data/versions"][version_name]:
-            group = InMemoryGroup(
-                f["_version_data/versions"][version_name].id, _committed=True
-            )
+    # There are cyclic references involved:
+    # - InMemoryGroup._data[] <-> InMemoryDataset._parent
+    # - InMemoryGroup._subgroups[] <-> InMemoryGroup._parent
+    # So dropping the last external reference to them only makes them unreachable: their
+    # virtual datasets, with their libhdf5 chunk mappings (~18 kiB per chunk), would
+    # stay open until the cyclic garbage collector happens to run, and peak memory would
+    # grow with the number of versions. Call gc.collect() at every iteration instead
+    # (same as in delete_versions).
+    # Freeze the heap for the duration of the loop, so that the per-version collections
+    # only have to scan the objects created by the loop itself, instead of the whole
+    # process heap.
+    get_freeze_count = getattr(gc, "get_freeze_count", None)
+    we_froze = get_freeze_count is not None and not get_freeze_count()
+    if we_froze:
+        gc.collect()
+        gc.freeze()
+    try:
+        for version_name in all_versions(f):
+            if name in f["_version_data/versions"][version_name]:
+                group = InMemoryGroup(
+                    f["_version_data/versions"][version_name].id, _committed=True
+                )
 
-            dataset = group[name]
-            if callback:
-                dataset = callback(dataset, version_name)
-                if dataset is None:
-                    continue
+                dataset = group[name]
+                del group
+                if callback:
+                    dataset = callback(dataset, version_name)
+                    if dataset is None:
+                        # The callback dropped this version; ensure it's no longer in
+                        # memory. This also causes libhdf5 to free the memory for the
+                        # old virtual dataset.
+                        gc.collect()
+                        continue
 
-            dtype = dataset.dtype
-            chunks = dataset.chunks
+                dtype = dataset.dtype
+                chunks = dataset.chunks
 
-            filters = Filters.from_dataset(dataset)
-            fillvalue = dataset.fillvalue
-            attrs = dataset.attrs
-            if first:
-                create_base_dataset(
+                filters = Filters.from_dataset(dataset)
+                fillvalue = dataset.fillvalue
+                attrs = dataset.attrs
+                if first:
+                    create_base_dataset(
+                        newf,
+                        name,
+                        data=np.empty((0,) * len(dataset.shape), dtype=dtype),
+                        dtype=dtype,
+                        chunks=chunks,
+                        fillvalue=fillvalue,
+                        filters=filters,
+                    )
+                    first = False
+                if not isinstance(chunks, tuple):
+                    chunks = tuple(
+                        newf["_version_data"][name]["raw_data"].attrs["chunks"]
+                    )
+
+                # Rewrite all the chunks of the dataset (we can't assume the new
+                # hash table has the raw data in the same locations, even if the
+                # data is unchanged).
+                if isinstance(dataset, DatasetWrapper):
+                    dataset = dataset.dataset
+                if isinstance(dataset, _MetadataTransformView):
+                    source = dataset.dataset
+                    if (
+                        isinstance(source, InMemoryArrayDataset)
+                        and not dataset._data_transform
+                    ):
+                        # Preserve the no-copy path for cached arrays when metadata
+                        # changes do not alter their data.
+                        staged_changes = StagedChangesArray.from_array(
+                            source._buffer,
+                            chunk_size=chunks,
+                            fill_value=fillvalue,
+                            as_base_slabs=False,
+                        )
+                        commit_staged_changes(newf, name, staged_changes)
+                    else:
+                        staged_changes = rewrite_dataset(
+                            newf, name, dataset, chunks=chunks, fillvalue=fillvalue
+                        )
+                elif isinstance(dataset, InMemoryArrayDataset):
+                    staged_changes = StagedChangesArray.from_array(
+                        dataset._buffer,
+                        chunk_size=chunks,
+                        fill_value=fillvalue,
+                        as_base_slabs=False,
+                    )
+                elif isinstance(dataset, (InMemoryDataset, InMemorySparseDataset)):
+                    staged_changes = dataset.staged_changes
+                else:
+                    raise TypeError(f"Unexpected: {type(dataset)}")  # pragma: no cover
+
+                if not isinstance(dataset, _MetadataTransformView):
+                    if staged_changes.has_base_chunks:
+                        # Some or all chunks lie on the raw_data of the *source* file,
+                        # which the hash table of newf knows nothing about, so they must
+                        # all be rewritten. Stream them a block of chunks at a time;
+                        # loading them all in memory first would make peak memory usage
+                        # O(dataset size).
+                        staged_changes = rewrite_dataset(
+                            newf, name, dataset, chunks=chunks, fillvalue=fillvalue
+                        )
+                    else:
+                        # Every chunk is already in memory
+                        commit_staged_changes(newf, name, staged_changes)
+
+                create_virtual_dataset(
                     newf,
+                    version_name,
                     name,
-                    data=np.empty((0,) * len(dataset.shape), dtype=dtype),
-                    dtype=dtype,
-                    chunks=chunks,
+                    staged_changes,
+                    attrs=attrs,
                     fillvalue=fillvalue,
-                    filters=filters,
                 )
-                first = False
-            if not isinstance(chunks, tuple):
-                chunks = tuple(newf["_version_data"][name]["raw_data"].attrs["chunks"])
 
-            # Rewrite all the chunks of the dataset (we can't assume the new
-            # hash table has the raw data in the same locations, even if the
-            # data is unchanged).
-            if isinstance(dataset, DatasetWrapper):
-                dataset = dataset.dataset
-            if isinstance(dataset, InMemoryArrayDataset):
-                staged_changes = StagedChangesArray.from_array(
-                    dataset._buffer,
-                    chunk_size=chunks,
-                    fill_value=fillvalue,
-                    as_base_slabs=False,
-                )
-            elif isinstance(dataset, (InMemoryDataset, InMemorySparseDataset)):
-                staged_changes = dataset.staged_changes
-            else:
-                raise TypeError(f"Unexpected: {type(dataset)}")  # pragma: no cover
-
-            if staged_changes.has_base_chunks:
-                # Some or all chunks lie on the raw_data of the *source* file, which
-                # the hash table of newf knows nothing about, so they must all be
-                # rewritten. Stream them a block of chunks at a time; loading them all
-                # in memory first would make peak memory usage O(dataset size).
-                staged_changes = rewrite_dataset(
-                    newf, name, dataset, chunks=chunks, fillvalue=fillvalue
-                )
-            else:
-                # Every chunk is already in memory
-                commit_staged_changes(newf, name, staged_changes)
-
-            create_virtual_dataset(
-                newf,
-                version_name,
-                name,
-                staged_changes,
-                attrs=attrs,
-                fillvalue=fillvalue,
-            )
+                if isinstance(dataset, _MetadataTransformView):
+                    # Break the view's source reference before collection.  The
+                    # source wrapper is cyclic with its parent group, and retaining
+                    # it in the local ``source`` variable would defeat gc.collect().
+                    dataset.dataset = None
+                    del source
+                del dataset, staged_changes, attrs, filters
+                gc.collect()
+    finally:
+        if we_froze:
+            gc.unfreeze()
 
 
 def tmp_group(f):
@@ -660,15 +762,14 @@ def modify_metadata(
 
         name = dataset.name[len(dataset.parent.name) + 1 :]
         if isinstance(dataset, (InMemoryDataset, InMemoryArrayDataset)):
-            new_dataset = InMemoryArrayDataset(
+            new_dataset = _MetadataTransformView(
+                dataset,
                 name,
-                np.asarray(dataset._buffer, dtype=dtype),
-                parent=tmp_parent,
+                dtype=dataset.dtype if dtype is None else dtype,
                 fillvalue=_fillvalue,
                 chunks=_chunks,
+                parent=tmp_parent,
             )
-            if _fillvalue not in (None, dataset.fillvalue):
-                new_dataset[new_dataset == dataset.fillvalue] = _fillvalue
         elif isinstance(dataset, InMemorySparseDataset):
             staged_changes = dataset.staged_changes
             if dtype not in (None, staged_changes.dtype):

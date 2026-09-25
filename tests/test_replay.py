@@ -2,6 +2,7 @@ import functools
 import gc
 import subprocess
 import tracemalloc
+import weakref
 from unittest import mock
 
 import h5py
@@ -29,6 +30,7 @@ from versioned_hdf5.replay import (
     swap,
     tmp_group,
 )
+from versioned_hdf5.wrappers import InMemoryDataset
 
 
 def setup_vfile(file):
@@ -843,6 +845,210 @@ def test_recreate_dataset_bounded_memory(vfile, monkeypatch):
 
     # Generous margin over max_bytes; loading a whole version would be 2 MiB
     assert peak < np.prod(shape) * 8 // 2
+
+
+@pytest.mark.parametrize(
+    ("metadata", "expected"),
+    [
+        ({}, lambda data: data),
+        ({"fillvalue": -1.5}, lambda data: np.where(data == 0, -1.5, data)),
+        ({"dtype": np.float64}, lambda data: data.astype(np.float64)),
+        (
+            {"dtype": np.float64, "fillvalue": -1.5},
+            lambda data: np.where(data.astype(np.float64) == 0, -1.5, data),
+        ),
+    ],
+)
+def test_modify_metadata_dense_streams_transforms(
+    vfile, monkeypatch, metadata, expected
+):
+    """Metadata transforms read committed data one rewrite block at a time."""
+    shape = (2048, 128)
+    chunks = (32, 128)
+    max_bytes = 128 * 1024
+    monkeypatch.setattr(
+        replay,
+        "rewrite_dataset",
+        functools.partial(rewrite_dataset, max_bytes=max_bytes),
+    )
+
+    data = np.arange(np.prod(shape), dtype=np.float32).reshape(shape)
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("x", data=data, chunks=chunks)
+
+    f = vfile.f
+    gc.collect()
+    tracemalloc.start()
+    try:
+        modify_metadata(f, "x", **metadata)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert peak < np.prod(shape) * 8 // 2
+    assert_array_equal(vfile["r0"]["x"][:], expected(data))
+
+
+def test_recreate_dataset_frees_each_version(vfile):
+    """The wrappers of a version reference each other in cycles
+    (InMemoryGroup._data[] <-> InMemoryDataset._parent); recreate_dataset() must not
+    leave them behind for the cyclic garbage collector, as each version's virtual
+    dataset would stay open in libhdf5 until then (#570).
+    """
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("x", data=np.arange(40.0), chunks=(5,))
+    for i in (1, 2, 3):
+        with vfile.stage_version(f"r{i}") as sv:
+            sv["x"][i] = -1.0
+    # Drop the wrappers created while staging the versions above
+    del sv
+    gc.collect()
+
+    f = vfile.f
+    newf = tmp_group(f)
+    seen = []
+    n_open_datasets = []
+
+    def callback(dataset, version_name):
+        # By the time each version is processed, all wrappers of the previous one
+        # must be unreachable and freed (the cyclic garbage collector is disabled
+        # below, so this only holds if no reference cycle survived)
+        assert all(ref() is None for version in seen for ref in version)
+        refs = [weakref.ref(dataset.dataset), weakref.ref(dataset.parent)]
+        seen.append(refs)
+        # The same expectation, but measured by libhdf5 itself rather than by the
+        # Python wrappers that hold the objects open
+        n_open_datasets.append(h5py.h5f.get_obj_count(f.id, h5py.h5f.OBJ_DATASET))
+        if version_name == "r2":
+            # Also cover the code path where the callback drops a version
+            return None
+        return dataset
+
+    gc.disable()
+    try:
+        recreate_dataset(f, "x", newf, callback=callback)
+    finally:
+        gc.enable()
+
+    assert len(seen) == 4
+    assert all(ref() is None for version in seen for ref in version)
+    # The number of datasets that are open in libhdf5 stops growing after the second
+    # version, i.e. each version's virtual dataset is closed before the next one is
+    # processed. The absolute number of open datasets is an h5py/libhdf5 detail, so
+    # only compare versions against each other.
+    assert n_open_datasets[2:] == [n_open_datasets[1]] * (len(n_open_datasets) - 2)
+
+
+def test_recreate_dataset_without_get_freeze_count(vfile, monkeypatch):
+    """recreate_dataset() skips heap freezing when gc.get_freeze_count is
+    unavailable."""
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("x", data=np.arange(40.0), chunks=(5,))
+
+    expected = vfile["r0"]["x"][:]
+    f = vfile.f
+    newf = tmp_group(f)
+    monkeypatch.delattr(gc, "get_freeze_count", raising=False)
+
+    with (
+        mock.patch.object(gc, "freeze") as freeze,
+        mock.patch.object(gc, "unfreeze") as unfreeze,
+    ):
+        recreate_dataset(f, "x", newf)
+        freeze.assert_not_called()
+        unfreeze.assert_not_called()
+
+    swap(f, newf)
+    assert_array_equal(vfile["r0"]["x"][:], expected)
+
+
+@pytest.mark.skipif(
+    not hasattr(gc, "get_freeze_count"),
+    reason="gc.get_freeze_count was added in Python 3.13",
+)
+def test_recreate_dataset_preserves_frozen_heap(vfile):
+    """recreate_dataset() freezes the heap to keep its per-version collections cheap,
+    but it must leave the freeze set of a caller that froze the heap itself alone: gc
+    has no way to restore a freeze set that has been thawed (#570).
+    """
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("x", data=np.arange(40.0), chunks=(5,))
+    with vfile.stage_version("r1") as sv:
+        sv["x"][0] = -1.0
+    # Drop the wrappers created while staging the versions above
+    del sv
+    gc.collect()
+
+    f = vfile.f
+    newf = tmp_group(f)
+    gc.freeze()
+    assert gc.get_freeze_count() > 0
+
+    seen = []
+
+    def callback(dataset, _version_name):
+        # The leak is fixed for a pre-frozen heap too (gc is disabled below)
+        assert all(ref() is None for ref in seen)
+        seen.append(weakref.ref(dataset.dataset))
+        return dataset
+
+    gc.disable()
+    try:
+        recreate_dataset(f, "x", newf, callback=callback)
+        # The frozen heap was not thawed: gc.unfreeze() would have emptied the
+        # permanent generation. (A few of its objects may be freed by refcount in the
+        # meantime, so don't compare the exact count.)
+        assert gc.get_freeze_count() > 0
+    finally:
+        gc.enable()
+        gc.unfreeze()
+
+    assert len(seen) == 2
+    assert all(ref() is None for ref in seen)
+
+
+def test_modify_metadata_frees_each_version(vfile, monkeypatch):
+    """modify_metadata() rewrites every version through recreate_dataset(); the
+    wrappers of each rewritten version must be freed as it goes, instead of piling up
+    in reference cycles until the end of the call (#570).
+    """
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("x", data=np.arange(40.0), chunks=(5,))
+    for i in (1, 2, 3):
+        with vfile.stage_version(f"r{i}") as sv:
+            sv["x"][i] = -1.0
+    # Drop the wrappers created while staging the versions above
+    del sv
+    gc.collect()
+
+    # Every InMemoryDataset wraps the virtual dataset of a version and holds it open
+    # in libhdf5 for as long as it lives
+    seen = []
+    orig_init = InMemoryDataset.__init__
+
+    def init(self, bind, parent, *, readonly=False):
+        seen.append(weakref.ref(self))
+        orig_init(self, bind, parent, readonly=readonly)
+
+    monkeypatch.setattr(InMemoryDataset, "__init__", init)
+
+    f = vfile.f
+    gc.disable()
+    try:
+        modify_metadata(f, "x", fillvalue=-1.5)
+    finally:
+        gc.enable()
+
+    assert len(seen) == 4
+    assert all(ref() is None for ref in seen)
+
+    # modify_metadata(fillvalue=...) replaces every value equal to the old fillvalue
+    # (0.0) with the new one. Each version inherits the changes of the previous one.
+    for i in (0, 1, 2, 3):
+        expected = np.arange(40.0)
+        expected[1 : i + 1] = -1.0
+        expected[0] = -1.5
+        assert_array_equal(vfile[f"r{i}"]["x"][:], expected)
 
 
 def test_delete_version(vfile):
