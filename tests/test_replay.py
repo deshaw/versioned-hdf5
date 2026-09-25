@@ -15,7 +15,7 @@ from numpy.testing import assert_array_equal
 
 from versioned_hdf5 import VersionedHDF5File, replay
 from versioned_hdf5.backend import DEFAULT_CHUNK_SIZE, rewrite_dataset
-from versioned_hdf5.h5py_compat import H5PY_VERSION
+from versioned_hdf5.h5py_compat import H5PY_VERSION, HAS_NPYSTRINGS
 from versioned_hdf5.hashtable import Hashtable
 from versioned_hdf5.replay import (
     _get_parent,
@@ -97,6 +97,53 @@ def check_data(file, test_data_fillvalue=1.0, version2=True, test_data4_fillvalu
         assert np.all(
             file["version2"]["group"]["test_data4"][4:] == test_data4_fillvalue
         )
+
+
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(h5py.string_dtype(), id="object"),
+        pytest.param(
+            "T", marks=pytest.mark.skipif(not HAS_NPYSTRINGS, reason="NpyStrings")
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "metadata",
+    [{"compression": "gzip"}, {"chunks": (4,)}, {"fillvalue": None}],
+    ids=["compression", "chunks", "fillvalue"],
+)
+def test_modify_metadata_variable_width_strings(vfile, dtype, metadata):
+    data = np.asarray(["one", "two", "three"], dtype=dtype)
+    with vfile.stage_version("v0") as sv:
+        sv.create_dataset("d", data=data, dtype=dtype, chunks=(3,))
+
+    modify_metadata(vfile, "d", **metadata)
+
+    raw_data = vfile.f["_version_data/d/raw_data"]
+    assert raw_data.dtype == h5py.string_dtype()
+    assert raw_data.chunks == metadata.get("chunks", (3,))
+    if "compression" in metadata:
+        assert raw_data.compression == "gzip"
+
+    expected = ["one", "later", "three"]
+
+    def assert_strings(actual, expected):
+        actual = np.asarray(actual)
+        assert actual.dtype.kind == "O"
+        actual = [x.decode() if isinstance(x, bytes) else x for x in actual]
+        assert actual == expected
+
+    with vfile.stage_version("v1") as sv:
+        ds = sv["d"]
+        assert ds.dtype == h5py.string_dtype()
+        assert ds.fillvalue == b""
+        assert_strings(ds[:], ["one", "two", "three"])
+        ds[1] = np.asarray("later", dtype=dtype)
+        assert_strings(ds[:], expected)
+
+    assert_strings(vfile["v1"]["d"][:], expected)
+    assert_strings(vfile["v0"]["d"][:], ["one", "two", "three"])
 
 
 def test_modify_metadata_compression(vfile):

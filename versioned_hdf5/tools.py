@@ -13,6 +13,7 @@ NP_VERSION = (_NP_VERSION.major, _NP_VERSION.minor, _NP_VERSION.bugfix)
 # Don't use NumpyVersion.__ge__ as it can't tell pre- and post-release suffixes apart
 del _NP_VERSION
 NP_GE_200 = NP_VERSION >= (2, 0, 0)
+NP_LT_223 = NP_VERSION < (2, 2, 3)
 
 
 def asarray(a: ArrayLike, /, *, dtype: DTypeLike | None = None):
@@ -22,16 +23,23 @@ def asarray(a: ArrayLike, /, *, dtype: DTypeLike | None = None):
     2. If a has a ABI-compatible dtype, return a view instead of a copy
        (works around https://github.com/numpy/numpy/issues/27509)
     3. Work around https://github.com/numpy/numpy/issues/28269
-       on NumPy >=2.0.0,<2.2.3 when converting from arrays of object strings to
-       NpyStrings
+       on NumPy >=2.0.0,<2.2.3 when converting from arrays or scalars of object strings
+       to NpyStrings
     """
-    if not is_array_protocol(a) or np.isscalar(a):
-        return np.asarray(a, dtype=dtype)
-
     if dtype is None:
+        if not is_array_protocol(a) or np.isscalar(a):
+            return np.asarray(a)
         return a
 
     dtype = np.dtype(dtype)
+    if NP_LT_223 and dtype.kind == "T" and isinstance(a, bytes):
+        # Work around bug in conversion from scalar bytes to NpyStrings.
+        # https://github.com/numpy/numpy/issues/28269
+        return np.asarray(a, dtype="U").astype(dtype)
+
+    if not is_array_protocol(a) or np.isscalar(a):
+        return np.asarray(a, dtype=dtype)
+
     if a.dtype == dtype:
         return a
 
@@ -45,7 +53,7 @@ def asarray(a: ArrayLike, /, *, dtype: DTypeLike | None = None):
         # np.array(-1).astype("u1") doesn't raise and returns 255!
         return a.view(dtype)
 
-    if NP_VERSION < (2, 2, 3) and a.dtype.kind == "O" and dtype.kind == "T":
+    if NP_LT_223 and a.dtype.kind == "O" and dtype.kind == "T":
         # Work around bug in conversion from array of bytes objects to NpyStrings
         # https://github.com/numpy/numpy/issues/28269
         # Note that this can be memory intensive.
