@@ -9,7 +9,7 @@ import numpy as np
 with suppress(ImportError):  # Allow asv-compare vs. older releases
     from versioned_hdf5.hash import hash_slab
 
-from .common import require_npystrings
+from .common import peak_memory, require_npystrings
 
 # 1 KiB, 64 KiB, 1 MiB of float64 per chunk
 CHUNK_SIZES = [(8, 16), (64, 128), (1024, 1024)]
@@ -49,7 +49,7 @@ class TimeHashSlab:
             self.chunk_size,
         )
 
-    peakmem_hash_slab = time_hash_slab
+    track_peakmem_hash_slab = peak_memory(time_hash_slab)
 
     def time_hash_slab_naive(self, chunk_size, edge):
         """Naive Python hashlib reimplementation of hash_slab."""
@@ -122,7 +122,7 @@ class TimeHashSlabNonContig:
             self.chunk_size,
         )
 
-    peakmem_hash_slab = time_hash_slab
+    track_peakmem_hash_slab = peak_memory(time_hash_slab)
 
 
 class TimeHashSlabStrings:

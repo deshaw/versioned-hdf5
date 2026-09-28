@@ -1,4 +1,7 @@
+import gc
 import os
+import tracemalloc
+from functools import wraps
 
 import h5py
 import numpy as np
@@ -18,6 +21,50 @@ def require_npystrings():
         raise NotImplementedError(
             "NpyStrings require numpy>=2.0, h5py >=3.14, versioned-dhf5 >=2.1"
         )
+
+
+def peak_memory(func):
+    """Decorator for a benchmark function to report peak memory usage.
+
+    Unlike asv's ``peakmem_*`` benchmarks, which publish the high-water mark of the
+    resident set size of the whole benchmark process (``getrusage()``), this exclusively
+    measures what the benchmark function itself allocates.
+
+    NumPy registers its own allocations with tracemalloc, so arrays are accounted for;
+    memory that libhdf5 allocates internally is not.
+
+    Expose it under a ``track_*`` name, e.g.::
+
+        def time_something(self, ...):
+            ...
+
+        track_something = peak_memory(time_something)
+
+    asv's ``track_*`` benchmarks publish whatever the benchmark function returns, so the
+    decorated function returns the peak amount of memory that Python allocated while it
+    ran, in bytes.
+
+    Do not use a ``mem_*`` name: that prefix belongs to asv's pympler-based benchmark
+    type, which reports the size of the object that the function returns; a scalar
+    measurement like this one always comes out as 0 there.
+    """
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        # Collect before starting, so that garbage left behind by setup() is not freed
+        # - and therefore untracked - midway through the measurement.
+        gc.collect()
+        tracemalloc.start()
+        try:
+            func(*args, **kwargs)
+            return tracemalloc.get_traced_memory()[1]
+        finally:
+            tracemalloc.stop()
+
+    # Read by asv_runner's TrackBenchmark, which otherwise reports the value in
+    # asv's default unit of "unit".
+    wrapper.unit = "bytes"
+    return wrapper
 
 
 class Benchmark:
