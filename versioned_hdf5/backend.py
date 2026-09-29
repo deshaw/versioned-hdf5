@@ -18,7 +18,7 @@ from versioned_hdf5.cytools import ceil_a_over_b
 from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS, h5py_astype
 from versioned_hdf5.hashtable import Hashtable
 from versioned_hdf5.slicetools import RawDataView
-from versioned_hdf5.staged_changes import CommitState, StagedChangesArray
+from versioned_hdf5.staged_changes import StagedChangesArray
 from versioned_hdf5.typing_ import DEFAULT, Default
 
 if TYPE_CHECKING:
@@ -28,6 +28,17 @@ DEFAULT_CHUNK_SIZE = 2**12
 # Amount of RAM that rewrite_dataset() can allocate as a scratch area
 # This is a compromise between minimizing RAM usage and runtime.
 REWRITE_BUFFER_BYTES = 2**26  # 64 MiB
+# Upper bound for that scratch area. rewrite_dataset() grows the block above
+# REWRITE_BUFFER_BYTES when the on-disk hash table gets large; see
+# _rewrite_block_bytes().
+REWRITE_BUFFER_BYTES_MAX = 2**29  # 512 MiB
+# Bytes of scratch area to allocate per chunk already on raw_data. Deduplicating one
+# block costs O(chunks already on raw_data) (reading the on-disk hash table and
+# rebuilding the deduplication map), while the block's own work (hash + write) costs
+# O(block bytes): the two are equal at roughly 1.6 kiB of block per chunk already on
+# raw_data, measured on Linux with 10 kiB chunks, so 2 kiB keeps the per-block cost
+# below a tenth of the work.
+REWRITE_BLOCK_BYTES_PER_RAW_CHUNK = 2**11
 DATA_VERSION = 4
 # data_version 2 has broken hashtables, always need to rebuild
 # data_version 3 hash collisions for string arrays which, when concatenated,
@@ -421,6 +432,23 @@ def _sc_hash_table_to_data_v4(
     return out
 
 
+def _rewrite_block_bytes(n_raw_chunks: int) -> int:
+    """Scratch-area size, in bytes, for `rewrite_dataset()`.
+
+    A block of chunks is deduplicated against every chunk already on `raw_data`, and
+    that fixed cost grows with the number of those chunks (~0.65 us per chunk measured
+    on Linux: reading the on-disk hash table plus rebuilding the deduplication map),
+    whereas the block's own work (hashing and writing) grows with its size (~4 us per
+    MiB). Sizing the block from the on-disk table keeps the fixed cost a small fraction
+    of the work and costs only more RAM, within REWRITE_BUFFER_BYTES_MAX. That is
+    enough to make `recreate_dataset()` and `modify_metadata()` linear in practice.
+    """
+    return min(
+        REWRITE_BUFFER_BYTES_MAX,
+        max(REWRITE_BUFFER_BYTES, REWRITE_BLOCK_BYTES_PER_RAW_CHUNK * n_raw_chunks),
+    )
+
+
 def _raw_data_as_base_slab(raw_data: Dataset, dtype: np.dtype):
     """Return `raw_data`, to be used as a base slab of a StagedChangesArray of the
     given dtype.
@@ -431,27 +459,16 @@ def _raw_data_as_base_slab(raw_data: Dataset, dtype: np.dtype):
     return raw_data if dtype == raw_data.dtype else h5py_astype(raw_data, dtype)
 
 
-def commit_staged_changes(
-    f,
-    name: str,
-    staged_changes: StagedChangesArray,
-    commit_state: CommitState | None = None,
-) -> CommitState | None:
+def commit_staged_changes(f, name: str, staged_changes: StagedChangesArray) -> None:
     """Commit a StagedChangesArray into `raw_data` and its on-disk hash table.
 
-    ``commit_state`` is explicit, call-scoped state for a sequence of commits to one
-    target dataset. It is mutated in place; pass the same object (the return value
-    is identical) to the next block to avoid rereading and
-    rebuilding its hash table. State must not be shared between targets or files.
-
     1. Load the on-disk hash table dataset that hashes all chunks of `raw_data`
-       into memory (only on the first call when ``commit_state`` is supplied)
+       into memory
     2. Inject it as the hash table of `staged_changes.base_slabs[0]`, which is
        `raw_data`
     3. Define a callback function that mocks `numpy.empty`. The callback internally
        extends `raw_data` and returns a view to the new empty surface.
-    4. Call staged_changes.commit, passing the callback above and the explicit state
-       (when supplied).
+    4. Call staged_changes.commit, passing the callback above.
        This hashes all staged chunks vs. all present and past chunks in `raw_data`,
        saving the hashes of all unique staged chunks to a new np.ndarray, then
        writes to `raw_data` on disk. See docs/staged_changes.rst for details.
@@ -483,8 +500,6 @@ def commit_staged_changes(
     raw_data = group["raw_data"]
     hash_table = group["hash_table"]
     assert sc.chunk_size == tuple(raw_data.chunks)
-    if commit_state is not None:
-        commit_state.bind_target(f, name, sc.chunk_size)
     chunk_size0 = sc.chunk_size[0]
 
     # Number of chunks that the previous versions committed to raw_data.
@@ -510,100 +525,69 @@ def commit_staged_changes(
 
     if n_base_before == 1:
         assert sc.hash_tables[1] is None
-        if commit_state is None or not commit_state.is_initialized():
-            sc.hash_tables[1] = _data_v4_to_sc_hash_table(hash_table, chunk_size0)
-        # A reused state already contains every base hash. Avoid reloading the table;
-        # CommitPlan still receives no base candidates from this slab.
+        sc.hash_tables[1] = _data_v4_to_sc_hash_table(hash_table, chunk_size0)
 
     def empty(shape: tuple[int, ...], dtype) -> RawDataView:
         """Mock API of np.empty. Extend raw_data and return view to the new area."""
         raw_data.resize((prev_len + shape[0], *raw_data.shape[1:]))
         return RawDataView(raw_data, prev_len, dtype)
 
-    # Calculate hashes, deduplicate staged chunks, and write to raw_data. State is
-    # updated while planning the transfer, so any failure must invalidate it before
-    # allowing a retry to reuse uncommitted offsets.
-    try:
-        sc.commit(empty=empty, state=commit_state, new_base_offset=prev_len)
+    # Calculate hashes, deduplicate staged chunks, and write to raw_data
+    sc.commit(empty=empty)
 
-        n_appended_chunks = 0
-        if sc.n_base_slabs > n_base_before:
-            # At least one staged chunk is original (neither identical to a chunk
-            # already on raw_data nor full of fill_value)
-            # === Steps 6-10: a new base slab was appended; record its chunks
-            # on disk ===
-            assert sc.n_base_slabs == n_base_before + 1
-            new_slab_idx = sc.n_base_slabs
-            new_hashes = sc.hash_tables[new_slab_idx]
-            assert new_hashes is not None
-            n_appended_chunks = new_hashes.shape[0]
-            new_n_chunks = prev_n_chunks + n_appended_chunks
+    n_appended_chunks = 0
+    if sc.n_base_slabs > n_base_before:
+        # At least one staged chunk is original (neither identical to a chunk
+        # already on raw_data nor full of fill_value)
+        # === Steps 6-10: a new base slab was appended; record its chunks on disk ===
+        assert sc.n_base_slabs == n_base_before + 1
+        new_slab_idx = sc.n_base_slabs
+        new_hashes = sc.hash_tables[new_slab_idx]
+        assert new_hashes is not None
+        n_appended_chunks = new_hashes.shape[0]
+        new_n_chunks = prev_n_chunks + n_appended_chunks
 
-            # Calculate (start, stop) offsets of the chunks on raw_data
-            starts = np.arange(
-                prev_n_chunks * chunk_size0,
-                new_n_chunks * chunk_size0,
-                chunk_size0,
-                dtype=np.int64,
+        # Calculate (start, stop) offsets of the chunks on raw_data
+        starts = np.arange(
+            prev_n_chunks * chunk_size0,
+            new_n_chunks * chunk_size0,
+            chunk_size0,
+            dtype=np.int64,
+        )
+        stops = starts + chunk_size0
+        if sc.shape[0] % chunk_size0:
+            # Edge chunks along axis 0 are not full chunks; trim stops.
+            # This matters when modify_metadata() recalculates the hashes.
+            n_whole_chunks0 = sc.slab_indices.shape[0] - 1
+            last_chunk_trim = chunk_size0 - sc.shape[0] + n_whole_chunks0 * chunk_size0
+            new_edge_chunks_idx = (
+                sc.slab_offsets[-1][sc.slab_indices[-1] == new_slab_idx] // chunk_size0
             )
-            stops = starts + chunk_size0
-            if sc.shape[0] % chunk_size0:
-                # Edge chunks along axis 0 are not full chunks; trim stops.
-                # This matters when modify_metadata() recalculates the hashes.
-                n_whole_chunks0 = sc.slab_indices.shape[0] - 1
-                last_chunk_trim = (
-                    chunk_size0 - sc.shape[0] + n_whole_chunks0 * chunk_size0
-                )
-                new_edge_chunks_idx = (
-                    sc.slab_offsets[-1][sc.slab_indices[-1] == new_slab_idx]
-                    // chunk_size0
-                )
-                stops[new_edge_chunks_idx] -= last_chunk_trim
+            stops[new_edge_chunks_idx] -= last_chunk_trim
 
-            # Append the new records to the on-disk hash table in a single write.
-            disk = _sc_hash_table_to_data_v4(
-                new_hashes, starts, stops, hash_table.dtype
-            )
-            hash_table.resize((new_n_chunks,))
-            hash_table[prev_n_chunks:] = disk
-            # Atomic update marking the successful commit (except the VDS creation).
-            # In case of a crash halfway through commit, you will have the
-            # raw_data or raw_data+hash_table larger than this.
-            hash_table.attrs["largest_index"] = new_n_chunks
+        # Append the new records to the on-disk hash table in a single write.
+        disk = _sc_hash_table_to_data_v4(new_hashes, starts, stops, hash_table.dtype)
+        hash_table.resize((new_n_chunks,))
+        hash_table[prev_n_chunks:] = disk
+        # Atomic update marking the successful commit (except the VDS creation).
+        # In case of a crash halfway through commit, you will have the
+        # raw_data or raw_data+hash_table larger than this.
+        hash_table.attrs["largest_index"] = new_n_chunks
 
-            # commit() wrote the new chunks through a RawDataView onto
-            # raw_data[prev_len:], so their slab_offsets are relative to prev_len.
-            # Shift them to absolute raw_data offsets and collapse the new base
-            # slab onto slab 1 (raw_data).
-            if n_base_before:
-                new_slab_mask = sc.slab_indices == new_slab_idx
-                sc.slab_indices[new_slab_mask] = 1
-                sc.slab_offsets[new_slab_mask] += prev_len
+        # commit() wrote the new chunks through a RawDataView onto
+        # raw_data[prev_len:], so their slab_offsets are relative to prev_len.
+        # Shift them to absolute raw_data offsets and collapse the new base slab onto
+        # slab 1 (raw_data).
+        if n_base_before:
+            new_slab_mask = sc.slab_indices == new_slab_idx
+            sc.slab_indices[new_slab_mask] = 1
+            sc.slab_offsets[new_slab_mask] += prev_len
 
-            # Collapse back to a single raw_data base slab, so the committed
-            # StagedChangesArray is structurally identical to a freshly-loaded
-            # InMemoryDataset.
-            sc.slabs = [sc.slabs[0], _raw_data_as_base_slab(raw_data, sc.dtype)]
-            sc.n_base_slabs = 1
-
-    except BaseException:
-        # Discard every extent change from this attempt. Besides avoiding stale hash
-        # rows, this makes a retry extend the trusted portion of raw_data again instead
-        # of writing into the same newly allocated extent a second time. In particular,
-        # HDF5 1.14 on Windows can expose the uninitialized contents of a re-extended
-        # chunk after another commit attempt fails between the data and hash-table
-        # writes.
-        raw_data.resize((prev_len, *raw_data.shape[1:]))
-        hash_table.resize((prev_n_chunks,))
-        hash_table.attrs["largest_index"] = prev_n_chunks
-        # Flush extent and metadata changes before a retry. In particular, HDF5 1.14
-        # on Windows can otherwise expose uninitialized contents from the re-extended
-        # raw_data chunk on the next commit attempt.
-        # NB: f may be a Group (e.g. tmp_group); only File has flush().
-        raw_data.file.flush()
-        if commit_state is not None:
-            commit_state.reset()
-        raise
+        # Collapse back to a single raw_data base slab, so the committed
+        # StagedChangesArray is structurally identical to a freshly-loaded
+        # InMemoryDataset.
+        sc.slabs = [sc.slabs[0], _raw_data_as_base_slab(raw_data, sc.dtype)]
+        sc.n_base_slabs = 1
 
     sc.hash_tables = sc.hash_tables[:1] + [None] * sc.n_base_slabs
 
@@ -613,8 +597,6 @@ def commit_staged_changes(
         n_appended_chunks,
         np.prod(sc.slab_indices.shape) - n_appended_chunks,
     )
-
-    return commit_state
 
 
 def _chunk_blocks(
@@ -659,7 +641,7 @@ def rewrite_dataset(
     *,
     chunks: tuple[int, ...],
     fillvalue: Any = None,
-    max_bytes: int = REWRITE_BUFFER_BYTES,
+    max_bytes: int | None = None,
 ) -> StagedChangesArray:
     """Copy every chunk of `data` into the `raw_data` of `f`, deduplicating it against
     the chunks already there, and return the committed StagedChangesArray describing
@@ -673,9 +655,13 @@ def rewrite_dataset(
     to the same locations as the old one, even where the data is unchanged.
 
     `data` is read one block of chunks at a time, so that peak memory usage is
-    O(max_bytes) instead of O(data.size). Deduplication is unaffected: each block uses
-    explicit call-scoped state that contains chunks written by previous blocks and by
-    previous versions. State is never global and is discarded after this rewrite.
+    O(max_bytes) instead of O(data.size). Deduplication is unaffected: each block is
+    deduplicated against the on-disk hash table, which by then already describes every
+    chunk written by the previous blocks and by the previous versions. That reload
+    costs O(chunks already on raw_data) per block, so `max_bytes` is grown with the
+    number of those chunks unless the caller asks for a specific size: keeping that
+    fixed cost well below a block's own work is what makes `recreate_dataset()` and
+    `modify_metadata()` scale linearly instead of quadratically.
 
     Parameters
     ----------
@@ -696,6 +682,9 @@ def rewrite_dataset(
         Maximum amount of memory, in bytes, to use to buffer the chunks in transit.
         Rounded up to one chunk. This is only indicative for object string dtypes,
         where the size of the buffer doesn't account for the strings themselves.
+        If None (the default), the size is picked by :func:`_rewrite_block_bytes` from
+        the number of chunks already on `raw_data`, within
+        :data:`REWRITE_BUFFER_BYTES` and :data:`REWRITE_BUFFER_BYTES_MAX`.
 
     See Also
     --------
@@ -709,17 +698,20 @@ def rewrite_dataset(
         data.shape, chunk_size=chunks, fill_value=fillvalue, dtype=data.dtype
     )
     raw_data = f["_version_data"][name]["raw_data"]
-    commit_state = CommitState()
+    if max_bytes is None:
+        hash_table = f["_version_data"][name]["hash_table"]
+        # largest_index is the only trustworthy chunk count; anything past it on
+        # raw_data is garbage left by a commit that crashed halfway through.
+        max_bytes = _rewrite_block_bytes(int(hash_table.attrs["largest_index"]))
 
     for block in _chunk_blocks(data.shape, chunks, data.dtype.itemsize, max_bytes):
         # The block read from `data` becomes the staged slabs, as views: nothing is
-        # copied. The explicit state deduplicates every block against all chunks
-        # already on raw_data, including those written by previous blocks, without
-        # rereading or rebuilding the hash table.
+        # copied. commit_staged_changes() deduplicates them against every chunk already
+        # on raw_data, including those written by the previous blocks.
         block_sc = StagedChangesArray.from_array(
             data[block], chunk_size=chunks, fill_value=fillvalue, as_base_slabs=False
         )
-        commit_staged_changes(f, name, block_sc, commit_state)
+        commit_staged_changes(f, name, block_sc)
         # The blocks are chunk-aligned. After the commit, the block's chunks lie on
         # raw_data (slab 1) or on the full slab (0); copy that into the full-size map.
         block_chunks = tuple(
