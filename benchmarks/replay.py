@@ -131,7 +131,6 @@ class TimeManyVersions(Benchmark):
             with self.vfile.stage_version(f"v{i}") as sv:
                 sv[NAME][i] = -1.0
         self.newf = tmp_group(self.file)
-        gc.collect()
 
     def time_recreate_dataset_many_versions(self):
         self.assert_clean_setup()
@@ -141,8 +140,9 @@ class TimeManyVersions(Benchmark):
         self.assert_clean_setup()
         modify_metadata(self.file, NAME, fillvalue=1.5)
 
-    def peakmem_baseline(self):
-        pass
-
-    peakmem_recreate_dataset_many_versions = time_recreate_dataset_many_versions
-    peakmem_modify_metadata_many_versions = time_modify_metadata_many_versions
+    track_peakmem_recreate_dataset_many_versions = peak_memory(
+        time_recreate_dataset_many_versions
+    )
+    track_peakmem_modify_metadata_many_versions = peak_memory(
+        time_modify_metadata_many_versions
+    )
