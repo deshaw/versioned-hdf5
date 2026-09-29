@@ -124,3 +124,39 @@ class TimeModifyMetadata(_ReplayBenchmark):
         modify_metadata(self.file, NAME, **self.kwargs)
 
     peakmem_modify_metadata = time_modify_metadata
+
+
+class TimeManyVersions(Benchmark):
+    number = 1
+    warmup_time = 0
+
+    # 16 MiB of float64 in 8 kiB chunks, i.e. 2,048 chunks per version
+    shape = (2 * 1024 * 1024,)
+    chunks = (1024,)
+    n_versions = 4
+
+    def setup(self):
+        super().setup()
+        with self.vfile.stage_version("v0") as sv:
+            sv.create_dataset(
+                NAME, data=self.rng.random(self.shape), chunks=self.chunks
+            )
+        for i in range(1, self.n_versions):
+            with self.vfile.stage_version(f"v{i}") as sv:
+                sv[NAME][i] = -1.0
+        self.newf = tmp_group(self.file)
+        gc.collect()
+
+    def time_recreate_dataset_many_versions(self):
+        self.assert_clean_setup()
+        recreate_dataset(self.file, NAME, self.newf)
+
+    def time_modify_metadata_many_versions(self):
+        self.assert_clean_setup()
+        modify_metadata(self.file, NAME, fillvalue=1.5)
+
+    def peakmem_baseline(self):
+        pass
+
+    peakmem_recreate_dataset_many_versions = time_recreate_dataset_many_versions
+    peakmem_modify_metadata_many_versions = time_modify_metadata_many_versions
