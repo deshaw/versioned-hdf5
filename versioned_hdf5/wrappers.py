@@ -1185,6 +1185,50 @@ class InMemorySparseDataset(BufferMixin, FiltersMixin, DatasetLike):
         self.staged_changes.resize(new_shape)
 
 
+class MetadataTransformView(DatasetLike, FiltersMixin):
+    """Disk-backed dataset view used for data-changing metadata rewrites;
+
+    Keep the source dataset on disk and apply changes to each block instead.
+
+    See Also
+    --------
+    modify_metadata
+    """
+
+    dataset: Dataset
+    _data_transform: bool
+
+    def __init__(
+        self,
+        name: str,
+        dataset: Dataset,
+        *,
+        parent: InMemoryGroup,
+        fillvalue: Any,
+        chunks: tuple[int, ...] | None,
+        dtype: Any,
+    ):
+        self.dataset = dataset
+        self.name = name
+        self.dtype = np.dtype(dtype)
+        self._fillvalue = fillvalue
+        self.shape = dataset.shape
+        self.chunks = chunks
+        self.attrs = dict(dataset.attrs)
+        self.parent = parent
+
+    def __getitem__(self, index):
+        data = self.dataset[index]
+        assert isinstance(data, (np.ndarray, np.generic))
+        if data.dtype != self.dtype:
+            data = data.astype(self.dtype)
+        if self._fillvalue != self.dataset.fillvalue:
+            if not data.flags.writeable:
+                data = np.array(data, copy=True)
+            data[data == self.dataset.fillvalue] = self._fillvalue
+        return data
+
+
 def _normalize_resize_args(
     shape: tuple[int, ...],
     size: int | list[int] | tuple[int, ...] | np.ndarray,
