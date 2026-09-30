@@ -301,7 +301,10 @@ def test_delete_version(h5file):
     assert list(versions) == ["__first_version__"]
 
 
-def test_forbidden_dataset_name(h5file):
+@pytest.mark.parametrize(
+    "name", ["versions", "versions/x", "/versions/x", "./versions/x", "a/../versions/x"]
+)
+def test_forbidden_dataset_name(h5file, name):
     data = np.concatenate(
         (
             np.ones((2 * DEFAULT_CHUNK_SIZE,)),
@@ -310,7 +313,7 @@ def test_forbidden_dataset_name(h5file):
         )
     )
     v1 = create_version_group(h5file, "v1")
-    dataset = InMemoryArrayDataset("versions", data, parent=v1)
+    dataset = InMemoryArrayDataset(name, data, parent=v1)
 
-    with pytest.raises(ValueError):
-        commit_version(v1, {"versions": dataset})
+    with pytest.raises(ValueError, match="forbidden dataset or group name"):
+        commit_version(v1, {name: dataset})
