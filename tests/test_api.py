@@ -1,4 +1,5 @@
 import datetime
+import gc
 import itertools
 import logging
 import os
@@ -1793,6 +1794,43 @@ def test_closes(vfile):
     assert repr(vfile) == "<Closed VersionedHDF5File>"
 
 
+def test_close_after_underlying_file_closed(vfile):
+    with vfile.stage_version("version1") as group:
+        group["data"] = np.arange(5)
+
+    version = vfile["version1"]
+    h5py_file = vfile.f
+
+    cache = InMemoryGroup._cache_for_handle(h5py_file)
+    assert version.id in cache.groups
+
+    h5py_file.close()
+    assert vfile.closed
+
+    vfile.close()
+
+    assert InMemoryGroup._cache_for_handle(h5py_file) is not cache
+    assert not hasattr(vfile, "f")
+
+
+def test_cache_dropped_when_file_collected(tmp_path):
+    """The wrapper cache is keyed by id(handle), so it must not outlive the handle,
+    whose id it could otherwise be mistaken for.
+    """
+    with h5py.File(tmp_path / "file.h5", "w") as h5file:
+        vfile = VersionedHDF5File(h5file)
+        with vfile.stage_version("version1") as group:
+            group["data"] = np.arange(5)
+        assert_equal(vfile["version1"]["data"][:], np.arange(5))  # Populate cache
+        key = id(h5file)
+        assert key in InMemoryGroup._caches
+        # The wrappers hold the handle they were bound to, so drop them too.
+        del vfile, group, h5file
+    gc.collect()
+
+    assert key not in InMemoryGroup._caches
+
+
 def test_scalar_dataset(vfile):
     """Scalar (ndim=0) datasets are supported by h5py, but implementing them in
     versioned_hdf5 would take a lot of special-casing as raw_data can't go below
@@ -2037,6 +2075,52 @@ def test_read_only(setup_vfile):
             file[timestamp]["data"][0] = 1
         with pytest.raises(ValueError):
             file[timestamp]["data2"] = [1, 2, 3]
+
+
+def test_read_only_handle_does_not_reuse_wrapper(tmp_path):
+    filename = tmp_path / "file.h5"
+    data = np.arange(5)
+    with (
+        h5py.File(filename, "w") as f,
+        VersionedHDF5File(f).stage_version("v0") as group,
+    ):
+        group["x"] = data
+
+    with h5py.File(filename, "r+") as f, h5py.File(filename, "r") as f2:
+        first = VersionedHDF5File(f)
+        assert f2.mode == "r+"
+
+        second = VersionedHDF5File(f2)
+        # Exercise second handle's wrapper cache when h5py reports shared r+ mode.
+        _ = second["v0"]["x"]
+        f2.close()
+
+        assert_equal(first["v0"]["x"][:], data)
+
+
+def test_writable_handles_do_not_reuse_wrapper(tmp_path):
+    filename = tmp_path / "file.h5"
+    data = np.arange(5)
+    with (
+        h5py.File(filename, "w") as f,
+        VersionedHDF5File(f).stage_version("v0") as group,
+    ):
+        group["x"] = data
+
+    with h5py.File(filename, "r+") as f1, h5py.File(filename, "r+") as f2:
+        first = VersionedHDF5File(f1)
+        second = VersionedHDF5File(f2)
+
+        first_group = first["v0"]
+        second_group = second["v0"]
+        first_x = first_group["x"]
+        second_x = second_group["x"]
+
+        assert first_group is not second_group
+        assert first_x is not second_x
+
+        f2.close()
+        assert_equal(first_x[:], data)
 
 
 def test_delete_datasets(vfile):
