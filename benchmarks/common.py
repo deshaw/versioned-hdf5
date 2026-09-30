@@ -1,5 +1,6 @@
 import gc
 import os
+import tempfile
 import tracemalloc
 from functools import wraps
 
@@ -8,6 +9,11 @@ import numpy as np
 from numpy.typing import DTypeLike
 
 from versioned_hdf5 import VersionedHDF5File
+
+try:
+    import memray
+except ImportError:  # Not available on Windows
+    memray = None
 
 try:
     from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS
@@ -30,9 +36,6 @@ def peak_memory(func):
     resident set size of the whole benchmark process (``getrusage()``), this exclusively
     measures what the benchmark function itself allocates.
 
-    NumPy registers its own allocations with tracemalloc, so arrays are accounted for;
-    memory that libhdf5 allocates internally is not.
-
     Expose it under a ``track_*`` name, e.g.::
 
         def time_something(self, ...):
@@ -47,6 +50,11 @@ def peak_memory(func):
     Do not use a ``mem_*`` name: that prefix belongs to asv's pympler-based benchmark
     type, which reports the size of the object that the function returns; a scalar
     measurement like this one always comes out as 0 there.
+
+    Notes
+    -----
+    On Windows, where memray is not available, this does not measure memory allocated by
+    libhdf5.
     """
 
     @wraps(func)
@@ -54,12 +62,23 @@ def peak_memory(func):
         # Collect before starting, so that garbage left behind by setup() is not freed
         # - and therefore untracked - midway through the measurement.
         gc.collect()
-        tracemalloc.start()
-        try:
-            func(*args, **kwargs)
-            return tracemalloc.get_traced_memory()[1]
-        finally:
-            tracemalloc.stop()
+
+        if memray:
+            # Linux / MacOSX
+            with tempfile.TemporaryDirectory() as tmp:
+                path = os.path.join(tmp, "memray.bin")
+                with memray.Tracker(path, trace_python_allocators=True):
+                    func(*args, **kwargs)
+                return memray.FileReader(path).metadata.peak_memory
+        else:
+            # Windows. tracemalloc() only tracks memory allocated by Python and NumPy,
+            # but not by libhdf5.
+            tracemalloc.start()
+            try:
+                func(*args, **kwargs)
+                return tracemalloc.get_traced_memory()[1]
+            finally:
+                tracemalloc.stop()
 
     # Read by asv_runner's TrackBenchmark, which otherwise reports the value in
     # asv's default unit of "unit".
