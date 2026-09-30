@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import abc
 import math
+import os
 import posixpath
 import textwrap
 import warnings
@@ -16,7 +17,7 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable
 from contextlib import suppress
 from typing import Any, ClassVar, Generic, Literal, TypeVar
-from weakref import WeakValueDictionary
+from weakref import ReferenceType, WeakValueDictionary, ref
 
 import numpy as np
 from h5py import Dataset, Empty, Group, h5a, h5d, h5g, h5i, h5r, h5s, h5t, string_dtype
@@ -46,37 +47,91 @@ except ModuleNotFoundError:
 T = TypeVar("T")
 
 
+class _GroupCache:
+    """The InMemoryGroup wrappers belonging to one Python file handle.
+
+    HDF5 hands out the same object id to every handle that has a file open, and h5py
+    derives ``File.__eq__``/``File.__hash__`` from it, so two handles to the same file
+    compare (and hash) equal. A cache keyed on the handle itself would therefore mix the
+    two up and hand out wrappers bound to a handle that may already be closed. The
+    registry is keyed on ``id(handle)`` instead, i.e. Python object ID instead of HDF5
+    ID, and the cache is dropped when the handle is collected.
+    """
+
+    key: int
+    handle: ReferenceType[Group]
+    groups: WeakValueDictionary[h5g.GroupID, InMemoryGroup]
+
+    __slots__ = ("key", "handle", "groups")
+
+    def __init__(self, handle: Group) -> None:
+        self.key = id(handle)
+        self.handle = ref(handle, self._discard)
+        self.groups = WeakValueDictionary()
+
+    def _discard(self, _ref: ReferenceType[Group]) -> None:
+        """Drop the cache of a handle that is being garbage collected."""
+        if InMemoryGroup._caches.get(self.key) is self:
+            del InMemoryGroup._caches[self.key]
+
+    def invalidate(self) -> None:
+        """Forget everything that was read from the file, both in the live instances
+        and in the cache, so that it is read again on next access.
+        """
+        for group in list(self.groups.values()):
+            # Uncommitted groups hold data that only exists in memory; dropping it
+            # would silently discard the user's staged changes.
+            if group._committed:
+                group._data.clear()
+                group._subgroups.clear()
+
+
+def _is_under(name: str | bytes | None, prefix: str | bytes | None) -> bool:
+    """Whether the group ``name`` is ``prefix`` itself or one of its subgroups."""
+    if name is None or prefix is None:
+        return False
+    # h5py names a group with bytes if the file was opened with a bytes filename.
+    name, prefix = os.fsdecode(name), os.fsdecode(prefix)
+    return name == prefix or name.startswith(prefix.rstrip("/") + "/")
+
+
 class InMemoryGroup(Group):
-    _instances: ClassVar[WeakValueDictionary[h5g.GroupID, InMemoryGroup]] = (
-        WeakValueDictionary({})
-    )
+    #: Wrapper cache of every live file handle, keyed by ``id(handle)``.
+    _caches: ClassVar[dict[int, _GroupCache]] = {}
 
     _subgroups: dict[str, InMemoryGroup]
     _data: dict[str, DatasetLike]
     _chunks: defaultdict[str, tuple[int, ...] | None]
     _filters: defaultdict[str, Filters]
     _parent: InMemoryGroup | None
+    _handle: Group
     _initialized: bool
     _committed: bool
 
-    def __new__(cls, bind: h5g.GroupID, _committed: bool = False):
-        # Make sure each group only corresponds to one InMemoryGroup instance.
-        # Otherwise a new instance would lose track of any datasets or
+    def __new__(cls, bind: h5g.GroupID, handle: Group, *, _committed: bool = False):
+        # Make sure each group only corresponds to one InMemoryGroup instance per Python
+        # file handle. Otherwise a new instance would lose track of any datasets or
         # subgroups created in the old one.
-        if bind in cls._instances:
-            return cls._instances[bind]
+        cache = cls._cache_for_handle(handle)
+        if bind in cache.groups:
+            return cache.groups[bind]
         obj = super().__new__(cls)
         obj._initialized = False
-        cls._instances[bind] = obj
+        obj._handle = handle
+        cache.groups[bind] = obj
         return obj
 
-    def __init__(self, bind: h5g.GroupID, _committed: bool = False):
+    def __init__(self, bind: h5g.GroupID, handle: Group, *, _committed: bool = False):  # noqa: ARG002
         """Create a new InMemoryGroup object by binding to a low-level GroupID.
 
         Parameters
         ----------
         bind : h5g.GroupID
             Low-level GroupID to bind to
+        handle : h5py.Group
+            Handle to the object this group belongs to. Normally an h5py.File, which
+            is an h5py.Group subclass; a versioned file may also be rooted at a
+            subgroup, and versioned_hdf5.replay.tmp_group() hands one out too.
         _committed : bool
             True if the group has already been committed, False otherwise.
         """
@@ -100,21 +155,50 @@ class InMemoryGroup(Group):
                 obj.close()
 
     @classmethod
-    def _invalidate_all(cls):
-        """Forget everything that was read from the file, both in the live instances and
-        in the instances registry, so that it is read again on next access.
+    def _cache_for_handle(cls, handle: Group) -> _GroupCache:
+        """Return the wrapper cache of one file handle, creating it if necessary.
+
+        A cached entry is only reused if it still belongs to this very handle.
+        """
+        key = id(handle)
+        cache = cls._caches.get(key)
+        if cache is None or cache.handle() is not handle:
+            cache = cls._caches[key] = _GroupCache(handle)
+        return cache
+
+    @classmethod
+    def _invalidate_all(cls) -> None:
+        """Forget everything that was read from the file, in every live instance and in
+        every cache, so that it is read again on next access.
 
         This must be called by :func:`~versioned_hdf5.replay.delete_versions`, which
         moves the chunks of ``raw_data`` around and recreates all virtual datasets
         pointing to them.
         """
-        for group in list(cls._instances.values()):
-            # Uncommitted groups hold data that only exists in memory; dropping it
-            # would silently discard the user's staged changes.
-            if group._committed:
-                group._data.clear()
-                group._subgroups.clear()
-        cls._instances.clear()
+        for cache in list(cls._caches.values()):
+            cache.invalidate()
+
+    @classmethod
+    def _invalidate_file(cls, handle: Group) -> None:
+        """Forget everything cached for one file handle and drop the cache itself."""
+        cache = cls._caches.get(id(handle))
+        if cache is not None and cache.handle() is handle:
+            cache.invalidate()
+            del cls._caches[cache.key]
+
+    @classmethod
+    def _invalidate_named(cls, *names: str | bytes | None) -> None:
+        """Drop the cached wrappers of the groups at or below ``names``.
+
+        ``None`` names are ignored, and so are groups that HDF5 can no longer name.
+        """
+        for cache in list(cls._caches.values()):
+            for bind in [
+                bind
+                for bind in cache.groups
+                if any(_is_under(h5i.get_name(bind), name) for name in names)
+            ]:
+                del cache.groups[bind]
 
     # Based on Group.__repr__
     def __repr__(self):
@@ -151,7 +235,7 @@ class InMemoryGroup(Group):
         # h5py.Group, (i.e. the file itself).
         res = super().__getitem__(name)
         if isinstance(res, Group):
-            self._subgroups[name] = self.__class__(res.id)
+            self._subgroups[name] = InMemoryGroup(res.id, self._handle)
             return self._subgroups[name]
         if isinstance(res, Dataset):
             self._add_to_data(name, res)
@@ -180,7 +264,7 @@ class InMemoryGroup(Group):
             self._subgroups[name] = obj
             return
         if isinstance(obj, Group):
-            self._subgroups[name] = InMemoryGroup(obj.id)
+            self._subgroups[name] = InMemoryGroup(obj.id, self._handle)
             return
 
         if isinstance(obj, Dataset):
@@ -269,7 +353,8 @@ class InMemoryGroup(Group):
             raise ValueError(
                 "Root level groups cannot be created inside of versioned groups"
             )
-        group = type(self)(super().create_group(name, track_order=track_order).id)
+        group_id = super().create_group(name, track_order=track_order).id
+        group = InMemoryGroup(group_id, self._handle)
         g = group
         n = name
         while n:
@@ -277,7 +362,7 @@ class InMemoryGroup(Group):
             if not dirname:
                 parent = self
             else:
-                parent = type(self)(g.parent.id)
+                parent = InMemoryGroup(g.parent.id, self._handle)
             parent._subgroups[basename] = g
             g.parent = parent
             g = parent
