@@ -1195,6 +1195,30 @@ def test_recreate_raw_data(vfile):
         np.testing.assert_equal(a, b)
 
 
+@pytest.mark.parametrize("case", ["size0", "full"])
+def test_delete_versions_no_chunks_to_keep(vfile, case):
+    """delete_versions() path works when it deletes all chunks in raw_data,
+    i.e. because all surviving versions
+
+    - are size 0, or
+    - are full of fillvalue.
+    """
+    with vfile.stage_version("v1") as g:
+        g.create_dataset("x", data=np.arange(3), chunks=(2,))
+
+    with vfile.stage_version("v2") as g:
+        g["x"].resize((0,))
+        if case == "full":
+            g["x"].resize((3,))
+
+    delete_versions(vfile.f, ["v1"])
+
+    assert vfile.f["_version_data/x/raw_data"].shape == (0,)
+    ds = vfile["v2"]["x"]
+    expect = [0, 0, 0] if case == "full" else []
+    np.testing.assert_equal(ds, np.array(expect))
+
+
 def test_recreate_hashtable(vfile):
     setup2(vfile)
     chunks_map = _recreate_raw_data(vfile.f, "test_data", ["version1"])
