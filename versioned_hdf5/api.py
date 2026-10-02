@@ -197,6 +197,22 @@ class VersionedHDF5File:
         """
         self.f["_version_data/versions"].attrs["data_version"] = version
 
+    def _committed_version_group(self, version: str) -> h5py.Group | InMemoryGroup:
+        """Return a committed version group, wrapped so that it cannot be written to.
+
+        A read-only file needs no wrapping, as there is nothing to protect it from.
+        Note that ``self.f`` may be an h5py Group, which has no mode of its own.
+        """
+        g = self._versions[version]
+        if not g.attrs["committed"]:
+            raise ValueError(
+                "Version groups cannot be accessed from the VersionedHDF5File object "
+                "before they are committed."
+            )
+        if self.f.file.mode == "r":
+            return g
+        return InMemoryGroup(g._id, self.f, _committed=True)
+
     def get_version_by_name(self, version):
         if version.startswith("/"):
             raise ValueError(
@@ -210,27 +226,11 @@ class VersionedHDF5File:
         if version not in self._versions:
             raise KeyError(f"Version {version!r} not found")
 
-        g = self._versions[version]
-        if not g.attrs["committed"]:
-            raise ValueError(
-                "Version groups cannot be accessed from the VersionedHDF5File object "
-                "before they are committed."
-            )
-        if self.f.file.mode == "r":
-            return g
-        return InMemoryGroup(g._id, _committed=True)
+        return self._committed_version_group(version)
 
     def get_version_by_timestamp(self, timestamp, exact=False):
         version = get_version_by_timestamp(self.f, timestamp, exact=exact)
-        g = self._versions[version]
-        if not g.attrs["committed"]:
-            raise ValueError(
-                "Version groups cannot be accessed from the VersionedHDF5File object "
-                "before they are committed."
-            )
-        if self.f.file.mode == "r":
-            return g
-        return InMemoryGroup(g._id, _committed=True)
+        return self._committed_version_group(version)
 
     def __getitem__(self, item):
         if self.closed:
@@ -341,9 +341,11 @@ class VersionedHDF5File:
         """
         Make sure the VersionedHDF5File object is no longer reachable.
         """
-        if not self._closed:
+        if hasattr(self, "f"):
+            InMemoryGroup._invalidate_file(self.f)
+            self._version_cache.clear()
             del self.f
-            self._closed = True
+        self._closed = True
 
     def __repr__(self):
         """
