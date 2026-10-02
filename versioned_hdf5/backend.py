@@ -28,8 +28,8 @@ DEFAULT_CHUNK_SIZE = 2**12
 
 # Amount of RAM that rewrite_dataset() can allocate as a scratch area. This is a
 # compromise between minimizing RAM usage and runtime. Buffer size scales with the
-# number of raw chunks, between 16 MiB for <=8192 chunks and 512 MiB for >=262k chunks.
-REWRITE_BLOCK_BYTES_MIN = 2**24  # 16 MiB
+# number of raw chunks, between 64 MiB for <=32k chunks and 512 MiB for >=262k chunks.
+REWRITE_BLOCK_BYTES_MIN = 2**26  # 64 MiB
 REWRITE_BLOCK_BYTES_MAX = 2**29  # 512 MiB
 REWRITE_BLOCK_BYTES_PER_CHUNK = 2**11  # 2 kiB
 
@@ -618,7 +618,7 @@ def _rewrite_block_bytes(n_raw_chunks: int) -> int:
     that fixed cost grows with the number of those chunks (~0.65us per chunk), whereas
     the block's own work (hashing and writing) grows with its size (~4us per MiB).
     Sizing the block from the on-disk table keeps the fixed cost a small fraction of the
-    work and costs only more RAM, capped by REWRITE_BUFFER_BYTES_MAX. That is enough to
+    work and costs only more RAM, capped by REWRITE_BLOCK_BYTES_MAX. That is enough to
     make `recreate_dataset()` and `modify_metadata()` linear in practice.
     """
     return min(
