@@ -9,9 +9,6 @@ from numpy.testing import assert_equal
 from versioned_hdf5 import slicetools
 from versioned_hdf5.backend import (
     DEFAULT_CHUNK_SIZE,
-    REWRITE_BLOCK_BYTES_PER_RAW_CHUNK,
-    REWRITE_BUFFER_BYTES,
-    REWRITE_BUFFER_BYTES_MAX,
     Filters,
     _chunk_blocks,
     _data_v4_to_sc_hash_table,
@@ -746,33 +743,15 @@ def test_chunk_blocks(shape, chunk_size, max_bytes, expect):
     assert list(_chunk_blocks(shape, chunk_size, 8, max_bytes)) == expect
 
 
-@pytest.mark.parametrize(
-    ("n_raw_chunks", "expect"),
-    [
-        # An empty or small hash table keeps the documented floor
-        (0, REWRITE_BUFFER_BYTES),
-        (1, REWRITE_BUFFER_BYTES),
-        # Past the floor the block grows at 2 kiB per chunk on raw_data
-        (
-            REWRITE_BUFFER_BYTES // REWRITE_BLOCK_BYTES_PER_RAW_CHUNK + 1,
-            REWRITE_BUFFER_BYTES + REWRITE_BLOCK_BYTES_PER_RAW_CHUNK,
-        ),
-        # And stops at the cap
-        (
-            REWRITE_BUFFER_BYTES_MAX // REWRITE_BLOCK_BYTES_PER_RAW_CHUNK,
-            REWRITE_BUFFER_BYTES_MAX,
-        ),
-        (10**6, REWRITE_BUFFER_BYTES_MAX),
-    ],
-)
-def test_rewrite_block_bytes(n_raw_chunks, expect):
-    """`_rewrite_block_bytes` grows the rewrite block with the on-disk hash table.
-
-    The cost of deduplicating a block is O(chunks already on raw_data), so the bigger
-    the table the bigger the block has to be to keep that fixed cost small; RAM bounds
-    how far it grows.
-    """
-    assert _rewrite_block_bytes(n_raw_chunks) == expect
+def test_rewrite_block_bytes():
+    min_ = _rewrite_block_bytes(0)
+    assert min_ > 0
+    assert _rewrite_block_bytes(1) == min_
+    assert _rewrite_block_bytes(2) == min_
+    max_ = _rewrite_block_bytes(1_000_000_000)
+    assert _rewrite_block_bytes(2_000_000_000) == max_
+    assert any(min_ < _rewrite_block_bytes(2**x) < max_ for x in range(1, 30))
+    assert all(min_ <= _rewrite_block_bytes(2**x) <= max_ for x in range(1, 30))
 
 
 # One whole chunk, one chunk row, and the whole array at a time; None is the

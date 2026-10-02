@@ -25,20 +25,14 @@ if TYPE_CHECKING:
     from versioned_hdf5.wrappers import FiltersMixin
 
 DEFAULT_CHUNK_SIZE = 2**12
-# Amount of RAM that rewrite_dataset() can allocate as a scratch area
-# This is a compromise between minimizing RAM usage and runtime.
-REWRITE_BUFFER_BYTES = 2**26  # 64 MiB
-# Upper bound for that scratch area. rewrite_dataset() grows the block above
-# REWRITE_BUFFER_BYTES when the on-disk hash table gets large; see
-# _rewrite_block_bytes().
-REWRITE_BUFFER_BYTES_MAX = 2**29  # 512 MiB
-# Bytes of scratch area to allocate per chunk already on raw_data. Deduplicating one
-# block costs O(chunks already on raw_data) (reading the on-disk hash table and
-# rebuilding the deduplication map), while the block's own work (hash + write) costs
-# O(block bytes): the two are equal at roughly 1.6 kiB of block per chunk already on
-# raw_data, measured on Linux with 10 kiB chunks, so 2 kiB keeps the per-block cost
-# below a tenth of the work.
-REWRITE_BLOCK_BYTES_PER_RAW_CHUNK = 2**11
+
+# Amount of RAM that rewrite_dataset() can allocate as a scratch area. This is a
+# compromise between minimizing RAM usage and runtime. Buffer size scales with the
+# number of raw chunks, between 16 MiB for <=8192 chunks and 512 MiB for >=262k chunks.
+REWRITE_BLOCK_BYTES_MIN = 2**24  # 16 MiB
+REWRITE_BLOCK_BYTES_MAX = 2**29  # 512 MiB
+REWRITE_BLOCK_BYTES_PER_CHUNK = 2**11  # 2 kiB
+
 DATA_VERSION = 4
 # data_version 2 has broken hashtables, always need to rebuild
 # data_version 3 hash collisions for string arrays which, when concatenated,
@@ -432,23 +426,6 @@ def _sc_hash_table_to_data_v4(
     return out
 
 
-def _rewrite_block_bytes(n_raw_chunks: int) -> int:
-    """Scratch-area size, in bytes, for `rewrite_dataset()`.
-
-    A block of chunks is deduplicated against every chunk already on `raw_data`, and
-    that fixed cost grows with the number of those chunks (~0.65 us per chunk measured
-    on Linux: reading the on-disk hash table plus rebuilding the deduplication map),
-    whereas the block's own work (hashing and writing) grows with its size (~4 us per
-    MiB). Sizing the block from the on-disk table keeps the fixed cost a small fraction
-    of the work and costs only more RAM, within REWRITE_BUFFER_BYTES_MAX. That is
-    enough to make `recreate_dataset()` and `modify_metadata()` linear in practice.
-    """
-    return min(
-        REWRITE_BUFFER_BYTES_MAX,
-        max(REWRITE_BUFFER_BYTES, REWRITE_BLOCK_BYTES_PER_RAW_CHUNK * n_raw_chunks),
-    )
-
-
 def _raw_data_as_base_slab(raw_data: Dataset, dtype: np.dtype):
     """Return `raw_data`, to be used as a base slab of a StagedChangesArray of the
     given dtype.
@@ -634,6 +611,22 @@ def _chunk_blocks(
         )
 
 
+def _rewrite_block_bytes(n_raw_chunks: int) -> int:
+    """Scratch-area size, in bytes, for `rewrite_dataset()`.
+
+    A block of chunks is deduplicated against every chunk already on `raw_data`, and
+    that fixed cost grows with the number of those chunks (~0.65us per chunk), whereas
+    the block's own work (hashing and writing) grows with its size (~4us per MiB).
+    Sizing the block from the on-disk table keeps the fixed cost a small fraction of the
+    work and costs only more RAM, capped by REWRITE_BUFFER_BYTES_MAX. That is enough to
+    make `recreate_dataset()` and `modify_metadata()` linear in practice.
+    """
+    return min(
+        REWRITE_BLOCK_BYTES_MAX,
+        max(REWRITE_BLOCK_BYTES_MIN, REWRITE_BLOCK_BYTES_PER_CHUNK * n_raw_chunks),
+    )
+
+
 def rewrite_dataset(
     f,
     name: str,
@@ -657,11 +650,7 @@ def rewrite_dataset(
     `data` is read one block of chunks at a time, so that peak memory usage is
     O(max_bytes) instead of O(data.size). Deduplication is unaffected: each block is
     deduplicated against the on-disk hash table, which by then already describes every
-    chunk written by the previous blocks and by the previous versions. That reload
-    costs O(chunks already on raw_data) per block, so `max_bytes` is grown with the
-    number of those chunks unless the caller asks for a specific size: keeping that
-    fixed cost well below a block's own work is what makes `recreate_dataset()` and
-    `modify_metadata()` scale linearly instead of quadratically.
+    chunk written by the previous blocks and by the previous versions.
 
     Parameters
     ----------
@@ -675,16 +664,15 @@ def rewrite_dataset(
         e.g. a NumPy array, a h5py Dataset, or any of versioned-hdf5's dataset wrappers
     chunks:
         shape of a single chunk
-    fillvalue:
+    fillvalue, optional:
         Fill value of the dataset. Chunks that are entirely full of it are not
         written to raw_data at all.
-    max_bytes:
+    max_bytes, optional:
         Maximum amount of memory, in bytes, to use to buffer the chunks in transit.
         Rounded up to one chunk. This is only indicative for object string dtypes,
         where the size of the buffer doesn't account for the strings themselves.
-        If None (the default), the size is picked by :func:`_rewrite_block_bytes` from
-        the number of chunks already on `raw_data`, within
-        :data:`REWRITE_BUFFER_BYTES` and :data:`REWRITE_BUFFER_BYTES_MAX`.
+        If omitted, the size is chosen dynamically depending on the number of
+        chunks in ``raw_data`` in order to optimize throughput.
 
     See Also
     --------
@@ -707,7 +695,10 @@ def rewrite_dataset(
     for block in _chunk_blocks(data.shape, chunks, data.dtype.itemsize, max_bytes):
         # The block read from `data` becomes the staged slabs, as views: nothing is
         # copied. commit_staged_changes() deduplicates them against every chunk already
-        # on raw_data, including those written by the previous blocks.
+        # on raw_data, including those written by the previous blocks. Note it reloads
+        # raw_data's hash table from disk at every block and writes back the new rows as
+        # it goes. Keeping the table in memory across blocks was measured to buy nothing
+        # at realistic block sizes.
         block_sc = StagedChangesArray.from_array(
             data[block], chunk_size=chunks, fill_value=fillvalue, as_base_slabs=False
         )
