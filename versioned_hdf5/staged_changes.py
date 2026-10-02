@@ -449,16 +449,12 @@ class StagedChangesArray(MutableMapping[Any, T]):
                 until it's consumed by __setitem__.
                 This is useful for debugging and testing.
         """
-        # When writeable=False, we're going to abort the operation later.
-        # Having copy=False would result in a corrupted state.
-        copy = copy or not self.slab_indices.flags.writeable
-
         return SetItemPlan(
             idx,
             shape=self.shape,
             chunk_size=self.chunk_size,
-            slab_indices=self.slab_indices.copy() if copy else self.slab_indices,
-            slab_offsets=self.slab_offsets.copy() if copy else self.slab_offsets,
+            slab_indices=_ensure_writeable(self.slab_indices, copy=copy),
+            slab_offsets=_ensure_writeable(self.slab_offsets, copy=copy),
             n_slabs=self.n_slabs,
             n_base_slabs=self.n_base_slabs,
         )
@@ -470,8 +466,6 @@ class StagedChangesArray(MutableMapping[Any, T]):
         --------
         _setitem_plan
         """
-        copy = copy or not self.slab_indices.flags.writeable
-
         if shape[0] > self.shape[0] and self.shape[0] % self.chunk_size[0]:
             slab_lengths = [0 if slab is None else slab.shape[0] for slab in self.slabs]
         else:
@@ -481,8 +475,8 @@ class StagedChangesArray(MutableMapping[Any, T]):
             old_shape=self.shape,
             new_shape=shape,
             chunk_size=self.chunk_size,
-            slab_indices=self.slab_indices.copy() if copy else self.slab_indices,
-            slab_offsets=self.slab_offsets.copy() if copy else self.slab_offsets,
+            slab_indices=_ensure_writeable(self.slab_indices, copy=copy),
+            slab_offsets=_ensure_writeable(self.slab_offsets, copy=copy),
             n_slabs=self.n_slabs,
             n_base_slabs=self.n_base_slabs,
             slab_lengths=slab_lengths,
@@ -495,13 +489,11 @@ class StagedChangesArray(MutableMapping[Any, T]):
         --------
         _setitem_plan
         """
-        copy = copy or not self.slab_indices.flags.writeable
-
         return LoadPlan(
             shape=self.shape,
             chunk_size=self.chunk_size,
-            slab_indices=self.slab_indices.copy() if copy else self.slab_indices,
-            slab_offsets=self.slab_offsets.copy() if copy else self.slab_offsets,
+            slab_indices=_ensure_writeable(self.slab_indices, copy=copy),
+            slab_offsets=_ensure_writeable(self.slab_offsets, copy=copy),
             n_slabs=self.n_slabs,
             n_base_slabs=self.n_base_slabs,
         )
@@ -541,8 +533,6 @@ class StagedChangesArray(MutableMapping[Any, T]):
         _calc_hashes
         _setitem_plan
         """
-        copy = copy or not self.slab_indices.flags.writeable
-
         if self.size:
             # _calc_hashes() must have hashed the full slab and every (non-dropped)
             # staged slab. Base slab hashes are provided externally and may be absent,
@@ -558,8 +548,8 @@ class StagedChangesArray(MutableMapping[Any, T]):
         # are needed.
         return CommitPlan(
             shape=self.shape,
-            slab_indices=self.slab_indices.copy() if copy else self.slab_indices,
-            slab_offsets=self.slab_offsets.copy() if copy else self.slab_offsets,
+            slab_indices=_ensure_writeable(self.slab_indices, copy=copy),
+            slab_offsets=_ensure_writeable(self.slab_offsets, copy=copy),
             hash_tables=self.hash_tables,
             n_base_slabs=self.n_base_slabs,
             chunk_size=self.chunk_size,
@@ -2696,3 +2686,10 @@ def _make_transfer_plans(
             slab_indices=slab_indices,
             slab_offsets=slab_offsets,
         )
+
+
+def _ensure_writeable(a: NDArray[T], *, copy: bool = False) -> NDArray[T]:
+    """Return a. If a is not writeable, return a writeable deep-copy of it.
+    If copy=True, return a deep-copy regardless.
+    """
+    return a.copy() if copy or not a.flags.writeable else a
