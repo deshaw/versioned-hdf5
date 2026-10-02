@@ -98,23 +98,42 @@ class TimeRecreateDataset(_ReplayBenchmark):
 
 
 class TimeRecreateDatasetBlocked(Benchmark):
-    """Trigger dynamically-sized block copy (replay::_rewrite_block_bytes)"""
+    """Trigger dynamically-sized block copy (replay::_rewrite_block_bytes)
+
+    `recreate_dataset()` rewrites every version into a brand new `raw_data`, so the
+    on-disk hash table that `_rewrite_block_bytes()` sizes the block from starts empty
+    and grows by one version's chunks at a time. A single-version file therefore only
+    ever gets the floor block size; a multi-version file exercises the whole range.
+    """
 
     number = 1
     warmup_time = 0
+    # A sample takes ~20 s to time and ~1 min under memray; asv's default is 60 s.
+    timeout = 1200
 
-    # <=32 MiB of 4kiB chunks -> <=8k chunks -> 16 MiB copy blocks
-    # >=1 GiB of 4kiB chunks -> >=262k chunks -> 512 MiB copy blocks
-    # Everything in between -> scales linearly with number of chunks
-    params = [[16, 32, 64, 128, 256, 512, 1024, 2048], [4, 256]]
+    #: Versions in the file, each with unique data, so that the hash table that the
+    #: next version is rewritten against grows at every step. The first version always
+    #: gets the 64 MiB floor, just like the fixed-size baseline, so a handful of them
+    #: are needed before the block outgrows the floor and the difference is visible.
+    n_versions = 8
+
+    # 256 MiB / 4 kiB = 65536 chunks per version, so the table grows from empty to
+    # 524288 chunks and the block from the 64 MiB floor to the 512 MiB cap:
+    # 64, 128, 256, 384, 512, 512, 512, 512 MiB.
+    #
+    # At 4 kiB chunks the benchmark peak memory is dominated by what libhdf5 allocates
+    # for the virtual mappings of the source and destination datasets (~45 kiB per
+    # chunk), not by the copy block.
+    params = [[256], [4]]
     param_names = ["ds_size_mb", "chunk_size_kb"]
 
     def setup(self, ds_size_mb, chunk_size_kb):
         super().setup()
         shape = (ds_size_mb * 1024 * 1024 // 8,)
         chunks = (chunk_size_kb * 1024 // 8,)
-        with self.vfile.stage_version("v0") as sv:
-            sv.create_dataset(NAME, data=self.rng.random(shape), chunks=chunks)
+        for i in range(self.n_versions):
+            with self.vfile.stage_version(f"v{i}") as sv:
+                sv.create_dataset(NAME, data=self.rng.random(shape), chunks=chunks)
         self.reopen()
         self.newf = tmp_group(self.file)
 
