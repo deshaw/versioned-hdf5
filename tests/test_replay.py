@@ -1195,39 +1195,28 @@ def test_recreate_raw_data(vfile):
         np.testing.assert_equal(a, b)
 
 
-def test_delete_versions_no_chunks_to_keep_1(vfile):
+@pytest.mark.parametrize("case", ["size0", "full"])
+def test_delete_versions_no_chunks_to_keep(vfile, case):
     """delete_versions() path works when it deletes all chunks in raw_data,
-    because only versions of size 0 survive.
+    i.e. because all surviving versions
+
+    - are size 0, or
+    - are full of fillvalue.
     """
     with vfile.stage_version("v1") as g:
         g.create_dataset("x", data=np.arange(3), chunks=(2,))
 
     with vfile.stage_version("v2") as g:
         g["x"].resize((0,))
+        if case == "full":
+            g["x"].resize((3,))
 
     delete_versions(vfile.f, ["v1"])
 
     assert vfile.f["_version_data/x/raw_data"].shape == (0,)
     ds = vfile["v2"]["x"]
-    np.testing.assert_equal(ds, np.array([]))
-
-
-def test_delete_versions_no_chunks_to_keep_2(vfile):
-    """delete_versions() path works when it deletes all chunks in raw_data,
-    e.g. because only versions full of fillvalue survive.
-    """
-    with vfile.stage_version("v1") as g:
-        g.create_dataset("x", data=np.arange(3), chunks=(2,))
-
-    with vfile.stage_version("v2") as g:
-        g["x"].resize((0,))
-        g["x"].resize((3,))
-
-    delete_versions(vfile.f, ["v1"])
-
-    assert vfile.f["_version_data/x/raw_data"].shape == (0,)
-    ds = vfile["v2"]["x"]
-    np.testing.assert_equal(ds, np.array([0, 0, 0]))
+    expect = [0, 0, 0] if case == "full" else []
+    np.testing.assert_equal(ds, np.array(expect))
 
 
 def test_recreate_hashtable(vfile):
