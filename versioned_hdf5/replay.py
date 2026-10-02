@@ -230,7 +230,7 @@ def _recreate_raw_data(
     f: VersionedHDF5File | File,
     name: str,
     versions_to_delete: Iterable[str],
-) -> dict[NDIndex, NDIndex] | None:
+) -> dict[NDIndex, NDIndex]:
     """Create a new raw dataset without the chunks from versions_to_delete.
 
     Parameters
@@ -244,11 +244,11 @@ def _recreate_raw_data(
 
     Returns
     -------
-    dict[NDIndex, NDIndex] | None
+    dict[NDIndex, NDIndex]
         A mapping between old raw dataset chunks and the new raw dataset chunks
 
-        If no chunks would be left, i.e., the dataset does not appear in any
-        version not in versions_to_delete, None is returned.
+        Return an empty mapping if no chunks are left, i.e., all surviving versions of
+        the dataset have size 0 or are exclusively covered in fillvalue.
     """
     chunks_to_keep = set()
 
@@ -269,15 +269,21 @@ def _recreate_raw_data(
     chunks = ChunkSize(raw_data.chunks)
     new_shape = (len(chunks_to_keep) * chunks[0], *chunks[1:])
 
-    fillvalue = _get_np_fillvalue(raw_data)
     # Guard against existing _tmp_raw_data
     _delete_tmp_raw_data(f, name)
 
+    # When axis 0 of new_shape is zero-length, i.e., there are no chunks to keep,
+    # chunks.indices() still yields one phantom index, which must be skipped.
+    if not chunks_to_keep:
+        raw_data.resize(new_shape)
+        return {}
+
+    fillvalue = _get_np_fillvalue(raw_data)
     sorted_chunks_to_keep = sorted(chunks_to_keep, key=lambda i: i.args[0].args[0])
 
     raw_data_chunks_map = {}
     for new_chunk, chunk in zip(
-        chunks.indices(new_shape), sorted_chunks_to_keep, strict=False
+        chunks.indices(new_shape), sorted_chunks_to_keep, strict=True
     ):
         # Truncate the new slice if it isn't a full chunk
         truncated = False
@@ -300,7 +306,6 @@ def _recreate_raw_data(
         raw_data_chunks_map[chunk] = new_truncated
 
     raw_data.resize(new_shape)
-
     return raw_data_chunks_map
 
 

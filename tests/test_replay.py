@@ -1195,6 +1195,41 @@ def test_recreate_raw_data(vfile):
         np.testing.assert_equal(a, b)
 
 
+def test_delete_versions_no_chunks_to_keep_1(vfile):
+    """delete_versions() path works when it deletes all chunks in raw_data,
+    because only versions of size 0 survive.
+    """
+    with vfile.stage_version("v1") as g:
+        g.create_dataset("x", data=np.arange(3), chunks=(2,))
+
+    with vfile.stage_version("v2") as g:
+        g["x"].resize((0,))
+
+    delete_versions(vfile.f, ["v1"])
+
+    assert vfile.f["_version_data/x/raw_data"].shape == (0,)
+    ds = vfile["v2"]["x"]
+    np.testing.assert_equal(ds, np.array([]))
+
+
+def test_delete_versions_no_chunks_to_keep_2(vfile):
+    """delete_versions() path works when it deletes all chunks in raw_data,
+    e.g. because only versions full of fillvalue survive.
+    """
+    with vfile.stage_version("v1") as g:
+        g.create_dataset("x", data=np.arange(3), chunks=(2,))
+
+    with vfile.stage_version("v2") as g:
+        g["x"].resize((0,))
+        g["x"].resize((3,))
+
+    delete_versions(vfile.f, ["v1"])
+
+    assert vfile.f["_version_data/x/raw_data"].shape == (0,)
+    ds = vfile["v2"]["x"]
+    np.testing.assert_equal(ds, np.array([0, 0, 0]))
+
+
 def test_recreate_hashtable(vfile):
     setup2(vfile)
     chunks_map = _recreate_raw_data(vfile.f, "test_data", ["version1"])
