@@ -97,6 +97,34 @@ class TimeRecreateDataset(_ReplayBenchmark):
     track_peakmem_recreate_dataset = peak_memory(time_recreate_dataset)
 
 
+class TimeRecreateDatasetBlocked(Benchmark):
+    """Trigger dynamically-sized block copy (replay::_rewrite_block_bytes)"""
+
+    number = 1
+    warmup_time = 0
+
+    # <=32 MiB of 4kiB chunks -> <=8k chunks -> 16 MiB copy blocks
+    # >=1 GiB of 4kiB chunks -> >=262k chunks -> 512 MiB copy blocks
+    # Everything in between -> scales linearly with number of chunks
+    params = [[16, 32, 64, 128, 256, 512, 1024, 2048], [4, 256]]
+    param_names = ["ds_size_mb", "chunk_size_kb"]
+
+    def setup(self, ds_size_mb, chunk_size_kb):
+        super().setup()
+        shape = (ds_size_mb * 1024 * 1024 // 8,)
+        chunks = (chunk_size_kb * 1024 // 8,)
+        with self.vfile.stage_version("v0") as sv:
+            sv.create_dataset(NAME, data=self.rng.random(shape), chunks=chunks)
+        self.reopen()
+        self.newf = tmp_group(self.file)
+
+    def time_recreate_dataset(self, *args, **kwargs):
+        self.assert_clean_setup()
+        recreate_dataset(self.file, NAME, self.newf)
+
+    track_peakmem_recreate_dataset = peak_memory(time_recreate_dataset)
+
+
 class TimeModifyMetadata(_ReplayBenchmark):
     params = [list(MODIFY_METADATA_CASES)]
     param_names = ["case"]
