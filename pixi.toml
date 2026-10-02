@@ -142,6 +142,10 @@ python = "=3.12"
 python = "=3.13"
 [feature.py314.dependencies]
 python = "=3.14"
+[feature.py315]
+channels = ["https://conda.anaconda.org/conda-forge/label/python_rc"]
+[feature.py315.dependencies]
+python = "=3.15"
 
 [feature.h5py-dev.dependencies]
 numpy = "*"
@@ -240,4 +244,5 @@ py311 = { features = ["py311", "build", "test", "filters"] }
 py312 = { features = ["py312", "build", "test", "filters"] }
 py313 = { features = ["py313", "build", "test", "filters"] }
 py314 = { features = ["py314", "build", "test", "filters"] }
-h5py-dev = { features = ["py314", "h5py-dev", "build", "test"], no-default-feature = true }
+py315 = { features = ["py315", "build", "test"] } # No hdf5plugin yet
+h5py-dev = { features = ["py315", "h5py-dev", "build", "test"], no-default-feature = true }

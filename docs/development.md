@@ -32,11 +32,11 @@ You can choose among the following:
 | `py312`     | 3.12   | latest | latest      | latest    | latest  |                                                 |
 | `py313`     | 3.13   | latest | latest      | latest    | latest  |                                                 |
 | `py314`     | 3.14   | latest | latest      | latest    | latest  |                                                 |
-| `default`   | latest | latest | latest      | latest    | latest  |                                                 |
-| `h5py-dev`  | latest | latest | latest      | git tip   | latest  |                                                 |
+| `py315`     | 3.15rc | latest | latest      | latest    | latest  |                                                 |
+| `default`   | 3.14   | latest | latest      | latest    | latest  |                                                 |
+| `h5py-dev`  | 3.15rc | latest | latest      | git tip   | latest  |                                                 |
 
-*Note:* at the moment of writing, hdf5 latest is version 2.1.
-hdf5 2.0 is not available in conda-forge and is untested.
+*Note:* hdf5 2.0 is not available in conda-forge and is untested.
 
 ## Editable install
 
