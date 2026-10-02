@@ -34,7 +34,8 @@ jobs:
           - py312 # Python 3.12
           - py313 # Python 3.13
           - py314 # Python 3.14
-          - h5py-dev # Python 3.14, h5py git tip (from sources)
+          - py315 # Python 3.15 rc
+          - h5py-dev # Python 3.15 rc, h5py git tip (from sources)
         include:
           # Minimum dependencies on other platforms. The versions of hdf5 and h5py
           # vary due to brokennes of the binaries available for such an old stack.
