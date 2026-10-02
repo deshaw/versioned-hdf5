@@ -97,15 +97,48 @@ class TimeRecreateDataset(_ReplayBenchmark):
     track_peakmem_recreate_dataset = peak_memory(time_recreate_dataset)
 
 
-class TimeModifyMetadata(_ReplayBenchmark):
-    params = [list(MODIFY_METADATA_CASES)]
-    param_names = ["case"]
+class TimeModifyMetadata(Benchmark):
+    params = [
+        ["dense", "sparse"],
+        ["inmem", "disk"],
+        list(MODIFY_METADATA_CASES),
+    ]
+    param_names = ["density", "where", "case"]
 
-    def setup(self, case):
-        super().setup(case)
+    # 512 MiB of float64's, i.e. 2,048 chunks in 8 blocks
+    SHAPE = (2**15, 2048)
+
+    def setup(self, density, where, case):
         self.kwargs = MODIFY_METADATA_CASES[case]
+        super().setup()
 
-    def time_modify_metadata(self, case):
+        if density == "dense":
+            with self.vfile.stage_version("v0") as sv:
+                sv.create_dataset(
+                    NAME,
+                    data=self.rng.random(self.SHAPE),
+                    chunks=CHUNK_SIZE,
+                )
+        else:
+            assert density == "sparse"
+            with self.vfile.stage_version("v0") as sv:
+                sv.create_dataset(
+                    NAME,
+                    shape=self.SHAPE,
+                    chunks=CHUNK_SIZE,
+                )
+                sv[NAME][0, 0] = 1
+                sv[NAME][32, 1024] = 2
+
+        if where == "inmem":
+            # Keep the staging InMemoryGroup wrappers alive
+            self._hold = sv
+        else:
+            assert where == "disk"
+            del sv
+            self.reopen()
+
+    def time_modify_metadata(self, *args, **kwargs):
         self.assert_clean_setup()
         modify_metadata(self.file, NAME, **self.kwargs)
 
