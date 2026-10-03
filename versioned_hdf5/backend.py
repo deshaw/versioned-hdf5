@@ -25,9 +25,14 @@ if TYPE_CHECKING:
     from versioned_hdf5.wrappers import FiltersMixin
 
 DEFAULT_CHUNK_SIZE = 2**12
-# Amount of RAM that rewrite_dataset() can allocate as a scratch area
-# This is a compromise between minimizing RAM usage and runtime.
-REWRITE_BUFFER_BYTES = 2**26  # 64 MiB
+
+# Amount of RAM that rewrite_dataset() can allocate as a scratch area. This is a
+# compromise between minimizing RAM usage and runtime. Buffer size scales with the
+# number of raw chunks, between 64 MiB for <=32k chunks and 512 MiB for >=262k chunks.
+REWRITE_BLOCK_BYTES_MIN = 2**26  # 64 MiB
+REWRITE_BLOCK_BYTES_MAX = 2**29  # 512 MiB
+REWRITE_BLOCK_BYTES_PER_CHUNK = 2**11  # 2 kiB
+
 DATA_VERSION = 4
 # data_version 2 has broken hashtables, always need to rebuild
 # data_version 3 hash collisions for string arrays which, when concatenated,
@@ -606,6 +611,22 @@ def _chunk_blocks(
         )
 
 
+def _rewrite_block_bytes(n_raw_chunks: int) -> int:
+    """Scratch-area size, in bytes, for `rewrite_dataset()`.
+
+    A block of chunks is deduplicated against every chunk already on `raw_data`, and
+    that fixed cost grows with the number of those chunks (~0.65us per chunk), whereas
+    the block's own work (hashing and writing) grows with its size (~4us per MiB).
+    Sizing the block from the on-disk table keeps the fixed cost a small fraction of the
+    work and costs only more RAM, capped by REWRITE_BLOCK_BYTES_MAX. That is enough to
+    make `recreate_dataset()` and `modify_metadata()` linear in practice.
+    """
+    return min(
+        REWRITE_BLOCK_BYTES_MAX,
+        max(REWRITE_BLOCK_BYTES_MIN, REWRITE_BLOCK_BYTES_PER_CHUNK * n_raw_chunks),
+    )
+
+
 def rewrite_dataset(
     f,
     name: str,
@@ -613,7 +634,7 @@ def rewrite_dataset(
     *,
     chunks: tuple[int, ...],
     fillvalue: Any = None,
-    max_bytes: int = REWRITE_BUFFER_BYTES,
+    max_bytes: int | None = None,
 ) -> StagedChangesArray:
     """Copy every chunk of `data` into the `raw_data` of `f`, deduplicating it against
     the chunks already there, and return the committed StagedChangesArray describing
@@ -643,13 +664,15 @@ def rewrite_dataset(
         e.g. a NumPy array, a h5py Dataset, or any of versioned-hdf5's dataset wrappers
     chunks:
         shape of a single chunk
-    fillvalue:
+    fillvalue, optional:
         Fill value of the dataset. Chunks that are entirely full of it are not
         written to raw_data at all.
-    max_bytes:
+    max_bytes, optional:
         Maximum amount of memory, in bytes, to use to buffer the chunks in transit.
         Rounded up to one chunk. This is only indicative for object string dtypes,
         where the size of the buffer doesn't account for the strings themselves.
+        If omitted, the size is chosen dynamically depending on the number of
+        chunks in ``raw_data`` in order to optimize throughput.
 
     See Also
     --------
@@ -663,6 +686,11 @@ def rewrite_dataset(
         data.shape, chunk_size=chunks, fill_value=fillvalue, dtype=data.dtype
     )
     raw_data = f["_version_data"][name]["raw_data"]
+    if max_bytes is None:
+        hash_table = f["_version_data"][name]["hash_table"]
+        # largest_index is the only trustworthy chunk count; anything past it on
+        # raw_data is garbage left by a commit that crashed halfway through.
+        max_bytes = _rewrite_block_bytes(int(hash_table.attrs["largest_index"]))
 
     for block in _chunk_blocks(data.shape, chunks, data.dtype.itemsize, max_bytes):
         # The block read from `data` becomes the staged slabs, as views: nothing is
