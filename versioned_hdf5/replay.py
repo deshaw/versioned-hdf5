@@ -93,86 +93,86 @@ def recreate_dataset(f, name, newf, callback=None):
         gc.freeze()
     try:
         for version_name in all_versions(f):
-            if name not in f["_version_data/versions"][version_name]:
-                continue
+            if name in f["_version_data/versions"][version_name]:
+                group = InMemoryGroup(
+                    f["_version_data/versions"][version_name].id, _committed=True
+                )
 
-            group = InMemoryGroup(
-                f["_version_data/versions"][version_name].id, _committed=True
-            )
+                dataset = group[name]
+                del group
+                if callback:
+                    dataset = callback(dataset, version_name)
+                    if dataset is None:
+                        # The callback dropped this version; ensure it's no longer in
+                        # memory. This also causes libhdf5 to free the memory for the
+                        # old virtual dataset.
+                        gc.collect()
+                        continue
 
-            dataset = group[name]
-            del group
-            if callback:
-                dataset = callback(dataset, version_name)
-                if dataset is None:
-                    # The callback dropped this version; ensure it's no longer in
-                    # memory. This also causes libhdf5 to free the memory for the
-                    # old virtual dataset.
-                    gc.collect()
-                    continue
+                dtype = dataset.dtype
+                chunks = dataset.chunks
 
-            dtype = dataset.dtype
-            chunks = dataset.chunks
+                filters = Filters.from_dataset(dataset)
+                fillvalue = dataset.fillvalue
+                attrs = dataset.attrs
+                if first:
+                    create_base_dataset(
+                        newf,
+                        name,
+                        data=np.empty((0,) * len(dataset.shape), dtype=dtype),
+                        dtype=dtype,
+                        chunks=chunks,
+                        fillvalue=fillvalue,
+                        filters=filters,
+                    )
+                    first = False
+                if not isinstance(chunks, tuple):
+                    chunks = tuple(
+                        newf["_version_data"][name]["raw_data"].attrs["chunks"]
+                    )
 
-            filters = Filters.from_dataset(dataset)
-            fillvalue = dataset.fillvalue
-            attrs = dataset.attrs
-            if first:
-                create_base_dataset(
+                # Rewrite all the chunks of the dataset (we can't assume the new
+                # hash table has the raw data in the same locations, even if the
+                # data is unchanged).
+                if isinstance(dataset, DatasetWrapper):
+                    dataset = dataset.dataset
+                if isinstance(dataset, InMemoryArrayDataset):
+                    staged_changes = StagedChangesArray.from_array(
+                        dataset._buffer,
+                        chunk_size=chunks,
+                        fill_value=fillvalue,
+                        as_base_slabs=False,
+                    )
+                elif isinstance(dataset, (InMemoryDataset, InMemorySparseDataset)):
+                    staged_changes = dataset.staged_changes
+                elif isinstance(dataset, MetadataTransformView):
+                    staged_changes = None
+                else:
+                    raise TypeError(f"Unexpected: {type(dataset)}")  # pragma: no cover
+
+                if staged_changes is None or staged_changes.has_base_chunks:
+                    # Some or all chunks lie on the raw_data of the *source* file, which
+                    # the hash table of newf knows nothing about, so they must all be
+                    # rewritten. Stream them a block of chunks at a time; loading them
+                    # all in memory first would make peak memory usage O(dataset size).
+                    staged_changes = rewrite_dataset(
+                        newf, name, dataset, chunks=chunks, fillvalue=fillvalue
+                    )
+                else:
+                    # Every chunk is already in memory
+                    commit_staged_changes(newf, name, staged_changes)
+
+                create_virtual_dataset(
                     newf,
+                    version_name,
                     name,
-                    data=np.empty((0,) * len(dataset.shape), dtype=dtype),
-                    dtype=dtype,
-                    chunks=chunks,
+                    staged_changes,
+                    attrs=attrs,
                     fillvalue=fillvalue,
-                    filters=filters,
                 )
-                first = False
-            if not isinstance(chunks, tuple):
-                chunks = tuple(newf["_version_data"][name]["raw_data"].attrs["chunks"])
 
-            # Rewrite all the chunks of the dataset (we can't assume the new
-            # hash table has the raw data in the same locations, even if the
-            # data is unchanged).
-            if isinstance(dataset, DatasetWrapper):
-                dataset = dataset.dataset
-            if isinstance(dataset, InMemoryArrayDataset):
-                staged_changes = StagedChangesArray.from_array(
-                    dataset._buffer,
-                    chunk_size=chunks,
-                    fill_value=fillvalue,
-                    as_base_slabs=False,
-                )
-            elif isinstance(dataset, (InMemoryDataset, InMemorySparseDataset)):
-                staged_changes = dataset.staged_changes
-            elif isinstance(dataset, MetadataTransformView):
-                staged_changes = None
-            else:
-                raise TypeError(f"Unexpected: {type(dataset)}")  # pragma: no cover
-
-            if staged_changes is None or staged_changes.has_base_chunks:
-                # Some or all chunks lie on the raw_data of the *source* file, which
-                # the hash table of newf knows nothing about, so they must all be
-                # rewritten. Stream them a block of chunks at a time; loading them
-                # all in memory first would make peak memory usage O(dataset size).
-                staged_changes = rewrite_dataset(
-                    newf, name, dataset, chunks=chunks, fillvalue=fillvalue
-                )
-            else:
-                # Every chunk is already in memory
-                commit_staged_changes(newf, name, staged_changes)
-
-            create_virtual_dataset(
-                newf,
-                version_name,
-                name,
-                staged_changes,
-                attrs=attrs,
-                fillvalue=fillvalue,
-            )
-
-            del dataset, staged_changes, attrs, filters
-            gc.collect()
+                del dataset, staged_changes, attrs, filters
+                gc.collect()
     finally:
         if we_froze:
             gc.unfreeze()
