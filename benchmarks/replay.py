@@ -37,6 +37,8 @@ MODIFY_METADATA_CASES = {
     "fillvalue": {"fillvalue": 1.5},
     # Change dtype from float64 to float32
     "dtype": {"dtype": "f4"},
+    # Change dtype from float64 to int8, which is 8 times narrower
+    "dtype_i1": {"dtype": "i1"},
     # Compress an uncompressed dataset of incompressible random data
     "compress": {"compression": "lzf"},
 }

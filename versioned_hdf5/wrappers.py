@@ -1196,7 +1196,6 @@ class MetadataTransformView(DatasetLike, FiltersMixin):
     """
 
     dataset: Dataset
-    _data_transform: bool
 
     def __init__(
         self,

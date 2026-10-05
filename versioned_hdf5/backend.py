@@ -655,6 +655,8 @@ def rewrite_dataset(
     --------
     commit_staged_changes
     """
+    from versioned_hdf5.wrappers import MetadataTransformView
+
     # The full-sized array starts with every chunk on the full slab. Each block's
     # chunks are staged and committed into raw_data one block at a time; downstream
     # of commit_staged_changes() they lie on the raw_data base slab (index 1) or on
@@ -664,7 +666,11 @@ def rewrite_dataset(
     )
     raw_data = f["_version_data"][name]["raw_data"]
 
-    for block in _chunk_blocks(data.shape, chunks, data.dtype.itemsize, max_bytes):
+    itemsizes = [data.dtype.itemsize]
+    if isinstance(data, MetadataTransformView):
+        itemsizes.append(data.dataset.dtype.itemsize)
+
+    for block in _chunk_blocks(data.shape, chunks, max(itemsizes), max_bytes):
         # The block read from `data` becomes the staged slabs, as views: nothing is
         # copied. commit_staged_changes() deduplicates them against every chunk already
         # on raw_data, including those written by the previous blocks. Note it reloads
