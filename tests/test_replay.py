@@ -909,12 +909,14 @@ def test_modify_metadata_dense_streams_transforms(
     data = np.arange(np.prod(shape), dtype=np.float32).reshape(shape)
     with vfile.stage_version("r0") as sv:
         sv.create_dataset("x", data=data, chunks=chunks)
+    # Drop the staging group, so that the dataset is read back from the committed
+    # version and rewrite_dataset() streams it from disk.
+    del sv
 
-    f = vfile.f
     gc.collect()
     tracemalloc.start()
     try:
-        modify_metadata(f, "x", **metadata)
+        modify_metadata(vfile.f, "x", **metadata)
         _, peak = tracemalloc.get_traced_memory()
     finally:
         tracemalloc.stop()

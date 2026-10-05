@@ -1195,7 +1195,9 @@ class MetadataTransformView(DatasetLike, FiltersMixin):
     modify_metadata
     """
 
-    dataset: Dataset
+    _data: MutableArrayProtocol
+    _prev_fillvalue: Any
+    itemsize_max: int
 
     def __init__(
         self,
@@ -1207,7 +1209,6 @@ class MetadataTransformView(DatasetLike, FiltersMixin):
         chunks: tuple[int, ...] | None,
         dtype: Any,
     ):
-        self.dataset = dataset
         self.name = name
         self.dtype = np.dtype(dtype)
         self._fillvalue = fillvalue
@@ -1215,17 +1216,20 @@ class MetadataTransformView(DatasetLike, FiltersMixin):
         self.chunks = chunks
         self.attrs = dict(dataset.attrs)
         self.parent = parent
+        self.itemsize_max = max(self.dtype.itemsize, dataset.dtype.itemsize)
+        self._prev_fillvalue = dataset.fillvalue
+        # Perform dtype conversion of data that is already in memory eagerly,
+        # while avoiding repeatedly creating astype views of on-disk h5py slabs.
+        self._data = dataset.astype(self.dtype)
 
     def __getitem__(self, index):
-        data = self.dataset[index]
-        assert isinstance(data, (np.ndarray, np.generic))
-        if data.dtype != self.dtype:
-            data = data.astype(self.dtype)
-        if self._fillvalue != self.dataset.fillvalue:
-            if not data.flags.writeable:
-                data = np.array(data, copy=True)
-            data[data == self.dataset.fillvalue] = self._fillvalue
-        return data
+        buf = self._data[index]
+        assert isinstance(buf, (np.ndarray, np.generic))
+        if self._fillvalue != self._prev_fillvalue:
+            if not buf.flags.writeable:
+                buf = np.array(buf, copy=True)
+            buf[buf == self._prev_fillvalue] = self._fillvalue
+        return buf
 
 
 def _normalize_resize_args(

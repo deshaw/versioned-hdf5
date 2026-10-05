@@ -665,12 +665,13 @@ def rewrite_dataset(
         data.shape, chunk_size=chunks, fill_value=fillvalue, dtype=data.dtype
     )
     raw_data = f["_version_data"][name]["raw_data"]
+    itemsize = (
+        data.itemsize_max
+        if isinstance(data, MetadataTransformView)
+        else data.dtype.itemsize
+    )
 
-    itemsizes = [data.dtype.itemsize]
-    if isinstance(data, MetadataTransformView):
-        itemsizes.append(data.dataset.dtype.itemsize)
-
-    for block in _chunk_blocks(data.shape, chunks, max(itemsizes), max_bytes):
+    for block in _chunk_blocks(data.shape, chunks, itemsize, max_bytes):
         # The block read from `data` becomes the staged slabs, as views: nothing is
         # copied. commit_staged_changes() deduplicates them against every chunk already
         # on raw_data, including those written by the previous blocks. Note it reloads
