@@ -116,6 +116,7 @@ exclude = [
 profile = "black"
 
 [tool.pytest.ini_options]
+testpaths = ["tests", "versioned_hdf5"]
 addopts = "--doctest-modules --ignore=ci/ --ignore=analysis/ --import-mode=importlib --durations 10"
 doctest_optionflags = "NORMALIZE_WHITESPACE"
 strict_xfail = true
