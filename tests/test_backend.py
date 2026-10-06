@@ -6,7 +6,7 @@ from h5py._hl.filters import guess_chunk
 from ndindex import ChunkSize, Slice, Tuple
 from numpy.testing import assert_equal
 
-from versioned_hdf5 import slicetools
+from versioned_hdf5 import backend, slicetools
 from versioned_hdf5.backend import (
     DEFAULT_CHUNK_SIZE,
     Filters,
@@ -810,6 +810,42 @@ def _rewritten(vfile, name, data, chunks, fillvalue, max_bytes):
     )
     raw_data, hash_table = _raw_data_hashtable(vfile, name)
     return sc, raw_data, hash_table
+
+
+@pytest.mark.parametrize("max_bytes", [0, 100000])
+def test_rewrite_dataset_reads_hash_table_once(vfile, max_bytes, monkeypatch):
+    """While an array is rewritten, the in-memory hash table of raw_data is handed
+    from each block to the next, so that it is read back from disk only once however
+    many blocks the array is diced into.
+    """
+    chunks = (2, 2)
+    data = np.array(
+        [[1, 2, 3, 4], [5, 6, 7, 8], [9, 9, 9, 9], [9, 9, 9, 9]], dtype=float
+    )
+    # Populate raw_data with 3 chunks: (1, 0) and (1, 1) are identical
+    _rewritten(vfile, "x", data, chunks, 0.0, 100000)
+
+    calls = []
+    load_hash_table = _data_v4_to_sc_hash_table
+
+    def spy(*args, **kwargs):
+        calls.append(1)
+        return load_hash_table(*args, **kwargs)
+
+    monkeypatch.setattr(backend, "_data_v4_to_sc_hash_table", spy)
+
+    # One chunk of the rewritten array is brand new, so raw_data grows to 4 chunks
+    data2 = data.copy()
+    data2[2:4, 2:4] = 8.5
+    sc = rewrite_dataset(
+        vfile.f, "x", data2, chunks=chunks, fillvalue=0.0, max_bytes=max_bytes
+    )
+    _, hash_table = _raw_data_hashtable(vfile, "x")
+    assert_equal(sc[()], data2)
+    assert hash_table.attrs["largest_index"] == 4
+    # max_bytes=0 dices the array into 4 blocks, but only the first one loads the
+    # table from disk; the rest reuse the copy it returned
+    assert len(calls) == 1
 
 
 # One whole chunk, one chunk row, and the whole array at a time
