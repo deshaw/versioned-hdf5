@@ -35,6 +35,7 @@ from versioned_hdf5.wrappers import (
     InMemoryDataset,
     InMemoryGroup,
     InMemorySparseDataset,
+    MetadataTransformView,
 )
 
 logger = logging.getLogger(__name__)
@@ -144,10 +145,12 @@ def recreate_dataset(f, name, newf, callback=None):
                     )
                 elif isinstance(dataset, (InMemoryDataset, InMemorySparseDataset)):
                     staged_changes = dataset.staged_changes
+                elif isinstance(dataset, MetadataTransformView):
+                    staged_changes = None
                 else:
                     raise TypeError(f"Unexpected: {type(dataset)}")  # pragma: no cover
 
-                if staged_changes.has_base_chunks:
+                if staged_changes is None or staged_changes.has_base_chunks:
                     # Some or all chunks lie on the raw_data of the *source* file, which
                     # the hash table of newf knows nothing about, so they must all be
                     # rewritten. Stream them a block of chunks at a time; loading them
@@ -694,17 +697,32 @@ def modify_metadata(
             dataset = dataset.dataset
 
         name = dataset.name[len(dataset.parent.name) + 1 :]
-        if isinstance(dataset, (InMemoryDataset, InMemoryArrayDataset)):
+
+        if (
+            isinstance(dataset, InMemoryArrayDataset)
+            and dtype in (None, dataset.dtype)
+            and fillvalue in (None, dataset.fillvalue)
+        ):
+            # Fast no-copy path for cached arrays when metadata
+            # changes do not alter their data.
             new_dataset = InMemoryArrayDataset(
                 name,
-                np.asarray(dataset._buffer, dtype=dtype),
+                dataset._buffer,
                 parent=tmp_parent,
                 fillvalue=_fillvalue,
                 chunks=_chunks,
                 attrs=attrs,
             )
-            if _fillvalue not in (None, dataset.fillvalue):
-                new_dataset[new_dataset == dataset.fillvalue] = _fillvalue
+        elif isinstance(dataset, (InMemoryDataset, InMemoryArrayDataset)):
+            # Convert and release temporary buffers one chunk at a time
+            new_dataset = MetadataTransformView(
+                name,
+                dataset,
+                parent=tmp_parent,
+                fillvalue=_fillvalue,
+                chunks=_chunks,
+                dtype=dataset.dtype if dtype is None else dtype,
+            )
         elif isinstance(dataset, InMemorySparseDataset):
             staged_changes = dataset.staged_changes
             if dtype not in (None, staged_changes.dtype):
@@ -737,7 +755,7 @@ def modify_metadata(
             new_dataset.staged_changes = staged_changes
 
         else:
-            raise NotImplementedError(type(dataset))
+            raise TypeError(f"Unexpected: {type(dataset)}")  # pragma: no cover
 
         filters = Filters.from_dataset(dataset)
         if compression is not DEFAULT:

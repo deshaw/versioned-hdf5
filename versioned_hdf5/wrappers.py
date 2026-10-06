@@ -1185,6 +1185,53 @@ class InMemorySparseDataset(BufferMixin, FiltersMixin, DatasetLike):
         self.staged_changes.resize(new_shape)
 
 
+class MetadataTransformView(DatasetLike, FiltersMixin):
+    """Disk-backed dataset view used for data-changing metadata rewrites;
+
+    Keep the source dataset on disk and apply changes to each block instead.
+
+    See Also
+    --------
+    modify_metadata
+    """
+
+    _data: MutableArrayProtocol
+    _prev_fillvalue: Any
+    itemsize_max: int
+
+    def __init__(
+        self,
+        name: str,
+        dataset: Dataset,
+        *,
+        parent: InMemoryGroup,
+        fillvalue: Any,
+        chunks: tuple[int, ...] | None,
+        dtype: Any,
+    ):
+        self.name = name
+        self.dtype = np.dtype(dtype)
+        self._fillvalue = fillvalue
+        self.shape = dataset.shape
+        self.chunks = chunks
+        self.attrs = dict(dataset.attrs)
+        self.parent = parent
+        self.itemsize_max = max(self.dtype.itemsize, dataset.dtype.itemsize)
+        self._prev_fillvalue = dataset.fillvalue
+        # Perform dtype conversion of data that is already in memory eagerly,
+        # while avoiding repeatedly creating astype views of on-disk h5py slabs.
+        self._data = dataset.astype(self.dtype)
+
+    def __getitem__(self, index):
+        buf = self._data[index]
+        assert isinstance(buf, (np.ndarray, np.generic))
+        if self._fillvalue != self._prev_fillvalue:
+            if not buf.flags.writeable:
+                buf = np.array(buf, copy=True)
+            buf[buf == self._prev_fillvalue] = self._fillvalue
+        return buf
+
+
 def _normalize_resize_args(
     shape: tuple[int, ...],
     size: int | list[int] | tuple[int, ...] | np.ndarray,
