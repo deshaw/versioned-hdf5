@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import h5py
 import numpy as np
 
 from versioned_hdf5 import delete_versions, modify_metadata
@@ -145,6 +146,44 @@ class TimeRecreateDatasetBlocked(Benchmark):
     # chunk), not by the copy block. This has been measured as 4.2~4.8 GB worth of
     # libhdf5 metadata, 10x the max scratch area size and very noisy.
     track_peakmem_recreate_dataset = peak_memory(time_recreate_dataset)  # noqa: ERA001
+
+
+class TimeRecreateDatasetBlockedStrings(Benchmark):
+    """Sasme as TimeRecreateDatasetBlocked, but with variable-length object strings."""
+
+    number = 1
+    warmup_time = 0
+    timeout = 1200
+
+    # 16.8 million unique strings per version, in 16,384 chunks. The last two versions
+    # are rewritten against 49,152 and 65,536 chunks: blocks of 96 and 128 MiB, where a
+    # fixed 64 MiB block splits every version in two.
+    n_versions = 5
+    shape = (2**24,)
+    chunks = (1024,)
+
+    def setup(self):
+        super().setup()
+        for i in range(self.n_versions):
+            # Benchmark.rand_strings() is too slow for 16.8 million strings
+            data = (
+                self.rng.integers(ord("a"), ord("z") + 1, (*self.shape, 10), np.uint8)
+                .view("S10")[:, 0]
+                .astype(object)
+            )
+            with self.vfile.stage_version(f"v{i}") as sv:
+                sv.create_dataset(
+                    NAME, data=data, dtype=h5py.string_dtype(), chunks=self.chunks
+                )
+        self.reopen()
+        self.newf = tmp_group(self.file)
+
+    @slow
+    def time_recreate_dataset(self):
+        self.assert_clean_setup()
+        recreate_dataset(self.file, NAME, self.newf)
+
+    track_peakmem_recreate_dataset = peak_memory(time_recreate_dataset)
 
 
 class TimeModifyMetadata(Benchmark):

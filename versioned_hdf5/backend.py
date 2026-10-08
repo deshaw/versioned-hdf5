@@ -688,11 +688,19 @@ def rewrite_dataset(
         data.shape, chunk_size=chunks, fill_value=fillvalue, dtype=data.dtype
     )
     raw_data = f["_version_data"][name]["raw_data"]
-    itemsize = (
-        data.itemsize_max
-        if isinstance(data, MetadataTransformView)
-        else data.dtype.itemsize
-    )
+
+    if data.dtype == object:
+        # Very crude, conservative estimate for variable-width strings
+        # (pointer + PyObject + payload).
+        itemsize = 56
+    elif isinstance(data, MetadataTransformView):
+        # Note that this includes NpyStrings, which return 16 bytes per string; that's
+        # correct for strings up to 15 characters; beyond that they become
+        # variable-width.
+        itemsize = data.itemsize_max
+    else:
+        itemsize = data.dtype.itemsize
+
     if max_bytes is None:
         hash_table = f["_version_data"][name]["hash_table"]
         # largest_index is the only trustworthy chunk count; anything past it on
