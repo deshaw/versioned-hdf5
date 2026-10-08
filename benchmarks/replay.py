@@ -156,8 +156,8 @@ class TimeRecreateDatasetBlockedStrings(Benchmark):
     timeout = 1200
 
     n_versions = 5
-    shape = (2**22,)
-    chunks = (256,)
+    shape = (2**24,)
+    chunks = (1024,)
 
     params = ["O", "T"]
     param_names = ["dtype"]
