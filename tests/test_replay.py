@@ -2118,6 +2118,36 @@ def test_modify_metadata_fixed_string_fillvalue_read_only(tmp_path, dtype, fillv
         assert_array_equal(ds[:], data)
 
 
+@pytest.mark.parametrize("fillvalue", [None, b"x"])
+def test_modify_metadata_fixed_string_fillvalue_change(tmp_path, fillvalue):
+    """Changing the fillvalue of a fixed-string dataset must also update its version
+    datasets, so that a chunk elided as the new fillvalue reads back correctly.
+    """
+    path = tmp_path / "data.h5"
+    data = np.array([b"a", b"b", b"c", b"d"], dtype="S4")
+    with h5py.File(path, "w") as f, VersionedHDF5File(f).stage_version("r0") as sv:
+        sv.create_dataset("d", data=data, chunks=(2,), fillvalue=fillvalue)
+
+    with h5py.File(path, "r+") as f:
+        modify_metadata(f, "d", fillvalue=b"y")
+
+    with h5py.File(path, "r") as f:
+        # Read in mode "r", where the fillvalue is the one stored in the version
+        # dataset itself.
+        ds = VersionedHDF5File(f)["r0"]["d"]
+        assert ds.fillvalue == b"y"
+        assert_array_equal(ds[:], data)
+
+    with h5py.File(path, "r+") as f, VersionedHDF5File(f).stage_version("r1") as sv:
+        # A whole chunk of the new fill value: not written to raw_data at all.
+        sv["d"][2:4] = b"y"
+
+    with h5py.File(path, "r") as f:
+        ds = VersionedHDF5File(f)["r1"]["d"]
+        assert ds.fillvalue == b"y"
+        assert_array_equal(ds[:], np.array([b"a", b"b", b"y", b"y"], dtype="S4"))
+
+
 @pytest.mark.parametrize("variable_width", [True, False], ids=["vlen", "S4"])
 def test_modify_metadata_to_fixed_string_fillvalue(tmp_path, variable_width):
     """Chunks equal to the new fill value are not stored, so a read in mode "r"

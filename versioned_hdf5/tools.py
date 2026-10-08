@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import h5py
 import ndindex
 import numpy as np
 from numpy.typing import ArrayLike, DTypeLike
@@ -62,6 +63,44 @@ def asarray(a: ArrayLike, /, *, dtype: DTypeLike | None = None):
     if hasattr(a, "astype"):
         return a.astype(dtype)
     return np.asarray(a, dtype=dtype)
+
+
+def vds_fillvalue(layout: h5py.VirtualLayout, fillvalue: Any) -> Any | None:
+    """Bake a fillvalue that h5py cannot handle into a VirtualLayout.
+
+    h5py's ``VirtualLayout.make_dataset()`` stores the fillvalue with
+    ``dcpl.set_fill_value(np.array([fillvalue]))``, which for fixed-length string
+    dtypes stores a pointer to the bytes instead of the bytes themselves; both the
+    fillvalue and the chunks elided from the virtual dataset then read back as
+    garbage. h5py's own ``make_new_dset()`` avoids this by faking a variable-length
+    string dtype; do the same here.
+
+    Fixed-length string fillvalues are written to ``layout.dcpl`` and None is
+    returned, so that :meth:`h5py.Group.create_virtual_dataset` uses it as-is.
+    Every other fillvalue is returned unchanged, for h5py to handle.
+
+    Variable-length string dtypes cannot carry a fillvalue at all
+    (https://github.com/h5py/h5py/issues/941); None is returned for them too, so
+    that they keep the HDF5 default, which is the only one versioned_hdf5 accepts
+    for them anyway.
+    """
+    if fillvalue is None:
+        return None
+
+    dtype = np.dtype(layout.dtype)
+    if dtype.kind == "T" or h5py.check_vlen_dtype(dtype) is not None:
+        # Variable-length string dtype (or, in general, any variable-length dtype)
+        return None
+
+    if dtype.kind == "S":
+        # Fake a variable-length string dtype, like h5py's make_new_dset()
+        encoding = h5py.h5t.check_string_dtype(dtype).encoding
+        layout.dcpl.set_fill_value(
+            np.asarray(fillvalue, dtype=h5py.string_dtype(encoding=encoding))
+        )
+        return None
+
+    return fillvalue
 
 
 def ix_with_slices(*idx: Any, shape: tuple[int, ...]) -> tuple:

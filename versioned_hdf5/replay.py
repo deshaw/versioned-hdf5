@@ -28,6 +28,7 @@ from versioned_hdf5.backend import (
 from versioned_hdf5.hashtable import Hashtable
 from versioned_hdf5.slicetools import create_virtual_dataset, spaceid_to_slice
 from versioned_hdf5.staged_changes import StagedChangesArray
+from versioned_hdf5.tools import vds_fillvalue
 from versioned_hdf5.typing_ import DEFAULT, Default
 from versioned_hdf5.versions import all_versions
 from versioned_hdf5.wrappers import (
@@ -414,10 +415,6 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
             # A fixed-string VDS can report its first data byte as its fillvalue. The
             # fillvalue pinned on raw_data is authoritative.
             fillvalue = raw_data.fillvalue
-            if fillvalue == b"":
-                # h5py cannot create a fixed-string VDS with an explicit empty
-                # fillvalue.
-                fillvalue = None
         if is_vstring_dtype(dtype):
             # Variable length string dtype
             # (https://h5py.readthedocs.io/en/2.10.0/strings.html). Setting the
@@ -428,6 +425,9 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
                     "Non-default fillvalue not supported for variable length strings"
                 )
             fillvalue = None
+        # h5py's create_virtual_dataset() mangles fixed-string fillvalues; store
+        # them in the layout's dcpl instead (see vds_fillvalue).
+        fillvalue = vds_fillvalue(layout, fillvalue)
         tmp_dataset = group.create_virtual_dataset(
             tmp_path, layout, fillvalue=fillvalue
         )
@@ -862,18 +862,25 @@ def swap(old: InMemoryGroup, new: InMemoryGroup) -> None:
             # h5py cannot safely set a fill value on a variable-width string
             # dataset (https://github.com/h5py/h5py/issues/941). Passing the
             # DatasetWrapper's b"" fillvalue here corrupts the VDS creation plist.
-            if is_vstring_dtype(oldd.dtype) or is_vstring_dtype(newd.dtype):
-                old_fillvalue = None
+            # Null each fillvalue based on the dtype of the layout it is for: a
+            # variable-width <-> fixed-string swap must keep the fixed-string one.
+            if is_vstring_dtype(newd.dtype):
                 new_fillvalue = None
+            if is_vstring_dtype(oldd.dtype):
+                old_fillvalue = None
             old_attrs = dict(old[name].attrs)
             new_attrs = dict(new[name].attrs)
             del old[name]
+            # h5py's create_virtual_dataset() mangles fixed-string fillvalues; store
+            # them in the layout's dcpl instead (see vds_fillvalue).
+            new_fillvalue = vds_fillvalue(new_layout, new_fillvalue)
             old.create_virtual_dataset(name, new_layout, fillvalue=new_fillvalue)
             for k, v in new_attrs.items():
                 if isinstance(v, str) and v.startswith(new.name):
                     v = _replace_prefix(v, new.name, old.name)
                 old[name].attrs[k] = v
             del new[name]
+            old_fillvalue = vds_fillvalue(old_layout, old_fillvalue)
             new.create_virtual_dataset(name, old_layout, fillvalue=old_fillvalue)
             for k, v in old_attrs.items():
                 if isinstance(v, str) and v.startswith(old.name):
