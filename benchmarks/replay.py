@@ -101,7 +101,7 @@ class TimeRecreateDataset(_ReplayBenchmark):
 
 
 class TimeRecreateDatasetBlocked(Benchmark):
-    """Trigger dynamically-sized block copy (replay::_rewrite_block_bytes)
+    """Trigger dynamically-sized block copy (backend::_rewrite_block_bytes)
 
     `recreate_dataset()` rewrites every version into a brand new `raw_data`, so the
     on-disk hash table that `_rewrite_block_bytes()` sizes the block from starts empty
