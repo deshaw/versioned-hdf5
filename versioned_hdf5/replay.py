@@ -416,10 +416,8 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
             # fillvalue pinned on raw_data is authoritative.
             fillvalue = raw_data.fillvalue
         if is_vstring_dtype(dtype):
-            # Variable length string dtype
-            # (https://h5py.readthedocs.io/en/2.10.0/strings.html). Setting the
-            # fillvalue in this case doesn't work
-            # (https://github.com/h5py/h5py/issues/941).
+            # Variable length string dtype. A virtual dataset cannot carry a
+            # fillvalue for it; see vds_fillvalue() for why.
             if fillvalue not in [0, "", b"", None]:
                 raise ValueError(
                     "Non-default fillvalue not supported for variable length strings"
@@ -859,20 +857,12 @@ def swap(old: InMemoryGroup, new: InMemoryGroup) -> None:
             new_layout = _new_vds_layout(newd, new.name, old.name)
             old_fillvalue = old[name].fillvalue
             new_fillvalue = new[name].fillvalue
-            # h5py cannot safely set a fill value on a variable-width string
-            # dataset (https://github.com/h5py/h5py/issues/941). Passing the
-            # DatasetWrapper's b"" fillvalue here corrupts the VDS creation plist.
-            # Null each fillvalue based on the dtype of the layout it is for: a
-            # variable-width <-> fixed-string swap must keep the fixed-string one.
-            if is_vstring_dtype(newd.dtype):
-                new_fillvalue = None
-            if is_vstring_dtype(oldd.dtype):
-                old_fillvalue = None
             old_attrs = dict(old[name].attrs)
             new_attrs = dict(new[name].attrs)
             del old[name]
-            # h5py's create_virtual_dataset() mangles fixed-string fillvalues; store
-            # them in the layout's dcpl instead (see vds_fillvalue).
+            # vds_fillvalue() bakes the fillvalue into the layout where h5py
+            # would mangle it, and drops the ones that a virtual dataset cannot
+            # carry at all (variable-length strings).
             new_fillvalue = vds_fillvalue(new_layout, new_fillvalue)
             old.create_virtual_dataset(name, new_layout, fillvalue=new_fillvalue)
             for k, v in new_attrs.items():

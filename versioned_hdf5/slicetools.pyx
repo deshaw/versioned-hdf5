@@ -447,10 +447,8 @@ def create_virtual_dataset(
     assert slab_offsets.dtype == np_hsize_t
 
     if h5py.check_vlen_dtype(raw_data.dtype) is not None:
-        # Variable length string dtype
-        # (https://h5py.readthedocs.io/en/2.10.0/strings.html).
-        # Setting the fillvalue in this case doesn't work
-        # (https://github.com/h5py/h5py/issues/941).
+        # Variable length string dtype. A virtual dataset cannot carry a
+        # fillvalue for it; see vds_fillvalue() for why.
         if fillvalue not in [0, "", b"", None]:
             raise ValueError(
                 "Non-default fillvalue not supported for variable length strings"

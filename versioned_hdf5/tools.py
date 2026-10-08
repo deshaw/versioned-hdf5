@@ -69,20 +69,26 @@ def vds_fillvalue(layout: h5py.VirtualLayout, fillvalue: Any) -> Any | None:
     """Bake a fillvalue that h5py cannot handle into a VirtualLayout.
 
     h5py's ``VirtualLayout.make_dataset()`` stores the fillvalue with
-    ``dcpl.set_fill_value(np.array([fillvalue]))``, which for fixed-length string
-    dtypes stores a pointer to the bytes instead of the bytes themselves; both the
-    fillvalue and the chunks elided from the virtual dataset then read back as
-    garbage. h5py's own ``make_new_dset()`` avoids this by faking a variable-length
-    string dtype; do the same here.
+    ``dcpl.set_fill_value(np.array([fillvalue]))``, i.e. with a buffer typed after
+    the fillvalue instead of after the dataset dtype. For fixed-length string
+    dtypes that stores a pointer to the bytes instead of the bytes themselves, so
+    that both the fillvalue and the chunks elided from the virtual dataset read
+    back as garbage. h5py's own ``make_new_dset()`` avoids this by faking a
+    variable-length string dtype; do the same here.
 
     Fixed-length string fillvalues are written to ``layout.dcpl`` and None is
     returned, so that :meth:`h5py.Group.create_virtual_dataset` uses it as-is.
     Every other fillvalue is returned unchanged, for h5py to handle.
 
-    Variable-length string dtypes cannot carry a fillvalue at all
-    (https://github.com/h5py/h5py/issues/941); None is returned for them too, so
+    Variable-length string dtypes cannot carry a fillvalue in a virtual dataset:
+    h5py stores it with the same mistyped buffer as above, which corrupts the
+    dataset creation plist, and even a correctly stored fillvalue breaks reads
+    of the virtual dataset at the HDF5 level. None is returned for them too, so
     that they keep the HDF5 default, which is the only one versioned_hdf5 accepts
     for them anyway.
+
+    https://github.com/h5py/h5py/pull/2964 (open) fixes the h5py half of both
+    problems, by typing the fillvalue buffer after the dataset dtype.
     """
     if fillvalue is None:
         return None
