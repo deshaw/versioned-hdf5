@@ -8,7 +8,7 @@ import numpy as np
 from versioned_hdf5 import delete_versions, modify_metadata
 from versioned_hdf5.replay import recreate_dataset, tmp_group
 
-from .common import Benchmark, peak_memory, slow
+from .common import Benchmark, peak_memory, require_npystrings, slow
 
 #: Shape of the dataset in every version, and its chunk size:
 #: 128 MiB of float64 in 256 KiB chunks, i.e. 256 chunks
@@ -149,37 +149,43 @@ class TimeRecreateDatasetBlocked(Benchmark):
 
 
 class TimeRecreateDatasetBlockedStrings(Benchmark):
-    """Sasme as TimeRecreateDatasetBlocked, but with variable-length object strings."""
+    """Same as TimeRecreateDatasetBlocked, but with variable-length strings."""
 
     number = 1
     warmup_time = 0
     timeout = 1200
 
-    # 16.8 million unique strings per version, in 16,384 chunks. The last two versions
-    # are rewritten against 49,152 and 65,536 chunks: blocks of 96 and 128 MiB, where a
-    # fixed 64 MiB block splits every version in two.
     n_versions = 5
-    shape = (2**24,)
-    chunks = (1024,)
+    shape = (2**22,)
+    chunks = (256,)
 
-    def setup(self):
+    params = ["O", "T"]
+    param_names = ["dtype"]
+
+    def setup(self, dtype):
+        if dtype == "T":
+            require_npystrings()
+
         super().setup()
         for i in range(self.n_versions):
             # Benchmark.rand_strings() is too slow for 16.8 million strings
             data = (
                 self.rng.integers(ord("a"), ord("z") + 1, (*self.shape, 10), np.uint8)
                 .view("S10")[:, 0]
-                .astype(object)
+                .astype(dtype)
             )
             with self.vfile.stage_version(f"v{i}") as sv:
                 sv.create_dataset(
-                    NAME, data=data, dtype=h5py.string_dtype(), chunks=self.chunks
+                    NAME,
+                    data=data,
+                    dtype="T" if dtype == "T" else h5py.string_dtype(),
+                    chunks=self.chunks,
                 )
         self.reopen()
         self.newf = tmp_group(self.file)
 
     @slow
-    def time_recreate_dataset(self):
+    def time_recreate_dataset(self, *args, **kwargs):
         self.assert_clean_setup()
         recreate_dataset(self.file, NAME, self.newf)
 
