@@ -1007,7 +1007,7 @@ class DatasetLike:
                 fv = b""
 
         if fv is not None:
-            return np.asarray(fv, dtype=self.dtype)[()]
+            return asarray(fv, dtype=self.dtype)[()]
         return np.zeros((), dtype=self.dtype)[()]
 
     @property
