@@ -330,6 +330,9 @@ def test_read_then_commit_without_base_slab(vfile, read):
     with vfile.stage_version("v1") as sv:
         sv["x"][:] = np.arange(4) + 10
         sv["x"].resize((5,))
+        # .astype() and np.asarray() trigger a CoW-copy of the StagedChangesArray, which
+        # makes its buffers read-only. That in turn requires special handling in
+        # anything that wants to write to them afterwards, e.g. commit.
         assert_equal(read(sv["x"]), [10, 11, 12, 13, 0])
 
     assert_equal(vfile["v1"]["x"][:], [10, 11, 12, 13, 0])
