@@ -69,10 +69,6 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
 def run(*args: str | Path, tee: io.TextIOBase | None = None) -> None:
     """Run a command in the project root, raising if it fails.
     If `tee` is given, stdout is also written to that file.
-
-    stdout is echoed before raising, so that the reason of the failure is always
-    visible; `subprocess.check_output` would instead discard it on non-zero exit.
-    stderr is not captured, so that it keeps flowing straight to the terminal.
     """
     print("+", *args, flush=True)
     process = subprocess.run(args, cwd=PROJECT_ROOT, stdout=subprocess.PIPE)
