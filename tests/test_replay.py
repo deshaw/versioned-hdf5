@@ -2095,3 +2095,47 @@ def test_modify_metadata_other_filters(vfile, name, default_value, new_value):
     modify_metadata(f, "x", **{name: default_value})
     raw_data = f["_version_data"]["x"]["raw_data"]
     assert getattr(raw_data, name) == default_value
+
+
+@pytest.mark.parametrize("fillvalue", [None, b"", b"x"])
+@pytest.mark.parametrize("dtype", ["S1", "S4"])
+def test_modify_metadata_fixed_string_fillvalue_read_only(tmp_path, dtype, fillvalue):
+    """Whole chunks of the fill value, read back in mode "r" after the first commit
+    and after modify_metadata.
+    """
+    fill = b"" if fillvalue is None else fillvalue
+    data = np.array([b"a", b"b"] + [fill] * 6, dtype=dtype)
+    path = tmp_path / "data.h5"
+    with h5py.File(path, "w") as f, VersionedHDF5File(f).stage_version("r0") as sv:
+        sv.create_dataset("d", data=data, chunks=(2,), fillvalue=fillvalue)
+    with h5py.File(path, "r") as f:
+        assert_array_equal(VersionedHDF5File(f)["r0"]["d"][:], data)
+    with h5py.File(path, "r+") as f:
+        modify_metadata(f, "d", chunks=(4,))
+    with h5py.File(path, "r") as f:
+        ds = VersionedHDF5File(f)["r0"]["d"]
+        assert ds.fillvalue == fill
+        assert_array_equal(ds[:], data)
+
+
+@pytest.mark.parametrize("variable_width", [True, False], ids=["vlen", "S4"])
+def test_modify_metadata_to_fixed_string_fillvalue(tmp_path, variable_width):
+    """Chunks equal to the new fill value are not stored, so a read in mode "r"
+    returns the fill value of the version dataset.
+    """
+    path = tmp_path / "data.h5"
+    if variable_width:
+        data = np.array(["a", "b", "", ""], dtype=object)
+        dtype = h5py.string_dtype()
+    else:
+        data = np.array([b"a", b"b", b"", b""], dtype="S4")
+        dtype = "S4"
+    with h5py.File(path, "w") as f, VersionedHDF5File(f).stage_version("r0") as sv:
+        sv.create_dataset("d", data=data, dtype=dtype, chunks=(2,))
+    with h5py.File(path, "r+") as f:
+        modify_metadata(f, "d", dtype="S8", fillvalue=b"x")
+    expected = np.array([b"a", b"b", b"x", b"x"], dtype="S8")
+    with h5py.File(path, "r") as f:
+        ds = VersionedHDF5File(f)["r0"]["d"]
+        assert ds.fillvalue == b"x"
+        assert_array_equal(ds[:], expected)
