@@ -487,7 +487,7 @@ def test_datasetwrapper_resize(vfile):
 
 def test_resize_then_astype_read_only_slab_metadata_1(vfile):
     """Reading a staged dataset with ``astype("T")`` leaves
-    StagedChangesArray.slab_indices  as read-only and CoW-shared with its source, so
+    StagedChangesArray.slab_indices as read-only and CoW-shared with its source, so
     commit_staged_changes (which needs to mutate slab_indices in place) needs to cater
     for it.
 
