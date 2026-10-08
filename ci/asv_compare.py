@@ -71,14 +71,14 @@ def run(*args: str | Path, tee: io.TextIOBase | None = None) -> None:
     If `tee` is given, stdout is also written to that file.
     """
     print("+", *args, flush=True)
-    process = subprocess.run(args, cwd=PROJECT_ROOT, stdout=subprocess.PIPE)
-    result = process.stdout.decode("utf-8", errors="ignore")
-    sys.stdout.write(result)
+    proc = subprocess.run(args, cwd=PROJECT_ROOT, stdout=subprocess.PIPE)
+    out = proc.stdout.decode("utf-8", errors="ignore")
+    sys.stdout.write(out)
     sys.stdout.flush()
     if tee is not None:
-        tee.write(result)
-    if process.returncode != 0:
-        raise subprocess.CalledProcessError(process.returncode, args)
+        tee.write(out)
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(proc.returncode, args, out)
 
 
 def asv_run(commit_hash: str, repeat: int, bench: list[str]) -> None:
@@ -105,10 +105,7 @@ def asv_run(commit_hash: str, repeat: int, bench: list[str]) -> None:
         )
     except subprocess.CalledProcessError as e:
         if e.returncode != ASV_BENCHMARK_FAILED:
-            raise RuntimeError(
-                f"`asv run` failed with exit code {e.returncode}. If ASV was never "
-                "initialised on this machine, run `pixi r asv-machine` first."
-            ) from None
+            raise RuntimeError(e.output) from None
 
 
 def main(argv: list[str] | None = None) -> None:
