@@ -412,12 +412,11 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
         dtype = raw_data.dtype
         fillvalue = dataset.fillvalue
         if dtype.kind == "S":
-            # A fixed-string VDS can report its first data byte as its fillvalue. The
-            # fillvalue pinned on raw_data is authoritative.
+            # A fixed-string VDS can report its first data byte as its fillvalue.
+            # Use fillvalue from raw_data instead.
             fillvalue = raw_data.fillvalue
         if is_vstring_dtype(dtype):
-            # Variable length string dtype. A virtual dataset cannot carry a
-            # fillvalue for it; see vds_fillvalue() for why.
+            # vlen virtual datasets can't carry a fillvalue; see vds_fillvalue().
             if fillvalue not in [0, "", b"", None]:
                 raise ValueError(
                     "Non-default fillvalue not supported for variable length strings"

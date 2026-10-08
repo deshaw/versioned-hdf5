@@ -233,10 +233,8 @@ def create_base_dataset(
     group = f["_version_data"].create_group(name)
 
     if is_vstring_dtype(dtype):
-        # Variable length string dtype. The raw_data dataset could carry a
-        # fillvalue for it since h5py 3.7 (https://github.com/h5py/h5py/pull/2044);
-        # the version datasets cannot, so a non-default fillvalue must be rejected
-        # (see vds_fillvalue() for why).
+        # Variable length string dtype. virtual datasets can't carry a fillvalue;
+        # see vds_fillvalue().
         if fillvalue not in [0, "", b"", None]:
             raise ValueError(
                 "Non-default fillvalue not supported for variable length strings"
