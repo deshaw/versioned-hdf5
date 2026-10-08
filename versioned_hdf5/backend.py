@@ -18,7 +18,7 @@ from versioned_hdf5.cytools import ceil_a_over_b
 from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS, h5py_astype
 from versioned_hdf5.hashtable import Hashtable
 from versioned_hdf5.slicetools import RawDataView
-from versioned_hdf5.staged_changes import StagedChangesArray
+from versioned_hdf5.staged_changes import StagedChangesArray, _ensure_writeable
 from versioned_hdf5.typing_ import DEFAULT, Default
 
 if TYPE_CHECKING:
@@ -495,6 +495,7 @@ def commit_staged_changes(f, name: str, staged_changes: StagedChangesArray) -> N
         # and then recreated, or it was created in two independent branches
         sc.slabs.insert(1, _raw_data_as_base_slab(raw_data, sc.dtype))
         sc.hash_tables.insert(1, None)
+        sc.slab_indices = _ensure_writeable(sc.slab_indices)
         sc.slab_indices[sc.slab_indices > 0] += 1
         sc.n_base_slabs = 1
 
@@ -556,6 +557,8 @@ def commit_staged_changes(f, name: str, staged_changes: StagedChangesArray) -> N
         # Shift them to absolute raw_data offsets and collapse the new base slab onto
         # slab 1 (raw_data).
         if n_base_before:
+            sc.slab_indices = _ensure_writeable(sc.slab_indices)
+            sc.slab_offsets = _ensure_writeable(sc.slab_offsets)
             new_slab_mask = sc.slab_indices == new_slab_idx
             sc.slab_indices[new_slab_mask] = 1
             sc.slab_offsets[new_slab_mask] += prev_len

@@ -683,6 +683,29 @@ def test_data_v4_to_sc_hash_table_out_of_order(vfile):
     assert_equal(actual, on_disk[::-1])
 
 
+def test_commit_staged_changes_read_only_slab_metadata(vfile):
+    """A StagedChangesArray may hand out read-only slab metadata arrays that are
+    shared with another array. `commit_staged_changes` mutates those arrays, so it must
+    make a CoW copy first.
+    """
+    with vfile.stage_version("r0") as sv:
+        ds = sv.create_dataset("x", shape=(6,), chunks=(2,))
+        ds[0] = 1
+        ds[3:5] = 2
+        # Same dtype: astype() just returns the lazy CoW copy,
+        # whose metadata arrays are read-only views of `src`'s
+        sc_orig = ds.staged_changes
+        assert_equal(sc_orig.slab_indices, [1, 2, 2])
+        assert_equal(sc_orig.slab_offsets, [0, 0, 2])
+        ds.staged_changes = sc_orig.astype(ds.dtype)
+        assert not ds.staged_changes.slab_indices.flags.writeable
+
+    # commit_staged_changes did not touch the original StagedChangesArray's metadata
+    assert_equal(sc_orig.slab_indices, [1, 2, 2])
+    assert_equal(sc_orig.slab_offsets, [0, 0, 2])
+    assert_equal(vfile["r0"]["x"][:], [1, 0, 0, 2, 2, 0])
+
+
 def test_commit_staged_changes_out_of_order_hashtable(vfile):
     """Staged chunks are deduplicated onto the correct raw_data offset even when the
     records of the on-disk hash table are not in chunk order, which is the case after
