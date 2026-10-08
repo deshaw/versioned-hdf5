@@ -96,9 +96,10 @@ working tree is restored at the end.
 benchmark revisions that predate the benchmark you're running on them (as long as it
 doesn't crash on them).
 
-Each benchmark is sampled 5 times per process to measure noise (`-n/--repeat`), where
-`pixi r asv-run` measures it once.
-Pass `-b/--bench <regex>` to select individual tests.
+Each benchmark is sampled 3 times per process to measure noise (`-n/--repeat`), where
+`pixi r asv-run` measures it once. Pass `-b/--bench <regex>` to select individual tests.
+Benchmarks marked as `@slow` are skipped unless one sets the environment variable
+`ASV_RUNSLOW=1`.
 
 ## Automated Contributions and AI Policy
 

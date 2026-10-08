@@ -91,7 +91,10 @@ skip_slow = os.getenv("ASV_RUNSLOW") != "1"
 
 
 def slow(test):
-    """Skip tests marked as @slow by default"""
+    """Mark a test as @slow.
+
+    The test is skipped unless one sets env variable ASV_RUNSLOW=1.
+    """
     return skip_benchmark_if(skip_slow)(test)
 
 
