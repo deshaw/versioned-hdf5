@@ -1,17 +1,5 @@
 # Changelog
 
-## Unreleased
-
-### Bug Fixes
-
-- Fixed `TypeError: Expected bytes, got numpy.bytes_` raised when committing
-  `np.bytes_` elements (e.g. scalars read from a fixed-width `"S"` array) to a
-  variable-width string dataset.
-- Fixed `astype()` to variable-width strings raising
-  `OSError: Can't synchronously read data (no appropriate function for conversion
-  path)` for fixed-width string datasets, which also broke
-  `modify_metadata(dtype=...)` conversions from `"S"` datasets.
-
 ## 2.5.0 (2026-09-04)
 
 ### Major Changes
