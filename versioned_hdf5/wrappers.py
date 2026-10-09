@@ -181,14 +181,6 @@ class InMemoryGroup(Group):
             cache.invalidate()
 
     @classmethod
-    def _invalidate_file(cls, handle: Group) -> None:
-        """Forget everything cached for one file handle and drop the cache itself."""
-        cache = cls._caches.get(id(handle))
-        if cache is not None and cache.handle() is handle:
-            cache.invalidate()
-            del cls._caches[cache.key]
-
-    @classmethod
     def _invalidate_named(cls, *names: str | bytes | None) -> None:
         """Drop the cached wrappers of the groups at or below ``names``.
 

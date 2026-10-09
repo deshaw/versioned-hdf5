@@ -5,6 +5,7 @@ import logging
 import os
 import pathlib
 import shutil
+from contextlib import closing
 
 import h5py
 import numpy as np
@@ -1809,7 +1810,10 @@ def test_close_after_underlying_file_closed(vfile):
 
     vfile.close()
 
-    assert InMemoryGroup._cache_for_handle(h5py_file) is not cache
+    # The h5py handle may be shared with other VersionedHDF5File objects, so closing
+    # one of them must leave the wrappers cached for the handle alone.
+    assert InMemoryGroup._cache_for_handle(h5py_file) is cache
+    assert version.id in cache.groups
     assert not hasattr(vfile, "f")
 
 
@@ -2185,6 +2189,48 @@ def test_subgroups_inherit_commit_status(tmp_path):
         delete_versions(vfile, ["r0"])
         assert_equal(subgroup["x"][:], [100, 1, 2, 3, 4, 5, 6, 7])
         assert_equal(vfile["r1"]["a/x"][:], [100, 1, 2, 3, 4, 5, 6, 7])
+
+
+def test_close_other_vfile_while_staging(tmp_path):
+    """Closing one VersionedHDF5File must not disturb another one wrapping the same
+    h5py handle, even while the latter is staging a version.
+    """
+    filename = tmp_path / "file.h5"
+    with h5py.File(filename, "w") as f:
+        vfile = VersionedHDF5File(f)
+        with vfile.stage_version("v0") as sv:
+            sv["a/x"] = np.arange(3)
+        with vfile.stage_version("v1") as sv:
+            # E.g. a helper wrapping the same h5py.File, closing its wrapper on exit.
+            VersionedHDF5File(f).close()
+            sv["a/b/y"] = np.arange(2)
+
+    with h5py.File(filename, "r") as f:
+        assert_equal(VersionedHDF5File(f)["v1"]["a/x"][:], [0, 1, 2])
+
+
+def test_helper_reads_while_staging(tmp_path):
+    """A helper that opens a read-only VersionedHDF5File on a handle that is being
+    used to stage a version must not invalidate the staged data.
+    """
+    filename = tmp_path / "file.h5"
+
+    def read_latest(f, name):
+        """Read a dataset from the latest committed version of an h5py file."""
+        with closing(VersionedHDF5File(f)) as vfile:
+            return vfile[vfile.current_version][name][:]
+
+    with h5py.File(filename, "w") as f:
+        vfile = VersionedHDF5File(f)
+        with vfile.stage_version("v0") as sv:
+            sv["a/x"] = np.arange(3)
+        with vfile.stage_version("v1") as sv:
+            sv["a/b/y"] = read_latest(f, "a/x") * 2
+
+    with h5py.File(filename, "r") as f:
+        vfile = VersionedHDF5File(f)
+        assert_equal(vfile["v1"]["a/b/y"][:], [0, 2, 4])
+        assert_equal(vfile["v1"]["a/x"][:], [0, 1, 2])
 
 
 def test_delete_datasets(vfile):

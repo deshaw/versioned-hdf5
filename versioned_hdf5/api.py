@@ -340,9 +340,12 @@ class VersionedHDF5File:
     def close(self):
         """
         Make sure the VersionedHDF5File object is no longer reachable.
+
+        The h5py file handle is shared by every VersionedHDF5File wrapping it, so the
+        InMemoryGroup wrappers cached for it stay valid and must not be dropped here:
+        another wrapper may still be using them, possibly to stage a version.
         """
         if hasattr(self, "f"):
-            InMemoryGroup._invalidate_file(self.f)
             self._version_cache.clear()
             del self.f
         self._closed = True
