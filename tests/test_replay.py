@@ -149,17 +149,15 @@ def test_modify_metadata_variable_width_strings(vfile, dtype, metadata):
 
 
 def test_modify_metadata_fixed_string_to_variable_width(setup_vfile):
-    """Convert a fixed-width string dataset to variable-width strings.
-
-    The file is closed and reopened first, so that the data must be read back from
-    raw_data (rather than served from the in-memory staged chunks).
-    Regression test for https://github.com/deshaw/versioned-hdf5/issues/595
-    """
+    """Convert a fixed-width string dataset to variable-width strings"""
     f = setup_vfile()
     fname = f.filename
     data = np.array([b"aaaaaaa", b"bbbbbbb"], dtype="S8")
     with VersionedHDF5File(f).stage_version("v0") as sv:
         sv.create_dataset("d", data=data, chunks=(2,))
+
+    # Close and reopen, so that the data must be read back from raw_data (rather than
+    # served from the in-memory staged chunks).
     f.close()
 
     with h5py.File(fname, "r+") as g:

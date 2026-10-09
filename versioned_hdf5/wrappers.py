@@ -1241,9 +1241,10 @@ class MetadataTransformView(DatasetLike, FiltersMixin):
         assert isinstance(buf, (np.ndarray, np.generic))
         if buf.dtype != self.dtype:
             # Fixed-width -> variable-width strings; see __init__
-            buf = np.asarray(buf).astype(self.dtype)
+            buf = buf.astype(self.dtype)
         if self._fillvalue != self._prev_fillvalue:
             if not buf.flags.writeable:
+                # Also converts np.generic to np.ndarray
                 buf = np.array(buf, copy=True)
             buf[buf == self._prev_fillvalue] = self._fillvalue
         return buf

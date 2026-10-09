@@ -1984,10 +1984,7 @@ def test_fixed_string_identical_whole_dataset_update(
 
 
 def test_np_bytes_scalar_into_vlen_dataset(vfile):
-    """Assigning an np.bytes_ scalar to a variable-width string dataset
-
-    Regression test for https://github.com/deshaw/versioned-hdf5/issues/595
-    """
+    """Assign an np.bytes_ scalar to a variable-width string dataset"""
     with vfile.stage_version("r0") as sv:
         sv.create_dataset(
             "d",

@@ -208,10 +208,7 @@ def test_object_slab():
 
 
 def test_object_slab_bytes_subclass():
-    """np.bytes_ is a bytes subclass, but Cython's coercion to `bytes` rejected it.
-
-    Regression test for https://github.com/deshaw/versioned-hdf5/issues/595
-    """
+    """np.bytes_ is a bytes subclass, but Cython's coercion to `bytes` rejects it."""
     slab = np.array([b"a", "bb", b""], dtype=object)
     as_np_bytes = np.array([np.bytes_(x) for x in slab], dtype=object)
     assert hash_chunk(slab) == hash_chunk(as_np_bytes)
