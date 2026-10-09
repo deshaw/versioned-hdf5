@@ -6,6 +6,7 @@ from functools import wraps
 
 import h5py
 import numpy as np
+from asv_runner.benchmarks.mark import skip_benchmark_if
 from numpy.typing import DTypeLike
 
 from versioned_hdf5 import VersionedHDF5File
@@ -84,6 +85,17 @@ def peak_memory(func):
     # asv's default unit of "unit".
     wrapper.unit = "bytes"
     return wrapper
+
+
+skip_slow = os.getenv("ASV_RUNSLOW") != "1"
+
+
+def slow(test):
+    """Mark a test as @slow.
+
+    The test is skipped unless one sets env variable ASV_RUNSLOW=1.
+    """
+    return skip_benchmark_if(skip_slow)(test)
 
 
 class Benchmark:

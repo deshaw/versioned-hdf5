@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import h5py
 import numpy as np
 
 from versioned_hdf5 import delete_versions, modify_metadata
 from versioned_hdf5.replay import recreate_dataset, tmp_group
 
-from .common import Benchmark, peak_memory
+from .common import Benchmark, peak_memory, require_npystrings, slow
 
 #: Shape of the dataset in every version, and its chunk size:
 #: 128 MiB of float64 in 256 KiB chunks, i.e. 256 chunks
@@ -95,6 +96,98 @@ class TimeRecreateDataset(_ReplayBenchmark):
     def time_recreate_dataset(self, case):
         self.assert_clean_setup()
         recreate_dataset(self.file, NAME, self.newf, callback=self.callback)
+
+    track_peakmem_recreate_dataset = peak_memory(time_recreate_dataset)
+
+
+class TimeRecreateDatasetBlocked(Benchmark):
+    """Trigger dynamically-sized block copy (backend::_rewrite_block_bytes)
+
+    `recreate_dataset()` rewrites every version into a brand new `raw_data`, so the
+    on-disk hash table that `_rewrite_block_bytes()` sizes the block from starts empty
+    and grows by one version's chunks at a time. A single-version file therefore only
+    ever gets the floor block size; a multi-version file exercises the whole range.
+    """
+
+    number = 1
+    warmup_time = 0
+    # A sample takes ~20 s to time and 5x as long under memray; asv's default is 60 s.
+    timeout = 1200
+
+    #: Versions in the file, each with unique data, so that the hash table that the
+    #: next version is rewritten against grows at every step. The first version always
+    #: gets the 64 MiB floor, just like the fixed-size baseline, so a handful of them
+    #: are needed before the block outgrows the floor and the difference is visible.
+    n_versions = 6
+
+    # 1 GiB / 16 kiB = 64k chunks per version, so the table grows from empty to
+    # 384k chunks and the block from the 64 MiB floor to the 512 MiB cap:
+    # 64, 128, 256, 384, 512, 512 MiB.
+    shape = (1024 * 1024 * 1024 // 8,)
+    chunks = (16 * 1024 // 8,)
+
+    def setup(self):
+        super().setup()
+        for i in range(self.n_versions):
+            with self.vfile.stage_version(f"v{i}") as sv:
+                sv.create_dataset(
+                    NAME, data=self.rng.random(self.shape), chunks=self.chunks
+                )
+        self.reopen()
+        self.newf = tmp_group(self.file)
+
+    @slow
+    def time_recreate_dataset(self):
+        self.assert_clean_setup()
+        recreate_dataset(self.file, NAME, self.newf)
+
+    # At 16 kiB chunks the benchmark peak memory is dominated by what libhdf5 allocates
+    # for the virtual mappings of the source and destination datasets (~45 kiB per
+    # chunk), not by the copy block. This has been measured as 4.2~4.8 GB worth of
+    # libhdf5 metadata, 10x the max scratch area size and very noisy.
+    track_peakmem_recreate_dataset = peak_memory(time_recreate_dataset)  # noqa: ERA001
+
+
+class TimeRecreateDatasetBlockedStrings(Benchmark):
+    """Same as TimeRecreateDatasetBlocked, but with variable-length strings."""
+
+    number = 1
+    warmup_time = 0
+    timeout = 1200
+
+    n_versions = 5
+    shape = (2**24,)
+    chunks = (1024,)
+
+    params = ["O", "T"]
+    param_names = ["dtype"]
+
+    def setup(self, dtype):
+        if dtype == "T":
+            require_npystrings()
+
+        super().setup()
+        for i in range(self.n_versions):
+            # Benchmark.rand_strings() is too slow for 16.8 million strings
+            data = (
+                self.rng.integers(ord("a"), ord("z") + 1, (*self.shape, 10), np.uint8)
+                .view("S10")[:, 0]
+                .astype(dtype)
+            )
+            with self.vfile.stage_version(f"v{i}") as sv:
+                sv.create_dataset(
+                    NAME,
+                    data=data,
+                    dtype="T" if dtype == "T" else h5py.string_dtype(),
+                    chunks=self.chunks,
+                )
+        self.reopen()
+        self.newf = tmp_group(self.file)
+
+    @slow
+    def time_recreate_dataset(self, *args, **kwargs):
+        self.assert_clean_setup()
+        recreate_dataset(self.file, NAME, self.newf)
 
     track_peakmem_recreate_dataset = peak_memory(time_recreate_dataset)
 
