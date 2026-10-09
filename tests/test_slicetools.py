@@ -858,8 +858,8 @@ def _vlen_strings_raw_data(f):
 
 
 def test_create_virtual_dataset_vlen_strings(setup_vfile):
-    """Variable-length strings: the fillvalue is silently ignored, as setting it on a
-    virtual dataset of vlen strings is an h5py bug.
+    """Variable-length strings: the fillvalue is silently ignored, as a virtual
+    dataset of vlen strings cannot carry a fillvalue; see vds_fillvalue() for why.
     """
     with setup_vfile(version_name=["v", "v2"]) as f:
         raw_data = _vlen_strings_raw_data(f)

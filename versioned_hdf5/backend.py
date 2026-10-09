@@ -237,13 +237,9 @@ def create_base_dataset(
     chunks = normalize_chunks(chunks, shape, dtype)
     group = f["_version_data"].create_group(name)
 
-    if dtype.metadata and (
-        "vlen" in dtype.metadata or "h5py_encoding" in dtype.metadata
-    ):
-        # h5py string dtype
-        # (https://h5py.readthedocs.io/en/2.10.0/strings.html). Setting the
-        # fillvalue in this case doesn't work
-        # (https://github.com/h5py/h5py/issues/941).
+    if is_vstring_dtype(dtype):
+        # Variable length string dtype. virtual datasets can't carry a fillvalue;
+        # see vds_fillvalue().
         if fillvalue not in [0, "", b"", None]:
             raise ValueError(
                 "Non-default fillvalue not supported for variable length strings"
