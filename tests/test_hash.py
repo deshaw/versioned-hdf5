@@ -207,6 +207,13 @@ def test_object_slab():
         assert digests[j] == reference(slab[start : start + 2])
 
 
+def test_object_slab_bytes_subclass():
+    """np.bytes_ is a bytes subclass, but Cython's coercion to `bytes` rejects it."""
+    slab = np.array([b"a", "bb", b""], dtype=object)
+    as_np_bytes = np.array([np.bytes_(x) for x in slab], dtype=object)
+    assert hash_chunk(slab) == hash_chunk(as_np_bytes)
+
+
 def test_object_edge_chunk_ignores_uninitialised():
     slab = np.array(["a", "bb", "ccc", "junk"], dtype=object)
     src_start = np.array([2], dtype=np_hsize_t)

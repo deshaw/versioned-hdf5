@@ -1226,15 +1226,25 @@ class MetadataTransformView(DatasetLike, FiltersMixin):
         self.parent = parent
         self.itemsize_max = max(self.dtype.itemsize, dataset.dtype.itemsize)
         self._prev_fillvalue = dataset.fillvalue
-        # Perform dtype conversion of data that is already in memory eagerly,
-        # while avoiding repeatedly creating astype views of on-disk h5py slabs.
-        self._data = dataset.astype(self.dtype)
+        if dataset.dtype.kind == "S" and self.dtype == object:
+            # HDF5 has no read conversion path from fixed-width to variable-width
+            # strings. Keep the source dataset as-is; __getitem__ converts each block
+            # with NumPy, which is the only route that works.
+            self._data = dataset
+        else:
+            # Perform dtype conversion of data that is already in memory eagerly,
+            # while avoiding repeatedly creating astype views of on-disk h5py slabs.
+            self._data = dataset.astype(self.dtype)
 
     def __getitem__(self, index):
         buf = self._data[index]
         assert isinstance(buf, (np.ndarray, np.generic))
+        if buf.dtype != self.dtype:
+            # Fixed-width -> variable-width strings; see __init__
+            buf = buf.astype(self.dtype)
         if self._fillvalue != self._prev_fillvalue:
             if not buf.flags.writeable:
+                # Also converts np.generic to np.ndarray
                 buf = np.array(buf, copy=True)
             buf[buf == self._prev_fillvalue] = self._fillvalue
         return buf

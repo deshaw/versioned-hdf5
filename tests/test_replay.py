@@ -148,6 +148,27 @@ def test_modify_metadata_variable_width_strings(vfile, dtype, metadata):
     assert_strings(vfile["v0"]["d"][:], ["one", "two", "three"])
 
 
+def test_modify_metadata_fixed_string_to_variable_width(setup_vfile):
+    """Convert a fixed-width string dataset to variable-width strings"""
+    f = setup_vfile()
+    fname = f.filename
+    data = np.array([b"aaaaaaa", b"bbbbbbb"], dtype="S8")
+    with VersionedHDF5File(f).stage_version("v0") as sv:
+        sv.create_dataset("d", data=data, chunks=(2,))
+
+    # Close and reopen, so that the data must be read back from raw_data (rather than
+    # served from the in-memory staged chunks).
+    f.close()
+
+    with h5py.File(fname, "r+") as g:
+        modify_metadata(VersionedHDF5File(g), "d", dtype=h5py.string_dtype())
+
+        assert g["_version_data/d/raw_data"].dtype == object
+        vf = VersionedHDF5File(g)
+        assert vf["v0"]["d"].dtype == object
+        assert_array_equal(vf["v0"]["d"][:], [b"aaaaaaa", b"bbbbbbb"])
+
+
 def test_modify_metadata_compression(vfile):
     setup_vfile(vfile)
 
