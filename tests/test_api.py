@@ -2146,6 +2146,47 @@ def test_writable_handles_do_not_reuse_wrapper(tmp_path):
         assert_equal(first_x[:], data)
 
 
+def test_committed_subgroups_are_read_only(tmp_path):
+    """Subgroups of a committed version group cannot be written to."""
+    filename = tmp_path / "file.h5"
+    with h5py.File(filename, "w") as f:
+        vfile = VersionedHDF5File(f)
+        with vfile.stage_version("r0") as sv:
+            sv.create_dataset("a/x", data=np.arange(8), chunks=(4,))
+
+    with h5py.File(filename, "r+") as f:
+        vfile = VersionedHDF5File(f)
+        group = vfile["r0"]
+        assert group["a"]._committed
+        with pytest.raises(ValueError, match="has already been committed"):
+            group["a"]["x"] = np.arange(3)
+
+
+def test_subgroups_inherit_commit_status(tmp_path):
+    """Subgroups of a committed version group are committed like their parent, so
+    that they are read-only and are invalidated together with it.
+    """
+    filename = tmp_path / "file.h5"
+    with h5py.File(filename, "w") as f:
+        vfile = VersionedHDF5File(f)
+        with vfile.stage_version("r0") as sv:
+            sv.create_dataset("a/x", data=np.arange(8), chunks=(4,))
+        with vfile.stage_version("r1") as sv:
+            sv["a/x"][0] = 100
+
+    with h5py.File(filename, "r+") as f:
+        vfile = VersionedHDF5File(f)
+        group = vfile["r1"]
+        subgroup = group["a"]
+        assert subgroup._committed
+        assert_equal(subgroup["x"][:], [100, 1, 2, 3, 4, 5, 6, 7])
+        # delete_versions() only invalidates committed wrappers. If the subgroup
+        # were not one of them, it would go on serving data from before the swap.
+        delete_versions(vfile, ["r0"])
+        assert_equal(subgroup["x"][:], [100, 1, 2, 3, 4, 5, 6, 7])
+        assert_equal(vfile["r1"]["a/x"][:], [100, 1, 2, 3, 4, 5, 6, 7])
+
+
 def test_delete_datasets(vfile):
     data1 = np.arange(10)
     data2 = np.zeros(20, dtype=int)

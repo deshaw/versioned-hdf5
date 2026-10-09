@@ -133,7 +133,9 @@ class InMemoryGroup(Group):
             is an h5py.Group subclass; a versioned file may also be rooted at a
             subgroup, and versioned_hdf5.replay.tmp_group() hands one out too.
         _committed : bool
-            True if the group has already been committed, False otherwise.
+            True if the group has already been committed, False otherwise. Groups
+            derived from an existing group inherit its status, so that subgroups
+            of a committed version are read-only as well.
         """
         if self._initialized:
             return
@@ -235,7 +237,9 @@ class InMemoryGroup(Group):
         # h5py.Group, (i.e. the file itself).
         res = super().__getitem__(name)
         if isinstance(res, Group):
-            self._subgroups[name] = InMemoryGroup(res.id, self._handle)
+            self._subgroups[name] = InMemoryGroup(
+                res.id, self._handle, _committed=self._committed
+            )
             return self._subgroups[name]
         if isinstance(res, Dataset):
             self._add_to_data(name, res)
@@ -264,7 +268,9 @@ class InMemoryGroup(Group):
             self._subgroups[name] = obj
             return
         if isinstance(obj, Group):
-            self._subgroups[name] = InMemoryGroup(obj.id, self._handle)
+            self._subgroups[name] = InMemoryGroup(
+                obj.id, self._handle, _committed=self._committed
+            )
             return
 
         if isinstance(obj, Dataset):
@@ -354,7 +360,7 @@ class InMemoryGroup(Group):
                 "Root level groups cannot be created inside of versioned groups"
             )
         group_id = super().create_group(name, track_order=track_order).id
-        group = InMemoryGroup(group_id, self._handle)
+        group = InMemoryGroup(group_id, self._handle, _committed=self._committed)
         g = group
         n = name
         while n:
@@ -362,7 +368,9 @@ class InMemoryGroup(Group):
             if not dirname:
                 parent = self
             else:
-                parent = InMemoryGroup(g.parent.id, self._handle)
+                parent = InMemoryGroup(
+                    g.parent.id, self._handle, _committed=self._committed
+                )
             parent._subgroups[basename] = g
             g.parent = parent
             g = parent
