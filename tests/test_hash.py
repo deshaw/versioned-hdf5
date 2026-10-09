@@ -286,6 +286,17 @@ def hash_chunk(
 
 
 @pytest.mark.parametrize("dtype", VLEN_DTYPES)
+def test_object_slab_bytes_subclass(dtype):
+    """np.bytes_ elements (e.g. from an "S" array) hash like plain bytes.
+
+    Regression test for https://github.com/deshaw/versioned-hdf5/issues/595
+    np.bytes_ is a subclass of bytes, and Cython's coercion to `bytes` rejected it.
+    """
+    slab = np.array([np.bytes_(b"a"), np.bytes_(b"bb"), np.bytes_(b"")], dtype=dtype)
+    assert hash_chunk(slab) == hash_chunk(np.array([b"a", b"bb", b""], dtype=dtype))
+
+
+@pytest.mark.parametrize("dtype", VLEN_DTYPES)
 @pytest.mark.parametrize(
     ("a", "b"),
     [

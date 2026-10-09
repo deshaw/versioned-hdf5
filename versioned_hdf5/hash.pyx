@@ -384,7 +384,9 @@ cdef void _hash_object_chunk(
             if isinstance(value, str):
                 value_b = value.encode("utf-8")
             elif isinstance(value, bytes):
-                value_b = value
+                # Also covers np.bytes_; bytes() is a no-op for exact bytes,
+                # but Cython's coercion to `bytes` rejects subclasses
+                value_b = bytes(value)
             else:
                 raise ValueError(f"Object array contains unsupported type={type(value)}")
 

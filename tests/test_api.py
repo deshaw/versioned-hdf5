@@ -1983,6 +1983,26 @@ def test_fixed_string_identical_whole_dataset_update(
     assert vfile["v1"]["x"].fillvalue == expected_fillvalue
 
 
+def test_np_bytes_scalar_into_vlen_dataset(vfile):
+    """Assigning an np.bytes_ scalar commits
+
+    Regression test for https://github.com/deshaw/versioned-hdf5/issues/595
+    """
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset(
+            "d",
+            data=np.array([b"a", b"b"], dtype=object),
+            dtype=h5py.string_dtype(),
+            chunks=(2,),
+        )
+
+    with vfile.stage_version("r1") as sv:
+        sv["d"][1] = np.bytes_(b"c")
+
+    assert_equal(vfile["r0"]["d"][:], [b"a", b"b"])
+    assert_equal(vfile["r1"]["d"][:], [b"a", b"c"])
+
+
 def test_mismatched_fixed_string_dtypes(vfile):
     dt1 = h5py.string_dtype(length=30)
     dt2 = h5py.string_dtype(length=20)
