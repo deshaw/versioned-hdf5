@@ -207,6 +207,16 @@ def test_object_slab():
         assert digests[j] == reference(slab[start : start + 2])
 
 
+def test_object_slab_bytes_subclass():
+    """np.bytes_ is a bytes subclass, but Cython's coercion to `bytes` rejected it.
+
+    Regression test for https://github.com/deshaw/versioned-hdf5/issues/595
+    """
+    slab = np.array([b"a", "bb", b""], dtype=object)
+    as_np_bytes = np.array([np.bytes_(x) for x in slab], dtype=object)
+    assert hash_chunk(slab) == hash_chunk(as_np_bytes)
+
+
 def test_object_edge_chunk_ignores_uninitialised():
     slab = np.array(["a", "bb", "ccc", "junk"], dtype=object)
     src_start = np.array([2], dtype=np_hsize_t)
@@ -283,19 +293,6 @@ def hash_chunk(
     idx = (slice(src_start, src_start + count[0]), *(slice(c) for c in count[1:]))
     assert digest == reference(slab[idx])
     return digest
-
-
-def test_object_slab_bytes_subclass():
-    """np.bytes_ elements (e.g. from an "S" array) hash like plain bytes.
-
-    Regression test for https://github.com/deshaw/versioned-hdf5/issues/595
-    np.bytes_ is a subclass of bytes, and Cython's coercion to `bytes` rejected it.
-
-    StringDType slabs are converted to object (and then to `str`) before the loop,
-    so they can never reach the bytes branch; see test_object_slab.
-    """
-    slab = np.array([np.bytes_(b"a"), np.bytes_(b"bb"), np.bytes_(b"")], dtype=object)
-    assert hash_chunk(slab) == hash_chunk(np.array([b"a", b"bb", b""], dtype=object))
 
 
 @pytest.mark.parametrize("dtype", VLEN_DTYPES)

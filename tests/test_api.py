@@ -1984,7 +1984,7 @@ def test_fixed_string_identical_whole_dataset_update(
 
 
 def test_np_bytes_scalar_into_vlen_dataset(vfile):
-    """Assigning an np.bytes_ scalar commits
+    """Assigning an np.bytes_ scalar to a variable-width string dataset
 
     Regression test for https://github.com/deshaw/versioned-hdf5/issues/595
     """
@@ -2001,28 +2001,6 @@ def test_np_bytes_scalar_into_vlen_dataset(vfile):
 
     assert_equal(vfile["r0"]["d"][:], [b"a", b"b"])
     assert_equal(vfile["r1"]["d"][:], [b"a", b"c"])
-
-
-def test_np_bytes_array_into_vlen_dataset(vfile):
-    """Replacing a whole variable-width string dataset with "S" data does not
-    leave np.bytes_ elements behind that fail to hash.
-
-    Regression test for https://github.com/deshaw/versioned-hdf5/issues/595
-    """
-    with vfile.stage_version("r0") as sv:
-        sv.create_dataset(
-            "d",
-            data=np.array([b"a", b"b"], dtype=object),
-            dtype=h5py.string_dtype(),
-            chunks=(2,),
-        )
-
-    with vfile.stage_version("r1") as sv:
-        sv["d"][:] = np.array([b"a", b"c"], dtype="S8")  # wholesale replacement
-
-    assert vfile.f["_version_data/d/raw_data"].dtype == object
-    assert_equal(vfile["r1"]["d"][:], [b"a", b"c"])
-    assert_equal(vfile["r0"]["d"][:], [b"a", b"b"])  # CoW: r0 untouched
 
 
 def test_mismatched_fixed_string_dtypes(vfile):

@@ -149,11 +149,10 @@ def test_modify_metadata_variable_width_strings(vfile, dtype, metadata):
 
 
 def test_modify_metadata_fixed_string_to_variable_width(setup_vfile):
-    """Converting a fixed-width string dataset to variable-width strings
+    """Convert a fixed-width string dataset to variable-width strings.
 
-    The file is closed and reopened in between, so that the data has to be read
-    back from raw_data (rather than served from the in-memory staged chunks).
-
+    The file is closed and reopened first, so that the data must be read back from
+    raw_data (rather than served from the in-memory staged chunks).
     Regression test for https://github.com/deshaw/versioned-hdf5/issues/595
     """
     f = setup_vfile()
