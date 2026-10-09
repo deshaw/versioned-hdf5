@@ -718,8 +718,9 @@ class InMemoryDataset(BufferMixin, FiltersMixin, Dataset):
 
     def _astype_impl(self, dtype: np.dtype, writeable: bool) -> MutableArrayProtocol:
         """Hook for BufferMixin"""
-        # Backwards compatibility with h5py <3.13
-        raw_data_view = h5py_astype(self.id.raw_data, dtype)  # AsTypeView
+        # h5py_astype() returns an h5py AsTypeView, a NumPy-backed view for
+        # fixed-width strings, or a backported AsTypeView on h5py <3.13
+        raw_data_view = h5py_astype(self.id.raw_data, dtype)
         out = self.staged_changes.astype(dtype, base_slabs=[raw_data_view])
         out.writeable = writeable
         return out

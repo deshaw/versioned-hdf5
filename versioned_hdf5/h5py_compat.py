@@ -59,12 +59,7 @@ class FixedStringToObjectView:
         return np.asarray(self[()], dtype=dtype or self.dtype)
 
 
-if H5PY_VERSION >= (3, 13):
-
-    def _ds_astype(ds: h5py.Dataset, dtype: DTypeLike) -> ArrayProtocol:
-        return ds.astype(dtype)
-
-else:
+if H5PY_VERSION < (3, 13):
     # Backport AsTypeView to h5py <3.13
 
     class AsTypeView:
@@ -114,6 +109,8 @@ else:
 def h5py_astype(ds: h5py.Dataset, dtype: DTypeLike) -> ArrayProtocol:
     """Like ``ds.astype(dtype)``, but working around HDF5's lack of a conversion
     path from fixed-width strings to variable-length (``object``) strings."""
-    if np.dtype(dtype) == object and ds.dtype.kind in ("S", "U"):
+    if np.dtype(dtype) == object and ds.dtype.kind == "S":
         return FixedStringToObjectView(ds)
-    return _ds_astype(ds, dtype)
+    if H5PY_VERSION >= (3, 13):
+        return ds.astype(dtype)
+    return AsTypeView(ds.astype(dtype))

@@ -148,20 +148,28 @@ def test_modify_metadata_variable_width_strings(vfile, dtype, metadata):
     assert_strings(vfile["v0"]["d"][:], ["one", "two", "three"])
 
 
-def test_modify_metadata_fixed_string_to_variable_width(vfile):
+def test_modify_metadata_fixed_string_to_variable_width(setup_vfile):
     """Converting a fixed-width string dataset to variable-width strings
+
+    The file is closed and reopened in between, so that the data has to be read
+    back from raw_data (rather than served from the in-memory staged chunks).
 
     Regression test for https://github.com/deshaw/versioned-hdf5/issues/595
     """
+    f = setup_vfile()
+    fname = f.filename
     data = np.array([b"aaaaaaa", b"bbbbbbb"], dtype="S8")
-    with vfile.stage_version("v0") as sv:
+    with VersionedHDF5File(f).stage_version("v0") as sv:
         sv.create_dataset("d", data=data, chunks=(2,))
+    f.close()
 
-    modify_metadata(vfile, "d", dtype=h5py.string_dtype())
+    with h5py.File(fname, "r+") as g:
+        modify_metadata(VersionedHDF5File(g), "d", dtype=h5py.string_dtype())
 
-    assert vfile.f["_version_data/d/raw_data"].dtype == object
-    assert vfile["v0"]["d"].dtype == object
-    assert_array_equal(vfile["v0"]["d"][:], [b"aaaaaaa", b"bbbbbbb"])
+        assert g["_version_data/d/raw_data"].dtype == object
+        vf = VersionedHDF5File(g)
+        assert vf["v0"]["d"].dtype == object
+        assert_array_equal(vf["v0"]["d"][:], [b"aaaaaaa", b"bbbbbbb"])
 
 
 def test_modify_metadata_compression(vfile):
