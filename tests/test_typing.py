@@ -2,11 +2,10 @@ import h5py
 import numpy as np
 import numpy.ma as ma
 import pytest
-from numpy.testing import assert_array_equal
 from packaging.version import Version
 from versioned_hdf5.slicetools import RawDataView
 
-from versioned_hdf5.h5py_compat import FixedStringToObjectView, h5py_astype
+from versioned_hdf5.h5py_compat import h5py_astype
 from versioned_hdf5.staged_changes import StagedChangesArray
 from versioned_hdf5.typing_ import is_array_protocol
 
@@ -99,22 +98,6 @@ def test_array_protocol_h5_astypeview_compat(h5file):
     assert is_array_protocol(view)
     assert not is_array_protocol(view, mutable=True)
     assert is_array_protocol(view)
-
-
-def test_array_protocol_fixed_string_to_object_view(h5file):
-    """FixedStringToObjectView, used for "S" -> object astype(), is an ArrayProtocol"""
-    dset = h5file.create_dataset("x", shape=(10,), dtype="S8")
-    view = h5py_astype(dset, object)
-    assert isinstance(view, FixedStringToObjectView)
-    assert is_array_protocol(view)
-    assert not is_array_protocol(view, mutable=True)
-    assert view.shape == (10,)
-    assert view.ndim == 1
-    assert view.size == 10
-    assert view.dtype == object
-    assert_array_equal(view[2:4], [b"", b""])
-    with pytest.raises(ValueError, match="Cannot return an ndarray view"):
-        np.asarray(view, copy=False)
 
 
 def array_protocol_staged_changes():

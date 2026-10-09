@@ -12,54 +12,12 @@ H5PY_VERSION = tuple(int(i) for i in h5py.__version__.split(".")[:2])
 HAS_NPYSTRINGS = H5PY_VERSION >= (3, 14) and NP_GE_200
 
 
-class FixedStringToObjectView:
-    """Read a fixed-width string dataset as an array of ``object`` strings.
+if H5PY_VERSION >= (3, 13):
 
-    HDF5 has no conversion path from fixed-width to variable-length strings, so
-    ``h5py.Dataset.astype(object)`` itself raises::
+    def h5py_astype(ds: h5py.Dataset, dtype: DTypeLike) -> ArrayProtocol:
+        return ds.astype(dtype)
 
-        OSError: Can't synchronously read data (no appropriate function for
-        conversion path)
-
-    Read the data as-is and let NumPy do the conversion instead.
-    """
-
-    def __init__(self, ds: h5py.Dataset):
-        self._ds = ds
-
-    def __len__(self) -> int:
-        return len(self._ds)
-
-    def __getitem__(self, item) -> np.ndarray | np.generic:
-        return np.asarray(self._ds[item]).astype(object)
-
-    @property
-    def dtype(self) -> np.dtype:
-        return np.dtype(object)
-
-    @property
-    def ndim(self) -> int:
-        return self._ds.ndim
-
-    @property
-    def shape(self) -> tuple[int, ...]:
-        return self._ds.shape
-
-    @property
-    def size(self) -> int:
-        return self._ds.size
-
-    def __array__(
-        self,
-        dtype: DTypeLike | None = None,
-        copy: bool | None = None,
-    ) -> np.ndarray:
-        if copy is False:
-            raise ValueError("Cannot return an ndarray view of a Dataset")
-        return np.asarray(self[()], dtype=dtype or self.dtype)
-
-
-if H5PY_VERSION < (3, 13):
+else:
     # Backport AsTypeView to h5py <3.13
 
     class AsTypeView:
@@ -102,15 +60,5 @@ if H5PY_VERSION < (3, 13):
             # If self.ndim == 0, convert np.generic back to np.ndarray
             return np.asarray(self[()], dtype=dtype or self.dtype)
 
-    def _ds_astype(ds: h5py.Dataset, dtype: DTypeLike) -> ArrayProtocol:
+    def h5py_astype(ds: h5py.Dataset, dtype: DTypeLike) -> ArrayProtocol:
         return AsTypeView(ds.astype(dtype))
-
-
-def h5py_astype(ds: h5py.Dataset, dtype: DTypeLike) -> ArrayProtocol:
-    """Like ``ds.astype(dtype)``, but working around HDF5's lack of a conversion
-    path from fixed-width strings to variable-length (``object``) strings."""
-    if np.dtype(dtype) == object and ds.dtype.kind == "S":
-        return FixedStringToObjectView(ds)
-    if H5PY_VERSION >= (3, 13):
-        return ds.astype(dtype)
-    return AsTypeView(ds.astype(dtype))

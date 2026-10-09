@@ -321,38 +321,6 @@ def test_astype_sparse(vfile, dtype):
 
 
 @pytest.mark.parametrize(
-    ("shape", "chunks"),
-    [((2,), (2,)), ((5,), (2,)), ((2, 3), (2, 3))],
-    ids=["single-chunk", "edge-chunk", "2d"],
-)
-def test_astype_fixed_string_to_object(vfile, shape, chunks):
-    """astype() from a fixed-string dataset backed by raw_data to object strings
-
-    HDF5 has no conversion path from fixed-width to variable-length strings, so
-    the conversion is done in NumPy instead.
-    Regression test for https://github.com/deshaw/versioned-hdf5/issues/595
-    """
-    data = np.arange(int(np.prod(shape)), dtype="i8").reshape(shape).astype("S8")
-    data[0] = b"single"  # Not all elements share a value
-    with vfile.stage_version("r0") as group:
-        dset = group.create_dataset("x", data=data, chunks=chunks)
-
-    with vfile.stage_version("r1") as group:
-        dset = group["x"]
-        assert isinstance(dset.dataset, InMemoryDataset)  # backed by raw_data
-
-        a = dset.astype(object)
-        assert a.dtype == object
-        assert a.shape == data.shape
-        assert_array_equal(a[:], data.astype(object), strict=False)
-
-        dset[0] = np.bytes_(b"cccccccc")
-
-    assert_array_equal(vfile["r1"]["x"][0], np.bytes_(b"cccccccc"))
-    assert vfile["r1"]["x"].dtype == np.dtype("S8")
-
-
-@pytest.mark.parametrize(
     "read", [np.asarray, lambda ds: ds.astype("f8")[()]], ids=["asarray", "astype"]
 )
 def test_read_then_commit_without_base_slab(vfile, read):
