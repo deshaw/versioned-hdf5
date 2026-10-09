@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import h5py
 import ndindex
 import numpy as np
 from numpy.typing import ArrayLike, DTypeLike
@@ -13,6 +14,7 @@ NP_VERSION = (_NP_VERSION.major, _NP_VERSION.minor, _NP_VERSION.bugfix)
 # Don't use NumpyVersion.__ge__ as it can't tell pre- and post-release suffixes apart
 del _NP_VERSION
 NP_GE_200 = NP_VERSION >= (2, 0, 0)
+NP_LT_223 = NP_VERSION < (2, 2, 3)
 
 
 def asarray(a: ArrayLike, /, *, dtype: DTypeLike | None = None):
@@ -22,16 +24,23 @@ def asarray(a: ArrayLike, /, *, dtype: DTypeLike | None = None):
     2. If a has a ABI-compatible dtype, return a view instead of a copy
        (works around https://github.com/numpy/numpy/issues/27509)
     3. Work around https://github.com/numpy/numpy/issues/28269
-       on NumPy >=2.0.0,<2.2.3 when converting from arrays of object strings to
-       NpyStrings
+       on NumPy >=2.0.0,<2.2.3 when converting from arrays or scalars of object strings
+       to NpyStrings
     """
-    if not is_array_protocol(a) or np.isscalar(a):
-        return np.asarray(a, dtype=dtype)
-
     if dtype is None:
+        if not is_array_protocol(a) or np.isscalar(a):
+            return np.asarray(a)
         return a
 
     dtype = np.dtype(dtype)
+    if NP_LT_223 and dtype.kind == "T" and isinstance(a, bytes):
+        # Work around bug in conversion from scalar bytes to NpyStrings.
+        # https://github.com/numpy/numpy/issues/28269
+        return np.asarray(a, dtype="U").astype(dtype)
+
+    if not is_array_protocol(a) or np.isscalar(a):
+        return np.asarray(a, dtype=dtype)
+
     if a.dtype == dtype:
         return a
 
@@ -45,7 +54,7 @@ def asarray(a: ArrayLike, /, *, dtype: DTypeLike | None = None):
         # np.array(-1).astype("u1") doesn't raise and returns 255!
         return a.view(dtype)
 
-    if NP_VERSION < (2, 2, 3) and a.dtype.kind == "O" and dtype.kind == "T":
+    if NP_LT_223 and a.dtype.kind == "O" and dtype.kind == "T":
         # Work around bug in conversion from array of bytes objects to NpyStrings
         # https://github.com/numpy/numpy/issues/28269
         # Note that this can be memory intensive.
@@ -54,6 +63,49 @@ def asarray(a: ArrayLike, /, *, dtype: DTypeLike | None = None):
     if hasattr(a, "astype"):
         return a.astype(dtype)
     return np.asarray(a, dtype=dtype)
+
+
+def vds_fillvalue(layout: h5py.VirtualLayout, fillvalue: Any) -> Any | None:
+    """Bake a fillvalue that h5py cannot handle into a VirtualLayout.
+
+    h5py's ``VirtualLayout.make_dataset()`` stores the fillvalue with
+    ``dcpl.set_fill_value(np.array([fillvalue]))``, i.e. with a buffer typed after the
+    fillvalue instead of after the dataset dtype. For fixed-length string dtypes that
+    stores a pointer to the bytes instead of the bytes themselves, so that both the
+    fillvalue and the chunks elided from the virtual dataset read back as garbage.
+    h5py's own ``make_new_dset()`` avoids this by faking a variable-length string dtype;
+    do the same here.
+
+    Fixed-length string fillvalues are written to ``layout.dcpl`` and None is returned,
+    so that :meth:`h5py.Group.create_virtual_dataset` uses it as-is. Every other
+    fillvalue is returned unchanged, for h5py to handle.
+
+    Variable-length string dtypes cannot carry a fillvalue in a virtual dataset: h5py
+    stores it with the same mistyped buffer as above, which corrupts the dataset
+    creation plist, and even a correctly stored fillvalue breaks reads of the virtual
+    dataset at the HDF5 level. None is returned for them too, so that they keep the HDF5
+    default, which is the only one versioned_hdf5 accepts for them anyway.
+
+    https://github.com/h5py/h5py/pull/2964 (open at the moment of writing) fixes the
+    h5py half of both problems, by typing the fillvalue buffer after the dataset dtype.
+    """
+    if fillvalue is None:
+        return None
+
+    dtype = np.dtype(layout.dtype)
+    if dtype.kind == "T" or h5py.check_vlen_dtype(dtype) is not None:
+        # Variable-length string dtype (or, in general, any variable-length dtype)
+        return None
+
+    if dtype.kind == "S":
+        # Fake a variable-length string dtype, like h5py's make_new_dset()
+        encoding = h5py.h5t.check_string_dtype(dtype).encoding
+        layout.dcpl.set_fill_value(
+            np.asarray(fillvalue, dtype=h5py.string_dtype(encoding=encoding))
+        )
+        return None
+
+    return fillvalue
 
 
 def ix_with_slices(*idx: Any, shape: tuple[int, ...]) -> tuple:

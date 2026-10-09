@@ -12,6 +12,7 @@ from versioned_hdf5.backend import (
     Filters,
     _chunk_blocks,
     _data_v4_to_sc_hash_table,
+    _rewrite_block_bytes,
     create_base_dataset,
     rewrite_dataset,
     write_dataset,
@@ -682,6 +683,29 @@ def test_data_v4_to_sc_hash_table_out_of_order(vfile):
     assert_equal(actual, on_disk[::-1])
 
 
+def test_commit_staged_changes_read_only_slab_metadata(vfile):
+    """A StagedChangesArray may hand out read-only slab metadata arrays that are
+    shared with another array. `commit_staged_changes` mutates those arrays, so it must
+    make a CoW copy first.
+    """
+    with vfile.stage_version("r0") as sv:
+        ds = sv.create_dataset("x", shape=(6,), chunks=(2,))
+        ds[0] = 1
+        ds[3:5] = 2
+        # Same dtype: astype() just returns the lazy CoW copy,
+        # whose metadata arrays are read-only views of `src`'s
+        sc_orig = ds.staged_changes
+        assert_equal(sc_orig.slab_indices, [1, 2, 2])
+        assert_equal(sc_orig.slab_offsets, [0, 0, 2])
+        ds.staged_changes = sc_orig.astype(ds.dtype)
+        assert not ds.staged_changes.slab_indices.flags.writeable
+
+    # commit_staged_changes did not touch the original StagedChangesArray's metadata
+    assert_equal(sc_orig.slab_indices, [1, 2, 2])
+    assert_equal(sc_orig.slab_offsets, [0, 0, 2])
+    assert_equal(vfile["r0"]["x"][:], [1, 0, 0, 2, 2, 0])
+
+
 def test_commit_staged_changes_out_of_order_hashtable(vfile):
     """Staged chunks are deduplicated onto the correct raw_data offset even when the
     records of the on-disk hash table are not in chunk order, which is the case after
@@ -742,8 +766,20 @@ def test_chunk_blocks(shape, chunk_size, max_bytes, expect):
     assert list(_chunk_blocks(shape, chunk_size, 8, max_bytes)) == expect
 
 
-# One whole chunk, one chunk row, and the whole array at a time
-@pytest.mark.parametrize("max_bytes", [0, 64, 1000])
+def test_rewrite_block_bytes():
+    min_ = _rewrite_block_bytes(0)
+    assert min_ > 0
+    assert _rewrite_block_bytes(1) == min_
+    assert _rewrite_block_bytes(2) == min_
+    max_ = _rewrite_block_bytes(1_000_000_000)
+    assert _rewrite_block_bytes(2_000_000_000) == max_
+    assert any(min_ < _rewrite_block_bytes(2**x) < max_ for x in range(1, 30))
+    assert all(min_ <= _rewrite_block_bytes(2**x) <= max_ for x in range(1, 30))
+
+
+# One whole chunk, one chunk row, and the whole array at a time; None is the
+# adaptive default, which at this size is the floor
+@pytest.mark.parametrize("max_bytes", [None, 0, 64, 1000])
 def test_rewrite_dataset(vfile, max_bytes):
     """rewrite_dataset() copies every chunk of an array into a brand new raw_data,
     deduplicating them, and returns the same committed StagedChangesArray
@@ -837,7 +873,7 @@ def test_rewrite_dataset_multidimension(vfile, max_bytes):
     assert_equal(sc[()], data)
 
 
-@pytest.mark.parametrize("max_bytes", [0, 100000])
+@pytest.mark.parametrize("max_bytes", [None, 0, 100000])
 def test_rewrite_dataset_preexisting_raw_data(vfile, max_bytes):
     """rewrite_dataset() deduplicates against chunks that were already on raw_data
     (e.g. written by a previous version or an earlier rewrite) and appends new chunks
@@ -876,6 +912,30 @@ def test_rewrite_dataset_preexisting_raw_data(vfile, max_bytes):
     assert sc2.slab_indices[0, 0] == 1
     assert sc2.slab_offsets[0, 0] == sc1.slab_offsets[0, 1]
     assert sc2.slab_offsets[1, 1] == n_chunks_1 * chunks[0]
+
+
+def test_rewrite_dataset_dedups_across_blocks(vfile):
+    """A chunk written by an earlier block deduplicates against an identical chunk
+    staged by a later block. Each block is deduplicated against the on-disk hash
+    table, which by then already describes the chunks written by the previous blocks,
+    so the deduplicated chunks must be remapped onto those *absolute* raw_data
+    locations and not onto offsets relative to the block.
+    """
+    create_base_dataset(vfile.f, "x", data=np.empty(0, dtype=np.int64), chunks=(2,))
+    # Four blocks of one chunk each (a chunk is 16 bytes == max_bytes): block 2
+    # duplicates block 1 and block 3 duplicates block 0. Pin the dtype: the default
+    # integer is 32-bit on Windows, and the target raw_data is int64 everywhere.
+    data = np.array([10, 11, 20, 21, 20, 21, 10, 11], dtype=np.int64)
+    sc = rewrite_dataset(vfile.f, "x", data, chunks=(2,), max_bytes=16)
+
+    raw_data, hash_table = _raw_data_hashtable(vfile, "x")
+    # Only two of the four chunks are original; the other two are not written again
+    assert raw_data.shape == (4,)
+    assert hash_table.attrs["largest_index"] == 2
+    assert_equal(raw_data[:], np.array([10, 11, 20, 21], dtype=np.int64))
+    assert_equal(sc[()], data)
+    # Block 1 landed at offset 2 and block 2 deduplicates onto it, not onto offset 0
+    assert_equal(sc.slab_offsets, np.array([0, 2, 2, 0], dtype=sc.slab_offsets.dtype))
 
 
 @pytest.mark.parametrize("max_bytes", [0, 1000])

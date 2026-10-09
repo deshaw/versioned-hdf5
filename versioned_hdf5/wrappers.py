@@ -827,6 +827,14 @@ class InMemoryDataset(BufferMixin, FiltersMixin, Dataset):
         return self.id.raw_data.dtype
 
     @property
+    def fillvalue(self):
+        if self.dtype.kind == "S":
+            # h5py reports garbage for fixed-string VDS fillvalues. raw_data holds
+            # the value pinned by the dataset's first commit.
+            return self.id.raw_data.fillvalue
+        return super().fillvalue
+
+    @property
     def shape(self) -> tuple[int, ...]:
         return self.id.shape
 
@@ -1084,7 +1092,7 @@ class DatasetLike:
                 fv = b""
 
         if fv is not None:
-            return np.asarray(fv, dtype=self.dtype)[()]
+            return asarray(fv, dtype=self.dtype)[()]
         return np.zeros((), dtype=self.dtype)[()]
 
     @property

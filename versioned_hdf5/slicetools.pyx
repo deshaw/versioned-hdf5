@@ -22,7 +22,7 @@ from libc.stdio cimport FILE, fclose
 
 from versioned_hdf5.cytools import np_hsize_t
 from versioned_hdf5.cytools cimport ceil_a_over_b, count2stop, hsize_t, stop2count
-from versioned_hdf5.tools import asarray, NP_GE_200
+from versioned_hdf5.tools import asarray, NP_GE_200, vds_fillvalue
 from versioned_hdf5.typing_ import ArrayProtocol
 
 
@@ -446,12 +446,9 @@ def create_virtual_dataset(
     assert slab_indices.dtype == np_hsize_t
     assert slab_offsets.dtype == np_hsize_t
 
-    dtype_meta = raw_data.dtype.metadata
-    if dtype_meta and ("vlen" in dtype_meta or "h5py_encoding" in dtype_meta):
-        # Variable length string dtype
-        # (https://h5py.readthedocs.io/en/2.10.0/strings.html).
-        # Setting the fillvalue in this case doesn't work
-        # (https://github.com/h5py/h5py/issues/941).
+    if h5py.check_vlen_dtype(raw_data.dtype) is not None:
+        # Variable length string dtype. A virtual dataset cannot carry a
+        # fillvalue for it; see vds_fillvalue() for why.
         if fillvalue not in [0, "", b"", None]:
             raise ValueError(
                 "Non-default fillvalue not supported for variable length strings"
@@ -496,6 +493,10 @@ def create_virtual_dataset(
             slab_indices.strides,
             slab_offsets.strides,
         )
+
+    # h5py's create_virtual_dataset() mangles fixed-string fillvalues; store them
+    # in the layout's dcpl instead (see vds_fillvalue).
+    fillvalue = vds_fillvalue(layout, fillvalue)
 
     virtual_data = f["_version_data/versions"][version_name].create_virtual_dataset(
         name, layout, fillvalue=fillvalue

@@ -16,7 +16,7 @@ from numpy.testing import assert_array_equal
 
 from versioned_hdf5 import VersionedHDF5File, replay
 from versioned_hdf5.backend import DEFAULT_CHUNK_SIZE, rewrite_dataset
-from versioned_hdf5.h5py_compat import H5PY_VERSION
+from versioned_hdf5.h5py_compat import H5PY_VERSION, HAS_NPYSTRINGS
 from versioned_hdf5.hashtable import Hashtable
 from versioned_hdf5.replay import (
     _get_parent,
@@ -99,6 +99,53 @@ def check_data(file, test_data_fillvalue=1.0, version2=True, test_data4_fillvalu
         assert np.all(
             file["version2"]["group"]["test_data4"][4:] == test_data4_fillvalue
         )
+
+
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(h5py.string_dtype(), id="object"),
+        pytest.param(
+            "T", marks=pytest.mark.skipif(not HAS_NPYSTRINGS, reason="NpyStrings")
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "metadata",
+    [{"compression": "gzip"}, {"chunks": (4,)}, {"fillvalue": None}],
+    ids=["compression", "chunks", "fillvalue"],
+)
+def test_modify_metadata_variable_width_strings(vfile, dtype, metadata):
+    data = np.asarray(["one", "two", "three"], dtype=dtype)
+    with vfile.stage_version("v0") as sv:
+        sv.create_dataset("d", data=data, dtype=dtype, chunks=(3,))
+
+    modify_metadata(vfile, "d", **metadata)
+
+    raw_data = vfile.f["_version_data/d/raw_data"]
+    assert raw_data.dtype == h5py.string_dtype()
+    assert raw_data.chunks == metadata.get("chunks", (3,))
+    if "compression" in metadata:
+        assert raw_data.compression == "gzip"
+
+    expected = ["one", "later", "three"]
+
+    def assert_strings(actual, expected):
+        actual = np.asarray(actual)
+        assert actual.dtype.kind == "O"
+        actual = [x.decode() if isinstance(x, bytes) else x for x in actual]
+        assert actual == expected
+
+    with vfile.stage_version("v1") as sv:
+        ds = sv["d"]
+        assert ds.dtype == h5py.string_dtype()
+        assert ds.fillvalue == b""
+        assert_strings(ds[:], ["one", "two", "three"])
+        ds[1] = np.asarray("later", dtype=dtype)
+        assert_strings(ds[:], expected)
+
+    assert_strings(vfile["v1"]["d"][:], expected)
+    assert_strings(vfile["v0"]["d"][:], ["one", "two", "three"])
 
 
 def test_modify_metadata_compression(vfile):
@@ -306,6 +353,24 @@ def test_modify_metadata_chunks(vfile):
         "versions",
     }
     assert set(f["_version_data"]["group"]) == {"test_data4"}
+
+
+def test_modify_metadata_chunks_fixed_string(vfile):
+    """Fixed-width string dtypes have h5py encoding metadata, but are not variable
+    length strings. Rewriting their chunks must not reject their fillvalue.
+    """
+    with vfile.stage_version("r0") as sv:
+        sv.create_dataset("d", data=np.array([b"a"], dtype="S4"), chunks=(2,))
+
+    modify_metadata(vfile.f, "d", chunks=(4,))
+
+    assert vfile["r0"]["d"].chunks == (4,)
+    assert vfile["r0"]["d"].dtype == np.dtype("S4")
+
+    with vfile.stage_version("r1") as sv:
+        sv["d"][0] = b"b"
+
+    assert_array_equal(vfile["r1"]["d"][:], np.array([b"b"], dtype="S4"))
 
 
 def test_modify_metadata_chunk2(vfile):
@@ -1439,6 +1504,30 @@ def test_delete_versions_variable_length_strings(vfile):
     delete_versions(vfile, ["r2", "r4", "r6"])
 
 
+@pytest.mark.parametrize(("fillvalue", "expected"), [(None, b""), (b"x", b"x")])
+def test_delete_versions_fillvalue_only_fixed_string(vfile, fillvalue, expected):
+    """Recreated fixed-string VDSs use fillvalue pinned on raw_data, not a bogus value
+    reported by the VDS.
+    """
+    for version in ("r0", "r1"):
+        with vfile.stage_version(version) as sv:
+            sv.create_dataset(
+                "x",
+                shape=(4,),
+                dtype="S2",
+                data=None,
+                maxshape=(None,),
+                chunks=(2,),
+                fillvalue=fillvalue,
+            )
+
+    delete_versions(vfile, ["r0"])
+
+    dataset = vfile["r1"]["x"]
+    assert dataset.fillvalue == expected
+    assert_array_equal(dataset[:], np.full(4, expected, dtype="S2"))
+
+
 def test_delete_versions_fillvalue_only_dataset(vfile):
     with vfile.stage_version("r0") as sv:
         sv.create_dataset(
@@ -1596,8 +1685,7 @@ def test_delete_string_dataset(tmp_path):
     versions using a NoneType fillvalue. However, because we can't store a NoneType for
     the fillvalue of the dataset in the h5 file, it is instead stored as b''. Previously
     a bug in delete_versions would recreate the dataset using the file's fillvalue of
-    b'' rather than None, corrupting the data. See https://github.com/h5py/h5py/issues/941
-    for more information about the bug in h5py responsible for this, and
+    b'' rather than None, corrupting the data. See
     https://github.com/deshaw/versioned-hdf5/issues/238 for the versioned-hdf5
     discussion.
     """
@@ -2006,3 +2094,77 @@ def test_modify_metadata_other_filters(vfile, name, default_value, new_value):
     modify_metadata(f, "x", **{name: default_value})
     raw_data = f["_version_data"]["x"]["raw_data"]
     assert getattr(raw_data, name) == default_value
+
+
+@pytest.mark.parametrize("fillvalue", [None, b"", b"x"])
+@pytest.mark.parametrize("dtype", ["S1", "S4"])
+def test_modify_metadata_fixed_string_fillvalue_read_only(tmp_path, dtype, fillvalue):
+    """Whole chunks of the fill value, read back in mode "r" after the first commit
+    and after modify_metadata.
+    """
+    fill = b"" if fillvalue is None else fillvalue
+    data = np.array([b"a", b"b"] + [fill] * 6, dtype=dtype)
+    path = tmp_path / "data.h5"
+    with h5py.File(path, "w") as f, VersionedHDF5File(f).stage_version("r0") as sv:
+        sv.create_dataset("d", data=data, chunks=(2,), fillvalue=fillvalue)
+    with h5py.File(path, "r") as f:
+        assert_array_equal(VersionedHDF5File(f)["r0"]["d"][:], data)
+    with h5py.File(path, "r+") as f:
+        modify_metadata(f, "d", chunks=(4,))
+    with h5py.File(path, "r") as f:
+        ds = VersionedHDF5File(f)["r0"]["d"]
+        assert ds.fillvalue == fill
+        assert_array_equal(ds[:], data)
+
+
+@pytest.mark.parametrize("fillvalue", [None, b"x"])
+def test_modify_metadata_fixed_string_fillvalue_change(tmp_path, fillvalue):
+    """Changing the fillvalue of a fixed-string dataset must also update its version
+    datasets, so that a chunk elided as the new fillvalue reads back correctly.
+    """
+    path = tmp_path / "data.h5"
+    data = np.array([b"a", b"b", b"c", b"d"], dtype="S4")
+    with h5py.File(path, "w") as f, VersionedHDF5File(f).stage_version("r0") as sv:
+        sv.create_dataset("d", data=data, chunks=(2,), fillvalue=fillvalue)
+
+    with h5py.File(path, "r+") as f:
+        modify_metadata(f, "d", fillvalue=b"y")
+
+    with h5py.File(path, "r") as f:
+        # Read in mode "r", where the fillvalue is the one stored in the version
+        # dataset itself.
+        ds = VersionedHDF5File(f)["r0"]["d"]
+        assert ds.fillvalue == b"y"
+        assert_array_equal(ds[:], data)
+
+    with h5py.File(path, "r+") as f, VersionedHDF5File(f).stage_version("r1") as sv:
+        # A whole chunk of the new fill value: not written to raw_data at all.
+        sv["d"][2:4] = b"y"
+
+    with h5py.File(path, "r") as f:
+        ds = VersionedHDF5File(f)["r1"]["d"]
+        assert ds.fillvalue == b"y"
+        assert_array_equal(ds[:], np.array([b"a", b"b", b"y", b"y"], dtype="S4"))
+
+
+@pytest.mark.parametrize("variable_width", [True, False], ids=["vlen", "S4"])
+def test_modify_metadata_to_fixed_string_fillvalue(tmp_path, variable_width):
+    """Chunks equal to the new fill value are not stored, so a read in mode "r"
+    returns the fill value of the version dataset.
+    """
+    path = tmp_path / "data.h5"
+    if variable_width:
+        data = np.array(["a", "b", "", ""], dtype=object)
+        dtype = h5py.string_dtype()
+    else:
+        data = np.array([b"a", b"b", b"", b""], dtype="S4")
+        dtype = "S4"
+    with h5py.File(path, "w") as f, VersionedHDF5File(f).stage_version("r0") as sv:
+        sv.create_dataset("d", data=data, dtype=dtype, chunks=(2,))
+    with h5py.File(path, "r+") as f:
+        modify_metadata(f, "d", dtype="S8", fillvalue=b"x")
+    expected = np.array([b"a", b"b", b"x", b"x"], dtype="S8")
+    with h5py.File(path, "r") as f:
+        ds = VersionedHDF5File(f)["r0"]["d"]
+        assert ds.fillvalue == b"x"
+        assert_array_equal(ds[:], expected)
