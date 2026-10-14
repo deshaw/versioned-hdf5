@@ -1,5 +1,38 @@
 # Changelog
 
+## 2.6.0 (2026-10-14)
+
+### Major Changes
+
+- This release completes the second phase of the performance overhaul of the commit
+  stage started in 2.5.0. The creation of the virtual datasets at the end of commit has
+  been rewritten in Cython; the full commit pipeline now revolves around the
+  `StagedChangesArray` backend. `delete_versions()` and `rebuild_hashtables()` still use
+  the legacy code paths and will be overhauled in a future version.
+- `modify_metadata()` and `recreate_dataset()` now stream data from disk to disk and no
+  longer load entire versions of the dataset in memory; this enables using them when the
+  sum of non-empty chunks of a version is larger than memory.
+
+### Minor Changes
+
+- Fix `ValueError: assignment destination is read-only` after `astype()` or
+  `asarray()` on a staged dataset.
+- Fixed crash in `resize()` followed by `commit_staged_changes()` when all staged chunks
+  are deduplicated away.
+- Fixed crash in `resize()` after assigning to a dataset with `sv[name] = arr`.
+- Fixed bugs when multiple `h5py.File` objects are open on the same file on disk
+- `np.bytes_` scalars can now be assigned into variable-width string datasets.
+- Improved rejection of the reserved word `versions` used as a dataset path component.
+- `modify_metadata()` now preserves dataset attributes
+- Fixed crash in `modify_metadata()` with fixed-string datasets
+- Fixed bug where `modify_metadata()` on variable-width strings datasets would prevent
+  further versions from being staged.
+
+### Developers-only Changes
+
+- ASV benchmarks on Linux and macOS now track peak memory usage via `memray`
+- `asv-compare` no longer suppresses its own error messages
+
 ## 2.5.0 (2026-09-04)
 
 ### Major Changes
