@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import abc
 import math
-import os
 import posixpath
 import textwrap
 import warnings
@@ -50,12 +49,14 @@ T = TypeVar("T")
 class _GroupCache:
     """The InMemoryGroup wrappers belonging to one Python file handle.
 
-    HDF5 hands out the same object id to every handle that has a file open, and h5py
-    derives ``File.__eq__``/``File.__hash__`` from it, so two handles to the same file
-    compare (and hash) equal. A cache keyed on the handle itself would therefore mix the
-    two up and hand out wrappers bound to a handle that may already be closed. The
-    registry is keyed on ``id(handle)`` instead, i.e. Python object ID instead of HDF5
-    ID, and the cache is dropped when the handle is collected.
+    h5py compares and hashes HDF5 objects by file number and object number, which all
+    handles that have the same file open share. So two handles to the same file, and the
+    groups opened through them, compare and hash as equal.
+
+    This is problematic when 2+ h5py.Group objects point to the same libhdf5 resource,
+    as the cache could end up handing out wrappers bound to a handle that may already be
+    closed. To work around this, use ``id(handle)`` as the cache key; i.e. every
+    h5py.Group instance is cached separately.
     """
 
     key: int
