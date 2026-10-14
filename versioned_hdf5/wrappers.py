@@ -179,7 +179,7 @@ class InMemoryGroup(Group):
             cache.invalidate()
 
     @classmethod
-    def _invalidate_named(cls, *names: str | bytes | None) -> None:
+    def _invalidate_named(cls, *names: bytes | None) -> None:
         """Drop the cached wrappers of the groups at or below ``names``.
 
         ``None`` names are ignored, and so are groups that HDF5 can no longer name.
