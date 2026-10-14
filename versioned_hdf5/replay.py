@@ -97,7 +97,7 @@ def recreate_dataset(f, name, newf, callback=None):
         for version_name in all_versions(f):
             if name in f["_version_data/versions"][version_name]:
                 group = InMemoryGroup(
-                    f["_version_data/versions"][version_name].id, _committed=True
+                    f["_version_data/versions"][version_name].id, f, _committed=True
                 )
 
                 dataset = group[name]
@@ -783,7 +783,7 @@ def modify_metadata(
         return new_dataset
 
     newf = tmp_group(f)
-    tmp_parent = InMemoryGroup(newf.create_group("__tmp_parent__").id)
+    tmp_parent = InMemoryGroup(newf.create_group("__tmp_parent__").id, newf)
 
     try:
         recreate_dataset(f, dataset_name, newf, callback=callback)
@@ -877,15 +877,7 @@ def swap(old: InMemoryGroup, new: InMemoryGroup) -> None:
                 new[name].attrs[k] = v
         else:
             # Invalidate any InMemoryGroups that point to these groups
-            delete = []
-            for bind in InMemoryGroup._instances:
-                if get_name(bind) and (
-                    get_name(bind).startswith(get_name(old.id))
-                    or get_name(bind).startswith(get_name(new.id))
-                ):
-                    delete.append(bind)
-            for d in delete:
-                del InMemoryGroup._instances[d]
+            InMemoryGroup._invalidate_named(get_name(old.id), get_name(new.id))
             old.move(name, posixpath.join(new.name, name + "__tmp"))
             new.move(name, posixpath.join(old.name, name))
             new.move(name + "__tmp", name)

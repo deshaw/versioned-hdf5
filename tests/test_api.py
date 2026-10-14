@@ -1,9 +1,11 @@
 import datetime
+import gc
 import itertools
 import logging
 import os
 import pathlib
 import shutil
+from contextlib import closing
 
 import h5py
 import numpy as np
@@ -1793,6 +1795,46 @@ def test_closes(vfile):
     assert repr(vfile) == "<Closed VersionedHDF5File>"
 
 
+def test_close_after_underlying_file_closed(vfile):
+    with vfile.stage_version("version1") as group:
+        group["data"] = np.arange(5)
+
+    version = vfile["version1"]
+    h5py_file = vfile.f
+
+    cache = InMemoryGroup._cache_for_handle(h5py_file)
+    assert version.id in cache.groups
+
+    h5py_file.close()
+    assert vfile.closed
+
+    vfile.close()
+
+    # The h5py handle may be shared with other VersionedHDF5File objects, so closing
+    # one of them must leave the wrappers cached for the handle alone.
+    assert InMemoryGroup._cache_for_handle(h5py_file) is cache
+    assert version.id in cache.groups
+    assert not hasattr(vfile, "f")
+
+
+def test_cache_dropped_when_file_collected(tmp_path):
+    """The wrapper cache is keyed by id(handle), so it must not outlive the handle,
+    whose id it could otherwise be mistaken for.
+    """
+    with h5py.File(tmp_path / "file.h5", "w") as h5file:
+        vfile = VersionedHDF5File(h5file)
+        with vfile.stage_version("version1") as group:
+            group["data"] = np.arange(5)
+        assert_equal(vfile["version1"]["data"][:], np.arange(5))  # Populate cache
+        key = id(h5file)
+        assert key in InMemoryGroup._caches
+        # The wrappers hold the handle they were bound to, so drop them too.
+        del vfile, group, h5file
+    gc.collect()
+
+    assert key not in InMemoryGroup._caches
+
+
 def test_scalar_dataset(vfile):
     """Scalar (ndim=0) datasets are supported by h5py, but implementing them in
     versioned_hdf5 would take a lot of special-casing as raw_data can't go below
@@ -2060,6 +2102,135 @@ def test_read_only(setup_vfile):
             file[timestamp]["data"][0] = 1
         with pytest.raises(ValueError):
             file[timestamp]["data2"] = [1, 2, 3]
+
+
+def test_read_only_handle_does_not_reuse_wrapper(tmp_path):
+    filename = tmp_path / "file.h5"
+    data = np.arange(5)
+    with (
+        h5py.File(filename, "w") as f,
+        VersionedHDF5File(f).stage_version("v0") as group,
+    ):
+        group["x"] = data
+
+    with h5py.File(filename, "r+") as f, h5py.File(filename, "r") as f2:
+        first = VersionedHDF5File(f)
+        assert f2.mode == "r+"
+
+        second = VersionedHDF5File(f2)
+        # Exercise second handle's wrapper cache when h5py reports shared r+ mode.
+        _ = second["v0"]["x"]
+        f2.close()
+
+        assert_equal(first["v0"]["x"][:], data)
+
+
+def test_writable_handles_do_not_reuse_wrapper(tmp_path):
+    filename = tmp_path / "file.h5"
+    data = np.arange(5)
+    with (
+        h5py.File(filename, "w") as f,
+        VersionedHDF5File(f).stage_version("v0") as group,
+    ):
+        group["x"] = data
+
+    with h5py.File(filename, "r+") as f1, h5py.File(filename, "r+") as f2:
+        first = VersionedHDF5File(f1)
+        second = VersionedHDF5File(f2)
+
+        first_group = first["v0"]
+        second_group = second["v0"]
+        first_x = first_group["x"]
+        second_x = second_group["x"]
+
+        assert first_group is not second_group
+        assert first_x is not second_x
+
+        f2.close()
+        assert_equal(first_x[:], data)
+
+
+def test_committed_subgroups_are_read_only(tmp_path):
+    """Subgroups of a committed version group cannot be written to."""
+    filename = tmp_path / "file.h5"
+    with h5py.File(filename, "w") as f:
+        vfile = VersionedHDF5File(f)
+        with vfile.stage_version("r0") as sv:
+            sv.create_dataset("a/x", data=np.arange(8), chunks=(4,))
+
+    with h5py.File(filename, "r+") as f:
+        vfile = VersionedHDF5File(f)
+        group = vfile["r0"]
+        assert group["a"]._committed
+        with pytest.raises(ValueError, match="has already been committed"):
+            group["a"]["x"] = np.arange(3)
+
+
+def test_subgroups_inherit_commit_status(tmp_path):
+    """Subgroups of a committed version group are committed like their parent, so
+    that they are read-only and are invalidated together with it.
+    """
+    filename = tmp_path / "file.h5"
+    with h5py.File(filename, "w") as f:
+        vfile = VersionedHDF5File(f)
+        with vfile.stage_version("r0") as sv:
+            sv.create_dataset("a/x", data=np.arange(8), chunks=(4,))
+        with vfile.stage_version("r1") as sv:
+            sv["a/x"][0] = 100
+
+    with h5py.File(filename, "r+") as f:
+        vfile = VersionedHDF5File(f)
+        group = vfile["r1"]
+        subgroup = group["a"]
+        assert subgroup._committed
+        assert_equal(subgroup["x"][:], [100, 1, 2, 3, 4, 5, 6, 7])
+        # delete_versions() only invalidates committed wrappers. If the subgroup
+        # were not one of them, it would go on serving data from before the swap.
+        delete_versions(vfile, ["r0"])
+        assert_equal(subgroup["x"][:], [100, 1, 2, 3, 4, 5, 6, 7])
+        assert_equal(vfile["r1"]["a/x"][:], [100, 1, 2, 3, 4, 5, 6, 7])
+
+
+def test_close_other_vfile_while_staging(tmp_path):
+    """Closing one VersionedHDF5File must not disturb another one wrapping the same
+    h5py handle, even while the latter is staging a version.
+    """
+    filename = tmp_path / "file.h5"
+    with h5py.File(filename, "w") as f:
+        vfile = VersionedHDF5File(f)
+        with vfile.stage_version("v0") as sv:
+            sv["a/x"] = np.arange(3)
+        with vfile.stage_version("v1") as sv:
+            # E.g. a helper wrapping the same h5py.File, closing its wrapper on exit.
+            VersionedHDF5File(f).close()
+            sv["a/b/y"] = np.arange(2)
+
+    with h5py.File(filename, "r") as f:
+        assert_equal(VersionedHDF5File(f)["v1"]["a/x"][:], [0, 1, 2])
+
+
+def test_helper_reads_while_staging(tmp_path):
+    """A helper that opens a read-only VersionedHDF5File on a handle that is being
+    used to stage a version must not invalidate the staged data.
+    """
+    filename = tmp_path / "file.h5"
+
+    def read_latest(f, name):
+        """Read a dataset from the latest committed version of an h5py file."""
+        with closing(VersionedHDF5File(f)) as vfile:
+            return vfile[vfile.current_version][name][:]
+
+    with h5py.File(filename, "w") as f:
+        vfile = VersionedHDF5File(f)
+        with vfile.stage_version("v0") as sv:
+            sv["a/x"] = np.arange(3)
+        with vfile.stage_version("v1") as sv:
+            sv["a/b/y"] = read_latest(f, "a/x") * 2
+
+    with h5py.File(filename, "r") as f:
+        vfile = VersionedHDF5File(f)
+        assert_equal(vfile["v1"]["a/b/y"][:], [0, 2, 4])
+        assert_equal(vfile["v1"]["a/x"][:], [0, 1, 2])
 
 
 def test_delete_datasets(vfile):

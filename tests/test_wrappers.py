@@ -19,12 +19,12 @@ from versioned_hdf5.wrappers import (
 @pytest.fixture
 def premade_group(h5file):
     group = h5file.create_group("group")
-    return InMemoryGroup(group.id)
+    return InMemoryGroup(group.id, h5file)
 
 
 def test_InMemoryArrayDataset(h5file):
     group = h5file.create_group("group")
-    parent = InMemoryGroup(group.id)
+    parent = InMemoryGroup(group.id, h5file)
     a = np.arange(100).reshape((50, 2))
     dataset = InMemoryArrayDataset("data", a, parent=parent)
     assert dataset.name == "data"
@@ -56,7 +56,7 @@ def test_InMemoryArrayDataset(h5file):
 
 def test_InMemoryArrayDataset_enlarge(h5file):
     group = h5file.create_group("group")
-    parent = InMemoryGroup(group.id)
+    parent = InMemoryGroup(group.id, h5file)
 
     a = np.arange(100)
     dataset = DatasetWrapper(  # Can't enlarge an InMemoryArrayDataset directly
@@ -84,7 +84,7 @@ def test_InMemoryArrayDataset_enlarge_retains_attrs(vfile):
 
 def test_InMemoryArrayDataset_shrink(h5file):
     group = h5file.create_group("group")
-    parent = InMemoryGroup(group.id)
+    parent = InMemoryGroup(group.id, h5file)
 
     a = np.arange(100)
     dataset = DatasetWrapper(InMemoryArrayDataset("data", a, parent=parent))
@@ -118,7 +118,7 @@ def test_InMemoryArrayDataset_dtype(vfile, kwargs):
 
 def test_InMemorySparseDataset(h5file):
     group = h5file.create_group("group")
-    parent = InMemoryGroup(group.id)
+    parent = InMemoryGroup(group.id, h5file)
     d = InMemorySparseDataset(
         "data",
         shape=(1000,),
@@ -136,7 +136,7 @@ def test_InMemorySparseDataset(h5file):
 
 def test_InMemorySparseDataset_getitem(h5file):
     group = h5file.create_group("group")
-    parent = InMemoryGroup(group.id)
+    parent = InMemoryGroup(group.id, h5file)
     d = InMemorySparseDataset(
         "data",
         shape=(1000,),
@@ -164,7 +164,7 @@ def test_InMemoryArrayDataset_resize_multidimension(oldshape, newshape, h5file):
     a = np.arange(np.prod(oldshape)).reshape(oldshape)
 
     group = h5file.create_group("group")
-    parent = InMemoryGroup(group.id)
+    parent = InMemoryGroup(group.id, h5file)
 
     dataset = DatasetWrapper(  # Can't enlarge an InMemoryArrayDataset directly
         InMemoryArrayDataset("data", a, parent=parent, fillvalue=-1, chunks=(7, 4, 11))
@@ -501,7 +501,7 @@ def test_InMemoryArrayDataset_bare_object_dtype_fillvalue(h5file, data):
     b"" instead of np.zeros(), i.e. the int 0.
     """
     group = h5file.create_group("group")
-    parent = InMemoryGroup(group.id)
+    parent = InMemoryGroup(group.id, h5file)
     ds = InMemoryArrayDataset("data", np.asarray(data, dtype=object), parent=parent)
     assert ds.dtype.metadata is None
     assert ds.fillvalue == b""
