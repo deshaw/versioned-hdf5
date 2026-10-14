@@ -142,8 +142,6 @@ python = "=3.12"
 python = "=3.13"
 [feature.py314.dependencies]
 python = "=3.14"
-[feature.py315]
-channels = ["https://conda.anaconda.org/conda-forge/label/python_rc"]
 [feature.py315.dependencies]
 python = "=3.15"
 
@@ -229,9 +227,10 @@ docs-multiversion-redirect = "cp docs/multiversion-index.html docs/_build-multiv
 docs-multiversion = { depends-on = ["docs-multiversion-build", "docs-multiversion-redirect"] }
 
 [environments]
+# FIXME asv requires python<3.15
 default = { features = ["py314", "ipython", "build", "test", "filters", "bench"] }
 bench = { features = ["py314", "build", "bench", "bench-compat"] }
-docs = { features = ["py314", "build", "docs"] }
+docs = { features = ["py315", "build", "docs"] }
 lint = { features = ["lint"], no-default-feature = true }
 mindeps = { features = ["py310", "mindeps", "build", "test", "bench"], no-default-feature = true }
 hdf5-112 = { features = ["py310", "hdf5-112", "build", "test", "filters"] }
