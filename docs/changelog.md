@@ -5,7 +5,7 @@
 ### Major Changes
 
 - This release completes the second phase of the performance overhaul of the commit
-  phase started in 2.5.0. The creation of the virtual datasets at the end of commit has
+  stage started in 2.5.0. The creation of the virtual datasets at the end of commit has
   been rewritten in Cython; the full commit pipeline now revolves around the
   `StagedChangesArray` backend. `delete_versions()` and `rebuild_hashtables()` still use
   the legacy code paths and will be overhauled in a future version.
