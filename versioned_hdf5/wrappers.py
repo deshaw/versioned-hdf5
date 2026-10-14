@@ -86,13 +86,11 @@ class _GroupCache:
                 group._subgroups.clear()
 
 
-def _is_under(name: str | bytes | None, prefix: str | bytes | None) -> bool:
+def _is_under(name: bytes | None, prefix: bytes | None) -> bool:
     """Whether the group ``name`` is ``prefix`` itself or one of its subgroups."""
     if name is None or prefix is None:
         return False
-    # h5py names a group with bytes if the file was opened with a bytes filename.
-    name, prefix = os.fsdecode(name), os.fsdecode(prefix)
-    return name == prefix or name.startswith(prefix.rstrip("/") + "/")
+    return name == prefix or name.startswith(prefix.rstrip(b"/") + b"/")
 
 
 class InMemoryGroup(Group):
