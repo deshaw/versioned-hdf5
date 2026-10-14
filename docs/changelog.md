@@ -11,16 +11,16 @@
   the legacy code paths and will be overhauled in a future version.
 - `modify_metadata()` and `recreate_dataset()` now stream data from disk to disk and no
   longer load entire versions of the dataset in memory; this enables using them when the
-  sum of non-empty chunks of a version are larger than memory.
+  sum of non-empty chunks of a version is larger than memory.
 
 ### Minor Changes
 
 - Fix `ValueError: assignment destination is read-only` after `astype()` or
   `asarray()` on a staged dataset.
-- Fixed bugs when multiple h5py.File objects are open on the same .h5 file on disk
 - Fixed crash in `resize()` followed by `commit_staged_changes()` when all staged chunks
-  were deduplicated away.
+  are deduplicated away.
 - Fixed crash in `resize()` after assigning to a dataset with `sv[name] = arr`.
+- Fixed bugs when multiple `h5py.File` objects are open on the same file on disk
 - `np.bytes_` scalars can now be assigned into variable-width string datasets.
 - Improved rejection of the reserved word `versions` used as a dataset path component.
 - `modify_metadata()` now preserves dataset attributes
