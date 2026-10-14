@@ -145,7 +145,7 @@ module = ["*.tests.*"]
 disallow_untyped_defs = false
 
 [tool.codespell]
-skip = "./docs/_build,./pixi.lock"
+skip = "./docs/_build,./docs/_build-multiversion,./pixi.lock"
 ignore-words-list = "COO,nd"
 
 [tool.cibuildwheel]
