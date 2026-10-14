@@ -386,7 +386,13 @@ cdef void _hash_object_chunk(
             elif isinstance(value, bytes):
                 # Also covers np.bytes_; bytes() is a no-op for exact bytes,
                 # but Cython's coercion to `bytes` rejects subclasses
-                value_b = bytes(value)
+                # Also covers np.bytes_ and other subclasses of bytes.
+                # `value_b = value` would raise TypeError for a subclass,
+                # because a `cdef bytes` variable accepts only exact bytes.
+                # <bytes> casts without a type check. That is safe because a
+                # subclass of bytes stores its length and data at the same
+                # offsets as bytes, and the code below reads only those two.
+                value_b = <bytes>value
             else:
                 raise ValueError(f"Object array contains unsupported type={type(value)}")
 
