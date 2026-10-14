@@ -28,11 +28,83 @@ export LINK="/LIBPATH:$ZLIB_ROOT/lib"
 
 export PATH="$PATH:$EXTRA_PATH"
 
+# requests is used both here and by ci/get_hdf5_win.py below.
+pip install requests
+
+# pkg-config: meson resolves dependency('hdf5') (and the openssl/pkg-config files
+# synthesised below) through pkg-config, but GitHub's Windows images don't ship one.
+# Do NOT install it with chocolatey (see the 'choco install dependencies (Windows)'
+# step in .github/workflows/wheels.yml): the community feed rate-limits CI traffic
+# and answers 503/504, choco can even exit 0 while having installed nothing, and the
+# resulting breakage only shows up much later inside meson, as
+#   Dependency lookup for hdf5 with method 'pkg-config' failed: Pkg-config for
+#   machine host machine not found.
+# Install the very same pkg-config-lite archive that the pkgconfiglite package
+# fetches, straight from SourceForge.
+# $PROJECT_PATH is a Windows path (e.g. D:\a\...): keep a POSIX copy for bash, as
+# backslashes are not path separators there.
+PROJECT_PATH_POSIX=$(cygpath -u "$PROJECT_PATH")
+export PKG_CONFIG_LITE_VERSION="0.28-1"
+export PKG_CONFIG_LITE_DIR="$PROJECT_PATH_POSIX/pkg-config-lite/$PKG_CONFIG_LITE_VERSION"
+# Create it up-front: find would fail (and abort the script under `set -e`) if it
+# didn't exist yet.
+mkdir -p "$PKG_CONFIG_LITE_DIR"
+# The archive wraps everything in a versioned directory
+# (pkg-config-lite-$PKG_CONFIG_LITE_VERSION/bin/pkg-config.exe); where exactly it ends
+# up is a detail of the zip, so locate the executable instead of hardcoding its path.
+find_pkg_config_exe() {
+    find "$PKG_CONFIG_LITE_DIR" -type f -name 'pkg-config.exe' -print -quit
+}
+PKG_CONFIG_EXE=$(find_pkg_config_exe)
+if [[ -z "$PKG_CONFIG_EXE" ]]; then
+    echo "Installing pkg-config-lite $PKG_CONFIG_LITE_VERSION into $PKG_CONFIG_LITE_DIR"
+    python - "$(cygpath -m "$PKG_CONFIG_LITE_DIR")" "$PKG_CONFIG_LITE_VERSION" <<'EOF'
+import io
+import sys
+import zipfile
+from pathlib import Path
+
+import requests
+
+dest, version = sys.argv[1], sys.argv[2]
+url = (
+    "https://downloads.sourceforge.net/project/pkgconfiglite/"
+    f"{version}/pkg-config-lite-{version}_bin-win32.zip"
+)
+
+# SourceForge mirrors flake; retry a few times before giving up.
+for attempt in range(1, 6):
+    try:
+        response = requests.get(url, timeout=60)
+        response.raise_for_status()
+        break
+    except requests.RequestException as exc:
+        print(f"Download of {url} failed (attempt {attempt}/5): {exc}", file=sys.stderr)
+else:
+    raise SystemExit(f"Cannot download pkg-config-lite from {url}")
+
+print(f"Extracting pkg-config-lite {version} into {dest}")
+with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+    archive.extractall(Path(dest))
+EOF
+    PKG_CONFIG_EXE=$(find_pkg_config_exe)
+fi
+if [[ -z "$PKG_CONFIG_EXE" ]]; then
+    echo "Could not find pkg-config.exe under $PKG_CONFIG_LITE_DIR" >&2
+    exit 1
+fi
+PKG_CONFIG_DIR=$(dirname "$PKG_CONFIG_EXE")
+export PATH="$PATH:$PKG_CONFIG_DIR"
+if ! "$PKG_CONFIG_EXE" --version > /dev/null 2>&1; then
+    echo "pkg-config at $PKG_CONFIG_EXE is not runnable" >&2
+    exit 1
+fi
+echo "Using $("$PKG_CONFIG_EXE" --version) from $PKG_CONFIG_DIR"
+
 # HDF5
 export HDF5_VERSION="2.0.0"
 export HDF5_DIR="$PROJECT_PATH/cache/hdf5/$HDF5_VERSION"
 
-pip install requests
 python $PROJECT_PATH/ci/get_hdf5_win.py
 
 # OpenSSL (libcrypto) for versioned_hdf5/hash.pyx.
@@ -107,6 +179,8 @@ if [[ "$GITHUB_ENV" != "" ]] ; then
     echo "LINK=$LINK" | tee -a $GITHUB_ENV
     echo "ZLIB_ROOT=$ZLIB_ROOT" | tee -a $GITHUB_ENV
     echo "HDF5_DIR=$HDF5_DIR" | tee -a $GITHUB_ENV
+    # pkg-config for meson's dependency('hdf5'); PATH on windows is special
+    echo "$(cygpath -m "$PKG_CONFIG_DIR")" | tee -a $GITHUB_PATH
     echo "OPENSSL_DIR=$OPENSSL_DIR" | tee -a $GITHUB_ENV
     # cmake fallback for meson's dependency('openssl') if pkg-config is bypassed
     echo "OPENSSL_ROOT_DIR=$OPENSSL_DIR" | tee -a $GITHUB_ENV

@@ -74,23 +74,47 @@ jobs:
         #   https://github.com/chocolatey/choco/issues/1564
         #   https://github.com/mandiant/flare-vm/issues/167
         # Retry the whole batch with backoff; already-installed packages are skipped.
+        # pkg-config is deliberately NOT installed here - it is not available in the
+        # image and a failed choco install used to be silent, surfacing only inside meson
+        # as "Dependency lookup for hdf5 with method 'pkg-config' failed".
+        # ci/cibw_before_all_windows.sh installs it from SourceForge instead.
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $pkgs = @('pkgconfiglite', 'llvm', 'openssl')
+          $pkgs = @('llvm', 'openssl')
           $max = 5
-          for ($i = 1; $i -le $max; $i++) {
-            Write-Host "::group::choco install attempt $i/$max"
-            choco install $pkgs --yes --no-progress --allow-unofficial
-            $code = $LASTEXITCODE
-            Write-Host "::endgroup::"
-            # 0 = success, 3010 = success but reboot required
-            if ($code -eq 0 -or $code -eq 3010) { exit 0 }
-            Write-Host "choco install failed (exit $code); retrying in 30s..."
-            Start-Sleep -Seconds 30
+          foreach ($pkg in $pkgs) {
+            for ($i = 1; $i -le $max; $i++) {
+              Write-Host "::group::choco install attempt $i/$max for $pkg"
+              choco install $pkg --yes --no-progress --allow-unofficial
+              $code = $LASTEXITCODE
+              Write-Host "::endgroup::"
+              # 0 = success, 3010 = success but reboot required
+              if ($code -eq 0 -or $code -eq 3010) { break }
+              Write-Host "choco install $pkg failed (exit $code); retrying in 30s..."
+              Start-Sleep -Seconds 30
+            }
+            # Already failing the job here would be premature: the runner image ships
+            # both packages, so a flaky feed is not necessarily fatal. What matters is
+            # that the toolchain is usable, which we verify below.
+            if ($code -ne 0 -and $code -ne 3010) {
+              Write-Warning "choco install $pkg failed after $max attempts"
+            }
           }
-          Write-Error "choco install failed after $max attempts"
-          exit 1
+
+          $missing = @()
+          foreach ($tool in 'clang', 'clang++', 'llvm-ar') {
+            $cmd = Get-Command $tool -ErrorAction SilentlyContinue
+            if ($cmd) {
+              Write-Host "$tool -> $($cmd.Source)"
+            } else {
+              $missing += $tool
+            }
+          }
+          if ($missing) {
+            Write-Error "Build tool(s) not found on PATH: $($missing -join ', ')"
+            exit 1
+          }
 
       - name: Run cibw_before_all_windows
         if: runner.os == 'Windows'
@@ -108,15 +132,13 @@ jobs:
           PYTHONVERSION: ${{ inputs.python-version }}
 
       - name: Run cibuildwheel
-        uses: pypa/cibuildwheel@ee02a1537ce3071a004a6b08c41e72f0fdc42d9a # v3.4.0
+        uses: pypa/cibuildwheel@b3395e271a35f73dad77f21802abe9b986dfe299 # v4.3.1
         env:
           # Note that tool.cibuildwheel "skip" in pyproject.toml also limits what gets built
+          # ci/triage_build.sh writes CIBW_BUILD, CIBW_BEFORE_BUILD and CIBW_BUILD_FRONTEND
+          # into $GITHUB_ENV, where cibuildwheel picks them up automatically.
           CIBW_ARCHS: ${{ inputs.arch }}
-          CIBW_BUILD: ${{ env.CIBW_BUILD }}
           CIBW_SKIP: "*musllinux*"
-          CIBW_BEFORE_BUILD: ${{ env.CIBW_BEFORE_BUILD }}
-          CIBW_BUILD_FRONTEND: ${{ env.CIBW_BUILD_FRONTEND }}
-          CIBW_PRERELEASE_PYTHONS: ${{ env.CIBW_PRERELEASE_PYTHONS }}
           CIBW_BEFORE_BUILD_LINUX: yum install -y zlib-devel openssl-devel
 
       # Remove libhdf5 (and its deps libaec/libsz) embedded by auditwheel/delocate in

@@ -25,9 +25,6 @@ if [[ "$GITHUB_EVENT_NAME" == "schedule" ]] || [[ "$MSG" = *'[pip-pre]'* ]]; the
     echo "CIBW_BUILD_FRONTEND=pip; args: --no-build-isolation" | tee -a $GITHUB_ENV
 fi
 
-# strip '-dev' suffix for pre-releases Pythons
-PYTHON="${PYTHON%-dev*}"
-
 # replace dots in PYTHON with nothing, e.g., 3.8->38
 CIBW_BUILD="cp${PYTHON//./}-*_$ARCH"
 echo "CIBW_BUILD=$CIBW_BUILD" | tee -a $GITHUB_ENV
