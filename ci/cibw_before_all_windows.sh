@@ -59,6 +59,7 @@ PKG_CONFIG_EXE=$(find_pkg_config_exe)
 if [[ -z "$PKG_CONFIG_EXE" ]]; then
     echo "Installing pkg-config-lite $PKG_CONFIG_LITE_VERSION into $PKG_CONFIG_LITE_DIR"
     python - "$(cygpath -m "$PKG_CONFIG_LITE_DIR")" "$PKG_CONFIG_LITE_VERSION" <<'EOF'
+import hashlib
 import io
 import sys
 import zipfile
@@ -71,6 +72,8 @@ url = (
     "https://downloads.sourceforge.net/project/pkgconfiglite/"
     f"{version}/pkg-config-lite-{version}_bin-win32.zip"
 )
+# Pinned for the version above; SourceForge mirrors serve the same archive.
+expected_sha256 = "2038c49d23b5ca19e2218ca89f06df18fe6d870b4c6b54c0498548ef88771f6f"
 
 # SourceForge mirrors flake; retry a few times before giving up.
 for attempt in range(1, 6):
@@ -82,6 +85,13 @@ for attempt in range(1, 6):
         print(f"Download of {url} failed (attempt {attempt}/5): {exc}", file=sys.stderr)
 else:
     raise SystemExit(f"Cannot download pkg-config-lite from {url}")
+
+actual_sha256 = hashlib.sha256(response.content).hexdigest()
+if actual_sha256 != expected_sha256:
+    raise SystemExit(
+        f"SHA256 mismatch for {url}: got {actual_sha256}, "
+        f"expected {expected_sha256}"
+    )
 
 print(f"Extracting pkg-config-lite {version} into {dest}")
 with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
