@@ -5,7 +5,6 @@ import numpy as np
 import pytest
 from numpy.testing import assert_array_equal, assert_equal
 
-from versioned_hdf5 import VersionedHDF5File
 from versioned_hdf5.typing_ import is_array_protocol
 from versioned_hdf5.wrappers import (
     DatasetWrapper,
@@ -226,29 +225,26 @@ def test_group_repr(premade_group):
     assert repr(baz) in result
 
 
-def test_committed_propagation():
+def test_committed_propagation(vfile):
     """Check that InMemoryGroup propagates the '_committed' state to child instances."""
-    name = "testname"
     test_data = np.ones((10,))
-    f = h5py.File("foo.h5", "w")
-    vfile = VersionedHDF5File(f)
 
     # Commit some data to nested groups
     with vfile.stage_version("version1", "") as group:
-        group.create_dataset(f"{name}/key", data=test_data)
-        group.create_dataset(f"{name}/val", data=test_data)
+        group.create_dataset("foo/key", data=test_data)
+        group.create_dataset("foo/val", data=test_data)
 
     assert vfile["version1"]._committed
-    assert vfile["version1"][name]._committed
+    assert vfile["version1"]["foo"]._committed
 
     with vfile.stage_version("version2") as group:
-        key_ds = group[f"{name}/key"]
-        val_ds = group[f"{name}/val"]
+        key_ds = group["foo/key"]
+        val_ds = group["foo/val"]
         val_ds[0] = -1
         key_ds[0] = 0
 
     assert vfile["version2"]._committed
-    assert vfile["version2"][name]._committed
+    assert vfile["version2"]["foo"]._committed
 
 
 def test_readonly_data(vfile):
