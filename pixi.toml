@@ -219,8 +219,11 @@ sphinx = "=8"
 sphinx-multiversion = "*"
 
 [feature.docs.tasks]
-docs = { cmd = "sphinx-build -M html . _build -W", cwd = "docs", depends-on = ["editable-install"] }
-docs-multiversion-build = { cmd = "sphinx-multiversion . _build-multiversion/html", cwd = "docs", depends-on = ["editable-install"] }
+# Note: the dependency environment is pinned to `docs`. Without it, `pixi r docs` (no
+# `-e`) runs `editable-install` in the `default` environment, where the same task is
+# also defined, while `docs` itself runs in the `docs` environment.
+docs = { cmd = "sphinx-build -M html . _build -W", cwd = "docs", depends-on = [{ task = "editable-install", environment = "docs" }] }
+docs-multiversion-build = { cmd = "sphinx-multiversion . _build-multiversion/html", cwd = "docs", depends-on = [{ task = "editable-install", environment = "docs" }] }
 # sphinx-multiversion only builds docs for every tag; this redirects users who visit
 # ./index.html -> ./master/index.html, which is the development branch docs.
 docs-multiversion-redirect = "cp docs/multiversion-index.html docs/_build-multiversion/html/index.html"
