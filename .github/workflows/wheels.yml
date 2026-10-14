@@ -73,7 +73,7 @@ jobs:
         #   https://docs.chocolatey.org/en-us/community-repository/community-packages-disclaimer/
         #   https://github.com/chocolatey/choco/issues/1564
         #   https://github.com/mandiant/flare-vm/issues/167
-        # Retry the whole batch with backoff; already-installed packages are skipped.
+        # Retry each package with backoff; already-installed packages are skipped.
         # pkg-config is deliberately NOT installed here - it is not available in the
         # image and a failed choco install used to be silent, surfacing only inside meson
         # as "Dependency lookup for hdf5 with method 'pkg-config' failed".
