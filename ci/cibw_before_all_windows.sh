@@ -28,7 +28,7 @@ export LINK="/LIBPATH:$ZLIB_ROOT/lib"
 
 export PATH="$PATH:$EXTRA_PATH"
 
-# requests is used both here and by ci/get_hdf5_win.py below.
+# requests is used by ci/get_pkg_config_lite.py and ci/get_hdf5_win.py below.
 pip install requests
 
 # pkg-config: meson resolves dependency('hdf5') (and the openssl/pkg-config files
@@ -44,59 +44,23 @@ pip install requests
 # $PROJECT_PATH is a Windows path (e.g. D:\a\...): keep a POSIX copy for bash, as
 # backslashes are not path separators there.
 PROJECT_PATH_POSIX=$(cygpath -u "$PROJECT_PATH")
-export PKG_CONFIG_LITE_VERSION="0.28-1"
-export PKG_CONFIG_LITE_DIR="$PROJECT_PATH_POSIX/pkg-config-lite/$PKG_CONFIG_LITE_VERSION"
+# The version and its checksum live in ci/get_pkg_config_lite.py.
+export PKG_CONFIG_LITE_DIR="$PROJECT_PATH_POSIX/pkg-config-lite"
 # Create it up-front: find would fail (and abort the script under `set -e`) if it
 # didn't exist yet.
 mkdir -p "$PKG_CONFIG_LITE_DIR"
 # The archive wraps everything in a versioned directory
-# (pkg-config-lite-$PKG_CONFIG_LITE_VERSION/bin/pkg-config.exe); where exactly it ends
-# up is a detail of the zip, so locate the executable instead of hardcoding its path.
+# (pkg-config-lite-<version>/bin/pkg-config.exe); where exactly it ends
+# up is a detail of the zip, so locate the executable instead of hardcoding
+# its path.
 find_pkg_config_exe() {
     find "$PKG_CONFIG_LITE_DIR" -type f -name 'pkg-config.exe' -print -quit
 }
 PKG_CONFIG_EXE=$(find_pkg_config_exe)
 if [[ -z "$PKG_CONFIG_EXE" ]]; then
-    echo "Installing pkg-config-lite $PKG_CONFIG_LITE_VERSION into $PKG_CONFIG_LITE_DIR"
-    python - "$(cygpath -m "$PKG_CONFIG_LITE_DIR")" "$PKG_CONFIG_LITE_VERSION" <<'EOF'
-import hashlib
-import io
-import sys
-import zipfile
-from pathlib import Path
-
-import requests
-
-dest, version = sys.argv[1], sys.argv[2]
-url = (
-    "https://downloads.sourceforge.net/project/pkgconfiglite/"
-    f"{version}/pkg-config-lite-{version}_bin-win32.zip"
-)
-# Pinned for the version above; SourceForge mirrors serve the same archive.
-expected_sha256 = "2038c49d23b5ca19e2218ca89f06df18fe6d870b4c6b54c0498548ef88771f6f"
-
-# SourceForge mirrors flake; retry a few times before giving up.
-for attempt in range(1, 6):
-    try:
-        response = requests.get(url, timeout=60)
-        response.raise_for_status()
-        break
-    except requests.RequestException as exc:
-        print(f"Download of {url} failed (attempt {attempt}/5): {exc}", file=sys.stderr)
-else:
-    raise SystemExit(f"Cannot download pkg-config-lite from {url}")
-
-actual_sha256 = hashlib.sha256(response.content).hexdigest()
-if actual_sha256 != expected_sha256:
-    raise SystemExit(
-        f"SHA256 mismatch for {url}: got {actual_sha256}, "
-        f"expected {expected_sha256}"
-    )
-
-print(f"Extracting pkg-config-lite {version} into {dest}")
-with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
-    archive.extractall(Path(dest))
-EOF
+    echo "Installing pkg-config-lite into $PKG_CONFIG_LITE_DIR"
+    python "$PROJECT_PATH/ci/get_pkg_config_lite.py" \
+        "$(cygpath -m "$PKG_CONFIG_LITE_DIR")"
     PKG_CONFIG_EXE=$(find_pkg_config_exe)
 fi
 if [[ -z "$PKG_CONFIG_EXE" ]]; then
