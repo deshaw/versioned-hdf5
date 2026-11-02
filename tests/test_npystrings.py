@@ -244,26 +244,33 @@ def test_tight_iteration_big_O_performance(h5file):
             )
         return ds
 
-    def benchmark(small, large):
-        # Don't use wall time. The hypervisor on CI hosts can occasionally
-        # steal the CPU for multiple seconds away from the VM.
-        t0 = time.thread_time()
-        for i in range(0, NSMALL, 2):
-            small[i + 1, :] = np.strings.capitalize(small.astype("T")[i, :])
-        t1 = time.thread_time()
-        # large is much larger than small; however we benchmark the iteration on the
-        # same number of elements
-        for i in range(0, NSMALL, 2):
-            large[i + 1, :] = np.strings.capitalize(large.astype("T")[i, :])
-        t2 = time.thread_time()
+    def benchmark(small, large, rtol):
+        def measure():
+            # Don't use wall time. The hypervisor on CI hosts can occasionally
+            # steal the CPU for multiple seconds away from the VM.
+            t0 = time.thread_time()
+            for i in range(0, NSMALL, 2):
+                small[i + 1, :] = np.strings.capitalize(small.astype("T")[i, :])
+            t1 = time.thread_time()
+            # large is much larger than small; however we benchmark the iteration on
+            # the same number of elements
+            for i in range(0, NSMALL, 2):
+                large[i + 1, :] = np.strings.capitalize(large.astype("T")[i, :])
+            t2 = time.thread_time()
+            return t1 - t0, t2 - t1
 
-        # Generously allow 5x difference in performance to ensure stability.
+        # Best of 3, to discard occasional CPU steal that slows down one of the two
+        # loops but not the other.
+        measurements = [measure() for _ in range(3)]
+        t_small = min(m[0] for m in measurements)
+        t_large = min(m[1] for m in measurements)
+
         # If there are conversions of the whole dataset, we're going to get 100x.
-        np.testing.assert_allclose(t2 - t1, t1 - t0, rtol=5, atol=0)
+        np.testing.assert_allclose(t_large, t_small, rtol=rtol, atol=0)
 
     small = create_dataset(h5file, "small", NSMALL)
     large = create_dataset(h5file, "large", NLARGE)
-    benchmark(small, large)
+    benchmark(small, large, rtol=5)
 
     vfile = VersionedHDF5File(h5file)
     with vfile.stage_version("v0") as v:
@@ -271,7 +278,7 @@ def test_tight_iteration_big_O_performance(h5file):
         large = create_dataset(v, "large", NLARGE)
         assert isinstance(small.dataset, InMemoryArrayDataset)
         assert isinstance(large.dataset, InMemoryArrayDataset)
-        benchmark(small, large)
+        benchmark(small, large, rtol=5)
         assert_swaps_counter(large, 0)
 
     with vfile.stage_version("v1") as v:
@@ -279,7 +286,7 @@ def test_tight_iteration_big_O_performance(h5file):
         large = v["large"]
         assert isinstance(small.dataset, InMemoryDataset)
         assert isinstance(large.dataset, InMemoryDataset)
-        benchmark(small, large)
+        benchmark(small, large, rtol=5)
         assert_swaps_counter(large, 0)
 
     with vfile.stage_version("v2") as v:
@@ -287,7 +294,10 @@ def test_tight_iteration_big_O_performance(h5file):
         large = create_dataset(v, "large_sp", NLARGE, sparse=True)
         assert isinstance(small, InMemorySparseDataset)
         assert isinstance(large, InMemorySparseDataset)
-        benchmark(small, large)
+        # InMemorySparseDataset.__setitem__ has a small O(number of chunks) component,
+        # which brings the honest ratio to ~3 here and ~6 on some CI hosts. A
+        # conversion of the whole dataset would still be ~100x.
+        benchmark(small, large, rtol=20)
         assert_swaps_counter(large, 0)
 
 
