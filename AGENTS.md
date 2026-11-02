@@ -140,6 +140,11 @@ differently from the pure-Python execution, comment out `cdivision` first to dia
   commit.
 - Pre-existing `# FIXME` ignores in `pyproject.toml` (`[tool.ruff.lint]`, `[tool.mypy]`)
   gate new rules — fix the codebase before un-ignoring.
+- Pixi builds compile Cython with `-Werror` (`VH5_CYTHON_WARNINGS_AS_ERRORS=1`, set by
+  the `install`, `editable-install`, `wheel` and `sdist` tasks). Naked `pip install` and
+  cibuildwheel keep tolerating warnings, and so does `mindeps`, which pins an old Cython;
+  see `ci/cython_werror.py`. Cython `performance hint:` messages cannot be promoted to
+  errors, so they don't fail the build.
 - Adding the `wheels` label to a PR triggers binary-wheel builds in CI. The
   `h5py>=3.8.0` pin in `pyproject.toml` is rewritten by `.github/workflows/wheels.yml`
   at wheel-build time to the exact `H5PY_VERSION`.

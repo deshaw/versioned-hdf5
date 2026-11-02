@@ -44,6 +44,22 @@ All pixi environments use an editable install of versioned-hdf5. This means that
 changing any file, including Cython ones, in the `versioned_hdf5/` directory, changes
 will be immediately reflected in all commands (such as `pixi r test`).
 
+## Cython warnings
+
+Pixi builds fail on Cython warnings. The `install`, `editable-install`, `wheel` and
+`sdist` tasks set `VH5_CYTHON_WARNINGS_AS_ERRORS=1`, which makes meson append `-Werror`
+to the Cython invocation for every module. Compilation errors, including the offending
+Cython source excerpt, are printed on the terminal: for an editable install the
+compilation runs on the first import, e.g. in `pixi r smoke`.
+
+A naked `pip install .` does not set the variable, and neither does cibuildwheel or
+`asv-compare`, so those builds still succeed on warnings. The variable is also ignored
+when Cython is older than 3.2, i.e. in the `mindeps` environment, which pins Cython
+3.0.10 and whose warnings we don't intend to fix; see `ci/cython_werror.py`.
+
+Note that `-Werror` promotes `warning:` messages to errors, but not `performance hint:`
+messages, which Cython cannot promote.
+
 ## Interactive terminal
 
 `pixi r ipython` opens an interactive IPython terminal with versioned-hdf5 (editable

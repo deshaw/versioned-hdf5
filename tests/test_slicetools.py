@@ -774,6 +774,32 @@ def test_create_virtual_dataset_empty(setup_vfile, shape, chunk_size):
         assert n_virtual_sources(vds) == 0
 
 
+def test_create_virtual_dataset_inconsistent_slabs(setup_vfile):
+    """Exceptions raised by _fill_virtual_layout, which runs with the GIL released and
+    signals errors through its 'except -1' return value, propagate to the caller.
+    """
+    with setup_vfile(version_name="v") as f:
+        create_base_dataset(f, "x", data=np.arange(100.0), chunks=(10,))
+        sc = StagedChangesArray(
+            (40,),
+            (10,),
+            [f["_version_data/x/raw_data"]],
+            np.ones(4, np_hsize_t),
+            np.zeros(4, np_hsize_t),
+        )
+
+        # A chunk lying on a slab that doesn't exist
+        sc.slab_indices[1] = 2
+        with pytest.raises(AssertionError, match="lies on slab 2"):
+            create_virtual_dataset(f, "v", "x", sc)
+        sc.slab_indices[1] = 1
+
+        # A chunk pointing past the end of raw_data
+        sc.slab_offsets[1] = 100
+        with pytest.raises(AssertionError, match="raw_data has only 100 rows"):
+            create_virtual_dataset(f, "v", "x", sc)
+
+
 def test_create_virtual_dataset_arbitrary_offsets(setup_vfile):
     """The same chunk of raw_data can be referenced by an arbitrary number
     of chunks of the virtual dataset.
