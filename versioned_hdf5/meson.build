@@ -34,7 +34,6 @@ py.extension_module(
     include_directories: [npy_include_path],
     # Note: no -X flags here, unlike the other modules; slicetools opts out of
     # boundscheck, wraparound etc. selectively, with per-function decorators.
-    # Keep the flags in sync with ci/cython_warnings.py, which checks for warnings.
 )
 
 cython_args = [
@@ -51,8 +50,10 @@ cython_args = [
     # Comment this out if behaviour changes when not compiled.
     '-X', 'cdivision=True',
 ]
-# Keep the flags above in sync with ci/cython_warnings.py, which checks the modules
-# for warnings and performance hints (meson can't fail the build on the latter).
+# The build can't fail on Cython performance hints: '-Dwerror=true' promotes 'warning:'
+# to an error, but 'performance hint:' ignores it. ci/cython_warnings.py configures a
+# throwaway build with these flags and greps meson's log instead, so this is the only
+# copy of them.
 
 # To generate HTML compilation reports:
 # (First double check that flags below match those above)

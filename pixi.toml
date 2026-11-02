@@ -56,9 +56,9 @@ sdist = "python -m build --sdist --no-isolation"
 wheel = "python -m build --wheel --no-isolation"
 twine-check = "twine check dist/*"
 smoke = { cmd = "python ci/smoke_test.py", depends-on = ["editable-install"] }
-# Compile every Cython module and fail on any warning or performance hint. Cython
-# cannot promote performance hints to errors, so the build cannot enforce this; see
-# ci/cython_warnings.py.
+# Build the project with meson in a throwaway directory and fail on any Cython
+# warning or performance hint. Cython cannot promote performance hints to errors, so
+# the real build cannot enforce this; see ci/cython_warnings.py.
 cython-warnings = "python ci/cython_warnings.py"
 
 # Absolute minimum versions of build and runtime dependencies.

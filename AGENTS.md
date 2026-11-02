@@ -23,8 +23,9 @@ version matrix.
   `hdf5-21`, `np126`, `np200`, `py310`–`py314`, `h5py-dev`).
 - `pixi r lint` — run all linters (ruff, mypy, codespell, dprint, blacken-docs,
   actionlint, cython-lint, sphinx-lint, validate-pyproject) via lefthook.
-- `pixi r cython-warnings` — fail on any Cython `warning:` or `performance hint:`; CI
-  runs it in the `py314` environment.
+- `pixi r cython-warnings` — build the project with meson in a throwaway directory and
+  fail on any Cython `warning:` or `performance hint:`; CI runs it in the `py314`
+  environment.
 - `pixi r install-git-hooks` — install lefthook pre-commit hooks (one-off).
 - `pixi r ipython` — REPL with the editable install loaded.
 - `pixi r -e docs docs` — build docs into `docs/_build/html`.
@@ -145,8 +146,10 @@ differently from the pure-Python execution, comment out `cdivision` first to dia
 - Cython warnings are enforced by `cython-warnings` and not by `-Werror` in the build,
   because Cython cannot promote `performance hint:` to an error, pip hides the build log
   when the build succeeds, and a naked `pip install` must still tolerate warnings from
-  whatever Cython version it runs. The check exits 0 on Cython < 3.2, i.e. in
-  `mindeps`. See `ci/cython_warnings.py`.
+  whatever Cython version it runs. The check builds the project with meson in a
+  throwaway directory and scans the log, so the flags, module list and language live
+  only in `versioned_hdf5/meson.build`. It exits 0 on Cython < 3.2, i.e. in `mindeps`.
+  See `ci/cython_warnings.py`.
 - Adding the `wheels` label to a PR triggers binary-wheel builds in CI. The
   `h5py>=3.8.0` pin in `pyproject.toml` is rewritten by `.github/workflows/wheels.yml`
   at wheel-build time to the exact `H5PY_VERSION`.
