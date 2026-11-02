@@ -19,3 +19,20 @@ jobs:
         run: pixi run lint
       - name: Check for changed files after linting
         run: git diff --exit-code
+
+  cython-warnings:
+    # Cython warnings and performance hints must be zero. Run it once, in a single
+    # modern environment: 'mindeps' pins Cython 3.0.10, whose diagnostics partly
+    # originate in Cython's own code. See ci/cython_warnings.py.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@a2789fe3805b9ae22d6c25a15df2f2c624cd092e # v0.11.1
+        with:
+          pixi-version: v0.82.0
+          cache: true
+          environments: py314
+      - name: Check Cython warnings
+        run: pixi run -e py314 cython-warnings

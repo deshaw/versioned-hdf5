@@ -47,10 +47,10 @@ will be immediately reflected in all commands (such as `pixi r test`).
 ## Cython warnings
 
 `pixi r cython-warnings` configures a throwaway meson build directory, builds it, and
-fails on any Cython `warning:` or `performance hint:` in meson's log. CI runs it in the
-`py314` environment. Since meson drives the compilation, the flags, the module list and
-whether a module is C or C++ always match `versioned_hdf5/meson.build`; the script
-keeps no copy of them.
+fails on any Cython `warning:` or `performance hint:` in meson's log. The Lint workflow
+runs it in the `py314` environment. Since meson drives the compilation, the flags, the
+module list and whether a module is C or C++ always match `versioned_hdf5/meson.build`;
+the script keeps no copy of them.
 
 It is a standalone check and not part of the build. `-Werror` promotes `warning:` but
 not `performance hint:` to an error, so the build cannot enforce a clean compile; on top
