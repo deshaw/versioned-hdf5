@@ -43,21 +43,23 @@ CXX = "clang++"
 LD = "llvm-ar"
 
 [feature.build.tasks]
-# Cython warnings fail the build in pixi environments running a modern Cython; see
-# ci/cython_werror.py. Not set for plain 'pip install', nor for cibuildwheel/asv.
 # Perform a regular build and install of versioned-hdf5 in the current environment
-install = { cmd = "python -m pip install . -v --no-build-isolation --no-dependencies", env = { VH5_CYTHON_WARNINGS_AS_ERRORS = "1" } }
+install = "python -m pip install . -v --no-build-isolation --no-dependencies"
 uninstall = "python -m pip uninstall -y versioned-hdf5"
 # Perform editable install, but do nothing if package was already installed by
 # either 'install' or 'editable-install'. Add --force to force re-installation.
 # This task is a dependency of all tasks that need versioned-hdf5 to be installed.
-editable-install = { cmd = "python ci/editable_install.py", env = { VH5_CYTHON_WARNINGS_AS_ERRORS = "1" } }
-sdist = { cmd = "python -m build --sdist --no-isolation", env = { VH5_CYTHON_WARNINGS_AS_ERRORS = "1" } }
+editable-install = "python ci/editable_install.py"
+sdist = "python -m build --sdist --no-isolation"
 # Build a wheel for the current platform and python only.
 # For debugging only. Do not use for release; use cibuildwheel instead.
-wheel = { cmd = "python -m build --wheel --no-isolation", env = { VH5_CYTHON_WARNINGS_AS_ERRORS = "1" } }
+wheel = "python -m build --wheel --no-isolation"
 twine-check = "twine check dist/*"
 smoke = { cmd = "python ci/smoke_test.py", depends-on = ["editable-install"] }
+# Compile every Cython module and fail on any warning or performance hint. Cython
+# cannot promote performance hints to errors, so the build cannot enforce this; see
+# ci/cython_warnings.py.
+cython-warnings = "python ci/cython_warnings.py"
 
 # Absolute minimum versions of build and runtime dependencies.
 # Compilation against an old stack of dependencies is very fiddly:

@@ -25,18 +25,6 @@ npy_include_path = run_command(
     check: true
 ).stdout().strip()
 
-# Turn Cython warnings into build errors. This is opt-in, and only for pixi builds
-# running a modern Cython; a naked 'pip install .' must still succeed on warnings.
-# See ci/cython_werror.py for the exact conditions.
-# Note: meson caches the answer in the build directory, so it only refreshes when the
-# build directory is re-configured.
-cython_werror = run_command(
-    py,
-    ['../ci/cython_werror.py'],
-    check: true
-).stdout().strip() == 'true'
-werror_args = cython_werror ? ['-Werror'] : []
-
 py.extension_module(
     'slicetools',
     'slicetools.pyx',
@@ -46,7 +34,7 @@ py.extension_module(
     include_directories: [npy_include_path],
     # Note: no -X flags here, unlike the other modules; slicetools opts out of
     # boundscheck, wraparound etc. selectively, with per-function decorators.
-    cython_args: werror_args,
+    # Keep the flags in sync with ci/cython_warnings.py, which checks for warnings.
 )
 
 cython_args = [
@@ -62,7 +50,9 @@ cython_args = [
     # the module and made sure the sign of the two operands is always the same.
     # Comment this out if behaviour changes when not compiled.
     '-X', 'cdivision=True',
-] + werror_args
+]
+# Keep the flags above in sync with ci/cython_warnings.py, which checks the modules
+# for warnings and performance hints (meson can't fail the build on the latter).
 
 # To generate HTML compilation reports:
 # (First double check that flags below match those above)
