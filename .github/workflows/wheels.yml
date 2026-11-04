@@ -81,7 +81,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $pkgs = @('llvm', 'openssl')
+          $pkgs = @('llvm')
           $max = 5
           foreach ($pkg in $pkgs) {
             for ($i = 1; $i -le $max; $i++) {
@@ -139,32 +139,45 @@ jobs:
           # into $GITHUB_ENV, where cibuildwheel picks them up automatically.
           CIBW_ARCHS: ${{ inputs.arch }}
           CIBW_SKIP: "*musllinux*"
-          CIBW_BEFORE_BUILD_LINUX: yum install -y zlib-devel openssl-devel
+          CIBW_BEFORE_BUILD_LINUX: yum install -y zlib-devel
 
       # Remove libhdf5 (and its deps libaec/libsz) embedded by auditwheel/delocate in
       # the repair step: at runtime these are provided by the installed h5py wheel,
       # which our extensions' RPATH points at (h5py.libs / h5py/.dylibs).
-      # KEEP libcrypto: h5py does NOT ship it, so the wheel must remain self-contained
-      # for OpenSSL (used by versioned_hdf5/hash.pyx). The repair tools vendor libcrypto
-      # into the same shared directory; it merges harmlessly with h5py's own libs.
       - name: Remove embedded libhdf5 (Linux)
         if: runner.os == 'Linux'
-        run: zip -d ./wheelhouse/*.whl 'h5py.libs/*' -x 'h5py.libs/libcrypto*'
+        run: zip -d ./wheelhouse/*.whl 'h5py.libs/*'
       - name: Remove embedded libhdf5 (MacOS)
         if: runner.os == 'macOS'
-        run: zip -d ./wheelhouse/*.whl 'h5py/*' -x 'h5py/.dylibs/libcrypto*'
+        run: zip -d ./wheelhouse/*.whl 'h5py/*'
       - name: Remove h5py DLLs from RECORD (Linux / MacOS)
         if: runner.os == 'Linux' || runner.os == 'macOS'
         run: |
           cd wheelhouse
           unzip ./*.whl '*/RECORD'
-          # Drop RECORD entries for the libs we deleted above, but keep libcrypto.
+          # Drop RECORD entries for the libs we deleted above.
           # awk (not sed) for portability between GNU (Linux) and BSD (macOS).
           echo "Removing lines:"
-          awk '/^h5py/ && !/libcrypto/' ./*/RECORD
-          awk '!(/^h5py/ && !/libcrypto/)' ./*/RECORD > RECORD.new
+          awk '/^h5py/' ./*/RECORD
+          awk '!/^h5py/' ./*/RECORD > RECORD.new
           mv -v RECORD.new ./*/RECORD
           zip ./*.whl ./*/RECORD
+
+      # hash.pyx resolves the OpenSSL EVP entry points at runtime from the libcrypto the
+      # runtime CPython already loaded through _hashlib, so nothing crypto-related may be
+      # shipped in the wheel: a vendored copy would be a second OpenSSL in the process.
+      - name: Assert no crypto library is vendored
+        shell: bash
+        run: |
+          for whl in ./wheelhouse/*.whl; do
+            python -m zipfile -l "$whl"
+          done > wheel-contents.txt
+          # Match shared libraries only: the plain-C resolver header that ships with the
+          # package is legitimately called _libcrypto_dl.h.
+          if grep -iE 'libcrypto[^ ]*\.(so|dylib|dll)' wheel-contents.txt; then
+            echo "::error::The wheel ships an OpenSSL library"
+            exit 1
+          fi
 
       - name: Upload wheels
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -221,6 +234,12 @@ jobs:
         run: |
           python utils/debug_libhdf5_so.py h5py
           python utils/debug_libhdf5_so.py versioned_hdf5
+
+      # The wheel does not ship libcrypto; this shows which copy of OpenSSL the
+      # installed CPython provides, i.e. what hash.pyx bound itself to.
+      - name: Print resolved libcrypto
+        run: |
+          python -c "import versioned_hdf5.hash as h; print('LIBCRYPTO_PATH   ', h.LIBCRYPTO_PATH); print('LIBCRYPTO_VERSION', h.LIBCRYPTO_VERSION)"
 
       - name: Run smoke tests
         run: pytest -m 'api and not slow'
