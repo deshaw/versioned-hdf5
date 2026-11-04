@@ -1,5 +1,6 @@
 """Import h5py and versioned-hdf5.
-Print out HDF5, h5py, and versioned-hdf5 versions.
+Print out HDF5, h5py, and versioned-hdf5 versions, plus the libcrypto that the hasher
+bound itself to at runtime.
 Finally, create a versioned-hdf5 file on disk and write some data to it.
 """
 
@@ -27,6 +28,13 @@ def main():
         print("versioned-hdf5", versioned_hdf5.__version__)
     else:
         raise exc
+
+    # versioned-hdf5 does not ship or link libcrypto: the SHA256 EVP entry points are
+    # resolved at runtime from the OpenSSL that this CPython already loaded.
+    from versioned_hdf5.hash import LIBCRYPTO_PATH, LIBCRYPTO_VERSION
+
+    print("libcrypto     ", LIBCRYPTO_PATH)
+    print("openssl       ", LIBCRYPTO_VERSION)
 
     with tempfile.TemporaryFile() as fh, h5py.File(fh, "w") as f:
         vf = versioned_hdf5.VersionedHDF5File(f)
