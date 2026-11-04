@@ -837,6 +837,6 @@ def test_extension_does_not_link_libcrypto():
     ).stdout
     needed = [line for line in dynamic_section.splitlines() if "NEEDED" in line]
     assert needed, dynamic_section  # sanity check: the parse actually found entries
-    assert not [
-        line for line in needed if "crypto" in line or "libssl" in line
-    ], dynamic_section
+    assert not [line for line in needed if "crypto" in line or "libssl" in line], (
+        dynamic_section
+    )
