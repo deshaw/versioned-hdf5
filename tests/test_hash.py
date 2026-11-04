@@ -4,13 +4,18 @@ See test_hash_legacy_compat.py for cross-checks against the legacy hash algorith
 """
 
 import hashlib
+import os
+import shutil
 import struct
+import subprocess
+import sys
 
 import numpy as np
 import pytest
+import versioned_hdf5.hash
 from hypothesis import given
 from hypothesis import strategies as st
-from versioned_hdf5.hash import hash_slab
+from versioned_hdf5.hash import LIBCRYPTO_PATH, LIBCRYPTO_VERSION, hash_slab
 
 from versioned_hdf5.cytools import np_hsize_t
 from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS
@@ -757,3 +762,60 @@ def test_vlen_encoding_equivalence():
     if HAS_NPYSTRINGS:
         digests.add(hash_chunk(np.array(["é", "a"], dtype="T")))
     assert len(digests) == 1
+
+
+# ------------------------------------------------------------------------------
+# Runtime resolution of the EVP entry points
+#
+# hash.pyx does not link against libcrypto: a NEEDED entry would pin a soname into the
+# binary, so a wheel built on one distribution could not be imported on another. The
+# EVP functions are resolved at runtime from the libcrypto that the process has already
+# loaded. See versioned_hdf5/_libcrypto_dl.h.
+# ------------------------------------------------------------------------------
+
+
+def test_libcrypto_path():
+    assert LIBCRYPTO_PATH
+    assert os.path.isabs(LIBCRYPTO_PATH)
+    assert os.path.exists(LIBCRYPTO_PATH)
+    assert LIBCRYPTO_VERSION.startswith("OpenSSL")
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="parses /proc/self/maps")
+def test_binds_to_the_already_loaded_libcrypto():
+    """The EVP symbols must come from the libcrypto CPython's _hashlib loaded.
+
+    Loading a second copy of OpenSSL would duplicate its process-wide state (and defeat
+    the point of resolving at runtime instead of linking).
+    """
+    mapped = set()
+    with open("/proc/self/maps") as fh:
+        for line in fh:
+            parts = line.split(None, 5)
+            if len(parts) < 6:
+                continue  # anonymous mapping
+            path = parts[5].strip()
+            # Match on the basename: this worktree itself lives in a directory called
+            # libcrypto, so a substring test on the whole path would match everything.
+            if os.path.basename(path).startswith("libcrypto"):
+                mapped.add(os.path.realpath(path))
+
+    assert mapped == {os.path.realpath(LIBCRYPTO_PATH)}
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="inspects ELF dynamic section")
+def test_extension_does_not_link_libcrypto():
+    """Nothing crypto-related may appear as a NEEDED entry of the extension."""
+    readelf = shutil.which("readelf")
+    if readelf is None:
+        pytest.skip("readelf not found on PATH")
+
+    dynamic_section = subprocess.run(
+        [readelf, "-d", versioned_hdf5.hash.__file__],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    needed = [line for line in dynamic_section.splitlines() if "NEEDED" in line]
+    assert needed, dynamic_section  # sanity check: the parse actually found entries
+    assert not [line for line in needed if "crypto" in line], dynamic_section

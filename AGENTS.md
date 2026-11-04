@@ -162,8 +162,16 @@ rely at runtime on the libhdf5 bundled in the installed h5py wheel (RPATH points
 and h5py run in the same process and pass raw HDF5 object IDs (file/dataset/dataspace
 handles) to each other. Two separate libhdf5 instances would each hold their own copy of
 HDF5's global state, so an ID minted by one would be meaningless to the other →
-corruption or crashes. (libcrypto, used by `hash.pyx`, is the exception: h5py does not
-ship it, so it stays vendored.)
+corruption or crashes.
+
+Nothing is vendored for crypto either. `hash.pyx` does not link libcrypto: at import
+time it resolves the six EVP functions it needs from the libcrypto that the installed
+CPython has already loaded through `_hashlib`, via `versioned_hdf5/_libcrypto_dl.h`
+(dlopen/dlsym on POSIX, `GetModuleHandleW`/`GetProcAddress` on Windows). That is what
+lets one wheel work on every distribution: no soname is pinned into `hash.so`, no
+OpenSSL headers are needed to build, and there is only ever one copy of OpenSSL in the
+process. The consequence is that the wheels run on a CPython that has a *dynamically
+loaded* OpenSSL available; all mainstream CPython builds do.
 
 For the borrow to work, the extensions must be built against a **byte-identical**
 libhdf5 to the one the published h5py wheel ships, so that auditwheel/delocate compute

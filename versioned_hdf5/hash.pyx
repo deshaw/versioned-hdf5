@@ -7,8 +7,14 @@ in a single call with an API that closely mirrors
 Output hashes are identical to the legacy :mod:`versioned_hdf5.hashtable`.
 The invariant is enforced by tests/test_hash_legacy_compat.py.
 
-The actual SHA256 is computed by OpenSSL's ``libcrypto`` through the EVP API.
+The actual SHA256 is computed with OpenSSL's EVP API. The EVP entry points are
+resolved at runtime with dlopen/dlsym from the ``libcrypto`` shared library that the
+process has already loaded - the one CPython's ``_hashlib`` pulled in - so that there is
+exactly one copy of OpenSSL in the process, and there is no build-time (headers) or
+link-time (soname) OpenSSL dependency. See ``_libcrypto_dl.h``.
 """
+import os
+
 import numpy as np
 from numpy cimport npy_intp, NPY_MAXDIMS
 
@@ -32,21 +38,63 @@ cdef extern from *:
     """
     uint64_t htole64(uint64_t x)
 
-cdef extern from "openssl/evp.h":
+cdef extern from "_libcrypto_dl.h":
     # Opaque handle types, defined in the header
-    ctypedef struct EVP_MD_CTX:
+    ctypedef struct vh_EVP_MD_CTX:
         pass
-    ctypedef struct EVP_MD:
+    ctypedef struct vh_EVP_MD:
         pass
-    ctypedef struct ENGINE:
+    ctypedef struct vh_ENGINE:
         pass
 
-    EVP_MD_CTX* EVP_MD_CTX_new() nogil
-    void EVP_MD_CTX_free(EVP_MD_CTX* ctx) nogil
-    const EVP_MD* EVP_sha256() nogil
-    int EVP_DigestInit_ex(EVP_MD_CTX* ctx, const EVP_MD* type, ENGINE* impl) nogil
-    int EVP_DigestUpdate(EVP_MD_CTX* ctx, const void* d, size_t cnt) nogil
-    int EVP_DigestFinal_ex(EVP_MD_CTX* ctx, unsigned char* md, unsigned int* s) nogil
+    # Function pointers, resolved by vh_libcrypto_init() from the libcrypto that is
+    # already loaded in the process. Same signatures as <openssl/evp.h>.
+    vh_EVP_MD_CTX* vh_EVP_MD_CTX_new() nogil
+    void vh_EVP_MD_CTX_free(vh_EVP_MD_CTX* ctx) nogil
+    const vh_EVP_MD* vh_EVP_sha256() nogil
+    int vh_EVP_DigestInit_ex(
+        vh_EVP_MD_CTX* ctx, const vh_EVP_MD* type, vh_ENGINE* impl
+    ) nogil
+    int vh_EVP_DigestUpdate(vh_EVP_MD_CTX* ctx, const void* d, size_t cnt) nogil
+    int vh_EVP_DigestFinal_ex(
+        vh_EVP_MD_CTX* ctx, unsigned char* md, unsigned int* s
+    ) nogil
+
+    int vh_libcrypto_init() nogil
+    const char* vh_libcrypto_get_path()
+    const char* vh_libcrypto_get_version()
+    const char* vh_libcrypto_get_error()
+
+
+cdef str _decode_cstr(const char* s):
+    if s == NULL:
+        return ""
+    return s.decode("utf-8", "replace")
+
+
+# Best-effort: importing _hashlib first guarantees that the libcrypto we resolve the EVP
+# symbols from is already mapped, and that it is the very same copy hashlib uses rather
+# than a second one we would drag in ourselves. CPython can be built without it (then
+# vh_libcrypto_init() falls back to the well-known sonames, or fails cleanly).
+try:
+    import _hashlib  # noqa: F401
+except ImportError:  # pragma: no cover
+    pass
+
+if vh_libcrypto_init() != 0:
+    raise ImportError(
+        "versioned_hdf5.hash could not resolve the OpenSSL EVP functions from the "
+        f"libcrypto loaded in this process: {_decode_cstr(vh_libcrypto_get_error())}. "
+        "This requires a CPython whose _hashlib links against a dynamically loaded "
+        "OpenSSL (1.1.x or 3.x), and an OpenSSL that is actually present at runtime."
+    )
+
+# The loader reports the path as it was opened, which may contain ".." components.
+_libcrypto_path = _decode_cstr(vh_libcrypto_get_path())
+#: Absolute path of the libcrypto library the hasher resolved its EVP symbols from.
+LIBCRYPTO_PATH = os.path.realpath(_libcrypto_path) if _libcrypto_path else ""
+#: OpenSSL_version(OPENSSL_VERSION) of that library, e.g. "OpenSSL 3.5.1 1 Jul 2025".
+LIBCRYPTO_VERSION = _decode_cstr(vh_libcrypto_get_version())
 
 
 cpdef void hash_slab(
@@ -208,7 +256,7 @@ cpdef void hash_slab(
                 )
 
 
-cdef void _hash_shape(EVP_MD_CTX* ctx, hsize_t* shape, int ndim) noexcept nogil:
+cdef void _hash_shape(vh_EVP_MD_CTX* ctx, hsize_t* shape, int ndim) noexcept nogil:
     """Hash `str(tuple(shape))`.
 
     This is done with C snprintf to avoid any Python interaction.
@@ -238,7 +286,7 @@ cdef void _hash_shape(EVP_MD_CTX* ctx, hsize_t* shape, int ndim) noexcept nogil:
             shape[i],
         )
 
-    EVP_DigestUpdate(ctx, shape_buf, nchars)
+    vh_EVP_DigestUpdate(ctx, shape_buf, nchars)
 
 
 cdef void _copy_chunk(
@@ -295,7 +343,7 @@ cdef int _hash_chunk_from_ptr(
     The chunk must be not object dtype, not StringDType, not broadcasted, and
     C-contiguous at least along the innermost axis.
     """
-    cdef EVP_MD_CTX* ctx
+    cdef vh_EVP_MD_CTX* ctx
     cdef hsize_t[NPY_MAXDIMS] outer_idx
     cdef hsize_t outer_total
     cdef hsize_t n_outer
@@ -303,18 +351,18 @@ cdef int _hash_chunk_from_ptr(
     cdef hsize_t offset
     cdef hsize_t j
 
-    ctx = EVP_MD_CTX_new()
+    ctx = vh_EVP_MD_CTX_new()
     if ctx == NULL:
         return -1
     try:
-        if EVP_DigestInit_ex(ctx, EVP_sha256(), NULL) != 1:
+        if vh_EVP_DigestInit_ex(ctx, vh_EVP_sha256(), NULL) != 1:
             return -1
 
         if n_contig == ndim:
             # Single contiguous blob
             for j in range(ndim):
                 block_size *= shape[j]
-            if block_size and EVP_DigestUpdate(ctx, data_ptr, block_size) != 1:
+            if block_size and vh_EVP_DigestUpdate(ctx, data_ptr, block_size) != 1:
                 return -1
         else:
             # The trailing n_contig axes are one contiguous run; hash the chunk as
@@ -334,7 +382,7 @@ cdef int _hash_chunk_from_ptr(
                 for j in range(n_outer):
                     offset += outer_idx[j] * strides[j]
 
-                if EVP_DigestUpdate(ctx, data_ptr + offset, block_size) != 1:
+                if vh_EVP_DigestUpdate(ctx, data_ptr + offset, block_size) != 1:
                     return -1
 
                 # Advance the indices of the leading axes
@@ -345,10 +393,10 @@ cdef int _hash_chunk_from_ptr(
                     outer_idx[j] = 0
 
         _hash_shape(ctx, &shape[0], ndim)
-        if EVP_DigestFinal_ex(ctx, <unsigned char*>out, NULL) != 1:
+        if vh_EVP_DigestFinal_ex(ctx, <unsigned char*>out, NULL) != 1:
             return -1
     finally:
-        EVP_MD_CTX_free(ctx)
+        vh_EVP_MD_CTX_free(ctx)
 
     return 0
 
@@ -363,7 +411,7 @@ cdef void _hash_object_chunk(
 
     Object data forces us to hold the GIL throughout.
     """
-    cdef EVP_MD_CTX* ctx = EVP_MD_CTX_new()
+    cdef vh_EVP_MD_CTX* ctx = vh_EVP_MD_CTX_new()
     if ctx == NULL:
         raise MemoryError("EVP_MD_CTX_new() failed")
 
@@ -372,7 +420,7 @@ cdef void _hash_object_chunk(
     cdef uint64_t nbytes_le
 
     try:
-        if EVP_DigestInit_ex(ctx, EVP_sha256(), NULL) != 1:
+        if vh_EVP_DigestInit_ex(ctx, vh_EVP_sha256(), NULL) != 1:
             raise RuntimeError("OpenSSL SHA256 failed")
 
         # Ensure StringDType and object strings produce the same hash
@@ -394,13 +442,13 @@ cdef void _hash_object_chunk(
             nbytes_he = len(value_b)  # host-endian
             # On x86 and ARM, this is a no-op. On PowerPC, swap endianness
             nbytes_le = htole64(nbytes_he)  # little-endian
-            if EVP_DigestUpdate(ctx, &nbytes_le, 8) != 1:
+            if vh_EVP_DigestUpdate(ctx, &nbytes_le, 8) != 1:
                 raise RuntimeError("OpenSSL SHA256 failed")
-            if EVP_DigestUpdate(ctx, <const char*>value_b, nbytes_he) != 1:
+            if vh_EVP_DigestUpdate(ctx, <const char*>value_b, nbytes_he) != 1:
                 raise RuntimeError("OpenSSL SHA256 failed")
 
         _hash_shape(ctx, <hsize_t*>data.shape, data.ndim)
-        if EVP_DigestFinal_ex(ctx, <unsigned char*>out, NULL) != 1:
+        if vh_EVP_DigestFinal_ex(ctx, <unsigned char*>out, NULL) != 1:
             raise RuntimeError("OpenSSL SHA256 failed")
     finally:
-        EVP_MD_CTX_free(ctx)
+        vh_EVP_MD_CTX_free(ctx)

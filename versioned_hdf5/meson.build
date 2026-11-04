@@ -100,12 +100,26 @@ py.extension_module(
     override_options: ['cython_language=cpp'],
 )
 
+# hash resolves the OpenSSL EVP entry points at runtime from the libcrypto already
+# loaded by the process (see _libcrypto_dl.h), so it needs neither the OpenSSL headers
+# nor a link against libcrypto - only the plain C header that does the resolving.
+libcrypto_h = include_directories('.')
+py.install_sources(['_libcrypto_dl.h'], subdir: 'versioned_hdf5')
+
+# glibc < 2.34 keeps dlopen/dlsym in a separate libdl; newer glibc, macOS and Windows
+# ship them in libc. find_library() hands back a not-found dependency in the latter
+# case, which cannot be passed to a target, hence the empty stub.
+dl_dep = meson.get_compiler('c').find_library('dl', required: false)
+if not dl_dep.found()
+    dl_dep = declare_dependency()
+endif
+
 py.extension_module(
     'hash',
     'hash.pyx',
     install: true,
     subdir: 'versioned_hdf5',
-    dependencies: compiled_deps + [dependency('openssl')],
+    dependencies: compiled_deps + [dl_dep],
     cython_args: cython_args,
-    include_directories: [npy_include_path],
+    include_directories: [npy_include_path, libcrypto_h],
 )
