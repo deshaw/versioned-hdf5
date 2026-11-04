@@ -165,7 +165,9 @@ jobs:
 
       # hash.pyx resolves the OpenSSL EVP entry points at runtime from the libcrypto the
       # runtime CPython already loaded through _hashlib, so nothing crypto-related may be
-      # shipped in the wheel: a vendored copy would be a second OpenSSL in the process.
+      # shipped in the wheel: a vendored copy would normally be a second OpenSSL in the
+      # process (a CPython without one can still map a system libcrypto at runtime, but it
+      # must not get one from us).
       - name: Assert no crypto library is vendored
         shell: bash
         run: |
@@ -174,7 +176,7 @@ jobs:
           done > wheel-contents.txt
           # Match shared libraries only: the plain-C resolver header that ships with the
           # package is legitimately called _libcrypto_dl.h.
-          if grep -iE 'libcrypto[^ ]*\.(so|dylib|dll)' wheel-contents.txt; then
+          if grep -iE '(libcrypto|libssl)[^ ]*\.(so|dylib|dll)' wheel-contents.txt; then
             echo "::error::The wheel ships an OpenSSL library"
             exit 1
           fi

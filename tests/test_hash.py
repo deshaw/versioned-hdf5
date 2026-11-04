@@ -774,13 +774,20 @@ def test_vlen_encoding_equivalence():
 # ------------------------------------------------------------------------------
 
 
+@pytest.mark.api
 def test_libcrypto_path():
+    """LIBCRYPTO_PATH always names a real library, whichever way it was resolved.
+
+    ``LibreSSL`` also implements the EVP API, so a LibreSSL-backed CPython is a valid
+    answer.
+    """
     assert LIBCRYPTO_PATH
     assert os.path.isabs(LIBCRYPTO_PATH)
     assert os.path.exists(LIBCRYPTO_PATH)
-    assert LIBCRYPTO_VERSION.startswith("OpenSSL")
+    assert LIBCRYPTO_VERSION.startswith(("OpenSSL", "LibreSSL"))
 
 
+@pytest.mark.api
 @pytest.mark.skipif(sys.platform != "linux", reason="parses /proc/self/maps")
 def test_binds_to_the_already_loaded_libcrypto():
     """The EVP symbols must come from the libcrypto CPython's _hashlib loaded.
@@ -800,6 +807,11 @@ def test_binds_to_the_already_loaded_libcrypto():
             if os.path.basename(path).startswith("libcrypto"):
                 mapped.add(os.path.realpath(path))
 
+    if not mapped:
+        pytest.skip(
+            "no libcrypto is mapped: this interpreter links OpenSSL statically (or has "
+            "no _hashlib), so there is no second copy to rule out"
+        )
     assert mapped == {os.path.realpath(LIBCRYPTO_PATH)}
 
 

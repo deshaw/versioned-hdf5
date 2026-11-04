@@ -562,7 +562,7 @@ API interaction
       subgraph cluster_4 {
           label="hash.pyx";
           hash_slab;
-          libcrypto_api [label="EVP API (resolved at runtime with dlopen/dlsym)"]
+          libcrypto_api [label="EVP API (resolved at runtime from the loaded libcrypto)"]
       }
 
       libcrypto [label="libcrypto (OpenSSL), already loaded by CPython's _hashlib"];
@@ -607,8 +607,9 @@ API interaction
 - ``hash_slab`` calls the OpenSSL EVP entry points through function pointers that
   ``versioned_hdf5/_libcrypto_dl.h`` resolves at import time from the ``libcrypto``
   shared library the process has *already* loaded (the one CPython's ``_hashlib``
-  pulled in), so there is no link-time OpenSSL dependency and no soname pinned into
-  ``hash.so``; see ``versioned_hdf5.hash.LIBCRYPTO_PATH``.
+  pulled in), with dlopen/dlsym on POSIX and GetModuleHandleW/GetProcAddress on Windows,
+  so there is no link-time OpenSSL dependency and no soname pinned into ``hash.so``; see
+  ``versioned_hdf5.hash.LIBCRYPTO_PATH``.
 
 
 .. _H5Sselect_hyperslab: https://support.hdfgroup.org/documentation/hdf5/latest/group___h5_s.html#ga6adfdf1b95dc108a65bf66e97d38536d

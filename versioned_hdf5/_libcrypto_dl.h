@@ -5,7 +5,9 @@
 // distribution cannot be imported on another, and building would need the OpenSSL
 // development headers. Instead we resolve the handful of functions we call out of the
 // libcrypto shared library that the process has ALREADY mapped - CPython's _hashlib
-// loads one - and reuse it, so there is exactly one copy of OpenSSL in the process.
+// loads one - and reuse it, so there is normally only one copy of OpenSSL in the
+// process (a CPython whose _hashlib links OpenSSL statically, or has no _hashlib at
+// all, may still end up with a second copy mapped from a well-known soname).
 //
 // Plain C, no OpenSSL headers, no dynamic allocation, never raises, never aborts.
 // Everything here has internal linkage; the file is included by exactly one module.
@@ -37,6 +39,12 @@
 // before this header); musl and other libcs declare it unconditionally.
 #if defined(__linux__) && (!defined(__GLIBC__) || defined(__USE_GNU))
 #define VH_HAVE_DL_ITERATE_PHDR 1
+#endif
+
+// dladdr() lives in <dlfcn.h> too; glibc declares it under _GNU_SOURCE like
+// dl_iterate_phdr, Apple and musl unconditionally.
+#if !defined(_WIN32) && (!defined(__GLIBC__) || defined(__USE_GNU))
+#define VH_HAVE_DLADDR 1
 #endif
 
 // Opaque handle types. We only ever pass pointers around, so the definitions are
@@ -202,7 +210,9 @@ static vh_lib_handle vh_libcrypto_find_loaded(void) {
 
 #else  // _WIN32
 
-// Module names on Windows are case-insensitive: libcrypto-3-x64.dll, LCrypto.dll...
+// Module names on Windows are case-insensitive (LibCrypto-3.dll == libcrypto-3.dll), so
+// compare without regard to case. Only names that really start with "libcrypto" match:
+// the prefix check rejects e.g. "LCrypto.dll".
 static int vh_libcrypto_is_libcrypto_w(const wchar_t *name) {
     static const wchar_t prefix[] = L"libcrypto";
     static const wchar_t suffix[] = L".dll";
@@ -259,7 +269,7 @@ static vh_lib_handle vh_libcrypto_find_loaded(void) {
     if (Module32FirstW(snapshot, &entry)) {
         do {
             if (vh_libcrypto_is_libcrypto_w(entry.szModule)) {
-                handle = GetModuleHandleW(entry.szModule);
+                handle = entry.hModule;
                 break;
             }
         } while (Module32NextW(snapshot, &entry));
@@ -273,12 +283,16 @@ static vh_lib_handle vh_libcrypto_find_loaded(void) {
 
 #endif  // _WIN32
 
-// Fallback for the case where enumeration found nothing, e.g. a CPython whose _hashlib
-// is statically linked or built against an OpenSSL that is not mapped yet.
+// Last resort, when neither enumeration nor the interpreter's own symbol scope produced
+// a usable library: a CPython whose _hashlib is built against an OpenSSL that is not
+// mapped yet. On POSIX the library is looked up on the loader's search path, so this may
+// map a second copy of OpenSSL.
 static vh_lib_handle vh_libcrypto_open_known(void) {
 #if defined(_WIN32)
     static const char *const names[] = {
         "libcrypto-3-x64.dll",
+        "libcrypto-3-arm64.dll",
+        "libcrypto-3-x86.dll",
         "libcrypto-3.dll",
         "libcrypto-1_1-x64.dll",
         "libcrypto-1_1.dll",
@@ -320,7 +334,43 @@ static void *vh_libcrypto_symbol(vh_lib_handle handle, const char *name) {
 static void *vh_libcrypto_symbol(vh_lib_handle handle, const char *name) {
     return dlsym(handle, name);
 }
+
+// Whether a statically linked OpenSSL is visible in the interpreter's own symbol scope.
+// CPython is linked with --export-dynamic, so such an OpenSSL exports its EVP entry
+// points to RTLD_DEFAULT and no library has to be mapped to use it. RTLD_DEFAULT is
+// NULL on glibc and musl, so this is a probe rather than a handle test.
+static int vh_libcrypto_default_scope_has_evp(void) {
+    return dlsym(RTLD_DEFAULT, "EVP_sha256") != NULL;
+}
 #endif
+
+// Overwrite the recorded path with the real one, derived from where the bound symbols
+// actually live. Until here the recorded name is whatever the loader was handed: a bare
+// soname (which resolves against the current working directory) or the ".."-laden path
+// h5py's RPATH produces. On Windows the module handle is the answer. If neither works
+// the loader name is left in place.
+static int vh_libcrypto_set_path_from_bound(vh_lib_handle handle, void *symbol) {
+#if defined(_WIN32)
+    (void)symbol;
+    vh_libcrypto_record_module_path(handle);
+    return 0;
+#elif defined(VH_HAVE_DLADDR)
+    Dl_info info;
+
+    (void)handle;
+    if (symbol == NULL)
+        return 0;
+    memset(&info, 0, sizeof(info));
+    if (dladdr(symbol, &info) == 0 || info.dli_fname == NULL
+        || info.dli_fname[0] == '\0')
+        return 0;
+    return vh_libcrypto_set_path(info.dli_fname);
+#else
+    (void)handle;
+    (void)symbol;
+    return 0;
+#endif
+}
 
 // Resolve one symbol into its typed function pointer slot. C does not allow converting
 // between object and function pointers, so go through memcpy: both are pointer-sized on
@@ -337,6 +387,7 @@ static void *vh_libcrypto_symbol(vh_lib_handle handle, const char *name) {
 
 static int vh_libcrypto_init(void) {
     vh_lib_handle handle;
+    int resolved = 0;
     const char *missing = NULL;
     void *symbol;
 
@@ -348,12 +399,29 @@ static int vh_libcrypto_init(void) {
     vh_libcrypto_error[0] = '\0';
 
     handle = vh_libcrypto_find_loaded();
-    if (handle == NULL)
+    if (handle != NULL)
+        resolved = 1;
+#if !defined(_WIN32)
+    else if (vh_libcrypto_default_scope_has_evp()) {
+        handle = RTLD_DEFAULT;
+        resolved = 1;
+    }
+#endif
+    if (!resolved) {
         handle = vh_libcrypto_open_known();
-    if (handle == NULL) {
+        resolved = handle != NULL;
+    }
+    if (!resolved) {
+#if defined(_WIN32)
         vh_libcrypto_fail(
-            "no libcrypto shared library is loaded in this process and none of the "
+            "no libcrypto DLL is loaded in this process and none of the well-known "
+            "names could be opened");
+#else
+        vh_libcrypto_fail(
+            "no libcrypto shared library is loaded in this process, the interpreter's "
+            "own symbol scope does not export the EVP functions, and none of the "
             "well-known names could be opened");
+#endif
         vh_libcrypto_state = -1;
         return -1;
     }
@@ -364,6 +432,16 @@ static int vh_libcrypto_init(void) {
     VH_LIBCRYPTO_BIND(vh_EVP_DigestInit_ex, "EVP_DigestInit_ex");
     VH_LIBCRYPTO_BIND(vh_EVP_DigestUpdate, "EVP_DigestUpdate");
     VH_LIBCRYPTO_BIND(vh_EVP_DigestFinal_ex, "EVP_DigestFinal_ex");
+
+    // `symbol` now holds one of the entry points we are about to call, so it lives in the
+    // library those calls will land in: the authoritative answer to "which library is
+    // this?" for LIBCRYPTO_PATH and for the error messages below. A statically linked
+    // OpenSSL resolved from RTLD_DEFAULT reports the interpreter executable, which is
+    // where those functions really are.
+    if (vh_libcrypto_set_path_from_bound(handle, symbol) != 0) {
+        vh_libcrypto_state = -1;
+        return -1;
+    }
 
     // Optional: only used for the informational version string. OPENSSL_VERSION == 0.
     symbol = vh_libcrypto_symbol(handle, "OpenSSL_version");
@@ -387,7 +465,10 @@ missing_symbol:
     return -1;
 }
 
-// Absolute path of the libcrypto the EVP functions were resolved from.
+// Path of the libcrypto the EVP functions were resolved from, as the loader reports it:
+// absolute for anything the loader resolved, but it may still contain symlinks (hash.pyx
+// applies realpath()). For an OpenSSL linked statically into the interpreter it is the
+// path of the interpreter executable.
 static const char *vh_libcrypto_get_path(void) {
     return vh_libcrypto_path;
 }

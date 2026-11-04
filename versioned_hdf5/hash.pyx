@@ -8,10 +8,11 @@ Output hashes are identical to the legacy :mod:`versioned_hdf5.hashtable`.
 The invariant is enforced by tests/test_hash_legacy_compat.py.
 
 The actual SHA256 is computed with OpenSSL's EVP API. The EVP entry points are
-resolved at runtime with dlopen/dlsym from the ``libcrypto`` shared library that the
-process has already loaded - the one CPython's ``_hashlib`` pulled in - so that there is
-exactly one copy of OpenSSL in the process, and there is no build-time (headers) or
-link-time (soname) OpenSSL dependency. See ``_libcrypto_dl.h``.
+resolved at runtime from the ``libcrypto`` shared library that the process has already
+loaded - the one CPython's ``_hashlib`` pulled in - with dlopen/dlsym on POSIX and
+GetModuleHandleW/GetProcAddress on Windows, so that there is normally only one copy of
+OpenSSL in the process, and there is no build-time (headers) or link-time (soname)
+OpenSSL dependency. See ``_libcrypto_dl.h``.
 """
 import os
 
@@ -85,11 +86,13 @@ if vh_libcrypto_init() != 0:
     raise ImportError(
         "versioned_hdf5.hash could not resolve the OpenSSL EVP functions from the "
         f"libcrypto loaded in this process: {_decode_cstr(vh_libcrypto_get_error())}. "
-        "This requires a CPython whose _hashlib links against a dynamically loaded "
-        "OpenSSL (1.1.x or 3.x), and an OpenSSL that is actually present at runtime."
+        "This requires either a CPython whose _hashlib links against a dynamically "
+        "loaded OpenSSL (1.1.x or 3.x), or a system libcrypto (1.1.x or 3.x) that can "
+        "be dlopen'ed by its well-known soname."
     )
 
-# The loader reports the path as it was opened, which may contain ".." components.
+# _libcrypto_dl.h derives this from the library the bound symbols live in; it may still
+# contain symlinks where the loader kept them, so resolve them here.
 _libcrypto_path = _decode_cstr(vh_libcrypto_get_path())
 #: Absolute path of the libcrypto library the hasher resolved its EVP symbols from.
 LIBCRYPTO_PATH = os.path.realpath(_libcrypto_path) if _libcrypto_path else ""

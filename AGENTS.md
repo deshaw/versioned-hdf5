@@ -169,9 +169,11 @@ time it resolves the six EVP functions it needs from the libcrypto that the inst
 CPython has already loaded through `_hashlib`, via `versioned_hdf5/_libcrypto_dl.h`
 (dlopen/dlsym on POSIX, `GetModuleHandleW`/`GetProcAddress` on Windows). That is what
 lets one wheel work on every distribution: no soname is pinned into `hash.so`, no
-OpenSSL headers are needed to build, and there is only ever one copy of OpenSSL in the
-process. The consequence is that the wheels run on a CPython that has a *dynamically
-loaded* OpenSSL available; all mainstream CPython builds do.
+OpenSSL headers are needed to build, and there is normally only one copy of OpenSSL in
+the process (a CPython whose `_hashlib` links OpenSSL statically, or has no `_hashlib`
+at all, can still end up with a second copy mapped from a well-known soname). The
+consequence is that the wheels run on a CPython that has a *dynamically loaded* OpenSSL
+available; all mainstream CPython builds do.
 
 For the borrow to work, the extensions must be built against a **byte-identical**
 libhdf5 to the one the published h5py wheel ships, so that auditwheel/delocate compute

@@ -41,6 +41,14 @@ jobs:
       - name: 📦 Build the source tarball
         run: pixi r -e py314 sdist
 
+      - name: Check the source tarball ships what it needs to compile
+        run: |
+          # versioned_hdf5/hash.pyx includes the plain-C resolver _libcrypto_dl.h; the
+          # sdist is the only release artifact compiled from source, so both must be in
+          # it. This is the only check of the sdist's build inputs in CI.
+          tar tzf dist/*.tar.gz | grep -q '/versioned_hdf5/_libcrypto_dl.h$'
+          tar tzf dist/*.tar.gz | grep -q '/versioned_hdf5/hash.pyx$'
+
       - name: Check source package
         run: pixi r -e py314 twine-check
 
