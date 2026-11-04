@@ -21,10 +21,9 @@ version matrix.
 - `pixi r test` — test suite in the default env (auto runs `editable-install` first).
 - `pixi r -e <env> test` — same in another env (`mindeps`, `hdf5-112`, `hdf5-114`,
   `hdf5-21`, `np126`, `np200`, `py310`–`py315`, `py314t`, `py315t`, `h5py-dev`).
-  `py314t`/`py315t` are free-threaded and run with `PYTHON_GIL=0`.
+  `py314t`/`py315t` are free-threaded and run with the GIL disabled.
 - `pixi r -e <env> test-parallel` — run the whole test suite with
   `pytest --parallel-threads 4`; free-threaded envs also run this in CI.
-- `pixi r -e <env> check-gil` — fail if a free-threaded env has the GIL enabled.
 - `pixi r lint` — run all linters (ruff, mypy, codespell, dprint, blacken-docs,
   actionlint, cython-lint, sphinx-lint, validate-pyproject) via lefthook.
 - `pixi r cython-warnings` — build the project with meson in a throwaway directory and

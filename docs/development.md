@@ -39,16 +39,30 @@ You can choose among the following:
 | `h5py-dev`  | 3.15   | latest | latest      | git tip   | latest  |                                                 |
 
 *Note:* hdf5 2.0 is not available in conda-forge and is untested.
-*Note:* `py314t` and `py315t` do not install `hdf5plugin` yet, so the tests needing
-third-party filters skip.
+*Note:* hdf5plugin has no cp315t build, so `py315t` cannot install it and the tests
+needing third-party filters skip there.
 
 ## Free-threaded environments
 
 `py314t` and `py315t` use conda-forge `python-freethreading` pinned to the matching
-major.minor version (3.14 / 3.15) and activate with `PYTHON_GIL=0`, so the GIL is off.
+major.minor version (3.14 / 3.15), so the interpreter starts with the GIL disabled.
 conda-forge has no `cp315t` builds of h5py or numpy, so `py315t` also installs numpy's
 free-threaded wheel and builds h5py from its sdist against conda-forge's hdf5; its
 environment therefore sets `no-default-feature = true`.
+
+These environments must **not** set `PYTHON_GIL=0`. Importing a compiled extension
+that does not declare `Py_mod_gil` re-enables the GIL and makes CPython emit a
+`RuntimeWarning`; `filterwarnings = ["error"]` in `pyproject.toml` turns that warning
+into a pytest failure. `PYTHON_GIL=0` suppresses both the warning and the GIL
+re-enable, so a non-conforming extension would go completely unnoticed.
+`tests/test_free_threading.py` also asserts `not sys._is_gil_enabled()`, which catches
+a re-enable that happened before pytest installed its warning filters (for example in
+an entry-point plugin), and the root `conftest.py` checks again at session end. All
+five Cython modules are compiled with `-X freethreading_compatible=True` (see below).
+
+hdf5plugin needs no scrutiny here: it ships no CPython extension module, only
+`libh5*.so` filter plugins that libhdf5 `dlopen`s directly, so it cannot re-enable the
+GIL. `py314t` installs it; `py315t` cannot, as conda-forge has no cp315t build.
 
 Both environments run the normal `test` task and an additional parallel test task:
 
@@ -60,20 +74,6 @@ pixi r -e py314t test-parallel
 `pytest --parallel-threads 4`. Tests that genuinely cannot run concurrently are marked
 `thread_unsafe` / listed in `thread_unsafe_fixtures` and still execute on one thread.
 Shared fixture files are thread-unique via `make_name()` in `tests/conftest.py`.
-
-To prove the GIL is actually disabled, run:
-
-```bash
-pixi r -e py314t check-gil
-pixi r -e py314t smoke
-```
-
-`check-gil` imports h5py and all five versioned-hdf5 Cython modules before asserting;
-`smoke` checks again after a real file operation. Both fail loudly if the GIL was
-re-enabled (for example by a compiled extension missing `Py_mod_gil`). `conftest.py`
-checks again at the end of every pytest session, and pytest-run-parallel itself fails
-on a GIL re-enable. All five Cython modules are compiled with
-`-X freethreading_compatible=True` (see below).
 
 CI runs `smoke`, `test -v` and `test-parallel -v` for both `py314t` and `py315t`. CI
 runs `test-parallel` on the full suite, including the slow tests; locally use

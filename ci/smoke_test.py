@@ -7,7 +7,6 @@ import tempfile
 
 import h5py
 import h5py.h5
-from check_gil import assert_gil_disabled
 
 try:
     # Print h5py and hdf5 versions even if versioned-hdf5 is broken
@@ -22,9 +21,6 @@ except Exception as e:
 
 
 def main():
-    # Importing any extension without Py_mod_gil silently re-enables the GIL.
-    # Check after both h5py and versioned-hdf5 (all five Cython modules) loaded.
-    print(assert_gil_disabled())
     print("libhdf5       ", ".".join(map(str, h5py.h5.get_libversion())))
     print("h5py          ", h5py.__version__)
     if exc is None:
@@ -39,7 +35,6 @@ def main():
         with vf.stage_version("v2") as v:
             v["data"][0] = 5
         assert vf["v2"]["data"][:].tolist() == [5, 2, 3, 4]
-    assert_gil_disabled()
     print("Smoke test successful!")
 
 

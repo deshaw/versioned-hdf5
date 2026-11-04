@@ -56,9 +56,6 @@ sdist = "python -m build --sdist --no-isolation"
 wheel = "python -m build --wheel --no-isolation"
 twine-check = "twine check dist/*"
 smoke = { cmd = "python ci/smoke_test.py", depends-on = ["editable-install"] }
-# Fail if a free-threaded environment (py314t/py315t) has the GIL enabled after
-# importing all compiled extensions. No-op in every other environment.
-check-gil = { cmd = "python ci/check_gil.py", depends-on = ["editable-install"] }
 # Build the project with meson in a throwaway directory and fail on any Cython
 # warning or performance hint. Cython cannot promote performance hints to errors, so
 # the real build cannot enforce this; see ci/cython_warnings.py.
@@ -153,14 +150,17 @@ python = "=3.14"
 python = "=3.15"
 
 # Free-threaded builds. python-freethreading pins the exact major.minor version and
-# pulls in the matching cp314t/cp315t ABI. PYTHON_GIL=0 makes a GIL re-enable at
-# interpreter startup a hard error; VERSIONED_HDF5_REQUIRE_GIL_DISABLED makes a
-# re-enable on extension import a test failure (ci/check_gil.py, conftest.py).
+# pulls in the matching cp314t/cp315t ABI. Do NOT set PYTHON_GIL=0: it suppresses the
+# RuntimeWarning that CPython emits when an extension module without Py_mod_gil
+# re-enables the GIL, so pytest's filterwarnings=error can no longer catch it (and the
+# GIL silently stays off around code that is not thread-safe). In the default mode the
+# GIL starts disabled and such an extension re-enables it loudly instead.
+# VERSIONED_HDF5_REQUIRE_GIL_DISABLED turns a re-enabled GIL into a test failure
+# (tests/test_free_threading.py and conftest.py).
 [feature.py314t.dependencies]
 python-freethreading = "=3.14"
 
 [feature.py314t.activation.env]
-PYTHON_GIL = "0"
 VERSIONED_HDF5_REQUIRE_GIL_DISABLED = "1"
 
 [feature.py315t.dependencies]
@@ -179,7 +179,6 @@ h5py = "*"
 no-binary = ["h5py"]
 
 [feature.py315t.activation.env]
-PYTHON_GIL = "0"
 VERSIONED_HDF5_REQUIRE_GIL_DISABLED = "1"
 
 [feature.h5py-dev.dependencies]
@@ -204,7 +203,7 @@ test = { cmd = "pytest", depends-on = ["editable-install"] }
 # thread. Tests that genuinely cannot run in parallel are marked thread_unsafe and
 # still execute, on a single thread. Do not add -k, --skip-thread-unsafe or a test
 # subset here: every test must be exercised.
-test-parallel = { cmd = "pytest --parallel-threads 4", depends-on = ["editable-install", "check-gil"] }
+test-parallel = { cmd = "pytest --parallel-threads 4", depends-on = ["editable-install"] }
 
 [feature.filters.dependencies]
 hdf5plugin = "*"
@@ -290,6 +289,6 @@ py312 = { features = ["py312", "build", "test", "filters"] }
 py313 = { features = ["py313", "build", "test", "filters"] }
 py314 = { features = ["py314", "build", "test", "filters"] }
 py315 = { features = ["py315", "build", "test"] } # No hdf5plugin yet
-py314t = { features = ["py314t", "build", "test"] } # No hdf5plugin yet
+py314t = { features = ["py314t", "build", "test", "filters"] }
 py315t = { features = ["py315t", "build", "test"], no-default-feature = true } # No hdf5plugin yet
 h5py-dev = { features = ["py315", "h5py-dev", "build", "test"], no-default-feature = true }

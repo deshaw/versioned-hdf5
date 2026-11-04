@@ -21,7 +21,15 @@ from versioned_hdf5._lock import phil
 
 
 def test_gil_disabled_when_required():
-    """The free-threaded pixi environments must actually run with the GIL off."""
+    """The free-threaded pixi environments must actually run with the GIL off.
+
+    An extension module without a ``Py_mod_gil`` slot re-enables the GIL when it is
+    imported and makes CPython emit a RuntimeWarning, which ``filterwarnings =
+    ["error"]`` already turns into a failure. This assertion covers the gaps: imports
+    that happen before pytest installs its filters (entry-point plugins), and
+    ``PYTHON_GIL=0`` being set, which would silence the warning *and* keep the GIL off
+    around code that is not thread-safe.
+    """
     if os.environ.get("VERSIONED_HDF5_REQUIRE_GIL_DISABLED") != "1":
         pytest.skip("not a free-threaded pixi environment")
     assert hasattr(sys, "_is_gil_enabled"), "not a free-threaded interpreter"

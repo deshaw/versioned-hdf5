@@ -3,8 +3,8 @@ import sys
 
 import pytest
 
-# Kept in sync with ci/check_gil.py, which cannot be imported from here because
-# pytest runs with --import-mode=importlib and does not put the rootdir on sys.path.
+# Same variable as tests/test_free_threading.py. It is set by the py314t/py315t pixi
+# environments only.
 _REQUIRE_GIL_DISABLED = "VERSIONED_HDF5_REQUIRE_GIL_DISABLED"
 
 
@@ -54,7 +54,7 @@ def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
     if os.environ.get(_REQUIRE_GIL_DISABLED) == "1" and _gil_enabled():
         pytest.exit(
             "The GIL was re-enabled during the test session in a free-threaded "
-            "environment. A compiled extension is missing Py_mod_gil, or "
-            "PYTHON_GIL=0 was not set.",
+            "environment. A compiled extension imported by a pytest plugin or by "
+            "conftest.py is missing Py_mod_gil.",
             returncode=1,
         )
