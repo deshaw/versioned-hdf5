@@ -2,6 +2,7 @@ py.install_sources(
     [
         '__init__.py',
         '_commit_hash.py',
+        '_lock.py',
         'api.py',
         'backend.py',
         'h5py_compat.py',
@@ -53,12 +54,13 @@ cython_args = [
 # The build can't fail on Cython performance hints: '-Dwerror=true' promotes 'warning:'
 # to an error, but 'performance hint:' ignores it. ci/cython_warnings.py configures a
 # throwaway build with these flags and greps meson's log instead, so this is the only
-# copy of them.
+# copy of them. The project-wide '-X freethreading_compatible=True' is added in the
+# root meson.build and applies to all modules, including slicetools.
 
 # To generate HTML compilation reports:
-# (First double check that flags below match those above)
+# (First double check that flags below match those above and in ../meson.build)
 #
-# cythonize -3 -a -X infer_types=True -X initializedcheck=False -X boundscheck=False -X wraparound=False -X cdivision=True versioned_hdf5/{slicetools.pyx,hash.pyx,cytools.py,subchunk_map.py,staged_changes.py}
+# cythonize -3 -a -X freethreading_compatible=True -X infer_types=True -X initializedcheck=False -X boundscheck=False -X wraparound=False -X cdivision=True versioned_hdf5/{slicetools.pyx,hash.pyx,cytools.py,subchunk_map.py,staged_changes.py}
 #
 # Or uncomment the -a flag above and then run:
 # meson build && pushd build && meson compile && popd && firefox $(find build/ -name "*.html")

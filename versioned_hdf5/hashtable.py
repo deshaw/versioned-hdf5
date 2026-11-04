@@ -1,12 +1,12 @@
 import hashlib
 import struct
 from collections.abc import MutableMapping
-from functools import lru_cache
 
 import numpy as np
 from h5py import File
 from ndindex import ChunkSize, Slice, Tuple
 
+from versioned_hdf5._lock import with_phil
 from versioned_hdf5.slicetools import spaceid_to_slice
 
 
@@ -37,16 +37,12 @@ class Hashtable(MutableMapping):
     hash_function = hashlib.sha256
     hash_size = hash_function().digest_size
 
-    # Cache instances of the class for performance purposes. This works off
-    # the assumption that nothing else modifies the version data.
+    # No process-wide instance cache: an @lru_cache on __new__ used to hand the
+    # very same Hashtable object to every thread that asked for the same (f, name),
+    # and __init__ then reinitialised that shared object underneath other threads.
+    # Each Hashtable is private to its caller; phil serialises its HDF5 writes.
 
-    # This is done here because putting @lru_cache on the class breaks the
-    # classmethods. Warning: This does not normalize kwargs, so it is possible
-    # to have multiple hashtable instances for the same hashtable.
-    @lru_cache  # type: ignore[misc]
-    def __new__(cls, *args, **kwargs):  # noqa: ARG004
-        return super().__new__(cls)
-
+    @with_phil
     def __init__(self, f, name, *, chunk_size=None, hash_table_name="hash_table"):
         from .backend import DEFAULT_CHUNK_SIZE
 
@@ -68,6 +64,7 @@ class Hashtable(MutableMapping):
         self._largest_index = None
 
     @classmethod
+    @with_phil
     def from_versions_traverse(
         cls,
         f: File,
@@ -99,6 +96,7 @@ class Hashtable(MutableMapping):
                                 hashtable[slice_hash] = sl.raw[0]
 
     @classmethod
+    @with_phil
     def from_raw_data(cls, f, name, chunk_size=None, hash_table_name="hash_table"):
         if hash_table_name in f["_version_data"][name]:
             raise ValueError(
@@ -116,6 +114,7 @@ class Hashtable(MutableMapping):
         hashtable.write()
         return hashtable
 
+    @with_phil
     def hash(self, data: np.ndarray):
         """
         Compute hash for `data` array.
@@ -154,15 +153,18 @@ class Hashtable(MutableMapping):
         return hash_value.digest()
 
     @property
+    @with_phil
     def largest_index(self):
         if self._largest_index is None:
             self._largest_index = self.hash_table_dataset.attrs["largest_index"]
         return self._largest_index
 
     @largest_index.setter
+    @with_phil
     def largest_index(self, value):
         self._largest_index = value
 
+    @with_phil
     def write(self):
         largest_index = self.largest_index
         if largest_index >= self.hash_table_dataset.shape[0]:
@@ -173,6 +175,7 @@ class Hashtable(MutableMapping):
         self.hash_table_dataset.attrs["largest_index"] = self.largest_index
         self.hash_table_dataset[:largest_index] = self.hash_table[:largest_index]
 
+    @with_phil
     def inverse(self):
         r"""
         Return a dictionary mapping Slice: array_of_hash.
@@ -181,14 +184,17 @@ class Hashtable(MutableMapping):
         """
         return {Slice(*s).reduce(): h for h, s in self.hash_table}
 
+    @with_phil
     def __enter__(self):
         return self
 
+    @with_phil
     def __exit__(self, exc_type, exc_value, traceback):
         if exc_type is not None:
             return
         self.write()
 
+    @with_phil
     def _create_hashtable(self):
         f = self.f
         name = self.name
@@ -206,6 +212,7 @@ class Hashtable(MutableMapping):
         hash_table.attrs["largest_index"] = 0
         return hash_table
 
+    @with_phil
     def _load_hashtable(self, hash_table_dataset):
         largest_index = hash_table_dataset.attrs["largest_index"]
         hash_table_arr = hash_table_dataset[:largest_index]
@@ -216,6 +223,7 @@ class Hashtable(MutableMapping):
         ]
         return hash_table_arr, {k: i for i, k in enumerate(hashes)}
 
+    @with_phil
     def __getitem__(self, key):
         if isinstance(key, np.ndarray):
             key = key.tobytes()
@@ -223,6 +231,7 @@ class Hashtable(MutableMapping):
         shapes = self.hash_table["shape"]
         return Slice(*shapes[i])
 
+    @with_phil
     def __setitem__(self, key, value):
         if isinstance(key, np.ndarray):
             key = key.tobytes()
@@ -264,11 +273,14 @@ class Hashtable(MutableMapping):
             self._indices[key] = self.largest_index
             self.largest_index += 1
 
+    @with_phil
     def __delitem__(self, key):
         raise NotImplementedError
 
+    @with_phil
     def __iter__(self):
         return iter(self._indices)
 
+    @with_phil
     def __len__(self):
         return len(self._indices)

@@ -6,8 +6,8 @@ Options.warning_errors. So this configures a throwaway meson build directory, bu
 it, and scans meson's transcript of the cython runs.
 
 Meson drives the compilation, so the module list, the input language and the '-X'
-directives are the ones in versioned_hdf5/meson.build, with no second copy of them
-that could silently drift from the build.
+directives are the ones in meson.build and versioned_hdf5/meson.build, with no second
+copy of them that could silently drift from the build.
 
 This is a standalone check rather than part of the real build, because:
 - pip hides the build log when the build succeeds, so hints would go unnoticed;

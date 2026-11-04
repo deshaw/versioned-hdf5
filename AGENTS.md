@@ -20,12 +20,17 @@ version matrix.
 
 - `pixi r test` — test suite in the default env (auto runs `editable-install` first).
 - `pixi r -e <env> test` — same in another env (`mindeps`, `hdf5-112`, `hdf5-114`,
-  `hdf5-21`, `np126`, `np200`, `py310`–`py314`, `h5py-dev`).
+  `hdf5-21`, `np126`, `np200`, `py310`–`py315`, `py314t`, `py315t`, `h5py-dev`).
+  `py314t`/`py315t` are free-threaded and run with `PYTHON_GIL=0`.
+- `pixi r -e <env> test-parallel` — run the whole test suite with
+  `pytest --parallel-threads 4`; free-threaded envs also run this in CI.
+- `pixi r -e <env> check-gil` — fail if a free-threaded env has the GIL enabled.
 - `pixi r lint` — run all linters (ruff, mypy, codespell, dprint, blacken-docs,
   actionlint, cython-lint, sphinx-lint, validate-pyproject) via lefthook.
 - `pixi r cython-warnings` — build the project with meson in a throwaway directory and
   fail on any Cython `warning:` or `performance hint:`; the Lint workflow runs it in the
-  `py314` environment.
+  `py314` environment. It sees the project-wide Cython arguments from the root
+  `meson.build` as well as the per-module ones.
 - `pixi r install-git-hooks` — install lefthook pre-commit hooks (one-off).
 - `pixi r ipython` — REPL with the editable install loaded.
 - `pixi r -e docs docs` — build docs into `docs/_build/html`.
@@ -131,7 +136,9 @@ symlinks `<name>.pyx -> <name>.py` at build time so meson can compile them. **Ed
 `.pyx` and not symlinked.
 
 Cython compile flags (`versioned_hdf5/meson.build`) disable `boundscheck`, `wraparound`
-and `initializedcheck`, and enable `cdivision=True`. The bounds flags are only valid
+and `initializedcheck`, and enable `cdivision=True`. The root `meson.build` additionally
+sets the project-wide `-X freethreading_compatible=True` for all five compiled modules
+(including `slicetools.pyx`), guarded on Cython >=3.1 so `mindeps` (3.0.10) still builds. The bounds flags are only valid
 because the code never uses negative indices; `cdivision` only because the operands of
 every `/` and `%` were audited to have matching signs. If Cython code behaves
 differently from the pure-Python execution, comment out `cdivision` first to diagnose.
@@ -148,7 +155,8 @@ differently from the pure-Python execution, comment out `cdivision` first to dia
   when the build succeeds, and a naked `pip install` must still tolerate warnings from
   whatever Cython version it runs. The check builds the project with meson in a
   throwaway directory and scans the log, so the flags, module list and language live
-  only in `versioned_hdf5/meson.build`. It exits 0 on Cython < 3.2, i.e. in `mindeps`.
+  only in `meson.build` and `versioned_hdf5/meson.build`. It exits 0 on Cython < 3.2,
+  i.e. in `mindeps`.
   See `ci/cython_warnings.py`.
 - Adding the `wheels` label to a PR triggers binary-wheel builds in CI. The
   `h5py>=3.8.0` pin in `pyproject.toml` is rewritten by `.github/workflows/wheels.yml`

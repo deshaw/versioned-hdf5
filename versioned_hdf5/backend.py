@@ -14,6 +14,7 @@ from h5py import Dataset, h5z
 from h5py._hl.filters import guess_chunk
 from ndindex import ChunkSize, Slice, Tuple
 
+from versioned_hdf5._lock import with_phil
 from versioned_hdf5.cytools import ceil_a_over_b
 from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS, h5py_astype
 from versioned_hdf5.hashtable import Hashtable
@@ -70,6 +71,7 @@ def check_compatible_dtypes(a: np.dtype, b: np.dtype) -> None:
         raise ValueError(f"dtypes are not compatible ({a} != {b})")
 
 
+@with_phil
 def initialize(f):
     from .versions import TIMESTAMP_FMT
 
@@ -203,6 +205,7 @@ def normalize_chunks(
     raise NotImplementedError("chunks must be specified for multi-dimensional datasets")
 
 
+@with_phil
 def create_base_dataset(
     f,
     name,
@@ -259,6 +262,7 @@ def create_base_dataset(
     return write_dataset(f, name, data, chunks=chunks)
 
 
+@with_phil
 def write_dataset(
     f,
     name,
@@ -383,6 +387,7 @@ def _convert_to_bytes(x: str | bytes) -> bytes:
     return x.encode("utf-8") if isinstance(x, str) else x
 
 
+@with_phil
 def _data_v4_to_sc_hash_table(hash_table: Dataset, chunk_size0: int) -> np.ndarray:
     """Load the SHA256 digests from the on-disk hash table and convert it to the
     layout compatible with `StagedChangesArray.hash_tables`, which is indexed by the
@@ -408,6 +413,7 @@ def _data_v4_to_sc_hash_table(hash_table: Dataset, chunk_size0: int) -> np.ndarr
     return hashes
 
 
+@with_phil
 def _sc_hash_table_to_data_v4(
     hashes: np.ndarray,
     starts: np.ndarray,
@@ -422,6 +428,7 @@ def _sc_hash_table_to_data_v4(
     return out
 
 
+@with_phil
 def _raw_data_as_base_slab(raw_data: Dataset, dtype: np.dtype):
     """Return `raw_data`, to be used as a base slab of a StagedChangesArray of the
     given dtype.
@@ -432,6 +439,7 @@ def _raw_data_as_base_slab(raw_data: Dataset, dtype: np.dtype):
     return raw_data if dtype == raw_data.dtype else h5py_astype(raw_data, dtype)
 
 
+@with_phil
 def commit_staged_changes(f, name: str, staged_changes: StagedChangesArray) -> None:
     """Commit a StagedChangesArray into `raw_data` and its on-disk hash table.
 
@@ -626,6 +634,7 @@ def _rewrite_block_bytes(n_raw_chunks: int) -> int:
     )
 
 
+@with_phil
 def rewrite_dataset(
     f,
     name: str,

@@ -33,10 +33,64 @@ You can choose among the following:
 | `py313`     | 3.13   | latest | latest      | latest    | latest  |                                                 |
 | `py314`     | 3.14   | latest | latest      | latest    | latest  |                                                 |
 | `py315`     | 3.15   | latest | latest      | latest    | latest  |                                                 |
+| `py314t`    | 3.14t  | latest | latest      | latest    | latest  | Free-threaded, GIL disabled                     |
+| `py315t`    | 3.15t  | wheel  | latest      | sdist     | latest  | Free-threaded, GIL disabled, h5py from sources  |
 | `default`   | 3.14   | latest | latest      | latest    | latest  |                                                 |
 | `h5py-dev`  | 3.15   | latest | latest      | git tip   | latest  |                                                 |
 
 *Note:* hdf5 2.0 is not available in conda-forge and is untested.
+*Note:* `py314t` and `py315t` do not install `hdf5plugin` yet, so the tests needing
+third-party filters skip.
+
+## Free-threaded environments
+
+`py314t` and `py315t` use conda-forge `python-freethreading` pinned to the matching
+major.minor version (3.14 / 3.15) and activate with `PYTHON_GIL=0`, so the GIL is off.
+conda-forge has no `cp315t` builds of h5py or numpy, so `py315t` also installs numpy's
+free-threaded wheel and builds h5py from its sdist against conda-forge's hdf5; its
+environment therefore sets `no-default-feature = true`.
+
+Both environments run the normal `test` task and an additional parallel test task:
+
+```bash
+pixi r -e py314t test-parallel
+```
+
+`test-parallel` runs the whole configured test suite (including doctests) with
+`pytest --parallel-threads 4`. Tests that genuinely cannot run concurrently are marked
+`thread_unsafe` / listed in `thread_unsafe_fixtures` and still execute on one thread.
+Shared fixture files are thread-unique via `make_name()` in `tests/conftest.py`.
+
+To prove the GIL is actually disabled, run:
+
+```bash
+pixi r -e py314t check-gil
+pixi r -e py314t smoke
+```
+
+`check-gil` imports h5py and all five versioned-hdf5 Cython modules before asserting;
+`smoke` checks again after a real file operation. Both fail loudly if the GIL was
+re-enabled (for example by a compiled extension missing `Py_mod_gil`). `conftest.py`
+checks again at the end of every pytest session, and pytest-run-parallel itself fails
+on a GIL re-enable. All five Cython modules are compiled with
+`-X freethreading_compatible=True` (see below).
+
+CI runs `smoke`, `test -v` and `test-parallel -v` for both `py314t` and `py315t`. CI
+runs `test-parallel` on the full suite, including the slow tests; locally use
+`pixi r -e py314t test-parallel -m 'not slow'` while iterating.
+
+### Thread safety model
+
+h5py serializes all libhdf5 calls with its interpreter-wide, reentrant `phil` lock.
+versioned-hdf5 reuses that same lock (`versioned_hdf5._lock`) as its *only* lock.
+Each public API call, wrapper method, version setup/commit step and cache mutation
+acquires `phil` for the duration of that individual call. `stage_version()` does not
+hold `phil` across user-controlled code: setup and commit are separate locked
+critical sections, and staged mutations are individually locked. Direct h5py I/O in
+another thread therefore cannot deadlock behind a versioned-hdf5 context. There is no
+second lock, so there is no lock-order inversion against `phil`. Pure `nogil`
+computation in the Cython modules is unchanged. HDF5 work still stays serialized even
+with the GIL off; free-threading allows non-HDF5 work to run concurrently.
 
 ## Editable install
 
@@ -49,8 +103,11 @@ will be immediately reflected in all commands (such as `pixi r test`).
 `pixi r cython-warnings` configures a throwaway meson build directory, builds it, and
 fails on any Cython `warning:` or `performance hint:` in meson's log. The Lint workflow
 runs it in the `py314` environment. Since meson drives the compilation, the flags, the
-module list and whether a module is C or C++ always match `versioned_hdf5/meson.build`;
-the script keeps no copy of them.
+module list and whether a module is C or C++ always match `meson.build` and
+`versioned_hdf5/meson.build`; the script keeps no copy of them. The free-threading
+directive is a project-wide Cython argument in the root `meson.build`, so it reaches
+`slicetools` too, which does not use the shared `cython_args` list. It is guarded by
+`cy.version().version_compare('>=3.1.0')` because `mindeps` pins Cython 3.0.10.
 
 It is a standalone check and not part of the build. `-Werror` promotes `warning:` but
 not `performance hint:` to an error, so the build cannot enforce a clean compile; on top
