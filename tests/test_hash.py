@@ -818,9 +818,13 @@ def test_binds_to_the_already_loaded_libcrypto():
     assert mapped == {os.path.realpath(LIBCRYPTO_PATH)}
 
 
+# Wheel smoke tests select @pytest.mark.api. Without it, a released wheel that
+# accidentally links a crypto soname would pass CI and then fail on hosts with a
+# different OpenSSL version.
+@pytest.mark.api
 @pytest.mark.skipif(sys.platform != "linux", reason="inspects ELF dynamic section")
 def test_extension_does_not_link_libcrypto():
-    """Nothing crypto-related may appear as a NEEDED entry of the extension."""
+    """Neither libcrypto nor libssl may appear as a NEEDED entry of the extension."""
     readelf = shutil.which("readelf")
     if readelf is None:
         pytest.skip("readelf not found on PATH")
@@ -833,4 +837,6 @@ def test_extension_does_not_link_libcrypto():
     ).stdout
     needed = [line for line in dynamic_section.splitlines() if "NEEDED" in line]
     assert needed, dynamic_section  # sanity check: the parse actually found entries
-    assert not [line for line in needed if "crypto" in line], dynamic_section
+    assert not [
+        line for line in needed if "crypto" in line or "libssl" in line
+    ], dynamic_section
