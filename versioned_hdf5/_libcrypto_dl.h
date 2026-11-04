@@ -426,12 +426,10 @@ static int vh_libcrypto_init(void) {
         return -1;
     }
 
-    VH_LIBCRYPTO_BIND(vh_EVP_MD_CTX_new, "EVP_MD_CTX_new");
-    VH_LIBCRYPTO_BIND(vh_EVP_MD_CTX_free, "EVP_MD_CTX_free");
+    // Bind EVP_sha256 first and derive the library path from it right away, so that a
+    // missing symbol in any of the remaining binds is reported with the real library
+    // name rather than "<unknown libcrypto>".
     VH_LIBCRYPTO_BIND(vh_EVP_sha256, "EVP_sha256");
-    VH_LIBCRYPTO_BIND(vh_EVP_DigestInit_ex, "EVP_DigestInit_ex");
-    VH_LIBCRYPTO_BIND(vh_EVP_DigestUpdate, "EVP_DigestUpdate");
-    VH_LIBCRYPTO_BIND(vh_EVP_DigestFinal_ex, "EVP_DigestFinal_ex");
 
     // `symbol` now holds one of the entry points we are about to call, so it lives in the
     // library those calls will land in: the authoritative answer to "which library is
@@ -442,6 +440,12 @@ static int vh_libcrypto_init(void) {
         vh_libcrypto_state = -1;
         return -1;
     }
+
+    VH_LIBCRYPTO_BIND(vh_EVP_MD_CTX_new, "EVP_MD_CTX_new");
+    VH_LIBCRYPTO_BIND(vh_EVP_MD_CTX_free, "EVP_MD_CTX_free");
+    VH_LIBCRYPTO_BIND(vh_EVP_DigestInit_ex, "EVP_DigestInit_ex");
+    VH_LIBCRYPTO_BIND(vh_EVP_DigestUpdate, "EVP_DigestUpdate");
+    VH_LIBCRYPTO_BIND(vh_EVP_DigestFinal_ex, "EVP_DigestFinal_ex");
 
     // Optional: only used for the informational version string. OPENSSL_VERSION == 0.
     symbol = vh_libcrypto_symbol(handle, "OpenSSL_version");

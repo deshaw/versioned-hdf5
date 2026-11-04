@@ -783,7 +783,10 @@ def test_libcrypto_path():
     """
     assert LIBCRYPTO_PATH
     assert os.path.isabs(LIBCRYPTO_PATH)
-    assert os.path.exists(LIBCRYPTO_PATH)
+    # On macOS the system libcrypto lives in the dyld shared cache and has no file on
+    # disk; everywhere else the resolved path must be a real file.
+    if sys.platform != "darwin":
+        assert os.path.exists(LIBCRYPTO_PATH)
     assert LIBCRYPTO_VERSION.startswith(("OpenSSL", "LibreSSL"))
 
 

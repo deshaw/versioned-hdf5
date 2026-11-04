@@ -39,13 +39,16 @@ OpenSSL
 
 Versioned HDF5 neither links against nor bundles OpenSSL. ``versioned_hdf5.hash``
 computes the SHA256 digests with OpenSSL's EVP API, and resolves the entry points it
-needs at import time from the ``libcrypto`` library that the process has already loaded,
-preferring the one CPython's ``_hashlib`` loaded so that there is only one copy of
-OpenSSL in the process. A runtime OpenSSL 1.1.x or 3.x must therefore be available. The
-fallback is a system ``libcrypto`` that can be opened by its well-known name
-(``libcrypto.so.3``, ``libcrypto.so.1.1``, ``libcrypto.3.dylib``,
-``libcrypto-3-x64.dll``, ...). If neither is found, ``import versioned_hdf5`` raises an
-``ImportError`` describing what was tried.
+needs at import time from the first ``libcrypto`` the process has already loaded,
+normally the one CPython's ``_hashlib`` pulled in, so in the normal case there is only
+one copy of OpenSSL in the process. A runtime OpenSSL 1.1.x or 3.x must therefore be
+available; on macOS it is typically Apple's ``LibreSSL``, which is fine for SHA256 and
+names itself as such in ``LIBCRYPTO_VERSION``. The fallback is a system ``libcrypto``
+reached by its well-known name (``libcrypto.so.3``, ``libcrypto.so.1.1``,
+``libcrypto.3.dylib``, ``libcrypto-3-x64.dll``, ...): on POSIX it is looked up on the
+loader's search path, on Windows the DLL has to be already loaded in the process. If
+neither is found, ``import versioned_hdf5`` raises an ``ImportError`` describing what
+was tried.
 
 Building from source only requires the libhdf5 headers and shared libraries described
 above, not the OpenSSL development headers.
