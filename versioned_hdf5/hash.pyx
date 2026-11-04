@@ -87,9 +87,10 @@ if vh_libcrypto_init() != 0:
         "versioned_hdf5.hash could not resolve the OpenSSL EVP functions from the "
         f"libcrypto loaded in this process: {_decode_cstr(vh_libcrypto_get_error())}. "
         "This requires a CPython whose _hashlib links against a dynamically loaded "
-        "OpenSSL (1.1.x or 3.x), or an interpreter that exports the EVP functions "
-        "itself (statically linked OpenSSL), or a libcrypto (1.1.x or 3.x) that is "
-        "already loaded, or that can be opened by its well-known soname on POSIX."
+        "OpenSSL (1.1.x or 3.x) or compatible LibreSSL, or an interpreter that "
+        "exports the EVP functions itself (statically linked OpenSSL), or a "
+        "libcrypto (1.1.x or 3.x) that is already loaded, or that can be opened "
+        "by its well-known soname on POSIX."
     )
 
 # _libcrypto_dl.h derives this from the library the bound symbols live in; it may still
