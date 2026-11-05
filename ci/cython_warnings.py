@@ -48,17 +48,6 @@ def meson(*args: str) -> tuple[int, str]:
     return 0, log
 
 
-def find_diagnostics(log: str) -> dict[str, list[str]]:
-    """Return {module: [diagnostic, ...]} for the Cython diagnostics in the log."""
-    ret: dict[str, list[str]] = {}
-    for line in log.splitlines():
-        match = DIAGNOSTIC_RE.match(line)
-        if match:
-            module = Path(match["file"]).stem
-            ret.setdefault(module, []).append(line)
-    return ret
-
-
 def main() -> int:
     # A fresh build directory guarantees that every module is compiled from scratch,
     # rather than skipping the ones that were already built by whatever Cython and -X

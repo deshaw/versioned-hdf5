@@ -148,8 +148,7 @@ differently from the pure-Python execution, comment out `cdivision` first to dia
   when the build succeeds, and a naked `pip install` must still tolerate warnings from
   whatever Cython version it runs. The check builds the project with meson in a
   throwaway directory and scans the log, so the flags, module list and language live
-  only in `versioned_hdf5/meson.build`. It exits 0 on Cython < 3.2, i.e. in `mindeps`.
-  See `ci/cython_warnings.py`.
+  only in `versioned_hdf5/meson.build`. See `ci/cython_warnings.py`.
 - Adding the `wheels` label to a PR triggers binary-wheel builds in CI. The
   `h5py>=3.8.0` pin in `pyproject.toml` is rewritten by `.github/workflows/wheels.yml`
   at wheel-build time to the exact `H5PY_VERSION`.
