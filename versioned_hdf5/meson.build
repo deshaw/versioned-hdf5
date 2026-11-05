@@ -32,6 +32,8 @@ py.extension_module(
     subdir: 'versioned_hdf5',
     dependencies: compiled_deps,
     include_directories: [npy_include_path],
+    # Note: no -X flags here, unlike the other modules; slicetools opts out of
+    # boundscheck, wraparound etc. selectively, with per-function decorators.
 )
 
 cython_args = [

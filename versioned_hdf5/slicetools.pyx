@@ -305,7 +305,7 @@ cdef Exception HDF5Error():
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cdef void _fill_virtual_layout(
+cdef int _fill_virtual_layout(
     hid_t dcpl_id,
     hid_t vspace_id,
     hid_t srcspace_id,
@@ -319,12 +319,15 @@ cdef void _fill_virtual_layout(
     char* slab_offsets_ptr,
     npy_intp* slab_indices_strides,
     npy_intp* slab_offsets_strides,
-) except * nogil:
+) except -1 nogil:
     """Add one virtual source to a virtual dataset creation property list for each
     chunk of a committed StagedChangesArray that doesn't lie on the full slab.
 
     This is the hot loop of create_virtual_dataset(), which runs with the GIL released.
     See create_virtual_dataset() for the parameters.
+
+    Returns 0 on success.
+    Note: must return int to be able to raise python Exceptions inside nogil.
     """
     cdef:
         hsize_t[NPY_MAXDIMS] vstart, vcount, sstart
@@ -336,7 +339,7 @@ cdef void _fill_virtual_layout(
 
     for j in range(ndim):
         if nchunks_arr[j] == 0:
-            return  # Zero-length axis; there are no chunks to point at
+            return 0  # Zero-length axis; there are no chunks to point at
         chunk_idx[j] = 0
         # Chunks are concatenated along axis 0 of raw_data only, so a chunk spans the
         # whole extent of raw_data along all the other axes
@@ -401,6 +404,8 @@ cdef void _fill_virtual_layout(
                 so_off -= <npy_intp>nchunks_arr[j] * slab_offsets_strides[j]
             else:
                 break
+
+    return 0
 
 
 def create_virtual_dataset(
@@ -513,11 +518,11 @@ def create_virtual_dataset(
 class RawDataView:
     """A writeable view onto raw_data[offset:], to be used with read_many_slices.
     """
-    raw_data: Dataset
+    raw_data: h5py.Dataset
     offset: int
     dtype: np.dtype
 
-    def __init__(self, raw_data: Dataset, offset: int, dtype: np.dtype):
+    def __init__(self, raw_data: h5py.Dataset, offset: int, dtype: np.dtype):
         self.raw_data = raw_data
         self.offset = offset
         # Outwards dtype. This may differ from raw_data.dtype for variable-width strings

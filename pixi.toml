@@ -56,6 +56,8 @@ sdist = "python -m build --sdist --no-isolation"
 wheel = "python -m build --wheel --no-isolation"
 twine-check = "twine check dist/*"
 smoke = { cmd = "python ci/smoke_test.py", depends-on = ["editable-install"] }
+# Fail on any Cython warning or performance hint.
+cython-warnings = "python ci/cython_warnings.py"
 
 # Absolute minimum versions of build and runtime dependencies.
 # Compilation against an old stack of dependencies is very fiddly:

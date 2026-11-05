@@ -44,6 +44,14 @@ All pixi environments use an editable install of versioned-hdf5. This means that
 changing any file, including Cython ones, in the `versioned_hdf5/` directory, changes
 will be immediately reflected in all commands (such as `pixi r test`).
 
+## Cython warnings
+
+`pixi r cython-warnings` tests that Cython does not emit any `warning:` or `performance
+hint:` messages in meson's log. It is a standalone check and not part of the build.
+`-Werror` promotes `warning:` but not `performance hint:` to an error, so the build
+cannot enforce a clean compilation. Users pip-installing versioned-hdf5 from sources may
+still get warnings if they use a Cython version that's different from CI.
+
 ## Interactive terminal
 
 `pixi r ipython` opens an interactive IPython terminal with versioned-hdf5 (editable
