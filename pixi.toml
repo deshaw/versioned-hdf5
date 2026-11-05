@@ -147,6 +147,38 @@ python = "=3.14"
 [feature.py315.dependencies]
 python = "=3.15"
 
+# Free-threaded builds. python-freethreading pins the exact major.minor version and
+# pulls in the matching cp314t/cp315t ABI. Do NOT set PYTHON_GIL=0: it suppresses the
+# RuntimeWarning that CPython emits when an extension module without Py_mod_gil
+# re-enables the GIL, so pytest's filterwarnings=error can no longer catch it (and the
+# GIL silently stays off around code that is not thread-safe). In the default mode the
+# GIL starts disabled and such an extension re-enables it loudly instead.
+# VERSIONED_HDF5_REQUIRE_GIL_DISABLED turns a re-enabled GIL into a test failure
+# (tests/test_free_threading.py and conftest.py).
+[feature.py314t.dependencies]
+python-freethreading = "=3.14"
+
+[feature.py314t.activation.env]
+VERSIONED_HDF5_REQUIRE_GIL_DISABLED = "1"
+
+[feature.py315t.dependencies]
+python-freethreading = "=3.15"
+# conda-forge has no cp315t builds of h5py or numpy yet. Install numpy's
+# free-threaded wheel and build h5py from the sdist against conda-forge's hdf5.
+hdf5 = "*"
+ndindex = "*"
+openssl = "*"
+
+[feature.py315t.pypi-dependencies]
+numpy = "*"
+h5py = "*"
+
+[feature.py315t.pypi-options]
+no-binary = ["h5py"]
+
+[feature.py315t.activation.env]
+VERSIONED_HDF5_REQUIRE_GIL_DISABLED = "1"
+
 [feature.h5py-dev.dependencies]
 numpy = "*"
 hdf5 = "*"
@@ -164,6 +196,16 @@ packaging = "*"
 
 [feature.test.tasks]
 test = { cmd = "pytest", depends-on = ["editable-install"] }
+# Run the whole configured test suite (including doctests) four times, once per
+# thread. Tests that genuinely cannot run in parallel are marked thread_unsafe and
+# still execute, on a single thread. Do not add -k, --skip-thread-unsafe or a test
+# subset here: every test must be exercised.
+
+[feature.test-nogil.dependencies]
+pytest-run-parallel = "*"
+
+[feature.test-nogil.tasks]
+test-parallel = { cmd = "pytest --parallel-threads 4", depends-on = ["editable-install"] }
 
 [feature.filters.dependencies]
 hdf5plugin = "*"
@@ -249,4 +291,6 @@ py312 = { features = ["py312", "build", "test", "filters"] }
 py313 = { features = ["py313", "build", "test", "filters"] }
 py314 = { features = ["py314", "build", "test", "filters"] }
 py315 = { features = ["py315", "build", "test"] } # No hdf5plugin yet
+py314t = { features = ["py314t", "build", "test", "test-nogil", "filters"] }
+py315t = { features = ["py315t", "build", "test", "test-nogil"], no-default-feature = true } # No hdf5plugin yet
 h5py-dev = { features = ["py315", "h5py-dev", "build", "test"], no-default-feature = true }

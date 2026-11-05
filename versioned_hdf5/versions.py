@@ -9,6 +9,7 @@ from uuid import uuid4
 import numpy as np
 from h5py import Dataset, Group
 
+from versioned_hdf5._lock import phil, with_phil
 from versioned_hdf5.backend import (
     Filters,
     commit_staged_changes,
@@ -30,6 +31,30 @@ TIMESTAMP_FMT = "%Y-%m-%d %H:%M:%S.%f%z"
 FORBIDDEN_NAMES = ["versions"]
 
 
+def _as_text(value):
+    """Normalize h5py attributes, which may expose fixed strings as bytes."""
+    return value.decode() if isinstance(value, bytes) else value
+
+
+def _format_timestamp(timestamp) -> str:
+    """Validate and format a manual timestamp before any commit mutation."""
+    if timestamp is None:
+        timestamp = datetime.datetime.now(datetime.timezone.utc)
+    elif isinstance(timestamp, datetime.datetime):
+        if timestamp.utcoffset() != datetime.timedelta(0):
+            raise ValueError("timestamp must be in UTC")
+    elif isinstance(timestamp, np.datetime64):
+        timestamp = timestamp.astype(datetime.datetime).replace(
+            tzinfo=datetime.timezone.utc
+        )
+    else:
+        raise TypeError(
+            "timestamp must be either a datetime.datetime or numpy.datetime64 object"
+        )
+    return timestamp.strftime(TIMESTAMP_FMT)
+
+
+@with_phil
 def create_version_group(f, version_name, prev_version=None):
     """
     Create the version group for a new version.
@@ -79,6 +104,7 @@ def create_version_group(f, version_name, prev_version=None):
     return group
 
 
+@with_phil
 def commit_version(
     version_group: InMemoryGroup,
     datasets: dict[str, InMemoryDataset | DatasetLike],
@@ -125,8 +151,7 @@ def commit_version(
     if not isinstance(filters, defaultdict):
         filters = defaultdict(Filters, **(filters or {}))
 
-    if make_current:
-        versions.attrs["current_version"] = version_name
+    timestamp_str = _format_timestamp(timestamp)
 
     for name, data in datasets.items():
         if isinstance(data, DatasetWrapper):
@@ -209,24 +234,13 @@ def commit_version(
             fillvalue=data.fillvalue,
         )
 
+    version_group.attrs["timestamp"] = timestamp_str
     version_group.attrs["committed"] = True
-
-    if timestamp is None:
-        timestamp = datetime.datetime.now(datetime.timezone.utc)
-    elif isinstance(timestamp, datetime.datetime):
-        if timestamp.utcoffset() != datetime.timedelta(0):
-            raise ValueError("timestamp must be in UTC")
-    elif isinstance(timestamp, np.datetime64):
-        timestamp = timestamp.astype(datetime.datetime).replace(
-            tzinfo=datetime.timezone.utc
-        )
-    else:
-        raise TypeError(
-            "timestamp must be either a datetime.datetime or numpy.datetime64 object"
-        )
-    version_group.attrs["timestamp"] = timestamp.strftime(TIMESTAMP_FMT)
+    if make_current:
+        versions.attrs["current_version"] = version_name
 
 
+@with_phil
 def delete_version(f, version_name, new_current=None):
     """
     Delete version `version_name`.
@@ -244,6 +258,46 @@ def delete_version(f, version_name, new_current=None):
     versions.attrs["current_version"] = new_current
 
 
+@with_phil
+def _rollback_staged_version(f, version_name, fallback_current) -> None:
+    """Delete a failed staged version without clobbering a newer current version.
+
+    ``fallback_current`` is the current version immediately before the failed commit.
+    The caller holds phil across commit and rollback, so no other library call can
+    observe the failed version as current.
+    """
+    versions = f["_version_data/versions"]
+    if version_name not in versions:
+        return
+
+    failed_parent = _as_text(versions[version_name].attrs.get("prev_version"))
+    if (
+        not failed_parent
+        or failed_parent == version_name
+        or failed_parent not in versions
+    ):
+        failed_parent = "__first_version__"
+
+    current = _as_text(versions.attrs.get("current_version"))
+    if current == version_name:
+        current = _as_text(fallback_current)
+    if not current or current == version_name or current not in versions:
+        current = failed_parent
+    if not current or current == version_name or current not in versions:
+        current = "__first_version__"
+    if current == version_name or current not in versions:
+        current = next(name for name in versions if name != version_name)
+
+    for child_name, child in list(versions.items()):
+        if child_name in {version_name, "__first_version__"}:
+            continue
+        if _as_text(child.attrs.get("prev_version")) == version_name:
+            child.attrs["prev_version"] = failed_parent
+
+    delete_version(f, version_name, current)
+
+
+@with_phil
 def get_nth_previous_version(f, version_name, n):
     versions = f["_version_data/versions"]
     if version_name not in versions:
@@ -260,6 +314,7 @@ def get_nth_previous_version(f, version_name, n):
     return version
 
 
+@with_phil
 def get_version_by_timestamp(f, timestamp, exact=False):
     versions = f["_version_data/versions"]
     if isinstance(timestamp, np.datetime64):
@@ -301,6 +356,7 @@ def get_version_by_timestamp(f, timestamp, exact=False):
     return best_match
 
 
+@with_phil
 def set_current_version(f, version_name):
     versions = f["_version_data/versions"]
     if version_name not in versions:
@@ -317,8 +373,12 @@ def all_versions(f, *, include_first=False):
 
     Note that the order of the versions is completely arbitrary.
     """
-    versions = f["_version_data/versions"]
-    for version in versions:
+    # Snapshot the names while holding phil, then yield without the lock: a
+    # generator cannot hold a lock across yields without leaking it if the caller
+    # abandons the iterator.
+    with phil:
+        names = list(f["_version_data/versions"])
+    for version in names:
         if version == "__first_version__":
             if include_first:
                 yield version

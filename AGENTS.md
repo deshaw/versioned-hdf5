@@ -20,7 +20,10 @@ version matrix.
 
 - `pixi r test` — test suite in the default env (auto runs `editable-install` first).
 - `pixi r -e <env> test` — same in another env (`mindeps`, `hdf5-112`, `hdf5-114`,
-  `hdf5-21`, `np126`, `np200`, `py310`–`py314`, `h5py-dev`).
+  `hdf5-21`, `np126`, `np200`, `py310`–`py315`, `py314t`, `py315t`, `h5py-dev`).
+  `py314t`/`py315t` are free-threaded and run with the GIL disabled.
+- `pixi r -e <env> test-parallel` — run the whole test suite with
+  `pytest --parallel-threads 4`; free-threaded envs also run this in CI.
 - `pixi r lint` — run all linters (ruff, mypy, codespell, dprint, blacken-docs,
   actionlint, cython-lint, sphinx-lint, validate-pyproject) via lefthook.
 - `pixi r cython-warnings` — build the project with meson in a throwaway directory and
@@ -131,7 +134,9 @@ symlinks `<name>.pyx -> <name>.py` at build time so meson can compile them. **Ed
 `.pyx` and not symlinked.
 
 Cython compile flags (`versioned_hdf5/meson.build`) disable `boundscheck`, `wraparound`
-and `initializedcheck`, and enable `cdivision=True`. The bounds flags are only valid
+and `initializedcheck`, and enable `cdivision=True`. The root `meson.build` additionally
+sets the project-wide `-X freethreading_compatible=True` for all five compiled modules
+(including `slicetools.pyx`), guarded on Cython >=3.1 so `mindeps` (3.0.10) still builds. The bounds flags are only valid
 because the code never uses negative indices; `cdivision` only because the operands of
 every `/` and `%` were audited to have matching signs. If Cython code behaves
 differently from the pure-Python execution, comment out `cdivision` first to diagnose.
