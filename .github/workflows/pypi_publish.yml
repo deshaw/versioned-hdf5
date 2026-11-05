@@ -32,9 +32,9 @@ jobs:
           fetch-tags: true
           persist-credentials: false
 
-      - uses: prefix-dev/setup-pixi@a2789fe3805b9ae22d6c25a15df2f2c624cd092e # v0.11.1
+      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
         with:
-          pixi-version: v0.82.0
+          pixi-version: v0.84.1
           cache: true
           environments: py314
 
@@ -102,14 +102,14 @@ jobs:
         run: ls -l wheels/
 
       - name: 🧪 Publish to PyPI Testing
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         if: ${{ inputs.test_pypi }}
         with:
           repository-url: https://test.pypi.org/legacy/
           packages-dir: wheels
 
       - name: 🎉 Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         if: ${{ !inputs.test_pypi }}
         with:
           packages-dir: wheels
