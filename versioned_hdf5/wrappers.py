@@ -1218,10 +1218,15 @@ class DatasetLike:
 
         BEWARE: Modifications to the yielded data are *NOT* written to file.
         """
+        # Keep iteration lazy, and never hold phil while yielding to caller code.
+        # In particular, do not decorate this generator with @with_phil.
         with phil:
             assert len(self.shape) > 0  # Scalar datasets blocked upstream
-            items = [self[i] for i in range(self.shape[0])]  # type: ignore[index]
-        return iter(items)
+            n = self.shape[0]
+        for i in range(n):
+            with phil:
+                item = self[i]  # type: ignore[index]
+            yield item
 
 
 class InMemoryArrayDataset(BufferMixin, FiltersMixin, DatasetLike):
