@@ -50,8 +50,16 @@ def pytest_report_header(config):  # noqa: ARG001
 
 
 def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
-    """Make a GIL re-enabled at any point during the run a visible failure."""
-    if os.environ.get(_REQUIRE_GIL_DISABLED) == "1" and _gil_enabled():
+    """Make an invalid GIL configuration during the run a visible failure."""
+    if os.environ.get(_REQUIRE_GIL_DISABLED) != "1":
+        return
+    if os.environ.get("PYTHON_GIL") == "0":
+        pytest.exit(
+            "PYTHON_GIL=0 is not supported in the free-threaded test environments "
+            "because it suppresses warnings about extensions missing Py_mod_gil.",
+            returncode=1,
+        )
+    if _gil_enabled():
         pytest.exit(
             "The GIL was re-enabled during the test session in a free-threaded "
             "environment. A compiled extension imported by a pytest plugin or by "

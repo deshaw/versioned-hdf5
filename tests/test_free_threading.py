@@ -20,20 +20,34 @@ from versioned_hdf5 import VersionedHDF5File, wrappers
 from versioned_hdf5._lock import phil
 
 
+def _assert_gil_disabled() -> None:
+    assert os.environ.get("PYTHON_GIL") != "0", (
+        "PYTHON_GIL=0 suppresses the warning and GIL re-enable that reveal an "
+        "extension missing Py_mod_gil"
+    )
+    assert hasattr(sys, "_is_gil_enabled"), "not a free-threaded interpreter"
+    assert not sys._is_gil_enabled(), "the GIL was re-enabled during this test"
+
+
 def test_gil_disabled_when_required():
     """The free-threaded pixi environments must actually run with the GIL off.
 
     An extension module without a ``Py_mod_gil`` slot re-enables the GIL when it is
     imported and makes CPython emit a RuntimeWarning, which ``filterwarnings =
-    ["error"]`` already turns into a failure. This assertion covers the gaps: imports
-    that happen before pytest installs its filters (entry-point plugins), and
-    ``PYTHON_GIL=0`` being set, which would silence the warning *and* keep the GIL off
-    around code that is not thread-safe.
+    ["error"]`` already turns into a failure. These assertions cover imports that
+    happen before pytest installs its filters (entry-point plugins), and reject
+    ``PYTHON_GIL=0``, which would silence the warning *and* keep the GIL off around
+    code that is not thread-safe.
     """
     if os.environ.get("VERSIONED_HDF5_REQUIRE_GIL_DISABLED") != "1":
         pytest.skip("not a free-threaded pixi environment")
-    assert hasattr(sys, "_is_gil_enabled"), "not a free-threaded interpreter"
-    assert not sys._is_gil_enabled(), "the GIL was re-enabled during this test"
+    _assert_gil_disabled()
+
+
+def test_python_gil_zero_is_rejected(monkeypatch):
+    monkeypatch.setenv("PYTHON_GIL", "0")
+    with pytest.raises(AssertionError, match="PYTHON_GIL=0"):
+        _assert_gil_disabled()
 
 
 @pytest.mark.thread_unsafe(
