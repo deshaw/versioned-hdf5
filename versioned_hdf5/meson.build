@@ -50,10 +50,6 @@ cython_args = [
     # Comment this out if behaviour changes when not compiled.
     '-X', 'cdivision=True',
 ]
-# The build can't fail on Cython performance hints: '-Dwerror=true' promotes 'warning:'
-# to an error, but 'performance hint:' ignores it. ci/cython_warnings.py configures a
-# throwaway build with these flags and greps meson's log instead, so this is the only
-# copy of them.
 
 # To generate HTML compilation reports:
 # (First double check that flags below match those above)

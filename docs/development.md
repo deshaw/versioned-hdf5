@@ -46,18 +46,11 @@ will be immediately reflected in all commands (such as `pixi r test`).
 
 ## Cython warnings
 
-`pixi r cython-warnings` configures a throwaway meson build directory, builds it, and
-fails on any Cython `warning:` or `performance hint:` in meson's log. The Lint workflow
-runs it in the `py314` environment. Since meson drives the compilation, the flags, the
-module list and whether a module is C or C++ always match `versioned_hdf5/meson.build`;
-the script keeps no copy of them.
-
-It is a standalone check and not part of the build. `-Werror` promotes `warning:` but
-not `performance hint:` to an error, so the build cannot enforce a clean compile; on top
-of that, pip hides the build log when the build succeeds, and a naked `pip install .`
-must still tolerate warnings from whatever Cython version it runs. The check in turn
-exits 0 on Cython older than 3.2, i.e. in `mindeps`, which pins 3.0.10. See
-`ci/cython_warnings.py`.
+`pixi r cython-warnings` tests that Cython does not emit any `warning:` or `performance
+hint:` messages in meson's log. It is a standalone check and not part of the build.
+`-Werror` promotes `warning:` but not `performance hint:` to an error, so the build
+cannot enforce a clean compilation. Users pip-installing versioned-hdf5 from sources may
+still get warnings if they use a Cython version that's different from CI.
 
 ## Interactive terminal
 
