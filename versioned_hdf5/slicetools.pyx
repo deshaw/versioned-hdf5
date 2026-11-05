@@ -326,10 +326,8 @@ cdef int _fill_virtual_layout(
     This is the hot loop of create_virtual_dataset(), which runs with the GIL released.
     See create_virtual_dataset() for the parameters.
 
-    Returns 0 on success. The return value is a mere error sentinel: an explicit
-    'except -1' lets the caller detect failures without inspecting the error indicator,
-    which would require acquiring the GIL. Exceptions raised by this function still
-    propagate normally.
+    Returns 0 on success.
+    Note: must return int to be able to raise python Exceptions inside nogil.
     """
     cdef:
         hsize_t[NPY_MAXDIMS] vstart, vcount, sstart
@@ -520,14 +518,11 @@ def create_virtual_dataset(
 class RawDataView:
     """A writeable view onto raw_data[offset:], to be used with read_many_slices.
     """
-    # Quoted annotations, so that Cython ignores them instead of compiling them to a
-    # type check on __init__; raw_data is an h5py Dataset in production, but tests also
-    # pass a NumPy array.
-    raw_data: "h5py.Dataset"
+    raw_data: h5py.Dataset
     offset: int
     dtype: np.dtype
 
-    def __init__(self, raw_data: "h5py.Dataset", offset: int, dtype: np.dtype):
+    def __init__(self, raw_data: h5py.Dataset, offset: int, dtype: np.dtype):
         self.raw_data = raw_data
         self.offset = offset
         # Outwards dtype. This may differ from raw_data.dtype for variable-width strings

@@ -28,8 +28,7 @@ version matrix.
   actionlint, cython-lint, sphinx-lint, validate-pyproject) via lefthook.
 - `pixi r cython-warnings` — build the project with meson in a throwaway directory and
   fail on any Cython `warning:` or `performance hint:`; the Lint workflow runs it in the
-  `py314` environment. It sees the project-wide Cython arguments from the root
-  `meson.build` as well as the per-module ones.
+  most up-to-date `pyXXX` environment.
 - `pixi r install-git-hooks` — install lefthook pre-commit hooks (one-off).
 - `pixi r ipython` — REPL with the editable install loaded.
 - `pixi r -e docs docs` — build docs into `docs/_build/html`.
@@ -154,9 +153,7 @@ differently from the pure-Python execution, comment out `cdivision` first to dia
   when the build succeeds, and a naked `pip install` must still tolerate warnings from
   whatever Cython version it runs. The check builds the project with meson in a
   throwaway directory and scans the log, so the flags, module list and language live
-  only in `meson.build` and `versioned_hdf5/meson.build`. It exits 0 on Cython < 3.2,
-  i.e. in `mindeps`.
-  See `ci/cython_warnings.py`.
+  only in `versioned_hdf5/meson.build`. See `ci/cython_warnings.py`.
 - Adding the `wheels` label to a PR triggers binary-wheel builds in CI. The
   `h5py>=3.8.0` pin in `pyproject.toml` is rewritten by `.github/workflows/wheels.yml`
   at wheel-build time to the exact `H5PY_VERSION`.
