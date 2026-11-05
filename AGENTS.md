@@ -25,7 +25,7 @@ version matrix.
   actionlint, cython-lint, sphinx-lint, validate-pyproject) via lefthook.
 - `pixi r cython-warnings` — build the project with meson in a throwaway directory and
   fail on any Cython `warning:` or `performance hint:`; the Lint workflow runs it in the
-  `py314` environment.
+  most up-to-date `pyXXX` environment.
 - `pixi r install-git-hooks` — install lefthook pre-commit hooks (one-off).
 - `pixi r ipython` — REPL with the editable install loaded.
 - `pixi r -e docs docs` — build docs into `docs/_build/html`.
