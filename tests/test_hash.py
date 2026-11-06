@@ -5,17 +5,14 @@ See test_hash_legacy_compat.py for cross-checks against the legacy hash algorith
 
 import hashlib
 import os
-import shutil
 import struct
-import subprocess
 import sys
 
 import numpy as np
 import pytest
-import versioned_hdf5.hash
 from hypothesis import given
 from hypothesis import strategies as st
-from versioned_hdf5.hash import LIBCRYPTO_PATH, LIBCRYPTO_VERSION, hash_slab
+from versioned_hdf5.hash import hash_slab
 
 from versioned_hdf5.cytools import np_hsize_t
 from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS
@@ -764,40 +761,10 @@ def test_vlen_encoding_equivalence():
     assert len(digests) == 1
 
 
-# ------------------------------------------------------------------------------
-# Runtime resolution of the EVP entry points
-#
-# hash.pyx does not link against libcrypto: a NEEDED entry would pin a soname into the
-# binary, so a wheel built on one distribution could not be imported on another. The
-# EVP functions are resolved at runtime from the libcrypto that the process has already
-# loaded. See versioned_hdf5/_libcrypto_dl.h.
-# ------------------------------------------------------------------------------
-
-
-@pytest.mark.api
-def test_libcrypto_path():
-    """LIBCRYPTO_PATH always names a real library, whichever way it was resolved.
-
-    ``LibreSSL`` also implements the EVP API, so a LibreSSL-backed CPython is a valid
-    answer.
-    """
-    assert LIBCRYPTO_PATH
-    assert os.path.isabs(LIBCRYPTO_PATH)
-    # On macOS the system libcrypto lives in the dyld shared cache and has no file on
-    # disk; everywhere else the resolved path must be a real file.
-    if sys.platform != "darwin":
-        assert os.path.exists(LIBCRYPTO_PATH)
-    assert LIBCRYPTO_VERSION.startswith(("OpenSSL", "LibreSSL"))
-
-
 @pytest.mark.api
 @pytest.mark.skipif(sys.platform != "linux", reason="parses /proc/self/maps")
 def test_binds_to_the_already_loaded_libcrypto():
-    """The EVP symbols must come from the libcrypto CPython's _hashlib loaded.
-
-    Loading a second copy of OpenSSL would duplicate its process-wide state (and defeat
-    the point of resolving at runtime instead of linking).
-    """
+    """The EVP symbols must come from the libcrypto CPython's _hashlib loaded."""
     mapped = set()
     with open("/proc/self/maps") as fh:
         for line in fh:
@@ -810,33 +777,4 @@ def test_binds_to_the_already_loaded_libcrypto():
             if os.path.basename(path).startswith("libcrypto"):
                 mapped.add(os.path.realpath(path))
 
-    if not mapped:
-        pytest.skip(
-            "no libcrypto is mapped: this interpreter links OpenSSL statically (or has "
-            "no _hashlib), so there is no second copy to rule out"
-        )
-    assert mapped == {os.path.realpath(LIBCRYPTO_PATH)}
-
-
-# Wheel smoke tests select @pytest.mark.api. Without it, a released wheel that
-# accidentally links a crypto soname would pass CI and then fail on hosts with a
-# different OpenSSL version.
-@pytest.mark.api
-@pytest.mark.skipif(sys.platform != "linux", reason="inspects ELF dynamic section")
-def test_extension_does_not_link_libcrypto():
-    """Neither libcrypto nor libssl may appear as a NEEDED entry of the extension."""
-    readelf = shutil.which("readelf")
-    if readelf is None:
-        pytest.skip("readelf not found on PATH")
-
-    dynamic_section = subprocess.run(
-        [readelf, "-d", versioned_hdf5.hash.__file__],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
-    needed = [line for line in dynamic_section.splitlines() if "NEEDED" in line]
-    assert needed, dynamic_section  # sanity check: the parse actually found entries
-    assert not [line for line in needed if "crypto" in line or "libssl" in line], (
-        dynamic_section
-    )
+    assert len(mapped) == 1

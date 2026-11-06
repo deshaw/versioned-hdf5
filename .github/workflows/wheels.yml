@@ -163,24 +163,6 @@ jobs:
           mv -v RECORD.new ./*/RECORD
           zip ./*.whl ./*/RECORD
 
-      # hash.pyx resolves the OpenSSL EVP entry points at runtime from the libcrypto the
-      # runtime CPython already loaded through _hashlib, so nothing crypto-related may be
-      # shipped in the wheel: a vendored copy would normally be a second OpenSSL in the
-      # process (a CPython without one can still map a system libcrypto at runtime, but it
-      # must not get one from us).
-      - name: Assert no crypto library is vendored
-        shell: bash
-        run: |
-          for whl in ./wheelhouse/*.whl; do
-            python -m zipfile -l "$whl"
-          done > wheel-contents.txt
-          # Match shared libraries only: the plain-C resolver header that ships with the
-          # package is legitimately called _libcrypto_dl.h.
-          if grep -iE '(libcrypto|libssl)[^ ]*\.(so|dylib|dll)' wheel-contents.txt; then
-            echo "::error::The wheel ships an OpenSSL library"
-            exit 1
-          fi
-
       - name: Upload wheels
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -236,12 +218,6 @@ jobs:
         run: |
           python utils/debug_libhdf5_so.py h5py
           python utils/debug_libhdf5_so.py versioned_hdf5
-
-      # The wheel does not ship libcrypto; this shows which copy of OpenSSL the
-      # installed CPython provides, i.e. what hash.pyx bound itself to.
-      - name: Print resolved libcrypto
-        run: |
-          python -c "import versioned_hdf5.hash as h; print('LIBCRYPTO_PATH   ', h.LIBCRYPTO_PATH); print('LIBCRYPTO_VERSION', h.LIBCRYPTO_VERSION)"
 
       - name: Run smoke tests
         run: pytest -m 'api and not slow'

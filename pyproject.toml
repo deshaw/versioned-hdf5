@@ -186,10 +186,8 @@ CPATH = "$HDF5_DIR/include:$CPATH"
 PKG_CONFIG_PATH = "$HDF5_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
 
 [tool.cibuildwheel.windows]
-# Nothing is vendored for crypto: hash.pyx resolves the OpenSSL EVP entry points at
-# runtime from the libcrypto the installed CPython's _hashlib already loaded.
-# hdf5/hdf5_hl are excluded because, like on Linux/macOS, they are provided at runtime by
-# the installed h5py, which prepends its own package directory to the DLL search path
+# hdf5/hdf5_hl are excluded because, like on Linux/macOS, they are provided at runtime
+# by the installed h5py, which prepends its own package directory to the DLL search path
 # (os.add_dll_directory) when imported.
 # NB: the repaired wheel must be written to {dest_dir}; the previous `mv {wheel}` shipped
 # the *unrepaired* wheel, so nothing was ever vendored.

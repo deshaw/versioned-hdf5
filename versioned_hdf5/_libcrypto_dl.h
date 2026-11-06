@@ -1,16 +1,13 @@
 // Runtime resolution of the OpenSSL EVP entry points used by hash.pyx.
 //
-// hash.pyx must not LINK against libcrypto. A NEEDED entry pins a concrete soname
+// hash.pyx must not link against libcrypto. A NEEDED entry pins a concrete soname
 // (libcrypto.so.3, libcrypto-3-x64.dll, ...) into hash.so, so a binary built on one
 // distribution cannot be imported on another, and building would need the OpenSSL
 // development headers. Instead we resolve the handful of functions we call out of the
-// libcrypto shared library that the process has ALREADY mapped - CPython's _hashlib
+// libcrypto shared library that the process has already mapped - CPython's _hashlib
 // loads one - and reuse it, so there is normally only one copy of OpenSSL in the
 // process (a CPython whose _hashlib links OpenSSL statically, or has no _hashlib at
 // all, may still end up with a second copy mapped from a well-known soname).
-//
-// Plain C, no OpenSSL headers, no dynamic allocation, never raises, never aborts.
-// Everything here has internal linkage; the file is included by exactly one module.
 
 #pragma once
 

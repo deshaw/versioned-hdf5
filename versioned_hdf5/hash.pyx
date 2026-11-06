@@ -9,10 +9,8 @@ The invariant is enforced by tests/test_hash_legacy_compat.py.
 
 The actual SHA256 is computed with OpenSSL's EVP API. The EVP entry points are
 resolved at runtime from the ``libcrypto`` shared library that the process has already
-loaded - the one CPython's ``_hashlib`` pulled in - with dlopen/dlsym on POSIX and
-GetModuleHandleW/GetProcAddress on Windows, so that there is normally only one copy of
-OpenSSL in the process, and there is no build-time (headers) or link-time (soname)
-OpenSSL dependency. See ``_libcrypto_dl.h``.
+loaded - the one CPython's ``_hashlib`` pulled in, so that there is no build-time
+(headers) or link-time (soname) OpenSSL dependency. See ``_libcrypto_dl.h``.
 """
 import os
 
@@ -73,10 +71,9 @@ cdef str _decode_cstr(const char* s):
     return s.decode("utf-8", "replace")
 
 
-# Best-effort: importing _hashlib first guarantees that the libcrypto we resolve the EVP
-# symbols from is already mapped, and that it is the very same copy hashlib uses rather
-# than a second one we would drag in ourselves. CPython can be built without it (then
-# vh_libcrypto_init() falls back to the well-known sonames, or fails cleanly).
+# Importing _hashlib first guarantees that the libcrypto we resolve the EVP symbols
+# from is already mapped. CPython can be built without it, in which case
+# vh_libcrypto_init() falls back to the well-known sonames, or fails cleanly.
 try:
     import _hashlib  # noqa: F401
 except ImportError:  # pragma: no cover

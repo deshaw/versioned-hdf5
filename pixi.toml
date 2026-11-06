@@ -6,11 +6,6 @@ platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64", "win-64"]
 h5py = "*"
 hdf5 = "*"
 ndindex = "*"
-# versioned_hdf5/hash.pyx does not link libcrypto: it resolves the OpenSSL EVP
-# entry points at runtime from the libcrypto that CPython's _hashlib already
-# loaded, and the tests assert it binds to that very copy. openssl therefore stays
-# in the environment as a runtime dependency of the interpreter, not of our build.
-openssl = "*"
 
 [feature.build.dependencies]
 # Needed for --no-build-isolation
@@ -23,11 +18,6 @@ wheel = "*"
 python-build = "*"
 twine = "*"
 zlib = "*"
-# No longer needed to build: versioned_hdf5/hash.pyx does not link libcrypto, it
-# resolves the OpenSSL EVP entry points at runtime from the libcrypto that CPython's
-# _hashlib already loaded. Kept because the build environment also imports and tests
-# the package, and the tests assert we bind to that very copy.
-openssl = "*"
 
 [feature.build.target.linux.dependencies]
 gcc = "*"
@@ -80,8 +70,8 @@ setuptools-scm = "=8.1"
 cython = "=3.0.10"
 numpy = "=1.24.4"
 ndindex = "=1.5.1"
-# Also exercises the OpenSSL 1.1 runtime-resolution path in hash.pyx
-# (libcrypto.so.1.1, no OpenSSL 3 soname).
+# exercise the OpenSSL 1.1 runtime-resolution path in hash.pyx
+# (libcrypto.so.1.1; no OpenSSL 3 soname)
 openssl = "=1.1.1s"
 
 [feature.mindeps.target.linux-64.dependencies] # Intel
@@ -161,9 +151,6 @@ python = "=3.15"
 numpy = "*"
 hdf5 = "*"
 ndindex = "*"
-# Runtime dependency of CPython's _hashlib, which hash.pyx borrows its libcrypto
-# from; not a dependency of the build.
-openssl = "*"
 
 [feature.h5py-dev.pypi-dependencies]
 h5py = { git = "https://github.com/h5py/h5py.git" }

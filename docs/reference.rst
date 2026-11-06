@@ -23,20 +23,3 @@ editing data in old versions, and deleting datasets or versions.
 .. autofunction:: versioned_hdf5.replay.recreate_dataset
 .. autofunction:: versioned_hdf5.replay.swap
 .. autofunction:: versioned_hdf5.replay.tmp_group
-
-
-Hashing
--------
-
-``versioned_hdf5.hash`` computes the SHA256 digests of the chunks; it resolves OpenSSL's
-EVP entry points at runtime, as described in :doc:`installation`. These constants report
-what it bound to.
-
-``versioned_hdf5.hash.LIBCRYPTO_PATH``
-    Path of the ``libcrypto`` shared library the entry points were resolved from, made
-    absolute by ``os.path.realpath()``. It is the path of the interpreter executable
-    when OpenSSL is linked statically into the interpreter.
-
-``versioned_hdf5.hash.LIBCRYPTO_VERSION``
-    ``OpenSSL_version(OPENSSL_VERSION)`` of that library, e.g.
-    ``"OpenSSL 3.5.1 1 Jul 2025"``. Empty when the library does not export the symbol.
