@@ -98,6 +98,18 @@ jobs:
           HDF5_PREFIX=$(brew --prefix hdf5)
           ZLIB_PREFIX=$(brew --prefix zlib)
           echo "PKG_CONFIG_PATH=$HDF5_PREFIX/lib/pkgconfig:$ZLIB_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
+          # Compile for the native architecture only. The python.org interpreter is a
+          # universal2 build, which makes h5py compile every extension for arm64 and
+          # x86_64 in one clang pass. That is only coherent with a universal2 NumPy, and
+          # pip may well pick a single-architecture NumPy wheel - then the headers of one
+          # of the two architectures contradict the complex256 support that h5py probed
+          # from the running interpreter, and its generated h5t.c fails to compile with
+          # "use of undeclared identifier h5py_size_n256".
+          if [ "$RUNNER_ARCH" = 'ARM64' ]; then
+            echo "ARCHFLAGS=-arch arm64" >> "$GITHUB_ENV"
+          else
+            echo "ARCHFLAGS=-arch x86_64" >> "$GITHUB_ENV"
+          fi
 
       - name: 📦 Retrieve the sdist
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
