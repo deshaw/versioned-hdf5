@@ -50,6 +50,77 @@ jobs:
           name: sdist
           path: ./dist/*.tar.gz
 
+  # Install the sdist from scratch, exactly like an end user without a git clone:
+  # nothing is checked out from this repository and every build and runtime dependency
+  # is pulled from PyPI. The only repository file needed, ci/smoke_test.py, is extracted
+  # from the tarball itself, which incidentally proves that the tarball is complete.
+  #
+  # Compiling the sdist needs libhdf5 headers and a shared library (meson:
+  # dependency('hdf5')), so it comes from the OS package manager, and h5py is then built
+  # from its own sdist (--no-binary) so that h5py and versioned-hdf5 link against the
+  # very same libhdf5. The two exchange raw HDF5 object IDs; loading a second private
+  # copy of the library, like the one bundled in the h5py binary wheels, makes the smoke
+  # test fail with nonsensical libhdf5 errors about invalid IDs.
+  #
+  # Windows is not covered: a source install there needs libhdf5 built from sources too
+  # (see ci/get_hdf5_win.py) plus a source build of h5py. Compiling this package on
+  # Windows is already exercised by the wheels job, and files missing from the sdist
+  # break the build on every platform alike.
+  test-sdist:
+    name: "Test sdist: ${{ matrix.os }} py${{ matrix.python-version }}"
+    needs: build-sdist
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - macos-15-intel
+          - macos-latest
+        python-version: ["3.15"]
+    steps:
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install libhdf5 (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y --no-install-recommends libhdf5-dev pkg-config
+
+      - name: Install libhdf5 (macOS)
+        # brew's hdf5 is keg-only, so meson and the h5py build need to be told where
+        # its pkg-config files live.
+        if: runner.os == 'macOS'
+        run: |
+          brew install hdf5 pkg-config zlib
+          HDF5_PREFIX=$(brew --prefix hdf5)
+          ZLIB_PREFIX=$(brew --prefix zlib)
+          echo "PKG_CONFIG_PATH=$HDF5_PREFIX/lib/pkgconfig:$ZLIB_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
+
+      - name: 📦 Retrieve the sdist
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sdist
+          merge-multiple: true # Don't unzip into subdirectory
+          path: sdist/
+
+      - name: 📥 Extract ci/smoke_test.py from the tarball
+        shell: bash
+        run: |
+          sdist=$(find sdist -name '*.tar.gz' -print -quit)
+          # Literal paths (no wildcards) work with both GNU tar and bsdtar.
+          tar -xOf "$sdist" "$(tar -tf "$sdist" | grep '/ci/smoke_test\.py$')" \
+            > smoke_test.py
+
+      - name: 📦 Install the sdist
+        shell: bash
+        run: pip install --no-binary h5py -v ./sdist/*.tar.gz
+
+      - name: 🧪 Smoke test
+        run: python smoke_test.py
+
   build-wheels:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'wheels')
     name: "Build wheels: ${{ matrix.os }} ${{ matrix.arch }} ${{ matrix.python-version }}"
@@ -84,7 +155,7 @@ jobs:
   publish:
     name: Publish Python packages on PyPI
     if: (github.event_name == 'release' && startsWith(github.ref, 'refs/tags')) || (github.event_name == 'workflow_dispatch')
-    needs: [build-sdist, build-wheels]
+    needs: [build-sdist, build-wheels, test-sdist]
     runs-on: ubuntu-latest
     environment:
       name: pypi
