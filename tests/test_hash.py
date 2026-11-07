@@ -4,7 +4,9 @@ See test_hash_legacy_compat.py for cross-checks against the legacy hash algorith
 """
 
 import hashlib
+import os
 import struct
+import sys
 
 import numpy as np
 import pytest
@@ -757,3 +759,22 @@ def test_vlen_encoding_equivalence():
     if HAS_NPYSTRINGS:
         digests.add(hash_chunk(np.array(["é", "a"], dtype="T")))
     assert len(digests) == 1
+
+
+@pytest.mark.api
+@pytest.mark.skipif(sys.platform != "linux", reason="parses /proc/self/maps")
+def test_binds_to_the_already_loaded_libcrypto():
+    """The EVP symbols must come from the libcrypto CPython's _hashlib loaded."""
+    mapped = set()
+    with open("/proc/self/maps") as fh:
+        for line in fh:
+            parts = line.split(None, 5)
+            if len(parts) < 6:
+                continue  # anonymous mapping
+            path = parts[5].strip()
+            # Match on the basename: this worktree itself lives in a directory called
+            # libcrypto, so a substring test on the whole path would match everything.
+            if os.path.basename(path).startswith("libcrypto"):
+                mapped.add(os.path.realpath(path))
+
+    assert len(mapped) == 1
