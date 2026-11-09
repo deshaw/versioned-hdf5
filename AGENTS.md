@@ -167,7 +167,8 @@ corruption or crashes.
 Nothing is vendored for crypto either. `hash.pyx` does not link libcrypto: at import
 time it resolves the six EVP functions it needs from the libcrypto that the installed
 CPython has already loaded through `_hashlib`, via `versioned_hdf5/_libcrypto_dl.h`
-(dlopen/dlsym on POSIX, `GetModuleHandleW`/`GetProcAddress` on Windows). This allows a binary wheel to work across distributions.
+(dlopen/dlsym on POSIX, `GetModuleHandleExW`/`GetProcAddress` on Windows). This allows
+a binary wheel to work across distributions.
 
 For the borrow to work, the extensions must be built against a **byte-identical**
 libhdf5 to the one the published h5py wheel ships, so that auditwheel/delocate compute

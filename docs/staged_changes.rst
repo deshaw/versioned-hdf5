@@ -565,7 +565,7 @@ API interaction
           libcrypto_api [label="libcrypto C API (via Cython)"]
       }
 
-      libcrypto [label="libcrypto (bundled with CPython)"];
+      libcrypto [label="libcrypto (loaded by CPython)"];
       hash_slab -> libcrypto_api -> libcrypto;
 
       user -> DatasetWrapper;
