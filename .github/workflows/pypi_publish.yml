@@ -103,8 +103,8 @@ jobs:
       - name: Smoke test
         shell: bash
         run: |
-          SMOKE_FNAME=$(tar -tzf "dist/*.tar.gz" | grep ci/smoke_test.py)
-          tar -xzvf "dist/*.tar.gz" "$SMOKE_FNAME"
+          SMOKE_FNAME=$(tar -tzf dist/*.tar.gz | grep ci/smoke_test.py)
+          tar -xzvf dist/*.tar.gz "$SMOKE_FNAME"
           python "$SMOKE_FNAME"
 
   build-wheels:
