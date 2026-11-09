@@ -306,9 +306,16 @@ static vh_lib_handle vh_libcrypto_find_loaded(void) {
     HANDLE snapshot;
     MODULEENTRY32W entry;
     vh_lib_handle handle = NULL;
+    int attempt;
 
     vh_libcrypto_path[0] = '\0';
-    snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, GetCurrentProcessId());
+    // Module snapshots can fail transiently while another thread loads or unloads a
+    // DLL. Microsoft documents ERROR_BAD_LENGTH as retryable for TH32CS_SNAPMODULE.
+    for (attempt = 0; attempt < 10; attempt++) {
+        snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, GetCurrentProcessId());
+        if (snapshot != INVALID_HANDLE_VALUE || GetLastError() != ERROR_BAD_LENGTH)
+            break;
+    }
     if (snapshot == INVALID_HANDLE_VALUE)
         return NULL;
 
