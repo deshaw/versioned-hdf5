@@ -83,6 +83,10 @@ typedef HMODULE vh_lib_handle;
 typedef void *vh_lib_handle;
 #endif
 
+static void *vh_libcrypto_symbol(vh_lib_handle handle, const char *name);
+static int vh_libcrypto_has_evp(vh_lib_handle handle);
+static vh_lib_handle vh_libcrypto_validate(vh_lib_handle handle);
+
 static void vh_libcrypto_fail(const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -158,24 +162,51 @@ static vh_lib_handle vh_libcrypto_open(const char *name) {
 
 #if defined(VH_HAVE_DL_ITERATE_PHDR)
 
-// dl_iterate_phdr callback: stop at the first mapped object whose name is libcrypto.
+// Copy candidate names while dl_iterate_phdr holds the loader lock, then open and
+// validate them after it returns. Calling dlopen/dlsym from the callback can deadlock.
+#define VH_LIBCRYPTO_MAX_CANDIDATES 16
+typedef struct {
+    char paths[VH_LIBCRYPTO_MAX_CANDIDATES][VH_LIBCRYPTO_PATH_MAX];
+    size_t count;
+} vh_libcrypto_candidates;
+
 static int vh_libcrypto_phdr_callback(
     struct dl_phdr_info *info, size_t size, void *data) {
+    vh_libcrypto_candidates *candidates = (vh_libcrypto_candidates *)data;
+    char *dst;
+    int n;
+
     (void)size;
-    (void)data;
     // dlpi_name is empty for the main executable
     if (info->dlpi_name == NULL || !vh_libcrypto_is_libcrypto(info->dlpi_name))
         return 0;
-    vh_libcrypto_set_path(info->dlpi_name);
-    return 1;
+    if (candidates->count >= VH_LIBCRYPTO_MAX_CANDIDATES)
+        return 0;
+
+    dst = candidates->paths[candidates->count];
+    n = snprintf(dst, VH_LIBCRYPTO_PATH_MAX, "%s", info->dlpi_name);
+    if (n >= 0 && (size_t)n < VH_LIBCRYPTO_PATH_MAX)
+        candidates->count++;
+    return 0;
 }
 
 static vh_lib_handle vh_libcrypto_find_loaded(void) {
+    vh_libcrypto_candidates candidates;
+    size_t i;
+
     vh_libcrypto_path[0] = '\0';
-    dl_iterate_phdr(vh_libcrypto_phdr_callback, NULL);
-    if (vh_libcrypto_path[0] == '\0')
-        return NULL;
-    return vh_libcrypto_open(vh_libcrypto_path);
+    memset(&candidates, 0, sizeof(candidates));
+    dl_iterate_phdr(vh_libcrypto_phdr_callback, &candidates);
+    for (i = 0; i < candidates.count; i++) {
+        vh_lib_handle handle;
+        if (vh_libcrypto_set_path(candidates.paths[i]) != 0)
+            continue;
+        handle = vh_libcrypto_validate(vh_libcrypto_open(candidates.paths[i]));
+        if (handle != NULL)
+            return handle;
+    }
+    vh_libcrypto_path[0] = '\0';
+    return NULL;
 }
 
 #elif defined(__APPLE__)
@@ -187,12 +218,16 @@ static vh_lib_handle vh_libcrypto_find_loaded(void) {
     vh_libcrypto_path[0] = '\0';
     for (i = 0; i < nimages; i++) {
         const char *name = _dyld_get_image_name(i);
+        vh_lib_handle handle;
         if (name == NULL || !vh_libcrypto_is_libcrypto(name))
             continue;
         if (vh_libcrypto_set_path(name) != 0)
-            return NULL;
-        return vh_libcrypto_open(vh_libcrypto_path);
+            continue;
+        handle = vh_libcrypto_validate(vh_libcrypto_open(name));
+        if (handle != NULL)
+            return handle;
     }
+    vh_libcrypto_path[0] = '\0';
     return NULL;
 }
 
@@ -282,7 +317,7 @@ static vh_lib_handle vh_libcrypto_find_loaded(void) {
     if (Module32FirstW(snapshot, &entry)) {
         do {
             if (vh_libcrypto_is_libcrypto_w(entry.szModule)) {
-                handle = vh_libcrypto_retain(entry.hModule);
+                handle = vh_libcrypto_validate(vh_libcrypto_retain(entry.hModule));
                 if (handle != NULL)
                     break;
             }
@@ -326,14 +361,16 @@ static vh_lib_handle vh_libcrypto_open_known(void) {
     size_t i;
 
     for (i = 0; i < nnames; i++) {
-        vh_lib_handle handle = vh_libcrypto_open(names[i]);
+        vh_lib_handle handle;
+#if !defined(_WIN32)
+        if (vh_libcrypto_set_path(names[i]) != 0)
+            return NULL;
+#endif
+        handle = vh_libcrypto_validate(vh_libcrypto_open(names[i]));
         if (handle == NULL)
             continue;
 #if defined(_WIN32)
         vh_libcrypto_record_module_path(handle);
-#else
-        if (vh_libcrypto_set_path(names[i]) != 0)
-            return NULL;
 #endif
         return handle;
     }
@@ -348,13 +385,56 @@ static void *vh_libcrypto_symbol(vh_lib_handle handle, const char *name) {
 static void *vh_libcrypto_symbol(vh_lib_handle handle, const char *name) {
     return dlsym(handle, name);
 }
+#endif
 
+static void vh_libcrypto_release(vh_lib_handle handle) {
+#if defined(_WIN32)
+    FreeLibrary(handle);
+#else
+    dlclose(handle);
+#endif
+}
+
+// A file named libcrypto need not provide the OpenSSL 1.1+ API we use. In particular,
+// OpenSSL 1.0 has EVP_sha256 but lacks EVP_MD_CTX_new/free. Check the complete required
+// interface before selecting a candidate so an older copy cannot hide a usable one.
+static int vh_libcrypto_has_evp(vh_lib_handle handle) {
+    static const char *const names[] = {
+        "EVP_sha256",
+        "EVP_MD_CTX_new",
+        "EVP_MD_CTX_free",
+        "EVP_DigestInit_ex",
+        "EVP_DigestUpdate",
+        "EVP_DigestFinal_ex",
+    };
+    const size_t nnames = sizeof(names) / sizeof(names[0]);
+    size_t i;
+
+    for (i = 0; i < nnames; i++) {
+        if (vh_libcrypto_symbol(handle, names[i]) == NULL)
+            return 0;
+    }
+    return 1;
+}
+
+// Drop our reference to an incompatible candidate. Successfully selected handles are
+// deliberately retained for the process lifetime.
+static vh_lib_handle vh_libcrypto_validate(vh_lib_handle handle) {
+    if (handle == NULL)
+        return NULL;
+    if (vh_libcrypto_has_evp(handle))
+        return handle;
+    vh_libcrypto_release(handle);
+    return NULL;
+}
+
+#ifndef _WIN32
 // Whether a statically linked OpenSSL is visible in the interpreter's own symbol scope.
 // CPython is linked with --export-dynamic, so such an OpenSSL exports its EVP entry
 // points to RTLD_DEFAULT and no library has to be mapped to use it. RTLD_DEFAULT is
 // NULL on glibc and musl, so this is a probe rather than a handle test.
 static int vh_libcrypto_default_scope_has_evp(void) {
-    return dlsym(RTLD_DEFAULT, "EVP_sha256") != NULL;
+    return vh_libcrypto_has_evp(RTLD_DEFAULT);
 }
 #endif
 

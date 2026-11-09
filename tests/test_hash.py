@@ -5,7 +5,9 @@ See test_hash_legacy_compat.py for cross-checks against the legacy hash algorith
 
 import hashlib
 import os
+import shutil
 import struct
+import subprocess
 import sys
 
 import numpy as np
@@ -778,3 +780,46 @@ def test_binds_to_the_already_loaded_libcrypto():
                 mapped.add(os.path.realpath(path))
 
     assert len(mapped) == 1
+
+
+@pytest.mark.api
+@pytest.mark.skipif(
+    sys.platform != "linux" or shutil.which("cc") is None,
+    reason="requires Linux and a C compiler",
+)
+def test_skips_incompatible_loaded_libcrypto(tmp_path):
+    """An unrelated/older libcrypto must not hide CPython's usable one."""
+    fake = tmp_path / "libcrypto.so.0"
+    subprocess.run(
+        [
+            "cc",
+            "-shared",
+            "-fPIC",
+            "-x",
+            "c",
+            "-",
+            "-Wl,-soname,libcrypto.so.0",
+            "-o",
+            str(fake),
+        ],
+        input="void unrelated(void) {}\n",
+        text=True,
+        check=True,
+    )
+
+    # Use a subprocess so the fake object is loaded before _hashlib, and so this test
+    # cannot affect library resolution in the pytest process itself.
+    script = """
+import ctypes
+import os
+
+ctypes.CDLL(os.environ["VH_FAKE_LIBCRYPTO"])
+from versioned_hdf5.hash import LIBCRYPTO_PATH
+
+assert os.path.realpath(LIBCRYPTO_PATH) != os.path.realpath(
+    os.environ["VH_FAKE_LIBCRYPTO"]
+)
+"""
+    env = os.environ.copy()
+    env["VH_FAKE_LIBCRYPTO"] = str(fake)
+    subprocess.run([sys.executable, "-c", script], env=env, check=True)
