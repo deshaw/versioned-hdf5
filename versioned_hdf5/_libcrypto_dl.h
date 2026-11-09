@@ -558,6 +558,9 @@ static int vh_libcrypto_init(void) {
             snprintf(vh_libcrypto_version, sizeof(vh_libcrypto_version), "%s", text);
     }
 
+    // Candidate probing can recover from a transient error, such as an overlong path
+    // on an earlier candidate. Do not expose that stale error after succeeding.
+    vh_libcrypto_error[0] = '\0';
     vh_libcrypto_state = 1;
     return 0;
 
