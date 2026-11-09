@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
-from versioned_hdf5.hash import LIBCRYPTO_PATH, LIBCRYPTO_VERSION, hash_slab
+from versioned_hdf5.hash import hash_slab
 
 from versioned_hdf5.cytools import np_hsize_t
 from versioned_hdf5.h5py_compat import HAS_NPYSTRINGS
@@ -773,18 +773,15 @@ def test_binds_to_the_already_loaded_libcrypto():
             parts = line.split(None, 5)
             if len(parts) < 6:
                 continue  # anonymous mapping
-            path = parts[5].strip().removesuffix(" (deleted)")
+            path = parts[5].strip()
             # Match on the basename: this worktree itself lives in a directory called
             # libcrypto, so a substring test on the whole path would match everything.
             if os.path.basename(path).startswith("libcrypto"):
                 mapped.add(os.path.realpath(path))
 
-    if not mapped:
-        pytest.skip("OpenSSL is statically linked into the interpreter")
-    # Other dependencies may load their own OpenSSL; require only that the hasher
-    # bound itself to a libcrypto that is actually mapped in this process.
-    assert os.path.realpath(LIBCRYPTO_PATH) in mapped
-    assert LIBCRYPTO_VERSION
+    # Note: strictly hypothetically, this test may fail if another, unrelated library
+    # bound to its own version of libcrypto.
+    assert len(mapped) == 1
 
 
 @pytest.mark.api
