@@ -238,17 +238,33 @@ static void vh_libcrypto_record_module_path(vh_lib_handle handle) {
     vh_libcrypto_set_path(utf8);
 }
 
-// GetModuleHandleW() only ever returns already-loaded modules, which is exactly what we
-// want: Windows offers no way to map a second copy of the same DLL anyway.
+// GetModuleHandleExW() only ever returns already-loaded modules, which is exactly what
+// we want. Unlike GetModuleHandleW(), it also increments the module reference count;
+// we deliberately never release a successfully selected handle, so the DLL cannot be
+// unloaded while our function pointers are in use.
 static vh_lib_handle vh_libcrypto_open(const char *name) {
     wchar_t wide[VH_LIBCRYPTO_PATH_MAX];
+    HMODULE handle = NULL;
 
     if (name == NULL || name[0] == '\0')
         return NULL;
     if (MultiByteToWideChar(
             CP_UTF8, 0, name, -1, wide, (int)VH_LIBCRYPTO_PATH_MAX) == 0)
         return NULL;
-    return GetModuleHandleW(wide);
+    if (!GetModuleHandleExW(0, wide, &handle))
+        return NULL;
+    return handle;
+}
+
+// Retain a module found through Toolhelp enumeration before the snapshot is closed.
+// FROM_ADDRESS makes GetModuleHandleExW() operate on the module containing the handle's
+// base address, rather than looking up a potentially ambiguous module name.
+static vh_lib_handle vh_libcrypto_retain(vh_lib_handle handle) {
+    HMODULE retained = NULL;
+    if (!GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCWSTR)handle, &retained))
+        return NULL;
+    return retained;
 }
 
 static vh_lib_handle vh_libcrypto_find_loaded(void) {
@@ -266,8 +282,9 @@ static vh_lib_handle vh_libcrypto_find_loaded(void) {
     if (Module32FirstW(snapshot, &entry)) {
         do {
             if (vh_libcrypto_is_libcrypto_w(entry.szModule)) {
-                handle = entry.hModule;
-                break;
+                handle = vh_libcrypto_retain(entry.hModule);
+                if (handle != NULL)
+                    break;
             }
         } while (Module32NextW(snapshot, &entry));
     }
