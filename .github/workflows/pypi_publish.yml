@@ -100,12 +100,12 @@ jobs:
         shell: bash
         run: pip install --no-binary h5py -v dist/*.tar.gz
 
-      - name: Extract Smoke test script from the tarball
-        shell: bash
-        run: tar -xzf dist/*.tar.gz ci/smoke_test.py 
-
       - name: Smoke test
-        run: python ci/smoke_test.py
+        shell: bash
+        run: |
+          SMOKE_FNAME=$(tar -tzf "dist/*.tar.gz" | grep ci/smoke_test.py)
+          tar -xzvf "dist/*.tar.gz" "$SMOKE_FNAME"
+          python "$SMOKE_FNAME"
 
   build-wheels:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'wheels')
