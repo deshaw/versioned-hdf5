@@ -340,9 +340,9 @@ static vh_lib_handle vh_libcrypto_find_loaded(void) {
 #endif  // _WIN32
 
 // Last resort, when neither enumeration nor the interpreter's own symbol scope produced
-// a usable library: a CPython whose _hashlib is built against an OpenSSL that is not
-// mapped yet. On POSIX the library is looked up on the loader's search path, so this may
-// map a second copy of OpenSSL.
+// a usable library. On POSIX this can dlopen() by well-known soname, so it may map a
+// second copy of OpenSSL. On Windows GetModuleHandleExW() only finds modules that are
+// already loaded; this is a second chance by name if the Toolhelp snapshot failed.
 static vh_lib_handle vh_libcrypto_open_known(void) {
 #if defined(_WIN32)
     static const char *const names[] = {
@@ -433,6 +433,30 @@ static vh_lib_handle vh_libcrypto_validate(vh_lib_handle handle) {
         return handle;
     vh_libcrypto_release(handle);
     return NULL;
+}
+
+// Release a selected handle unless it is the interpreter's own global symbol scope,
+// which is not owned by us. Successfully selected handles are retained for the process
+// lifetime; this is only used when initialisation fails after the handle was acquired.
+static void vh_libcrypto_release_selected(vh_lib_handle handle) {
+#if defined(_WIN32)
+    vh_libcrypto_release(handle);
+#else
+    if (handle != RTLD_DEFAULT)
+        vh_libcrypto_release(handle);
+#endif
+}
+
+// Clear the resolved entry points after a failed initialisation. Without this, a
+// partially bound EVP interface remains visible to a later retry in a subinterpreter.
+static void vh_libcrypto_clear_symbols(void) {
+    vh_EVP_MD_CTX_new = NULL;
+    vh_EVP_MD_CTX_free = NULL;
+    vh_EVP_sha256 = NULL;
+    vh_EVP_DigestInit_ex = NULL;
+    vh_EVP_DigestUpdate = NULL;
+    vh_EVP_DigestFinal_ex = NULL;
+    vh_OpenSSL_version = NULL;
 }
 
 #ifndef _WIN32
@@ -538,6 +562,8 @@ static int vh_libcrypto_init(void) {
     // OpenSSL resolved from RTLD_DEFAULT reports the interpreter executable, which is
     // where those functions really are.
     if (vh_libcrypto_set_path_from_bound(handle, symbol) != 0) {
+        vh_libcrypto_release_selected(handle);
+        vh_libcrypto_clear_symbols();
         vh_libcrypto_state = -1;
         return -1;
     }
@@ -569,6 +595,8 @@ missing_symbol:
         "symbol %s not found in %s",
         missing,
         vh_libcrypto_path[0] != '\0' ? vh_libcrypto_path : "<unknown libcrypto>");
+    vh_libcrypto_release_selected(handle);
+    vh_libcrypto_clear_symbols();
     vh_libcrypto_state = -1;
     return -1;
 }
