@@ -7,20 +7,23 @@ in a single call with an API that closely mirrors
 Output hashes are identical to the legacy :mod:`versioned_hdf5.hashtable`.
 The invariant is enforced by tests/test_hash_legacy_compat.py.
 
-The actual SHA256 is computed with OpenSSL's EVP API. The EVP entry points are
-resolved at runtime from the ``libcrypto`` shared library that the process has already
-loaded - the one CPython's ``_hashlib`` pulled in, so that there is no build-time
-(headers) or link-time (soname) OpenSSL dependency. See ``_libcrypto_dl.h``.
+The actual SHA256 is computed by the interpreter's :func:`hashlib.sha256` (OpenSSL in
+most CPython builds, CPython's own implementation otherwise), so there is no build-time
+or run-time dependency on OpenSSL. See :class:`_Sha256` for how the per-chunk cost of
+the Python calls is kept low.
 """
-import os
+import hashlib
 
 import numpy as np
 from numpy cimport npy_intp, NPY_MAXDIMS
 
-from libc.stddef cimport size_t
+cimport cython
+from cpython.buffer cimport PyBUF_WRITABLE
+from cpython.bytes cimport PyBytes_AS_STRING
 from libc.stdint cimport uint64_t
 from libc.stdio cimport snprintf
-from libc.string cimport memcpy
+from libc.stdlib cimport free, malloc
+from libc.string cimport memcmp, memcpy
 
 from versioned_hdf5.cytools cimport hsize_t
 
@@ -37,66 +40,125 @@ cdef extern from *:
     """
     uint64_t htole64(uint64_t x)
 
-cdef extern from "_libcrypto_dl.h":
-    # Opaque handle types, defined in the header
-    ctypedef struct vh_EVP_MD_CTX:
+
+cdef enum:
+    # hashlib releases the GIL to hash a buffer of at least this many bytes
+    # (HASHLIB_GIL_MINSIZE in CPython's Modules/hashlib.h). A hash object that received
+    # such a buffer through update() takes a mutex in every later call; the constructor
+    # hashes it without that switch.
+    GIL_MINSIZE = 2048
+    # Inputs below this size are copied into a buffer of BUF_SIZE bytes and passed on
+    # together; larger ones cost less as a call of their own than as a copy.
+    DIRECT_MINSIZE = 512
+    BUF_SIZE = 65536
+
+
+cdef object _sha256 = hashlib.sha256
+# copy() of an initialised object is cheaper than the constructor for small inputs.
+cdef object _sha256_init = hashlib.sha256()
+
+
+@cython.auto_pickle(False)
+cdef class _BufferView:
+    """Read-only bytes at a pointer that the owner sets before each use.
+
+    hashlib releases the buffer before it returns, so one instance serves every chunk
+    and no memoryview is allocated per chunk.
+    """
+    cdef const unsigned char* ptr
+    cdef Py_ssize_t size
+    cdef Py_ssize_t shape[1]
+
+    def __getbuffer__(self, Py_buffer* buf, int flags):
+        if flags & PyBUF_WRITABLE:
+            raise BufferError("read-only buffer")
+        self.shape[0] = self.size
+        buf.buf = <void*>self.ptr
+        buf.obj = self
+        buf.len = self.size
+        buf.readonly = 1
+        buf.itemsize = 1
+        buf.format = NULL
+        buf.ndim = 1
+        buf.shape = self.shape
+        buf.strides = NULL
+        buf.suboffsets = NULL
+        buf.internal = NULL
+
+    def __releasebuffer__(self, Py_buffer* buf):
         pass
-    ctypedef struct vh_EVP_MD:
-        pass
-    ctypedef struct vh_ENGINE:
-        pass
-
-    # Function pointers, resolved by vh_libcrypto_init() from the libcrypto that is
-    # already loaded in the process. Same signatures as <openssl/evp.h>.
-    vh_EVP_MD_CTX* vh_EVP_MD_CTX_new() nogil
-    void vh_EVP_MD_CTX_free(vh_EVP_MD_CTX* ctx) nogil
-    const vh_EVP_MD* vh_EVP_sha256() nogil
-    int vh_EVP_DigestInit_ex(
-        vh_EVP_MD_CTX* ctx, const vh_EVP_MD* type, vh_ENGINE* impl
-    ) nogil
-    int vh_EVP_DigestUpdate(vh_EVP_MD_CTX* ctx, const void* d, size_t cnt) nogil
-    int vh_EVP_DigestFinal_ex(
-        vh_EVP_MD_CTX* ctx, unsigned char* md, unsigned int* s
-    ) nogil
-
-    int vh_libcrypto_init() nogil
-    const char* vh_libcrypto_get_path()
-    const char* vh_libcrypto_get_version()
-    const char* vh_libcrypto_get_error()
 
 
-cdef str _decode_cstr(const char* s):
-    if s == NULL:
-        return ""
-    return s.decode("utf-8", "replace")
+@cython.auto_pickle(False)
+cdef class _Sha256:
+    """SHA256 of a sequence of byte ranges, computed by hashlib.
 
+    An input of DIRECT_MINSIZE bytes or more goes to hashlib without a copy; if it is the
+    first one and has GIL_MINSIZE bytes or more, it is the argument of the constructor.
+    Smaller inputs are copied into a buffer and passed on together, so a small chunk
+    with its shape costs three Python calls: copy(), update() and digest().
+    """
+    cdef object h  # the hashlib object; None until the first call to hashlib
+    cdef _BufferView view
+    cdef unsigned char* buf
+    cdef Py_ssize_t nbuf
+    # str(shape) of the last chunk hashed; most chunks of a slab share it.
+    cdef hsize_t shape[NPY_MAXDIMS]
+    cdef int ndim
+    cdef char shape_str[4096]
+    cdef int shape_len
 
-# Importing _hashlib first guarantees that the libcrypto we resolve the EVP symbols
-# from is already mapped. CPython can be built without it, in which case
-# vh_libcrypto_init() falls back to the well-known sonames, or fails cleanly.
-try:
-    import _hashlib  # noqa: F401
-except ImportError:  # pragma: no cover
-    pass
+    def __cinit__(self):
+        self.buf = <unsigned char*>malloc(BUF_SIZE)
+        if self.buf == NULL:
+            raise MemoryError()
+        self.view = _BufferView()
+        self.h = None
+        self.nbuf = 0
+        self.ndim = -1
 
-if vh_libcrypto_init() != 0:
-    raise ImportError(
-        "versioned_hdf5.hash could not resolve the OpenSSL EVP functions from the "
-        f"libcrypto loaded in this process: {_decode_cstr(vh_libcrypto_get_error())}. "
-        "This requires a CPython whose _hashlib links against a dynamically loaded "
-        "OpenSSL (1.1.x or 3.x) or compatible LibreSSL, or an interpreter that "
-        "exports the EVP functions itself (statically linked OpenSSL), or a "
-        "libcrypto (1.1.x or 3.x) that is already loaded, or that can be opened "
-        "by its well-known soname on POSIX."
-    )
+    def __dealloc__(self):
+        free(self.buf)
 
-# _libcrypto_dl.h derives this from the library the bound symbols live in; it may still
-# contain symlinks where the loader kept them, so resolve them here.
-_libcrypto_path = _decode_cstr(vh_libcrypto_get_path())
-#: Absolute path of the libcrypto library the hasher resolved its EVP symbols from.
-LIBCRYPTO_PATH = os.path.realpath(_libcrypto_path) if _libcrypto_path else ""
-#: OpenSSL_version(OPENSSL_VERSION) of that library, e.g. "OpenSSL 3.5.1 1 Jul 2025".
-LIBCRYPTO_VERSION = _decode_cstr(vh_libcrypto_get_version())
+    cdef int _send(self, const unsigned char* ptr, Py_ssize_t size) except -1:
+        self.view.ptr = ptr
+        self.view.size = size
+        if self.h is not None:
+            self.h.update(self.view)
+        elif size >= GIL_MINSIZE:
+            self.h = _sha256(self.view)
+        else:
+            self.h = _sha256_init.copy()
+            self.h.update(self.view)
+        return 0
+
+    cdef int _flush(self) except -1:
+        if self.nbuf:
+            self._send(self.buf, self.nbuf)
+            self.nbuf = 0
+        return 0
+
+    cdef int update(self, const void* ptr, Py_ssize_t size) except -1:
+        if size >= DIRECT_MINSIZE:
+            self._flush()
+            self._send(<const unsigned char*>ptr, size)
+        elif size:
+            if self.nbuf + size > BUF_SIZE:
+                self._flush()
+            memcpy(self.buf + self.nbuf, ptr, size)
+            self.nbuf += size
+        return 0
+
+    cdef int finish(self, uint64_t* out) except -1:
+        """Write the 32-byte digest to out and start over."""
+        cdef bytes digest
+        self._flush()
+        if self.h is None:
+            self.h = _sha256_init.copy()
+        digest = self.h.digest()
+        memcpy(out, PyBytes_AS_STRING(digest), 32)
+        self.h = None
+        return 0
 
 
 cpdef void hash_slab(
@@ -157,6 +219,7 @@ cpdef void hash_slab(
     cdef hsize_t offset
     cdef hsize_t n_contig
     cdef np.ndarray scratch
+    cdef _Sha256 hasher = _Sha256()
 
     assert src.ndim == ndim
     assert hash_table.shape[1] == 4
@@ -174,7 +237,7 @@ cpdef void hash_slab(
                 idx.append(slice(count[i, j]))
             chunk = src[tuple(idx)]
             _hash_object_chunk(
-                chunk, &hash_table[hash_rows[i], 0], count[i], ndim
+                hasher, chunk, &hash_table[hash_rows[i], 0], count[i], ndim
             )
         return
 
@@ -184,6 +247,7 @@ cpdef void hash_slab(
             is_broadcasted_scalar = False
             break
 
+    # hashlib needs the GIL, but releases it while it hashes 2 kiB or more at a time.
     if is_broadcasted_scalar and src.size > 0:
         # Case 2: the full slab is broadcasted from scalar. However, this could also be
         # a much larger user-provided broadcasted array, which we don't want to
@@ -191,84 +255,86 @@ cpdef void hash_slab(
         # Special case: an empty slab also has all-zero strides, but a None base;
         # fall through to Case 3 instead.
         scratch = np.full(chunk_size, fill_value=src.flat[0], dtype=src.dtype)
-        with nogil:
-            for i in range(nchunks):
-                _hash_chunk_from_ptr(
-                    <const unsigned char*>scratch.data,
-                    &hash_table[hash_rows[i], 0],
-                    count[i],
-                    ndim,
-                    ndim,
-                    itemsize,
-                    scratch.strides,
-                )
+        for i in range(nchunks):
+            _hash_chunk_from_ptr(
+                hasher,
+                <const unsigned char*>scratch.data,
+                &hash_table[hash_rows[i], 0],
+                count[i],
+                ndim,
+                ndim,
+                itemsize,
+                scratch.strides,
+            )
 
     elif src.strides[ndim - 1] != itemsize:
         # Case 3: the innermost axis is strided. Deep-copy each chunk into a chunk-sized
         # scratch buffer and hash it as a contiguous blob.
         scratch = np.empty(chunk_size, dtype=src.dtype)
-        with nogil:
-            for i in range(nchunks):
-                _copy_chunk(
-                    <const unsigned char*>src.data + src.strides[0] * src_start[i],
-                    <unsigned char*>scratch.data,
-                    count[i],
-                    ndim,
-                    itemsize,
-                    src.strides,
-                )
-                _hash_chunk_from_ptr(
-                    <const unsigned char*>scratch.data,
-                    &hash_table[hash_rows[i], 0],
-                    count[i],
-                    ndim,
-                    ndim,
-                    itemsize,
-                    scratch.strides,
-                )
+        for i in range(nchunks):
+            _copy_chunk(
+                <const unsigned char*>src.data + src.strides[0] * src_start[i],
+                <unsigned char*>scratch.data,
+                count[i],
+                ndim,
+                itemsize,
+                src.strides,
+            )
+            _hash_chunk_from_ptr(
+                hasher,
+                <const unsigned char*>scratch.data,
+                &hash_table[hash_rows[i], 0],
+                count[i],
+                ndim,
+                ndim,
+                itemsize,
+                scratch.strides,
+            )
 
     else:
         # Case 4 (general, most common case): Non-object slab, at least C-contiguous
         # along the innermost axis. The other axes may be strided (e.g. stepped or
         # transposed slabs): chunks are then hashed one trailing-contiguous hyperplane
-        # at a time. release GIL for the loop. Each chunk is a slice along axis 0; byte
-        # offset = start * stride0.
-        with nogil:
-            stride0 = src.strides[0]
+        # at a time. Each chunk is a slice along axis 0; byte offset = start * stride0.
+        stride0 = src.strides[0]
 
-            for i in range(nchunks):
-                offset = stride0 * src_start[i]
-                # Count the trailing axes -1..-n that form one C-contiguous run. This must
-                # be tested per chunk: edge chunks with trimmed counts may be non-contiguous
-                # even on a C-contiguous slab.
-                n_contig = 1
-                for j in range(ndim - 2, -1, -1):
-                    if src.strides[j] != src.strides[j + 1] * count[i, j + 1]:
-                        break
-                    n_contig += 1
+        for i in range(nchunks):
+            offset = stride0 * src_start[i]
+            # Count the trailing axes -1..-n that form one C-contiguous run. This must
+            # be tested per chunk: edge chunks with trimmed counts may be non-contiguous
+            # even on a C-contiguous slab.
+            n_contig = 1
+            for j in range(ndim - 2, -1, -1):
+                if src.strides[j] != src.strides[j + 1] * count[i, j + 1]:
+                    break
+                n_contig += 1
 
-                _hash_chunk_from_ptr(
-                    <const unsigned char*>src.data + offset,
-                    &hash_table[hash_rows[i], 0],
-                    count[i],
-                    ndim,
-                    n_contig,
-                    itemsize,
-                    src.strides,
-                )
+            _hash_chunk_from_ptr(
+                hasher,
+                <const unsigned char*>src.data + offset,
+                &hash_table[hash_rows[i], 0],
+                count[i],
+                ndim,
+                n_contig,
+                itemsize,
+                src.strides,
+            )
 
 
-cdef void _hash_shape(vh_EVP_MD_CTX* ctx, hsize_t* shape, int ndim) noexcept nogil:
+cdef int _hash_shape(_Sha256 hasher, hsize_t* shape, int ndim) except -1:
     """Hash `str(tuple(shape))`.
 
     This is done with C snprintf to avoid any Python interaction.
     This is inefficient and convoluted but is necessary to generate
     hashes with DATA_VERSION=4.
     """
-    cdef char shape_buf[4096]
+    cdef char* shape_buf = hasher.shape_str
     cdef int i
     cdef int nchars = 0
     cdef const char* fmt
+
+    if ndim == hasher.ndim and memcmp(shape, hasher.shape, ndim * sizeof(hsize_t)) == 0:
+        return hasher.update(shape_buf, hasher.shape_len)
 
     # Note: 0d arrays are not supported by HDF5
     for i in range(ndim):
@@ -283,12 +349,15 @@ cdef void _hash_shape(vh_EVP_MD_CTX* ctx, hsize_t* shape, int ndim) noexcept nog
 
         nchars += snprintf(
             shape_buf + nchars,
-            sizeof(shape_buf) - nchars,
+            sizeof(hasher.shape_str) - nchars,
             fmt,
             shape[i],
         )
 
-    vh_EVP_DigestUpdate(ctx, shape_buf, nchars)
+    memcpy(hasher.shape, shape, ndim * sizeof(hsize_t))
+    hasher.ndim = ndim
+    hasher.shape_len = nchars
+    return hasher.update(shape_buf, nchars)
 
 
 cdef void _copy_chunk(
@@ -333,6 +402,7 @@ cdef void _copy_chunk(
 
 
 cdef int _hash_chunk_from_ptr(
+    _Sha256 hasher,
     const unsigned char* data_ptr,
     uint64_t* out,
     hsize_t[::1] shape,
@@ -340,12 +410,11 @@ cdef int _hash_chunk_from_ptr(
     hsize_t n_contig,
     hsize_t itemsize,
     npy_intp* strides,
-) except -1 nogil:
+) except -1:
     """Hash a single chunk given a raw pointer and strides.
     The chunk must be not object dtype, not StringDType, not broadcasted, and
     C-contiguous at least along the innermost axis.
     """
-    cdef vh_EVP_MD_CTX* ctx
     cdef hsize_t[NPY_MAXDIMS] outer_idx
     cdef hsize_t outer_total
     cdef hsize_t n_outer
@@ -353,57 +422,44 @@ cdef int _hash_chunk_from_ptr(
     cdef hsize_t offset
     cdef hsize_t j
 
-    ctx = vh_EVP_MD_CTX_new()
-    if ctx == NULL:
-        return -1
-    try:
-        if vh_EVP_DigestInit_ex(ctx, vh_EVP_sha256(), NULL) != 1:
-            return -1
+    if n_contig == ndim:
+        # Single contiguous blob
+        for j in range(ndim):
+            block_size *= shape[j]
+        hasher.update(data_ptr, block_size)
+    else:
+        # The trailing n_contig axes are one contiguous run; hash the chunk as
+        # prod(shape[:n_outer]) contiguous blocks of block_size bytes each,
+        # walking the leading axes in C-order.
+        n_outer = ndim - n_contig
+        outer_total = 1
+        for j in range(ndim - 1, n_outer - 1, -1):
+            block_size *= shape[j]
+        for j in range(n_outer):
+            outer_idx[j] = 0
+            outer_total *= shape[j]
 
-        if n_contig == ndim:
-            # Single contiguous blob
-            for j in range(ndim):
-                block_size *= shape[j]
-            if block_size and vh_EVP_DigestUpdate(ctx, data_ptr, block_size) != 1:
-                return -1
-        else:
-            # The trailing n_contig axes are one contiguous run; hash the chunk as
-            # prod(shape[:n_outer]) contiguous blocks of block_size bytes each,
-            # walking the leading axes in C-order.
-            n_outer = ndim - n_contig
-            outer_total = 1
-            for j in range(ndim - 1, n_outer - 1, -1):
-                block_size *= shape[j]
+        for outer in range(outer_total):
+            # Compute byte offset for current block
+            offset = 0
             for j in range(n_outer):
+                offset += outer_idx[j] * strides[j]
+
+            hasher.update(data_ptr + offset, block_size)
+
+            # Advance the indices of the leading axes
+            for j in range(n_outer - 1, -1, -1):
+                outer_idx[j] += 1
+                if outer_idx[j] < shape[j]:
+                    break
                 outer_idx[j] = 0
-                outer_total *= shape[j]
 
-            for outer in range(outer_total):
-                # Compute byte offset for current block
-                offset = 0
-                for j in range(n_outer):
-                    offset += outer_idx[j] * strides[j]
-
-                if vh_EVP_DigestUpdate(ctx, data_ptr + offset, block_size) != 1:
-                    return -1
-
-                # Advance the indices of the leading axes
-                for j in range(n_outer - 1, -1, -1):
-                    outer_idx[j] += 1
-                    if outer_idx[j] < shape[j]:
-                        break
-                    outer_idx[j] = 0
-
-        _hash_shape(ctx, &shape[0], ndim)
-        if vh_EVP_DigestFinal_ex(ctx, <unsigned char*>out, NULL) != 1:
-            return -1
-    finally:
-        vh_EVP_MD_CTX_free(ctx)
-
-    return 0
+    _hash_shape(hasher, &shape[0], ndim)
+    return hasher.finish(out)
 
 
 cdef void _hash_object_chunk(
+    _Sha256 hasher,
     np.ndarray data,
     uint64_t* out,
     hsize_t[::1] shape,
@@ -413,44 +469,31 @@ cdef void _hash_object_chunk(
 
     Object data forces us to hold the GIL throughout.
     """
-    cdef vh_EVP_MD_CTX* ctx = vh_EVP_MD_CTX_new()
-    if ctx == NULL:
-        raise MemoryError("EVP_MD_CTX_new() failed")
-
     cdef bytes value_b
     cdef uint64_t nbytes_he
     cdef uint64_t nbytes_le
 
-    try:
-        if vh_EVP_DigestInit_ex(ctx, vh_EVP_sha256(), NULL) != 1:
-            raise RuntimeError("OpenSSL SHA256 failed")
+    # Ensure StringDType and object strings produce the same hash
+    # TODO speed this up with native C NumPy APIs
+    if data.dtype.kind == "T":
+        data = data.astype(object)
 
-        # Ensure StringDType and object strings produce the same hash
-        # TODO speed this up with native C NumPy APIs
-        if data.dtype.kind == "T":
-            data = data.astype(object)
+    for value in data.flat:
+        if isinstance(value, str):
+            value_b = value.encode("utf-8")
+        elif isinstance(value, bytes):
+            # Explicitly cast np.bytes_ to its parent class bytes. Cython's
+            # auto-coercion rejects subclasses and would raise TypeError without an
+            # explicit cast.
+            value_b = <bytes>value
+        else:
+            raise ValueError(f"Object array contains unsupported type={type(value)}")
 
-        for value in data.flat:
-            if isinstance(value, str):
-                value_b = value.encode("utf-8")
-            elif isinstance(value, bytes):
-                # Explicitly cast np.bytes_ to its parent class bytes. Cython's
-                # auto-coercion rejects subclasses and would raise TypeError without an
-                # explicit cast.
-                value_b = <bytes>value
-            else:
-                raise ValueError(f"Object array contains unsupported type={type(value)}")
+        nbytes_he = len(value_b)  # host-endian
+        # On x86 and ARM, this is a no-op. On PowerPC, swap endianness
+        nbytes_le = htole64(nbytes_he)  # little-endian
+        hasher.update(&nbytes_le, 8)
+        hasher.update(<const char*>value_b, nbytes_he)
 
-            nbytes_he = len(value_b)  # host-endian
-            # On x86 and ARM, this is a no-op. On PowerPC, swap endianness
-            nbytes_le = htole64(nbytes_he)  # little-endian
-            if vh_EVP_DigestUpdate(ctx, &nbytes_le, 8) != 1:
-                raise RuntimeError("OpenSSL SHA256 failed")
-            if vh_EVP_DigestUpdate(ctx, <const char*>value_b, nbytes_he) != 1:
-                raise RuntimeError("OpenSSL SHA256 failed")
-
-        _hash_shape(ctx, <hsize_t*>data.shape, data.ndim)
-        if vh_EVP_DigestFinal_ex(ctx, <unsigned char*>out, NULL) != 1:
-            raise RuntimeError("OpenSSL SHA256 failed")
-    finally:
-        vh_EVP_MD_CTX_free(ctx)
+    _hash_shape(hasher, <hsize_t*>data.shape, data.ndim)
+    hasher.finish(out)

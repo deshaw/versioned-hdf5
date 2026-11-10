@@ -5,9 +5,7 @@ See test_hash_legacy_compat.py for cross-checks against the legacy hash algorith
 
 import hashlib
 import os
-import shutil
 import struct
-import subprocess
 import sys
 
 import numpy as np
@@ -765,8 +763,11 @@ def test_vlen_encoding_equivalence():
 
 @pytest.mark.api
 @pytest.mark.skipif(sys.platform != "linux", reason="parses /proc/self/maps")
-def test_binds_to_the_already_loaded_libcrypto():
-    """The EVP symbols must come from the libcrypto CPython's _hashlib loaded."""
+def test_no_libcrypto_of_its_own():
+    """versioned-hdf5 must not map a libcrypto next to the one of CPython's _hashlib.
+
+    A CPython with OpenSSL linked in statically (python-build-standalone) maps none.
+    """
     mapped = set()
     with open("/proc/self/maps") as fh:
         for line in fh:
@@ -774,57 +775,11 @@ def test_binds_to_the_already_loaded_libcrypto():
             if len(parts) < 6:
                 continue  # anonymous mapping
             path = parts[5].strip()
-            # Match on the basename: this worktree itself lives in a directory called
-            # libcrypto, so a substring test on the whole path would match everything.
+            # Match on the basename: a substring test on the whole path would also
+            # match any directory whose name contains "libcrypto".
             if os.path.basename(path).startswith("libcrypto"):
                 mapped.add(os.path.realpath(path))
 
     # Note: strictly hypothetically, this test may fail if another, unrelated library
     # bound to its own version of libcrypto.
-    assert len(mapped) == 1
-
-
-@pytest.mark.api
-@pytest.mark.skipif(
-    sys.platform != "linux" or shutil.which("cc") is None,
-    reason="requires Linux and a C compiler",
-)
-def test_skips_incompatible_loaded_libcrypto(tmp_path):
-    """An unrelated/older libcrypto must not hide CPython's usable one."""
-    fake = tmp_path / "libcrypto.so.0"
-    subprocess.run(
-        [
-            "cc",
-            "-shared",
-            "-fPIC",
-            "-x",
-            "c",
-            "-",
-            "-Wl,-soname,libcrypto.so.0",
-            "-o",
-            str(fake),
-        ],
-        input="void unrelated(void) {}\n",
-        text=True,
-        check=True,
-    )
-
-    # Use a subprocess so the fake object is loaded before _hashlib, and so this test
-    # cannot affect library resolution in the pytest process itself.
-    script = """
-import ctypes
-import os
-
-fake = os.environ["VH_FAKE_LIBCRYPTO"]
-ctypes.CDLL(fake)
-from versioned_hdf5.hash import LIBCRYPTO_PATH, LIBCRYPTO_VERSION
-
-bound = os.path.realpath(LIBCRYPTO_PATH)
-assert bound != os.path.realpath(fake), bound
-assert os.path.isabs(bound), bound
-assert os.path.basename(bound).startswith("libcrypto"), bound
-assert LIBCRYPTO_VERSION
-"""
-    env = os.environ.copy()
-    env["VH_FAKE_LIBCRYPTO"] = str(fake)
-    subprocess.run([sys.executable, "-c", script], env=env, check=True)
+    assert len(mapped) <= 1

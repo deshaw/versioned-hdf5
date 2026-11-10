@@ -164,11 +164,9 @@ handles) to each other. Two separate libhdf5 instances would each hold their own
 HDF5's global state, so an ID minted by one would be meaningless to the other →
 corruption or crashes.
 
-Nothing is vendored for crypto either. `hash.pyx` does not link libcrypto: at import
-time it resolves the six EVP functions it needs from the libcrypto that the installed
-CPython has already loaded through `_hashlib`, via `versioned_hdf5/_libcrypto_dl.h`
-(dlopen/dlsym on POSIX, `GetModuleHandleExW`/`GetProcAddress` on Windows). This allows
-a binary wheel to work across distributions.
+Nothing is vendored for crypto either. `hash.pyx` computes SHA256 with the
+interpreter's `hashlib` through the Python C API, so it neither links nor loads
+libcrypto, and a binary wheel works with any CPython build.
 
 For the borrow to work, the extensions must be built against a **byte-identical**
 libhdf5 to the one the published h5py wheel ships, so that auditwheel/delocate compute
