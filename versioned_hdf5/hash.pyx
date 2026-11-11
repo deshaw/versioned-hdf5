@@ -79,6 +79,8 @@ cdef class _Hasher:
 
     def __cinit__(self):
         self.h = _sha256_init.copy()
+        self.scratch = NULL
+        self.capacity = 0
         self.ndim = -1
 
     def __dealloc__(self):
@@ -120,7 +122,9 @@ cdef class _Hasher:
         """Hash size bytes at ptr, without copying them."""
         self.ptr = ptr
         self.size = size
-        self.h.update(self)
+        # Note: CPython API call.
+        # hashlib needs the GIL, but releases it while it hashes 2 kiB or more at a time.
+        self.h.update(self)  
         return 0
 
     cdef int digest(self, const hsize_t* shape, int ndim, uint64_t* out) except -1:
@@ -144,9 +148,13 @@ cdef class _Hasher:
                     "%llu, ",
                     <unsigned long long>shape[i],
                 )
-            nchars -= 1 if ndim == 1 else 2  # "(1,)" vs. "(1, 2)"
-            self.shape_str[nchars] = b")"
-            self.shape_len = nchars + 1
+            if ndim == 1:  # "10, " -> "(10,)"
+                self.shape_str[nchars - 1] = b")"
+                self.shape_len = nchars
+            else:  # "(10, 20, " -> "(10, 20)"
+                self.shape_str[nchars - 2] = b")"
+                self.shape_len = nchars - 1
+
             self.ndim = ndim
             memcpy(self.shape, shape, ndim * sizeof(hsize_t))
 
@@ -224,6 +232,7 @@ cpdef void hash_slab(
     assert len(chunk_size) == ndim
 
     if src.dtype.kind in ("O", "T"):
+        # Object/StringDType -> Python object iteration
         for i in range(nchunks):
             idx = [slice(src_start[i], src_start[i] + count[i, 0])]
             for j in range(1, ndim):
@@ -232,16 +241,15 @@ cpdef void hash_slab(
         return
 
     if src.size > 0 and not any((<object>src).strides):
-        # The slab is broadcasted from a scalar, e.g. the full slab, so all chunks are
-        # views of the same one. Materialize it once, instead of once per chunk.
-        # This could also be a much larger user-provided broadcasted array, which we
-        # don't want to materialize as contiguous all at once.
+        # The slab is broadcasted from a scalar; this could be the full slab or a much
+        # larger user-provided broadcasted array, which we don't want to materialize as
+        # contiguous all at once. All chunks are views of the same one. Materialize it
+        # once, instead of once per chunk.
         src = np.full(chunk_size, fill_value=src.flat[0], dtype=src.dtype)
         stride0 = 0
     else:
         stride0 = src.strides[0]
 
-    # hashlib needs the GIL, but releases it while it hashes 2 kiB or more at a time.
     for i in range(nchunks):
         # Each chunk is a slice along axis 0
         data = <const unsigned char*>src.data + stride0 * <Py_ssize_t>src_start[i]
@@ -259,6 +267,7 @@ cpdef void hash_slab(
             nblocks *= count[i, j]
 
         if n_outer == 0:
+            # Chunk is fully C-contiguous
             hasher.update(data, block)
         elif nblocks * block > 0:
             _hash_blocks(
