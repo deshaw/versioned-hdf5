@@ -9,7 +9,7 @@ The invariant is enforced by tests/test_hash_legacy_compat.py.
 
 The actual SHA256 is computed by the interpreter's :func:`hashlib.sha256` (OpenSSL in
 most CPython builds, CPython's own implementation otherwise), so there is no build-time
-or run-time dependency on OpenSSL. See :class:`_Sha256` for how the per-chunk cost of
+or run-time dependency on OpenSSL. See :class:`_Hasher` for how the per-chunk cost of
 the Python calls is kept low.
 """
 import hashlib
@@ -19,13 +19,17 @@ from numpy cimport npy_intp, NPY_MAXDIMS
 
 cimport cython
 from cpython.buffer cimport PyBUF_WRITABLE
-from cpython.bytes cimport PyBytes_AS_STRING
+from cpython.bytes cimport PyBytes_AS_STRING, PyBytes_GET_SIZE
+from cpython.unicode cimport PyUnicode_AsUTF8AndSize
 from libc.stdint cimport uint64_t
 from libc.stdio cimport snprintf
-from libc.stdlib cimport free, malloc
+from libc.stdlib cimport free, realloc
 from libc.string cimport memcmp, memcpy
 
 from versioned_hdf5.cytools cimport hsize_t
+
+cdef extern from "Python.h":
+    bint PyUnicode_IS_ASCII(object o)
 
 cdef extern from *:
     # libc defines htole64, but it is not available in MacOS. Let's implement our own.
@@ -42,26 +46,43 @@ cdef extern from *:
 
 
 cdef enum:
-    # Inputs below this size are copied into a buffer of BUF_SIZE bytes and passed on
-    # together; larger ones cost less as a call of their own than as a copy.
+    # Strided blocks of at least this many bytes are passed to hashlib one by one;
+    # smaller ones cost less to copy to a contiguous buffer than a Python call each.
     DIRECT_MINSIZE = 512
-    BUF_SIZE = 65536
 
 
-cdef object _sha256 = hashlib.sha256
-# copy() of an initialised object is cheaper than the constructor for small inputs.
+# copy() of an initialised object is cheaper than the constructor
 cdef object _sha256_init = hashlib.sha256()
 
 
 @cython.auto_pickle(False)
-cdef class _BufferView:
-    """Read-only bytes at a pointer that the owner sets before each use.
+cdef class _Hasher:
+    """SHA256 of one chunk at a time, computed by hashlib.
 
-    hashlib releases the buffer before it returns, so one instance serves every chunk
-    and no memoryview is allocated per chunk.
+    The instance itself is the read-only buffer passed to hashlib, pointing at whatever
+    ``ptr`` and ``size`` say at the time of the call. hashlib releases the buffer before
+    it returns, so no memoryview is allocated per chunk.
+
+    The instance also owns a scratch buffer, where the chunks that are too fragmented
+    in memory are assembled before they are hashed.
     """
-    cdef const unsigned char* ptr
+    cdef object h  # the hashlib object of the current chunk
+    cdef const void* ptr
     cdef Py_ssize_t size
+    cdef unsigned char* scratch
+    cdef Py_ssize_t capacity
+    # str(shape) of the last chunk hashed; most chunks of a slab share it.
+    cdef hsize_t[NPY_MAXDIMS] shape
+    cdef int ndim
+    cdef char[NPY_MAXDIMS * 22 + 2] shape_str  # ", " + 20 digits for each axis
+    cdef int shape_len
+
+    def __cinit__(self):
+        self.h = _sha256_init.copy()
+        self.ndim = -1
+
+    def __dealloc__(self):
+        free(self.scratch)
 
     def __getbuffer__(self, Py_buffer* buf, int flags):
         if flags & PyBUF_WRITABLE:
@@ -81,71 +102,58 @@ cdef class _BufferView:
     def __releasebuffer__(self, Py_buffer* buf):
         pass
 
-
-@cython.auto_pickle(False)
-cdef class _Sha256:
-    """SHA256 of a sequence of byte ranges, computed by hashlib.
-
-    An input of DIRECT_MINSIZE bytes or more goes to hashlib without a copy.
-    Smaller inputs are copied into a buffer and passed on together, so a small chunk
-    with its shape costs three Python calls: copy(), update() and digest().
-    """
-    cdef object h  # the hashlib object; None until the first call to hashlib
-    cdef _BufferView view
-    cdef unsigned char* buf
-    cdef Py_ssize_t nbuf
-    # str(shape) of the last chunk hashed; most chunks of a slab share it.
-    cdef hsize_t shape[NPY_MAXDIMS]
-    cdef int ndim
-    cdef char shape_str[4096]
-    cdef int shape_len
-
-    def __cinit__(self):
-        self.buf = <unsigned char*>malloc(BUF_SIZE)
-        if self.buf == NULL:
-            raise MemoryError()
-        self.view = _BufferView()
-        self.h = None
-        self.nbuf = 0
-        self.ndim = -1
-
-    def __dealloc__(self):
-        free(self.buf)
-
-    cdef int _send(self, const unsigned char* ptr, Py_ssize_t size) except -1:
-        self.view.ptr = ptr
-        self.view.size = size
-        if self.h is None:
-            self.h = _sha256_init.copy()
-        self.h.update(self.view)
-        return 0
-
-    cdef int _flush(self) except -1:
-        if self.nbuf:
-            self._send(self.buf, self.nbuf)
-            self.nbuf = 0
+    cdef int reserve(self, Py_ssize_t size) except -1:
+        """Ensure that the scratch buffer holds at least size bytes, preserving its
+        contents.
+        """
+        cdef void* scratch
+        if size > self.capacity:
+            size = max(size, 2 * self.capacity)
+            scratch = realloc(self.scratch, size)
+            if scratch == NULL:
+                raise MemoryError()
+            self.scratch = <unsigned char*>scratch
+            self.capacity = size
         return 0
 
     cdef int update(self, const void* ptr, Py_ssize_t size) except -1:
-        if size >= DIRECT_MINSIZE:
-            self._flush()
-            self._send(<const unsigned char*>ptr, size)
-        elif size:
-            if self.nbuf + size > BUF_SIZE:
-                self._flush()
-            memcpy(self.buf + self.nbuf, ptr, size)
-            self.nbuf += size
+        """Hash size bytes at ptr, without copying them."""
+        self.ptr = ptr
+        self.size = size
+        self.h.update(self)
         return 0
 
-    cdef int finish(self, uint64_t* out) except -1:
-        """Write the 32-byte digest to out and start over."""
+    cdef int digest(self, const hsize_t* shape, int ndim, uint64_t* out) except -1:
+        """Hash ``str(tuple(shape))``, write the 32-byte digest of the chunk to out and
+        start a new chunk.
+
+        The shape is formatted with C snprintf to avoid any Python interaction.
+        This is convoluted but is necessary to generate hashes with DATA_VERSION=4.
+        """
+        cdef int i
+        cdef int nchars = 1
         cdef bytes digest
-        self._flush()
-        if self.h is None:
-            self.h = _sha256_init.copy()
+
+        if ndim != self.ndim or memcmp(shape, self.shape, ndim * sizeof(hsize_t)):
+            # Note: 0d arrays are not supported by HDF5
+            self.shape_str[0] = b"("
+            for i in range(ndim):
+                nchars += snprintf(
+                    self.shape_str + nchars,
+                    sizeof(self.shape_str) - nchars,
+                    "%llu, ",
+                    <unsigned long long>shape[i],
+                )
+            nchars -= 1 if ndim == 1 else 2  # "(1,)" vs. "(1, 2)"
+            self.shape_str[nchars] = b")"
+            self.shape_len = nchars + 1
+            self.ndim = ndim
+            memcpy(self.shape, shape, ndim * sizeof(hsize_t))
+
+        self.update(self.shape_str, self.shape_len)
         digest = self.h.digest()
         memcpy(out, PyBytes_AS_STRING(digest), 32)
-        self.h = None
+        self.h = _sha256_init.copy()
         return 0
 
 
@@ -178,8 +186,9 @@ cpdef void hash_slab(
     ----------
     src:
         The slab to read from; always a NumPy array (a staged slab, or the broadcasted
-        full slab). Slabs that are not C-contiguous along the innermost axis are
-        hashed through a chunk-sized scratch buffer; other axes may be strided.
+        full slab). It may be strided: chunks that are not C-contiguous are
+        hashed one contiguous block at a time, or through a chunk-sized scratch buffer
+        if the blocks are small.
         Note that non-NumPy base slabs (e.g. backed by h5py) are never hashed here;
         their hashes are loaded from disk.
     hash_table:
@@ -199,15 +208,13 @@ cpdef void hash_slab(
         any one row of ``count``.
     """
     cdef hsize_t nchunks = count.shape[0]
-    cdef hsize_t ndim = count.shape[1]
-    cdef hsize_t i, j
-    cdef hsize_t start
-    cdef hsize_t itemsize = src.dtype.itemsize
-    cdef hsize_t stride0
-    cdef hsize_t offset
-    cdef hsize_t n_contig
-    cdef np.ndarray scratch
-    cdef _Sha256 hasher = _Sha256()
+    cdef int ndim = count.shape[1]
+    cdef hsize_t i
+    cdef int j, n_outer
+    cdef Py_ssize_t itemsize = src.dtype.itemsize
+    cdef Py_ssize_t stride0, block, nblocks
+    cdef const unsigned char* data
+    cdef _Hasher hasher = _Hasher()
 
     assert src.ndim == ndim
     assert hash_table.shape[1] == 4
@@ -217,248 +224,113 @@ cpdef void hash_slab(
     assert len(chunk_size) == ndim
 
     if src.dtype.kind in ("O", "T"):
-        # Case 1: Object/StringDType — GIL always held (Python object iteration).
         for i in range(nchunks):
-            offset = src_start[i]
-            idx = [slice(offset, offset + count[i, 0])]
+            idx = [slice(src_start[i], src_start[i] + count[i, 0])]
             for j in range(1, ndim):
                 idx.append(slice(count[i, j]))
-            chunk = src[tuple(idx)]
-            _hash_object_chunk(
-                hasher, chunk, &hash_table[hash_rows[i], 0], count[i], ndim
-            )
+            _hash_object_chunk(hasher, src[tuple(idx)], &hash_table[hash_rows[i], 0])
         return
 
-    cdef bint is_broadcasted_scalar = True
-    for j in range(ndim):
-        if src.strides[j] != 0:
-            is_broadcasted_scalar = False
-            break
-
-    # hashlib needs the GIL, but releases it while it hashes 2 kiB or more at a time.
-    if is_broadcasted_scalar and src.size > 0:
-        # Case 2: the full slab is broadcasted from scalar. However, this could also be
-        # a much larger user-provided broadcasted array, which we don't want to
-        # materialize as contiguous all at once.
-        # Special case: an empty slab also has all-zero strides, but a None base;
-        # fall through to Case 3 instead.
-        scratch = np.full(chunk_size, fill_value=src.flat[0], dtype=src.dtype)
-        for i in range(nchunks):
-            _hash_chunk_from_ptr(
-                hasher,
-                <const unsigned char*>scratch.data,
-                &hash_table[hash_rows[i], 0],
-                count[i],
-                ndim,
-                ndim,
-                itemsize,
-                scratch.strides,
-            )
-
-    elif src.strides[ndim - 1] != itemsize:
-        # Case 3: the innermost axis is strided. Deep-copy each chunk into a chunk-sized
-        # scratch buffer and hash it as a contiguous blob.
-        scratch = np.empty(chunk_size, dtype=src.dtype)
-        for i in range(nchunks):
-            _copy_chunk(
-                <const unsigned char*>src.data + src.strides[0] * src_start[i],
-                <unsigned char*>scratch.data,
-                count[i],
-                ndim,
-                itemsize,
-                src.strides,
-            )
-            _hash_chunk_from_ptr(
-                hasher,
-                <const unsigned char*>scratch.data,
-                &hash_table[hash_rows[i], 0],
-                count[i],
-                ndim,
-                ndim,
-                itemsize,
-                scratch.strides,
-            )
-
+    if src.size > 0 and not any((<object>src).strides):
+        # The slab is broadcasted from a scalar, e.g. the full slab, so all chunks are
+        # views of the same one. Materialize it once, instead of once per chunk.
+        # This could also be a much larger user-provided broadcasted array, which we
+        # don't want to materialize as contiguous all at once.
+        src = np.full(chunk_size, fill_value=src.flat[0], dtype=src.dtype)
+        stride0 = 0
     else:
-        # Case 4 (general, most common case): Non-object slab, at least C-contiguous
-        # along the innermost axis. The other axes may be strided (e.g. stepped or
-        # transposed slabs): chunks are then hashed one trailing-contiguous hyperplane
-        # at a time. Each chunk is a slice along axis 0; byte offset = start * stride0.
         stride0 = src.strides[0]
 
-        for i in range(nchunks):
-            offset = stride0 * src_start[i]
-            # Count the trailing axes -1..-n that form one C-contiguous run. This must
-            # be tested per chunk: edge chunks with trimmed counts may be non-contiguous
-            # even on a C-contiguous slab.
-            n_contig = 1
-            for j in range(ndim - 2, -1, -1):
-                if src.strides[j] != src.strides[j + 1] * count[i, j + 1]:
-                    break
-                n_contig += 1
+    # hashlib needs the GIL, but releases it while it hashes 2 kiB or more at a time.
+    for i in range(nchunks):
+        # Each chunk is a slice along axis 0
+        data = <const unsigned char*>src.data + stride0 * <Py_ssize_t>src_start[i]
 
-            _hash_chunk_from_ptr(
-                hasher,
-                <const unsigned char*>src.data + offset,
-                &hash_table[hash_rows[i], 0],
-                count[i],
-                ndim,
-                n_contig,
-                itemsize,
-                src.strides,
+        # Split the axes into n_outer leading ones and the trailing ones, which form
+        # C-contiguous blocks of `block` bytes. This must be tested per chunk: edge
+        # chunks with trimmed counts may be non-contiguous even on a C-contiguous slab.
+        block = itemsize
+        n_outer = ndim
+        while n_outer > 0 and src.strides[n_outer - 1] == block:
+            n_outer -= 1
+            block *= count[i, n_outer]
+        nblocks = 1
+        for j in range(n_outer):
+            nblocks *= count[i, j]
+
+        if n_outer == 0:
+            hasher.update(data, block)
+        elif nblocks * block > 0:
+            _hash_blocks(
+                hasher, data, &count[i, 0], src.strides, n_outer, nblocks, block
             )
 
+        hasher.digest(&count[i, 0], ndim, &hash_table[hash_rows[i], 0])
 
-cdef int _hash_shape(_Sha256 hasher, hsize_t* shape, int ndim) except -1:
-    """Hash `str(tuple(shape))`.
 
-    This is done with C snprintf to avoid any Python interaction.
-    This is inefficient and convoluted but is necessary to generate
-    hashes with DATA_VERSION=4.
+cdef int _hash_blocks(
+    _Hasher hasher,
+    const unsigned char* src,
+    const hsize_t* shape,
+    const npy_intp* strides,
+    int ndim,
+    Py_ssize_t nblocks,
+    Py_ssize_t block,
+) except -1:
+    """Hash, in C order, the non-empty array of blocks of `block` contiguous bytes
+    each, with the given shape and strides, that starts at src.
+
+    Small blocks are first deep-copied to the scratch buffer, like
+    np.ascontiguousarray() would.
     """
-    cdef char* shape_buf = hasher.shape_str
-    cdef int i
-    cdef int nchars = 0
-    cdef const char* fmt
+    cdef hsize_t[NPY_MAXDIMS] idx
+    cdef Py_ssize_t n_inner = shape[ndim - 1]
+    cdef npy_intp stride_inner = strides[ndim - 1]
+    cdef bint direct = block >= DIRECT_MINSIZE
+    cdef unsigned char* dst = NULL
+    cdef Py_ssize_t i
+    cdef int k
 
-    if ndim == hasher.ndim and memcmp(shape, hasher.shape, ndim * sizeof(hsize_t)) == 0:
-        return hasher.update(shape_buf, hasher.shape_len)
-
-    # Note: 0d arrays are not supported by HDF5
-    for i in range(ndim):
-        if ndim == 1:
-            fmt = "(%llu,)"  # unsigned long long
-        elif i == 0:
-            fmt = "(%llu"
-        elif i == ndim - 1:
-            fmt = ", %llu)"
-        else:
-            fmt = ", %llu"
-
-        nchars += snprintf(
-            shape_buf + nchars,
-            sizeof(hasher.shape_str) - nchars,
-            fmt,
-            shape[i],
-        )
-
-    memcpy(hasher.shape, shape, ndim * sizeof(hsize_t))
-    hasher.ndim = ndim
-    hasher.shape_len = nchars
-    return hasher.update(shape_buf, nchars)
-
-
-cdef void _copy_chunk(
-    const unsigned char* src_ptr,
-    unsigned char* dst,
-    hsize_t[::1] shape,
-    hsize_t ndim,
-    hsize_t itemsize,
-    npy_intp* strides,
-) noexcept nogil:
-    """Deep-copy an edge-trimmed chunk into a C-contiguous scratch buffer.
-
-    nogil, C-friendly equivalent of np.ascontiguousarray().
-    """
-    cdef hsize_t[NPY_MAXDIMS] outer_idx
-    cdef hsize_t outer_total = 1
-    cdef hsize_t inner = shape[ndim - 1]
-    cdef hsize_t outer, k
-    cdef npy_intp offset
-    cdef const unsigned char* src_row
-
+    if not direct:
+        hasher.reserve(nblocks * block)
+        dst = hasher.scratch
     for k in range(ndim - 1):
-        outer_idx[k] = 0
-        outer_total *= shape[k]
+        idx[k] = 0
 
-    for outer in range(outer_total):
-        offset = 0
-        for k in range(ndim - 1):
-            offset += outer_idx[k] * strides[k]
-        src_row = src_ptr + offset
-
-        for k in range(inner):
-            memcpy(dst, src_row + k * strides[ndim - 1], itemsize)
-            dst += itemsize
+    while True:
+        if direct:
+            for i in range(n_inner):
+                hasher.update(src + i * stride_inner, block)
+        else:
+            for i in range(n_inner):
+                memcpy(dst, src + i * stride_inner, block)
+                dst += block
 
         # Advance the indices of the leading axes
         for k in range(ndim - 2, -1, -1):
-            outer_idx[k] += 1
-            if outer_idx[k] < shape[k]:
+            src += strides[k]
+            idx[k] += 1
+            if idx[k] < shape[k]:
                 break
-            outer_idx[k] = 0
+            src -= strides[k] * <npy_intp>shape[k]
+            idx[k] = 0
+        else:
+            break
+
+    if not direct:
+        hasher.update(hasher.scratch, nblocks * block)
+    return 0
 
 
-cdef int _hash_chunk_from_ptr(
-    _Sha256 hasher,
-    const unsigned char* data_ptr,
-    uint64_t* out,
-    hsize_t[::1] shape,
-    hsize_t ndim,
-    hsize_t n_contig,
-    hsize_t itemsize,
-    npy_intp* strides,
-) except -1:
-    """Hash a single chunk given a raw pointer and strides.
-    The chunk must be not object dtype, not StringDType, not broadcasted, and
-    C-contiguous at least along the innermost axis.
-    """
-    cdef hsize_t[NPY_MAXDIMS] outer_idx
-    cdef hsize_t outer_total
-    cdef hsize_t n_outer
-    cdef hsize_t block_size = itemsize
-    cdef hsize_t offset
-    cdef hsize_t j
-
-    if n_contig == ndim:
-        # Single contiguous blob
-        for j in range(ndim):
-            block_size *= shape[j]
-        hasher.update(data_ptr, block_size)
-    else:
-        # The trailing n_contig axes are one contiguous run; hash the chunk as
-        # prod(shape[:n_outer]) contiguous blocks of block_size bytes each,
-        # walking the leading axes in C-order.
-        n_outer = ndim - n_contig
-        outer_total = 1
-        for j in range(ndim - 1, n_outer - 1, -1):
-            block_size *= shape[j]
-        for j in range(n_outer):
-            outer_idx[j] = 0
-            outer_total *= shape[j]
-
-        for outer in range(outer_total):
-            # Compute byte offset for current block
-            offset = 0
-            for j in range(n_outer):
-                offset += outer_idx[j] * strides[j]
-
-            hasher.update(data_ptr + offset, block_size)
-
-            # Advance the indices of the leading axes
-            for j in range(n_outer - 1, -1, -1):
-                outer_idx[j] += 1
-                if outer_idx[j] < shape[j]:
-                    break
-                outer_idx[j] = 0
-
-    _hash_shape(hasher, &shape[0], ndim)
-    return hasher.finish(out)
-
-
-cdef void _hash_object_chunk(
-    _Sha256 hasher,
-    np.ndarray data,
-    uint64_t* out,
-    hsize_t[::1] shape,
-    hsize_t ndim,
-) except *:
+cdef int _hash_object_chunk(_Hasher hasher, np.ndarray data, uint64_t* out) except -1:
     """Hash a single chunk with object dtype or StringDType (variable-width strings).
 
-    Object data forces us to hold the GIL throughout.
+    The chunk is serialized to the scratch buffer of the hasher, as hashing each string
+    on its own would cost two Python calls per string.
     """
-    cdef bytes value_b
-    cdef uint64_t nbytes_he
+    cdef const char* value_ptr
+    cdef Py_ssize_t nbytes
+    cdef Py_ssize_t pos = 0
     cdef uint64_t nbytes_le
 
     # Ensure StringDType and object strings produce the same hash
@@ -467,21 +339,26 @@ cdef void _hash_object_chunk(
         data = data.astype(object)
 
     for value in data.flat:
+        if isinstance(value, str) and not PyUnicode_IS_ASCII(value):
+            # Don't call PyUnicode_AsUTF8AndSize: it would cache the encoded string
+            # for as long as the str object lives.
+            value = value.encode("utf-8")
+
         if isinstance(value, str):
-            value_b = value.encode("utf-8")
+            # ASCII: this is a pointer to the contents of the str object
+            value_ptr = PyUnicode_AsUTF8AndSize(value, &nbytes)
         elif isinstance(value, bytes):
-            # Explicitly cast np.bytes_ to its parent class bytes. Cython's
-            # auto-coercion rejects subclasses and would raise TypeError without an
-            # explicit cast.
-            value_b = <bytes>value
+            value_ptr = PyBytes_AS_STRING(value)
+            nbytes = PyBytes_GET_SIZE(value)
         else:
             raise ValueError(f"Object array contains unsupported type={type(value)}")
 
-        nbytes_he = len(value_b)  # host-endian
+        hasher.reserve(pos + 8 + nbytes)
         # On x86 and ARM, this is a no-op. On PowerPC, swap endianness
-        nbytes_le = htole64(nbytes_he)  # little-endian
-        hasher.update(&nbytes_le, 8)
-        hasher.update(<const char*>value_b, nbytes_he)
+        nbytes_le = htole64(nbytes)
+        memcpy(hasher.scratch + pos, &nbytes_le, 8)
+        memcpy(hasher.scratch + pos + 8, value_ptr, nbytes)
+        pos += 8 + nbytes
 
-    _hash_shape(hasher, <hsize_t*>data.shape, data.ndim)
-    hasher.finish(out)
+    hasher.update(hasher.scratch, pos)
+    return hasher.digest(<hsize_t*>data.shape, data.ndim, out)

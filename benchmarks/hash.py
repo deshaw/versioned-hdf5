@@ -74,15 +74,16 @@ class TimeHashSlabNonContig:
     **layout**
 
     step_outer
-        strided along axis 0, contiguous along the innermost axis (hashed as one
-        EVP_DigestUpdate per row, without any copy)
+        strided along axis 0, contiguous along the innermost axis (hashed one row at a
+        time without any copy, or through a chunk-sized scratch buffer if the rows
+        are small)
     transpose
         transposed slab (chunk-sized scratch buffer path)
     step_inner
         strided along the innermost axis (chunk-sized scratch buffer path)
     broadcast
         read-only broadcasted slab, e.g. the full slab of a StagedChangesArray
-        (chunk-sized scratch buffer path)
+        (materialized once as a single chunk)
     """
 
     params = [["step_outer", "transpose", "step_inner", "broadcast"], CHUNK_SIZES]
