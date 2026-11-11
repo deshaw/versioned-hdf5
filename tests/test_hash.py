@@ -757,3 +757,51 @@ def test_vlen_encoding_equivalence():
     if HAS_NPYSTRINGS:
         digests.add(hash_chunk(np.array(["é", "a"], dtype="T")))
     assert len(digests) == 1
+
+
+# Variable-width strings covering both sides of the ASCII check in _hash_object_chunk,
+# and every CPython internal str representation: compact ASCII, UCS-1 (latin-1),
+# UCS-2 (BMP) and UCS-4 (astral). Several have a UTF-8 size that differs from len(),
+# and two of them contain an embedded NUL.
+UNICODE_VALUES = [
+    "",  # ASCII, empty
+    "a",  # ASCII, 1 UTF-8 byte
+    "ab",  # ASCII, 2 UTF-8 bytes
+    "é",  # UCS-1: 1 char, 2 UTF-8 bytes
+    "☃",  # UCS-2: 1 char, 3 UTF-8 bytes
+    "\U0001d11e",  # 𝄞 UCS-4: 1 char, 4 UTF-8 bytes
+    "e\u0301",  # "é" decomposed: 2 chars, 3 UTF-8 bytes
+    "a\x00b",  # ASCII, with an embedded NUL
+    "☃\x00x",  # non-ASCII, with an embedded NUL
+]
+
+
+@pytest.mark.parametrize("dtype", VLEN_DTYPES)
+def test_vlen_ascii_and_nonascii(dtype):
+    """ASCII strings are hashed in place, pointing at the contents of the str object,
+    while non-ASCII ones are re-encoded to UTF-8 first; either way, the bytes fed to
+    SHA256 are the UTF-8 encoding.
+
+    Regression guard for the ASCII fast path in _hash_object_chunk: a digest taken from
+    the 1, 2 or 4 bytes-per-char buffer inside the str object, or sized with len()
+    instead of the UTF-8 size, or truncated at an embedded NUL, is caught either by the
+    reference implementation inside hash_chunk, or by the comparison against the very
+    same value spelled as bytes. See also test_vlen_encoding_equivalence.
+    """
+    for value in UNICODE_VALUES:
+        assert value == value.encode("utf-8").decode("utf-8")
+        # Whichever branch the str took, it must agree with the bytes spelling
+        assert hash_chunk([value], dtype=dtype) == hash_chunk(
+            [value.encode("utf-8")], dtype=object
+        )
+
+    # No two values above collide. In particular, both spellings of "é" are distinct,
+    # and so are the three values that are each 3 UTF-8 bytes long.
+    digests = {hash_chunk([value], dtype=dtype) for value in UNICODE_VALUES}
+    assert len(digests) == len(UNICODE_VALUES)
+
+    # A chunk that interleaves ASCII and non-ASCII strings: the two branches alternate
+    # within the same scratch buffer, and their offsets must stay in sync.
+    assert hash_chunk(UNICODE_VALUES, dtype=dtype) == hash_chunk(
+        [value.encode("utf-8") for value in UNICODE_VALUES], dtype=object
+    )

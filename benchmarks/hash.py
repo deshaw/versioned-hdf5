@@ -11,8 +11,9 @@ with suppress(ImportError):  # Allow asv-compare vs. older releases
 
 from .common import peak_memory, require_npystrings
 
-# 1 KiB, 64 KiB, 1 MiB of float64 per chunk
-CHUNK_SIZES = [(8, 16), (64, 128), (1024, 1024)]
+# 448 bytes*, 512 bytes, 1 KiB, 16 KiB, 64 KiB, 1 MiB of float64 per chunk
+# *below DIRECT_MINSIZE = 512
+CHUNK_SIZES = [(7, 8), (8, 8), (8, 16), (32, 64), (64, 128), (1024, 1024)]
 # 1 KiB, 64 KiB
 STRING_CHUNK_SIZES = [(8, 16), (64, 128)]
 # Total bytes transferred per benchmark call ~16 MiB
@@ -73,15 +74,16 @@ class TimeHashSlabNonContig:
     **layout**
 
     step_outer
-        strided along axis 0, contiguous along the innermost axis (hashed as one
-        EVP_DigestUpdate per row, without any copy)
+        strided along axis 0, contiguous along the innermost axis (hashed one row at a
+        time without any copy, or through a chunk-sized scratch buffer if the rows
+        are small)
     transpose
         transposed slab (chunk-sized scratch buffer path)
     step_inner
         strided along the innermost axis (chunk-sized scratch buffer path)
     broadcast
         read-only broadcasted slab, e.g. the full slab of a StagedChangesArray
-        (chunk-sized scratch buffer path)
+        (materialized once as a single chunk)
     """
 
     params = [["step_outer", "transpose", "step_inner", "broadcast"], CHUNK_SIZES]

@@ -562,11 +562,10 @@ API interaction
       subgraph cluster_4 {
           label="hash.pyx";
           hash_slab;
-          libcrypto_api [label="libcrypto C API (via Cython)"]
       }
 
-      libcrypto [label="libcrypto (OpenSSL)"];
-      hash_slab -> libcrypto_api -> libcrypto;
+      hashlib [label="hashlib (CPython)"];
+      hash_slab -> hashlib;
 
       user -> DatasetWrapper;
 
