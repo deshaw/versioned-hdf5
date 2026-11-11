@@ -11,8 +11,9 @@ with suppress(ImportError):  # Allow asv-compare vs. older releases
 
 from .common import peak_memory, require_npystrings
 
-# 1 KiB, 64 KiB, 1 MiB of float64 per chunk
-CHUNK_SIZES = [(8, 16), (64, 128), (1024, 1024)]
+# 448 bytes*, 512 bytes, 1 KiB, 16 KiB, 64 KiB, 1 MiB of float64 per chunk
+# *below DIRECT_MINSIZE = 512
+CHUNK_SIZES = [(7, 8), (8, 8), (8, 16), (32, 64), (64, 128), (1024, 1024)]
 # 1 KiB, 64 KiB
 STRING_CHUNK_SIZES = [(8, 16), (64, 128)]
 # Total bytes transferred per benchmark call ~16 MiB

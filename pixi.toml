@@ -70,7 +70,6 @@ setuptools-scm = "=8.1"
 cython = "=3.0.10"
 numpy = "=1.24.4"
 ndindex = "=1.5.1"
-openssl = "=1.1.1s"
 
 [feature.mindeps.target.linux-64.dependencies] # Intel
 # Note: apt on Ubuntu 24.04 (ubuntu-latest github runner) installs

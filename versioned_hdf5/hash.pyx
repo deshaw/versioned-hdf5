@@ -42,11 +42,6 @@ cdef extern from *:
 
 
 cdef enum:
-    # hashlib releases the GIL to hash a buffer of at least this many bytes
-    # (HASHLIB_GIL_MINSIZE in CPython's Modules/hashlib.h). A hash object that received
-    # such a buffer through update() takes a mutex in every later call; the constructor
-    # hashes it without that switch.
-    GIL_MINSIZE = 2048
     # Inputs below this size are copied into a buffer of BUF_SIZE bytes and passed on
     # together; larger ones cost less as a call of their own than as a copy.
     DIRECT_MINSIZE = 512
@@ -67,12 +62,10 @@ cdef class _BufferView:
     """
     cdef const unsigned char* ptr
     cdef Py_ssize_t size
-    cdef Py_ssize_t shape[1]
 
     def __getbuffer__(self, Py_buffer* buf, int flags):
         if flags & PyBUF_WRITABLE:
             raise BufferError("read-only buffer")
-        self.shape[0] = self.size
         buf.buf = <void*>self.ptr
         buf.obj = self
         buf.len = self.size
@@ -80,7 +73,7 @@ cdef class _BufferView:
         buf.itemsize = 1
         buf.format = NULL
         buf.ndim = 1
-        buf.shape = self.shape
+        buf.shape = &self.size
         buf.strides = NULL
         buf.suboffsets = NULL
         buf.internal = NULL
@@ -93,8 +86,7 @@ cdef class _BufferView:
 cdef class _Sha256:
     """SHA256 of a sequence of byte ranges, computed by hashlib.
 
-    An input of DIRECT_MINSIZE bytes or more goes to hashlib without a copy; if it is the
-    first one and has GIL_MINSIZE bytes or more, it is the argument of the constructor.
+    An input of DIRECT_MINSIZE bytes or more goes to hashlib without a copy.
     Smaller inputs are copied into a buffer and passed on together, so a small chunk
     with its shape costs three Python calls: copy(), update() and digest().
     """
@@ -123,13 +115,9 @@ cdef class _Sha256:
     cdef int _send(self, const unsigned char* ptr, Py_ssize_t size) except -1:
         self.view.ptr = ptr
         self.view.size = size
-        if self.h is not None:
-            self.h.update(self.view)
-        elif size >= GIL_MINSIZE:
-            self.h = _sha256(self.view)
-        else:
+        if self.h is None:
             self.h = _sha256_init.copy()
-            self.h.update(self.view)
+        self.h.update(self.view)
         return 0
 
     cdef int _flush(self) except -1:

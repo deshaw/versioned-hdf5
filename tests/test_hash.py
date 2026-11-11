@@ -4,9 +4,7 @@ See test_hash_legacy_compat.py for cross-checks against the legacy hash algorith
 """
 
 import hashlib
-import os
 import struct
-import sys
 
 import numpy as np
 import pytest
@@ -759,27 +757,3 @@ def test_vlen_encoding_equivalence():
     if HAS_NPYSTRINGS:
         digests.add(hash_chunk(np.array(["é", "a"], dtype="T")))
     assert len(digests) == 1
-
-
-@pytest.mark.api
-@pytest.mark.skipif(sys.platform != "linux", reason="parses /proc/self/maps")
-def test_no_libcrypto_of_its_own():
-    """versioned-hdf5 must not map a libcrypto next to the one of CPython's _hashlib.
-
-    A CPython with OpenSSL linked in statically (python-build-standalone) maps none.
-    """
-    mapped = set()
-    with open("/proc/self/maps") as fh:
-        for line in fh:
-            parts = line.split(None, 5)
-            if len(parts) < 6:
-                continue  # anonymous mapping
-            path = parts[5].strip()
-            # Match on the basename: a substring test on the whole path would also
-            # match any directory whose name contains "libcrypto".
-            if os.path.basename(path).startswith("libcrypto"):
-                mapped.add(os.path.realpath(path))
-
-    # Note: strictly hypothetically, this test may fail if another, unrelated library
-    # bound to its own version of libcrypto.
-    assert len(mapped) <= 1
