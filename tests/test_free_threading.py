@@ -1,4 +1,4 @@
-"""Regression tests for free-threaded builds and the single coarse-grained lock."""
+"""Regression tests for free-threaded builds and the locking model."""
 
 from __future__ import annotations
 
@@ -18,6 +18,8 @@ from numpy.testing import assert_equal
 
 from versioned_hdf5 import VersionedHDF5File, wrappers
 from versioned_hdf5._lock import phil
+from versioned_hdf5.backend import create_base_dataset
+from versioned_hdf5.hashtable import Hashtable
 
 
 def _assert_gil_disabled() -> None:
@@ -190,6 +192,99 @@ def test_stage_version_failure_preserves_newer_current_and_parents(
             assert parent == "__first_version__" or parent in versions
         assert_equal(vf["good"]["data"][:], np.arange(4))
         assert_equal(vf["child"]["data"][:], np.arange(4))
+
+
+@pytest.mark.thread_unsafe(
+    reason="spawns a helper thread while holding phil in the calling thread"
+)
+def test_hashtable_in_memory_ops_do_not_take_phil(tmp_path, make_name):
+    """Looking up, inserting and hashing must not wait for h5py's global lock.
+
+    The calling thread holds phil for the whole lifetime of the helper thread. If any
+    of these operations acquired phil, the helper would never finish. The timeout only
+    guards against a hung thread.
+    """
+    known = b"\x01" * 32
+    new = b"\x02" * 32
+    results = []
+    errors = []
+
+    def probe():
+        try:
+            results.append(h[known])
+            h[new] = slice(1, 2)
+            results.append(h[new])
+            results.append(new in h)
+            results.append(len(h))
+            results.append(h.largest_index)
+            results.append(len(h.hash(np.arange(3))))
+            results.append(len(h.inverse()))
+        except BaseException as e:  # pragma: no cover - reported by the main thread
+            errors.append(e)
+
+    with h5py.File(tmp_path / f"{make_name('hashtable')}.h5", "w") as f:
+        VersionedHDF5File(f)
+        create_base_dataset(f, "data", data=np.empty((0,)))
+        h = Hashtable(f, "data")
+        h[known] = slice(0, 1)
+
+        t = threading.Thread(target=probe)
+        with phil:
+            t.start()
+            t.join(timeout=10)
+            blocked = t.is_alive()
+        t.join()
+
+        assert not blocked, "a Hashtable in-memory operation waited for phil"
+        assert not errors, errors
+        assert results[:6] == [slice(0, 1), slice(1, 2), True, 2, 2, 32]
+        h.write()
+        assert len(Hashtable(f, "data")) == 2
+
+
+@pytest.mark.thread_unsafe(
+    reason="spawns threads that deliberately share one Hashtable"
+)
+def test_hashtable_concurrent_inserts(tmp_path, make_name):
+    """Threads sharing one Hashtable must neither lose nor duplicate a slot."""
+    n_threads = 4
+    n_keys = 500
+    errors = []
+    barrier = threading.Barrier(n_threads)
+
+    def worker(i: int):
+        try:
+            barrier.wait(timeout=10)
+            for j in range(n_keys):
+                key = (i * n_keys + j).to_bytes(32, "little")
+                h[key] = slice(j, j + 1)
+                assert h[key] == slice(j, j + 1)
+        except BaseException as e:  # pragma: no cover - reported by the main thread
+            errors.append(e)
+
+    with h5py.File(tmp_path / f"{make_name('hashtable')}.h5", "w") as f:
+        VersionedHDF5File(f)
+        create_base_dataset(f, "data", data=np.empty((0,)))
+        # A small chunk size forces the in-memory table to be reallocated often
+        h = Hashtable(f, "data", chunk_size=16)
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(n_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors, errors
+        n = n_threads * n_keys
+        assert len(h) == h.largest_index == n
+        assert sorted(h._indices.values()) == list(range(n))
+        h.write()
+
+        reloaded = Hashtable(f, "data", chunk_size=16)
+        assert len(reloaded) == n
+        for i in range(n_threads):
+            key = (i * n_keys).to_bytes(32, "little")
+            assert reloaded[key] == slice(0, 1)
 
 
 def test_no_with_phil_decorated_generators():
