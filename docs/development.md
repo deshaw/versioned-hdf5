@@ -83,13 +83,20 @@ runs `test-parallel` on the full suite, including the slow tests; locally use
 ### Thread safety model
 
 h5py serializes all libhdf5 calls with its interpreter-wide, reentrant `phil` lock.
-versioned-hdf5 reuses that same lock (`versioned_hdf5._lock`) as its *only* lock.
-Each public API call, wrapper method, version setup/commit step and cache mutation
-acquires `phil` for the duration of that individual call. `stage_version()` does not
+versioned-hdf5 reuses that same lock (`versioned_hdf5._lock`) wherever a sequence of
+HDF5 calls and state updates must be atomic: each compound public API call, wrapper
+method, version setup/commit step and cache mutation acquires `phil` for the duration
+of that individual call. Pure functions, single attribute accesses, single h5py calls
+and plain delegation take no lock of their own. `stage_version()` does not
 hold `phil` across user-controlled code: setup and commit are separate locked
 critical sections, and staged mutations are individually locked. Direct h5py I/O in
-another thread therefore cannot deadlock behind a versioned-hdf5 context. There is no
-second lock, so there is no lock-order inversion against `phil`. Pure `nogil`
+another thread therefore cannot deadlock behind a versioned-hdf5 context.
+
+The only other lock is the instance-local one that guards the in-memory table of a
+`Hashtable`. It is a leaf lock: no h5py call, and nothing else that can acquire
+`phil`, runs while it is held, so there is no lock-order inversion against `phil`.
+Any new lock must follow the same rule; see the `versioned_hdf5._lock` docstring for
+why the wrappers cannot use per-object locks. Pure `nogil`
 computation in the Cython modules is unchanged. HDF5 work still stays serialized even
 with the GIL off; free-threading allows non-HDF5 work to run concurrently.
 

@@ -66,7 +66,6 @@ class _GroupCache:
 
     __slots__ = ("key", "handle", "groups")
 
-    @with_phil
     def __init__(self, handle: Group) -> None:
         self.key = id(handle)
         self.handle = ref(handle, self._discard)
@@ -247,7 +246,6 @@ class InMemoryGroup(Group):
             text.append(textwrap.indent(repr(item), prefix="  "))
         return "\n".join(text)
 
-    @with_phil
     def _check_committed(self):
         if self._committed:
             namestr = f'"{self.name}"' if self.name is not None else "(anonymous)"
@@ -280,7 +278,6 @@ class InMemoryGroup(Group):
             return self._data[name]
         raise NotImplementedError(f"Cannot handle {type(res)!r}")
 
-    @with_phil
     def get(self, name, default=None):
         try:
             return self[name]
@@ -382,14 +379,12 @@ class InMemoryGroup(Group):
             raise KeyError(f"{name!r} is not in {self}")
 
     @property
-    @with_phil
     def parent(self):
         if self._parent is None:
             return super().parent
         return self._parent
 
     @parent.setter
-    @with_phil
     def parent(self, p):
         self._parent = p
 
@@ -591,7 +586,6 @@ class InMemoryGroup(Group):
         return res
 
     @property
-    @with_phil
     def versioned_root(self) -> InMemoryGroup:
         p = self
         while p._parent is not None:
@@ -651,7 +645,6 @@ class InMemoryGroup(Group):
 
         self._recursion_to_root(dataset_name, cb)
 
-    @with_phil
     def visititems(self, func):
         self._visit("", func)
 
@@ -793,7 +786,6 @@ class FilterDescriptor(Generic[T]):
     def __set_name__(self, owner: type, name: str):
         self.name = name
 
-    @with_phil
     def __get__(self, instance: FiltersMixin | None, owner: type) -> T:
         if instance is None:
             return self  # type: ignore  # getattr on class. Called by Sphinx.
@@ -860,13 +852,11 @@ class InMemoryDataset(BufferMixin, FiltersMixin, Dataset):
         return self._staged_changes
 
     @property
-    @with_phil
     def _buffer(self) -> MutableArrayProtocol:
         """Hook for BufferMixin"""
         return self.staged_changes
 
     @_buffer.setter
-    @with_phil
     def _buffer(self, value: MutableArrayProtocol) -> None:
         """Hook for BufferMixin"""
         assert isinstance(value, StagedChangesArray)
@@ -881,7 +871,6 @@ class InMemoryDataset(BufferMixin, FiltersMixin, Dataset):
         out.writeable = writeable
         return out
 
-    @with_phil
     def __repr__(self) -> str:
         name = posixpath.basename(posixpath.normpath(self.name))
         namestr = '"{}"'.format(name if name != "" else "/")
@@ -893,7 +882,6 @@ class InMemoryDataset(BufferMixin, FiltersMixin, Dataset):
         )
 
     @property
-    @with_phil
     def dtype(self):
         """Override Dataset.dtype to allow hot-swapping
         equivalent dtypes, e.g. NpyStrings <-> object strings
@@ -901,7 +889,6 @@ class InMemoryDataset(BufferMixin, FiltersMixin, Dataset):
         return self.id.raw_data.dtype
 
     @property
-    @with_phil
     def fillvalue(self):
         if self.dtype.kind == "S":
             # h5py reports garbage for fixed-string VDS fillvalues. raw_data holds
@@ -910,27 +897,22 @@ class InMemoryDataset(BufferMixin, FiltersMixin, Dataset):
         return super().fillvalue
 
     @property
-    @with_phil
     def shape(self) -> tuple[int, ...]:
         return self.id.shape
 
     @property
-    @with_phil
     def size(self) -> int:
         return math.prod(self.shape)
 
     @property
-    @with_phil
     def chunks(self) -> tuple[int, ...]:
         return self.id.chunks
 
     @property
-    @with_phil
     def attrs(self):
         return self._attrs
 
     @property
-    @with_phil
     def parent(self) -> InMemoryGroup:  # type: ignore[override]
         return self._parent
 
@@ -1154,12 +1136,10 @@ class DatasetLike:
     parent: InMemoryGroup
 
     @property
-    @with_phil
     def size(self) -> int:
         return math.prod(self.shape)
 
     @property
-    @with_phil
     def fillvalue(self) -> np.generic:
         fv = self._fillvalue
         if fv is None:
@@ -1179,25 +1159,20 @@ class DatasetLike:
         return np.zeros((), dtype=self.dtype)[()]
 
     @property
-    @with_phil
     def ndim(self) -> int:
         return len(self.shape)
 
-    @with_phil
     def __bool__(self) -> bool:
         return bool(self.size)
 
-    @with_phil
     def __len__(self) -> int:
         return self.len()
 
-    @with_phil
     def len(self) -> int:
         """Length of the first axis."""
         assert len(self.shape) > 0  # Scalar datasets blocked upstream
         return self.shape[0]
 
-    @with_phil
     def __repr__(self) -> str:
         name = posixpath.basename(posixpath.normpath(self.name))
         namestr = '"%s"' % (name if name != "" else "/")
@@ -1229,7 +1204,6 @@ class InMemoryArrayDataset(BufferMixin, FiltersMixin, DatasetLike):
     Class that looks like a h5py.Dataset but is backed by an array
     """
 
-    @with_phil
     def __init__(
         self,
         name: str,
@@ -1262,7 +1236,6 @@ class InMemoryArrayDataset(BufferMixin, FiltersMixin, DatasetLike):
         self._buffer = array
 
     @property
-    @with_phil
     def shape(self) -> tuple[int, ...]:  # type: ignore[override]
         return self._buffer.shape
 
@@ -1300,7 +1273,6 @@ class InMemorySparseDataset(BufferMixin, FiltersMixin, DatasetLike):
     Class that looks like a Dataset that has no data (only the fillvalue)
     """
 
-    @with_phil
     def __init__(
         self,
         name: str,
@@ -1334,12 +1306,10 @@ class InMemorySparseDataset(BufferMixin, FiltersMixin, DatasetLike):
         )
 
     @property
-    @with_phil
     def shape(self) -> tuple[int, ...]:  # type: ignore[override]
         return self.staged_changes.shape
 
     @property
-    @with_phil
     def chunks(self) -> tuple[int, ...]:  # type: ignore[override]
         return self.staged_changes.chunk_size
 
@@ -1351,13 +1321,11 @@ class InMemorySparseDataset(BufferMixin, FiltersMixin, DatasetLike):
         return out
 
     @property
-    @with_phil
     def _buffer(self) -> MutableArrayProtocol:
         """Hook for BufferMixin"""
         return self.staged_changes
 
     @_buffer.setter
-    @with_phil
     def _buffer(self, value: MutableArrayProtocol) -> None:
         """Hook for BufferMixin"""
         assert isinstance(value, StagedChangesArray)
@@ -1369,7 +1337,6 @@ class InMemorySparseDataset(BufferMixin, FiltersMixin, DatasetLike):
         BufferMixin.__setitem__(self, index, value)
 
     @classmethod
-    @with_phil
     def from_dataset(cls, dataset, parent=None):
         return cls(
             dataset.name,
@@ -1400,7 +1367,6 @@ class MetadataTransformView(DatasetLike, FiltersMixin):
     _prev_fillvalue: Any
     itemsize_max: int
 
-    @with_phil
     def __init__(
         self,
         name: str,
@@ -1483,11 +1449,9 @@ def _normalize_resize_args(
 class DatasetWrapper(DatasetLike):
     dataset: InMemoryDataset | InMemoryArrayDataset | InMemorySparseDataset
 
-    @with_phil
     def __init__(self, dataset):
         self.dataset = dataset
 
-    @with_phil
     def __getattr__(self, attr):
         return getattr(self.dataset, attr)
 
@@ -1520,7 +1484,6 @@ class DatasetWrapper(DatasetLike):
             attrs=self.dataset.attrs,
         )
 
-    @with_phil
     def __getitem__(self, index):
         return self.dataset.__getitem__(index)
 
@@ -1579,9 +1542,8 @@ class InMemoryDatasetID(h5d.DatasetID):
     @with_phil
     def __init__(self, _id):
         # super __init__ is handled by DatasetID.__cinit__ automatically
-        with phil:
-            sid = self.get_space()
-            self._shape = sid.get_simple_extent_dims()
+        sid = self.get_space()
+        self._shape = sid.get_simple_extent_dims()
 
         attr = h5a.open(self, b"raw_data")
         htype = h5t.py_create(attr.dtype)
@@ -1605,12 +1567,10 @@ class InMemoryDatasetID(h5d.DatasetID):
         raise NotImplementedError("Resizing an InMemoryDataset other than via resize()")
 
     @property
-    @with_phil
     def shape(self):
         return self._shape
 
     @shape.setter
-    @with_phil
     def shape(self, size):
         self._shape = size
 

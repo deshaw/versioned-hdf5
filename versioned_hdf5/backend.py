@@ -427,7 +427,6 @@ def _sc_hash_table_to_data_v4(
     return out
 
 
-@with_phil
 def _raw_data_as_base_slab(raw_data: Dataset, dtype: np.dtype):
     """Return `raw_data`, to be used as a base slab of a StagedChangesArray of the
     given dtype.

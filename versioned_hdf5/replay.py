@@ -468,7 +468,6 @@ def _is_empty(f: VersionedHDF5File, name: str, version: str) -> bool:
     return f["_version_data/versions"][version][name].len() == 0
 
 
-@with_phil
 def _exists_in_version(f: VersionedHDF5File, name: str, version: str) -> bool:
     """Check if a dataset exists in a given version.
 
@@ -645,7 +644,6 @@ def delete_versions(
     gc.collect()
 
 
-@with_phil
 def _get_parent(versions, version_name):
     return versions[version_name].attrs["prev_version"]
 

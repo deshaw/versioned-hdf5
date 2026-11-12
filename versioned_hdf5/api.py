@@ -140,18 +140,15 @@ class VersionedHDF5File:
         VersionedHDF5File._instances.add(self)
 
     @property
-    @with_phil
     def _versions(self):
         """Shorthand reference to the versions group of the file."""
         return self.f["_version_data"]["versions"]
 
     @property
-    @with_phil
     def _version_data(self):
         return self.f["_version_data"]
 
     @property
-    @with_phil
     def closed(self):
         if self._closed:
             return self._closed
@@ -160,7 +157,6 @@ class VersionedHDF5File:
         return self._closed
 
     @property
-    @with_phil
     def current_version(self):
         """
         The current version.
@@ -178,7 +174,6 @@ class VersionedHDF5File:
         self._version_cache.clear()
 
     @property
-    @with_phil
     def data_version_identifier(self) -> str:
         """Return the data version identifier.
 
@@ -196,7 +191,6 @@ class VersionedHDF5File:
         return self.f["_version_data/versions"].attrs.get("data_version", 1)
 
     @data_version_identifier.setter
-    @with_phil
     def data_version_identifier(self, version: int):
         """Set the data version identifier for the current file.
 
