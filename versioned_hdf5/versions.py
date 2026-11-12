@@ -282,11 +282,8 @@ def _rollback_staged_version(f, version_name, fallback_current) -> None:
     if current == version_name:
         current = _as_text(fallback_current)
     if not current or current == version_name or current not in versions:
+        # failed_parent is always a surviving version: see above
         current = failed_parent
-    if not current or current == version_name or current not in versions:
-        current = "__first_version__"
-    if current == version_name or current not in versions:
-        current = next(name for name in versions if name != version_name)
 
     for child_name, child in list(versions.items()):
         if child_name in {version_name, "__first_version__"}:

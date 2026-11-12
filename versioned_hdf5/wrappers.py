@@ -206,8 +206,6 @@ class InMemoryGroup(Group):
         def file_id(obj: object) -> object | None:
             hid = getattr(obj, "id", None)
             if hid is None:
-                hid = getattr(getattr(obj, "f", None), "id", None)
-            if hid is None:
                 return None
             with suppress(AttributeError, ValueError, RuntimeError):
                 return h5i.get_file_id(hid)
