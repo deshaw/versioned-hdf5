@@ -37,11 +37,6 @@ class Hashtable(MutableMapping):
     hash_function = hashlib.sha256
     hash_size = hash_function().digest_size
 
-    # No process-wide instance cache: an @lru_cache on __new__ used to hand the
-    # very same Hashtable object to every thread that asked for the same (f, name),
-    # and __init__ then reinitialised that shared object underneath other threads.
-    # Each Hashtable is private to its caller; phil serialises its HDF5 writes.
-
     @with_phil
     def __init__(self, f, name, *, chunk_size=None, hash_table_name="hash_table"):
         from .backend import DEFAULT_CHUNK_SIZE
@@ -184,11 +179,9 @@ class Hashtable(MutableMapping):
         """
         return {Slice(*s).reduce(): h for h, s in self.hash_table}
 
-    @with_phil
     def __enter__(self):
         return self
 
-    @with_phil
     def __exit__(self, exc_type, exc_value, traceback):
         if exc_type is not None:
             return
@@ -276,10 +269,8 @@ class Hashtable(MutableMapping):
     def __delitem__(self, key):
         raise NotImplementedError
 
-    @with_phil
     def __iter__(self):
         return iter(self._indices)
 
-    @with_phil
     def __len__(self):
         return len(self._indices)
