@@ -789,10 +789,10 @@ class FilterDescriptor(Generic[T]):
     name: str
     __slots__ = ("default", "name")
 
-        def __init__(self, default: T):
+    def __init__(self, default: T):
         self.default = default
 
-        def __set_name__(self, owner: type, name: str):
+    def __set_name__(self, owner: type, name: str):
         self.name = name
 
     @with_phil
@@ -1603,7 +1603,7 @@ class InMemoryDatasetID(h5d.DatasetID):
         dcpl.get_fill_value(fillvalue_a)
         self.fillvalue = fillvalue_a[0]
 
-        def set_extent(self, shape):
+    def set_extent(self, shape):
         raise NotImplementedError("Resizing an InMemoryDataset other than via resize()")
 
     @property
@@ -1616,7 +1616,7 @@ class InMemoryDatasetID(h5d.DatasetID):
     def shape(self, size):
         self._shape = size
 
-        def write(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
+    def write(self, mspace, fspace, arr_obj, mtype=None, dxpl=None):
         raise NotImplementedError(
             "Writing to an InMemoryDataset other than via __setitem__"
         )
