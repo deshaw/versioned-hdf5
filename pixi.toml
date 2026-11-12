@@ -196,15 +196,15 @@ packaging = "*"
 
 [feature.test.tasks]
 test = { cmd = "pytest", depends-on = ["editable-install"] }
-# Run the whole configured test suite (including doctests) four times, once per
-# thread. Tests that genuinely cannot run in parallel are marked thread_unsafe and
-# still execute, on a single thread. Do not add -k, --skip-thread-unsafe or a test
-# subset here: every test must be exercised.
 
 [feature.test-nogil.dependencies]
 pytest-run-parallel = "*"
 
 [feature.test-nogil.tasks]
+# Run the whole configured test suite (including doctests) four times, once per
+# thread. Tests that genuinely cannot run in parallel are marked thread_unsafe and
+# still execute, on a single thread. Do not add -k, --skip-thread-unsafe or a test
+# subset here: every test must be exercised.
 test-parallel = { cmd = "pytest --parallel-threads 4", depends-on = ["editable-install"] }
 
 [feature.filters.dependencies]

@@ -39,6 +39,7 @@ You can choose among the following:
 | `h5py-dev`  | 3.15   | latest | latest      | git tip   | latest  |                                                 |
 
 *Note:* hdf5 2.0 is not available in conda-forge and is untested.
+
 *Note:* hdf5plugin has no cp315t build, so `py315t` cannot install it and the tests
 needing third-party filters skip there.
 

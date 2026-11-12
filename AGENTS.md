@@ -136,10 +136,11 @@ symlinks `<name>.pyx -> <name>.py` at build time so meson can compile them. **Ed
 Cython compile flags (`versioned_hdf5/meson.build`) disable `boundscheck`, `wraparound`
 and `initializedcheck`, and enable `cdivision=True`. The root `meson.build` additionally
 sets the project-wide `-X freethreading_compatible=True` for all five compiled modules
-(including `slicetools.pyx`), guarded on Cython >=3.1 so `mindeps` (3.0.10) still builds. The bounds flags are only valid
-because the code never uses negative indices; `cdivision` only because the operands of
-every `/` and `%` were audited to have matching signs. If Cython code behaves
-differently from the pure-Python execution, comment out `cdivision` first to diagnose.
+(including `slicetools.pyx`), guarded on Cython >=3.1 so `mindeps` (3.0.10) still
+builds. The bounds flags are only valid because the code never uses negative indices;
+`cdivision` only because the operands of every `/` and `%` were audited to have
+matching signs. If Cython code behaves differently from the pure-Python execution,
+comment out `cdivision` first to diagnose.
 
 ## Linting and CI
 
