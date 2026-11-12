@@ -17,10 +17,12 @@ import h5py
 import ndindex
 import numpy as np
 
+from versioned_hdf5._lock import phil, with_phil
 from versioned_hdf5.backend import CORRUPT_DATA_VERSIONS, DATA_VERSION, initialize
 from versioned_hdf5.hashtable import Hashtable
 from versioned_hdf5.slicetools import spaceid_to_slice
 from versioned_hdf5.versions import (
+    _rollback_staged_version,
     all_versions,
     commit_version,
     create_version_group,
@@ -83,6 +85,7 @@ class VersionedHDF5File:
 
     _instances: ClassVar[WeakSet[VersionedHDF5File]] = WeakSet()
 
+    @with_phil
     def __init__(self, f):
         self.f = f
         if "_version_data" not in f:
@@ -165,6 +168,7 @@ class VersionedHDF5File:
         return self._versions.attrs["current_version"]
 
     @current_version.setter
+    @with_phil
     def current_version(self, version_name):
         set_current_version(self.f, version_name)
         self._version_cache.clear()
@@ -197,6 +201,7 @@ class VersionedHDF5File:
         """
         self.f["_version_data/versions"].attrs["data_version"] = version
 
+    @with_phil
     def _committed_version_group(self, version: str) -> h5py.Group | InMemoryGroup:
         """Return a committed version group, wrapped so that it cannot be written to.
 
@@ -213,6 +218,7 @@ class VersionedHDF5File:
             return g
         return InMemoryGroup(g._id, self.f, _committed=True)
 
+    @with_phil
     def get_version_by_name(self, version):
         if version.startswith("/"):
             raise ValueError(
@@ -228,10 +234,12 @@ class VersionedHDF5File:
 
         return self._committed_version_group(version)
 
+    @with_phil
     def get_version_by_timestamp(self, timestamp, exact=False):
         version = get_version_by_timestamp(self.f, timestamp, exact=exact)
         return self._committed_version_group(version)
 
+    @with_phil
     def __getitem__(self, item):
         if self.closed:
             raise ValueError("File is closed")
@@ -257,6 +265,7 @@ class VersionedHDF5File:
         else:
             raise KeyError(f"Don't know how to get the version for {item!r}")
 
+    @with_phil
     def __delitem__(self, item):
         """
         Delete a version
@@ -314,29 +323,56 @@ class VersionedHDF5File:
         timestamp, be aware that no consistency checks are made to ensure that
         version timestamps are linear or not duplicated.
 
+        Library calls made while this context is open are individually serialized
+        by h5py's global lock. The context body itself is not wrapped in that lock,
+        so direct h5py I/O from another thread can proceed.
+
         """
-        if self.closed:
-            raise ValueError("File is closed")
-        old_current = self.current_version
-        group = create_version_group(self.f, version_name, prev_version=prev_version)
+        # Do not hold phil across user code: h5py acquires it around individual
+        # calls, and a worker thread doing direct HDF5 work must not deadlock.
+        # Setup, cleanup, commit, wrapper methods and cache updates below are
+        # individually protected by @with_phil or explicit with-phil blocks.
+        with phil:
+            if self.closed:
+                raise ValueError("File is closed")
+            old_current = self.current_version
+            group = create_version_group(
+                self.f, version_name, prev_version=prev_version
+            )
+            version_name = group.name.rsplit("/", 1)[1]
 
         try:
             yield group
-            group.close()
-            commit_version(
-                group,
-                group.datasets(),
-                make_current=make_current,
-                chunks=group._chunks,
-                filters=group._filters,
-                timestamp=timestamp,
-            )
-        except:
-            delete_version(self.f, version_name, old_current)
+        except BaseException:
+            with phil:
+                _rollback_staged_version(self.f, version_name, old_current)
             raise
+        else:
+            # Commit and rollback share one phil section: other library calls cannot
+            # observe a failed version as current or create a child of it.
+            with phil:
+                current_before_commit = old_current
+                try:
+                    current_before_commit = self.current_version
+                    group.close()
+                    commit_version(
+                        group,
+                        group.datasets(),
+                        make_current=make_current,
+                        chunks=group._chunks,
+                        filters=group._filters,
+                        timestamp=timestamp,
+                    )
+                except BaseException:
+                    _rollback_staged_version(
+                        self.f, version_name, current_before_commit
+                    )
+                    raise
         finally:
-            self._version_cache.clear()
+            with phil:
+                self._version_cache.clear()
 
+    @with_phil
     def close(self):
         """
         Make sure the VersionedHDF5File object is no longer reachable.
@@ -350,6 +386,7 @@ class VersionedHDF5File:
             del self.f
         self._closed = True
 
+    @with_phil
     def __repr__(self):
         """
         Prints friendly status information.
@@ -363,6 +400,7 @@ class VersionedHDF5File:
                 f'<VersionedHDF5File object "{self.f.filename}" (mode {self.f.mode})>'
             )
 
+    @with_phil
     def rebuild_hashtables(self):
         """Delete and rebuild *all* existing hashtables for the raw datasets."""
 
@@ -370,6 +408,7 @@ class VersionedHDF5File:
 
         self._rebuild_hashtables(data_groups)
 
+    @with_phil
     def _find_all_data_groups(self):
         # Find all data groups excluding '/_version_data/versions'
         data_groups = []
@@ -378,12 +417,14 @@ class VersionedHDF5File:
                 data_groups.extend(self._find_data_groups(group))
         return data_groups
 
+    @with_phil
     def _rebuild_hashtables(self, data_groups):
         """Rebuild the hashtables in data_groups."""
         for group in data_groups:
             del self.f[group.name]["hash_table"]
             Hashtable.from_versions_traverse(self.f, group.name)
 
+    @with_phil
     def _find_data_groups(self, node: h5py.Group) -> list[h5py.Group]:
         """Find all groups containing datasets that are descendents of the given node.
 
@@ -415,6 +456,7 @@ class VersionedHDF5File:
             if data_group["raw_data"].dtype.kind == "O":
                 yield data_group
 
+    @with_phil
     def rebuild_object_dtype_hashtables(self):
         """Find all dtype='O' data groups and rebuild their hashtables."""
         logger.info(
@@ -423,6 +465,7 @@ class VersionedHDF5File:
         self._rebuild_hashtables(self._find_object_dtype_data_groups())
         self.f["_version_data"]["versions"].attrs["data_version"] = DATA_VERSION
 
+    @with_phil
     def get_diff(
         self, name: str, version1: str, version2: str
     ) -> dict[tuple[slice, ...], tuple[np.ndarray, ...]]:
@@ -472,6 +515,7 @@ class VersionedHDF5File:
             self._get_chunks(name, version2),
         )
 
+    @with_phil
     def _get_chunks(
         self,
         name: str,
@@ -500,6 +544,7 @@ class VersionedHDF5File:
 
         return slices
 
+    @with_phil
     def _diff_data(
         self,
         v1: str,
@@ -562,6 +607,7 @@ class VersionedHDF5File:
         return diff
 
     @property
+    @with_phil
     def versions(self) -> list[str]:
         """Return the names of the version groups in the file.
 
