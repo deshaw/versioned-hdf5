@@ -413,7 +413,6 @@ def _data_v4_to_sc_hash_table(hash_table: Dataset, chunk_size0: int) -> np.ndarr
     return hashes
 
 
-@with_phil
 def _sc_hash_table_to_data_v4(
     hashes: np.ndarray,
     starts: np.ndarray,

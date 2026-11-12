@@ -273,8 +273,7 @@ class Hashtable(MutableMapping):
             self._indices[key] = self.largest_index
             self.largest_index += 1
 
-    @with_phil
-    def __delitem__(self, key):
+        def __delitem__(self, key):
         raise NotImplementedError
 
     @with_phil

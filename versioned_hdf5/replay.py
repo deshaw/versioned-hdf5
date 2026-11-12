@@ -809,12 +809,10 @@ def modify_metadata(
         del newf[newf.name]
 
 
-@with_phil
 def _normalize_path(path: str) -> str:
     return path if path.endswith("/") else path + "/"
 
 
-@with_phil
 def _replace_prefix(path: str, name1: str, name2: str) -> str:
     """Replace the prefix name1 with name2 in path"""
     name1 = _normalize_path(name1)
