@@ -807,8 +807,8 @@ def test_vlen_ascii_and_nonascii(dtype):
     )
 
 
-# DIRECT_MINSIZE = 512; on top of that there are 8 bytes for string size
-@pytest.mark.parametrize("nchars", [503, 504, 512, 513, 520, 521])
+# DIRECT_MINSIZE = 1024; on top of that there are 8 bytes for string size
+@pytest.mark.parametrize("nchars", [1015, 1016, 1023, 1024, 1025, 1032, 1033])
 @pytest.mark.parametrize("dirty_buffer", [False, True])
 @pytest.mark.parametrize("dtype", VLEN_DTYPES)
 def test_vlen_long_strings(dtype, nchars, dirty_buffer):
@@ -819,6 +819,6 @@ def test_vlen_long_strings(dtype, nchars, dirty_buffer):
 @pytest.mark.parametrize("dtype", VLEN_DTYPES)
 def test_vlen_many_reallocs(dtype):
     """Trigger repeated realloc's on the scratch buffer, up to ~3 MiB"""
-    # Note: DIRECT_MINSIZE = 512; keep individual strings smaller than that
-    values = ["a" * (i % 500) for i in range(10_000)]
+    # Note: DIRECT_MINSIZE = 1024; keep individual strings smaller than that
+    values = ["a" * (i % 1000) for i in range(10_000)]
     hash_chunk(values, dtype=dtype)

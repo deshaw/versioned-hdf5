@@ -49,7 +49,7 @@ cdef enum:
     # smaller ones cost less to copy to a contiguous buffer than a Python call each.
     # This also controls the minimum size of a single point of a variable-width string
     # that will be serialized without a copy to the scratch buffer.
-    DIRECT_MINSIZE = 512
+    DIRECT_MINSIZE = 1024
 
 # copy() of an initialised object is cheaper than the constructor
 cdef object _sha256_init = hashlib.sha256()
@@ -340,7 +340,7 @@ cdef int _hash_object_chunk(_Hasher hasher, np.ndarray data, uint64_t* out) exce
 
     The scratch buffer can grow up to twice the size of the largest chunk that doesn't
     contain strings longer than DIRECT_MINSIZE, i.e.
-    points_per_chunk * 2 * (DIRECT_MINSIZE + 8) bytes or points_per_chunk * 1040 bytes.
+    points_per_chunk * 2 * (DIRECT_MINSIZE + 8) bytes or points_per_chunk * 2064 bytes.
     """
     cdef const char* value_ptr
     cdef Py_ssize_t nbytes
