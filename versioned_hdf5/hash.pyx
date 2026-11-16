@@ -44,12 +44,12 @@ cdef extern from *:
     """
     uint64_t htole64(uint64_t x)
 
-
 cdef enum:
     # Strided blocks of at least this many bytes are passed to hashlib one by one;
     # smaller ones cost less to copy to a contiguous buffer than a Python call each.
+    # This also controls the minimum size of a single point of a variable-width string
+    # that will be serialized without a copy to the scratch buffer.
     DIRECT_MINSIZE = 512
-
 
 # copy() of an initialised object is cheaper than the constructor
 cdef object _sha256_init = hashlib.sha256()
@@ -335,7 +335,12 @@ cdef int _hash_object_chunk(_Hasher hasher, np.ndarray data, uint64_t* out) exce
     """Hash a single chunk with object dtype or StringDType (variable-width strings).
 
     The chunk is serialized to the scratch buffer of the hasher, as hashing each string
-    on its own would cost two Python calls per string.
+    on its own would cost two Python calls per string. Strings of at least DIRECT_MINSIZE
+    are serialized directly.
+
+    The scratch buffer can grow up to twice the size of the largest chunk that doesn't
+    contain strings longer than DIRECT_MINSIZE, i.e.
+    points_per_chunk * 2 * (DIRECT_MINSIZE + 8) bytes or points_per_chunk * 1040 bytes.
     """
     cdef const char* value_ptr
     cdef Py_ssize_t nbytes
@@ -362,12 +367,21 @@ cdef int _hash_object_chunk(_Hasher hasher, np.ndarray data, uint64_t* out) exce
         else:
             raise ValueError(f"Object array contains unsupported type={type(value)}")
 
-        hasher.reserve(pos + 8 + nbytes)
         # On x86 and ARM, this is a no-op. On PowerPC, swap endianness
         nbytes_le = htole64(nbytes)
-        memcpy(hasher.scratch + pos, &nbytes_le, 8)
-        memcpy(hasher.scratch + pos + 8, value_ptr, nbytes)
-        pos += 8 + nbytes
 
-    hasher.update(hasher.scratch, pos)
+        if nbytes >= DIRECT_MINSIZE:
+            hasher.reserve(pos + 8)
+            memcpy(hasher.scratch + pos, &nbytes_le, 8)
+            hasher.update(hasher.scratch, pos + 8)
+            hasher.update(value_ptr, nbytes)
+            pos = 0
+        else:
+            hasher.reserve(pos + 8 + nbytes)
+            memcpy(hasher.scratch + pos, &nbytes_le, 8)
+            memcpy(hasher.scratch + pos + 8, value_ptr, nbytes)
+            pos += 8 + nbytes
+
+    if pos:
+        hasher.update(hasher.scratch, pos)
     return hasher.digest(<hsize_t*>data.shape, data.ndim, out)
