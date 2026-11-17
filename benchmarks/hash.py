@@ -11,10 +11,15 @@ with suppress(ImportError):  # Allow asv-compare vs. older releases
 
 from .common import peak_memory, require_npystrings
 
-# 1 KiB, 64 KiB, 1 MiB of float64 per chunk
-CHUNK_SIZES = [(8, 16), (64, 128), (1024, 1024)]
-# 1 KiB, 64 KiB
-STRING_CHUNK_SIZES = [(8, 16), (64, 128)]
+CHUNK_SIZES = [
+    (8, 16),  # 1 KiB; hashlib does not release the GIL
+    (16, 16),  # 2 KiB; triggers special code path to hold the GIL (HASHLIB_GIL_MINSIZE)
+    (16, 32),  # 4 KiB; hashlib releases the GIL
+    (32, 64),  # 16KiB; hashlib releases the GIL
+    (64, 128),  # 64 KiB; in TimeHashSlabNonContig[step_outer] it triggers special code
+    # path that skip intermediate copy (DIRECT_MINSIZE)
+    (256, 512),  # 1 MiB; same as above
+]
 # Total bytes transferred per benchmark call ~16 MiB
 TOTAL_BYTES = 16 * 1024 * 1024 // 8
 
@@ -73,15 +78,16 @@ class TimeHashSlabNonContig:
     **layout**
 
     step_outer
-        strided along axis 0, contiguous along the innermost axis (hashed as one
-        EVP_DigestUpdate per row, without any copy)
+        strided along axis 0, contiguous along the innermost axis (hashed one row at a
+        time without any copy, or through a chunk-sized scratch buffer if the rows
+        are small)
     transpose
         transposed slab (chunk-sized scratch buffer path)
     step_inner
         strided along the innermost axis (chunk-sized scratch buffer path)
     broadcast
         read-only broadcasted slab, e.g. the full slab of a StagedChangesArray
-        (chunk-sized scratch buffer path)
+        (materialized once as a single chunk)
     """
 
     params = [["step_outer", "transpose", "step_inner", "broadcast"], CHUNK_SIZES]
@@ -130,8 +136,9 @@ class TimeHashSlabStrings:
 
     params = [
         ["O", "T"],
-        [8, 64, 256],
-        STRING_CHUNK_SIZES,
+        [8, 64, 256, 2048],  # Note: 2048 exceeds DIRECT_MINSIZE
+        # (1 KiB, 64 KiB) worth of pointers only
+        [(8, 16), (64, 128)],
     ]
     param_names = ["dtype", "max_nchars", "chunk_size"]
 
