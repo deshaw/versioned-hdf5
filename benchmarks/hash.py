@@ -11,12 +11,15 @@ with suppress(ImportError):  # Allow asv-compare vs. older releases
 
 from .common import peak_memory, require_npystrings
 
-# 1 KiB, 16 KiB, 64 KiB, 1 MiB of float64 per chunk.
-# In the step_outer layout of TimeHashSlabNonContig, the inner block of a chunk is its
-# second axis times 8 bytes, so the last two sizes straddle DIRECT_MINSIZE = 1024.
-CHUNK_SIZES = [(8, 16), (32, 64), (64, 128), (1024, 1024)]
-# 1 KiB, 64 KiB
-STRING_CHUNK_SIZES = [(8, 16), (64, 128)]
+CHUNK_SIZES = [
+    (8, 16),  # 1 KiB; hashlib does not release the GIL
+    (16, 16),  # 2 KiB; triggers special code path to hold the GIL (HASHLIB_GIL_MINSIZE)
+    (16, 32),  # 4 KiB; hashlib releases the GIL
+    (32, 64),  # 16KiB; hashlib releases the GIL
+    (64, 128),  # 64 KiB; in TimeHashSlabNonContig[step_outer] it triggers special code
+    # path that skip intermediate copy (DIRECT_MINSIZE)
+    (256, 512),  # 1 MiB; same as above
+]
 # Total bytes transferred per benchmark call ~16 MiB
 TOTAL_BYTES = 16 * 1024 * 1024 // 8
 
@@ -133,8 +136,9 @@ class TimeHashSlabStrings:
 
     params = [
         ["O", "T"],
-        [8, 64, 256],
-        STRING_CHUNK_SIZES,
+        [8, 64, 256, 2048],  # Note: 2048 exceeds DIRECT_MINSIZE
+        # (1 KiB, 64 KiB) worth of pointers only
+        [(8, 16), (64, 128)],
     ]
     param_names = ["dtype", "max_nchars", "chunk_size"]
 

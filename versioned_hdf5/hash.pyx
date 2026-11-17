@@ -50,6 +50,9 @@ cdef enum:
     # This also controls the minimum size of a single point of a variable-width string
     # that will be serialized without a copy to the scratch buffer.
     DIRECT_MINSIZE = 1024
+    # hashlib releases the GIL for an update() of this many bytes or more, and from then
+    # on locks a mutex and releases the GIL for every update() of the same object.
+    HASHLIB_GIL_MINSIZE = 2048
 
 # copy() of an initialised object is cheaper than the constructor
 cdef object _sha256_init = hashlib.sha256()
@@ -119,12 +122,28 @@ cdef class _Hasher:
         return 0
 
     cdef int update(self, const void* ptr, Py_ssize_t size) except -1:
-        """Hash size bytes at ptr, without copying them."""
-        self.ptr = ptr
-        self.size = size
-        # Note: CPython API call.
-        # hashlib needs the GIL, but releases it while it hashes 2 kiB or more at a time.
-        self.h.update(self)  
+        """Hash size bytes at ptr, without copying them.
+
+        Up to twice HASHLIB_GIL_MINSIZE, two calls below it cost less than switching
+        the hashlib object to its mutex for the rest of the chunk.
+        """
+        cdef Py_ssize_t half
+
+        if HASHLIB_GIL_MINSIZE <= size < 2 * HASHLIB_GIL_MINSIZE:
+            # TODO this code branch has no performance benefit with Python >=3.15
+            half = size // 2
+            self.ptr = ptr
+            self.size = half
+            # CPython API call; does not release the GIL
+            self.h.update(self)
+            self.ptr = <const unsigned char*>ptr + half
+            self.size = size - half
+        else:
+            self.ptr = ptr
+            self.size = size
+
+        # CPython API call; releases the GIL when size >= 2 * HASHLIB_GIL_MINSIZE
+        self.h.update(self)
         return 0
 
     cdef int digest(self, const hsize_t* shape, int ndim, uint64_t* out) except -1:
