@@ -105,7 +105,7 @@ py.extension_module(
     'hash.pyx',
     install: true,
     subdir: 'versioned_hdf5',
-    dependencies: compiled_deps + [dependency('openssl')],
+    dependencies: compiled_deps,
     cython_args: cython_args,
     include_directories: [npy_include_path],
 )

@@ -162,8 +162,11 @@ rely at runtime on the libhdf5 bundled in the installed h5py wheel (RPATH points
 and h5py run in the same process and pass raw HDF5 object IDs (file/dataset/dataspace
 handles) to each other. Two separate libhdf5 instances would each hold their own copy of
 HDF5's global state, so an ID minted by one would be meaningless to the other →
-corruption or crashes. (libcrypto, used by `hash.pyx`, is the exception: h5py does not
-ship it, so it stays vendored.)
+corruption or crashes.
+
+Nothing is vendored for crypto either. `hash.pyx` computes SHA256 with the
+interpreter's `hashlib` through the Python C API, so it neither links nor loads
+libcrypto, and a binary wheel works with any CPython build.
 
 For the borrow to work, the extensions must be built against a **byte-identical**
 libhdf5 to the one the published h5py wheel ships, so that auditwheel/delocate compute
