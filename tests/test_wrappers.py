@@ -53,6 +53,27 @@ def test_InMemoryArrayDataset(h5file):
     assert dataset.size == 100
 
 
+def test_InMemoryArrayDataset_iter_is_lazy(h5file):
+    class CountingArray(np.ndarray):
+        reads = 0
+
+        def __getitem__(self, index):
+            self.reads += 1
+            return super().__getitem__(index)
+
+    group = h5file.create_group("group")
+    parent = InMemoryGroup(group.id, h5file)
+    array = np.arange(5).view(CountingArray)
+    dataset = InMemoryArrayDataset("data", array, parent=parent)
+
+    iterator = iter(dataset)
+    assert array.reads == 0
+    assert next(iterator) == 0
+    assert array.reads == 1
+    assert next(iterator) == 1
+    assert array.reads == 2
+
+
 def test_InMemoryArrayDataset_enlarge(h5file):
     group = h5file.create_group("group")
     parent = InMemoryGroup(group.id, h5file)

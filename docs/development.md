@@ -33,10 +33,72 @@ You can choose among the following:
 | `py313`     | 3.13   | latest | latest      | latest    | latest  |                                                 |
 | `py314`     | 3.14   | latest | latest      | latest    | latest  |                                                 |
 | `py315`     | 3.15   | latest | latest      | latest    | latest  |                                                 |
+| `py314t`    | 3.14t  | latest | latest      | latest    | latest  | Free-threaded, GIL disabled                     |
+| `py315t`    | 3.15t  | wheel  | latest      | sdist     | latest  | Free-threaded, GIL disabled, h5py from sources  |
 | `default`   | 3.14   | latest | latest      | latest    | latest  |                                                 |
 | `h5py-dev`  | 3.15   | latest | latest      | git tip   | latest  |                                                 |
 
 *Note:* hdf5 2.0 is not available in conda-forge and is untested.
+
+*Note:* hdf5plugin has no cp315t build, so `py315t` cannot install it and the tests
+needing third-party filters skip there.
+
+## Free-threaded environments
+
+`py314t` and `py315t` use conda-forge `python-freethreading` pinned to the matching
+major.minor version (3.14 / 3.15), so the interpreter starts with the GIL disabled.
+conda-forge has no `cp315t` builds of h5py or numpy, so `py315t` also installs numpy's
+free-threaded wheel and builds h5py from its sdist against conda-forge's hdf5; its
+environment therefore sets `no-default-feature = true`.
+
+These environments must **not** set `PYTHON_GIL=0`. Importing a compiled extension
+that does not declare `Py_mod_gil` re-enables the GIL and makes CPython emit a
+`RuntimeWarning`; `filterwarnings = ["error"]` in `pyproject.toml` turns that warning
+into a pytest failure. `PYTHON_GIL=0` suppresses both the warning and the GIL
+re-enable, so a non-conforming extension would go completely unnoticed.
+`tests/test_free_threading.py` also asserts `not sys._is_gil_enabled()`, which catches
+a re-enable that happened before pytest installed its warning filters (for example in
+an entry-point plugin), and the root `conftest.py` checks again at session end. All
+five Cython modules are compiled with `-X freethreading_compatible=True` (see below).
+
+hdf5plugin needs no scrutiny here: it ships no CPython extension module, only
+`libh5*.so` filter plugins that libhdf5 `dlopen`s directly, so it cannot re-enable the
+GIL. `py314t` installs it; `py315t` cannot, as conda-forge has no cp315t build.
+
+Both environments run the normal `test` task and an additional parallel test task:
+
+```bash
+pixi r -e py314t test-parallel
+```
+
+`test-parallel` runs the whole configured test suite (including doctests) with
+`pytest --parallel-threads 4`. Tests that genuinely cannot run concurrently are marked
+`thread_unsafe` / listed in `thread_unsafe_fixtures` and still execute on one thread.
+Shared fixture files are thread-unique via `make_name()` in `tests/conftest.py`.
+
+CI runs `smoke`, `test -v` and `test-parallel -v` for both `py314t` and `py315t`. CI
+runs `test-parallel` on the full suite, including the slow tests; locally use
+`pixi r -e py314t test-parallel -m 'not slow'` while iterating.
+
+### Thread safety model
+
+h5py serializes all libhdf5 calls with its interpreter-wide, reentrant `phil` lock.
+versioned-hdf5 reuses that same lock (`versioned_hdf5._lock`) wherever a sequence of
+HDF5 calls and state updates must be atomic: each compound public API call, wrapper
+method, version setup/commit step and cache mutation acquires `phil` for the duration
+of that individual call. Pure functions, single attribute accesses, single h5py calls
+and plain delegation take no lock of their own. `stage_version()` does not
+hold `phil` across user-controlled code: setup and commit are separate locked
+critical sections, and staged mutations are individually locked. Direct h5py I/O in
+another thread therefore cannot deadlock behind a versioned-hdf5 context.
+
+The only other lock is the instance-local one that guards the in-memory table of a
+`Hashtable`. It is a leaf lock: no h5py call, and nothing else that can acquire
+`phil`, runs while it is held, so there is no lock-order inversion against `phil`.
+Any new lock must follow the same rule; see the `versioned_hdf5._lock` docstring for
+why the wrappers cannot use per-object locks. Pure `nogil`
+computation in the Cython modules is unchanged. HDF5 work still stays serialized even
+with the GIL off; free-threading allows non-HDF5 work to run concurrently.
 
 ## Editable install
 

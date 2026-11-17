@@ -15,6 +15,7 @@ from h5py.h5i import get_name
 from ndindex import ChunkSize, Slice, Tuple
 from ndindex.ndindex import NDIndex
 
+from versioned_hdf5._lock import with_phil
 from versioned_hdf5.api import VersionedHDF5File
 from versioned_hdf5.backend import (
     DEFAULT_CHUNK_SIZE,
@@ -43,6 +44,7 @@ from versioned_hdf5.wrappers import (
 logger = logging.getLogger(__name__)
 
 
+@with_phil
 def recreate_dataset(f, name, newf, callback=None):
     """
     Recreate dataset from all versions into `newf`
@@ -180,6 +182,7 @@ def recreate_dataset(f, name, newf, callback=None):
             gc.unfreeze()
 
 
+@with_phil
 def tmp_group(f):
     """
     Create a temporary group in `f` for use with :func:`recreate_dataset`.
@@ -202,6 +205,7 @@ def tmp_group(f):
 
 # See InMemoryDataset.fillvalue. In h5py3 variable length strings use None
 # for the h5py fillvalue, but require a string fillvalue for NumPy.
+@with_phil
 def _get_np_fillvalue(data: Dataset) -> Any:
     """Get the fillvalue for an empty dataset.
 
@@ -231,6 +235,7 @@ def _get_np_fillvalue(data: Dataset) -> Any:
     return np.zeros((), dtype=data.dtype)[()]
 
 
+@with_phil
 def _recreate_raw_data(
     f: VersionedHDF5File | File,
     name: str,
@@ -314,6 +319,7 @@ def _recreate_raw_data(
     return raw_data_chunks_map
 
 
+@with_phil
 def _delete_tmp_raw_data(f: File, name: str):
     """Delete _tmp_raw_data if it exists in the file.
 
@@ -328,6 +334,7 @@ def _delete_tmp_raw_data(f: File, name: str):
         del f["_version_data"][name]["_tmp_raw_data"]
 
 
+@with_phil
 def _recreate_hashtable(f, name, raw_data_chunks_map, tmp=False):
     """
     Recreate the hashtable for the dataset f, with only the new chunks in the
@@ -357,6 +364,7 @@ def _recreate_hashtable(f, name, raw_data_chunks_map, tmp=False):
         f["_version_data"][name].move("_tmp_hash_table", "hash_table")
 
 
+@with_phil
 def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False):
     """
     Recreate every virtual dataset `name` in the versions `versions` according
@@ -437,6 +445,7 @@ def _recreate_virtual_dataset(f, name, versions, raw_data_chunks_map, tmp=False)
             group.move(tmp_path, name)
 
 
+@with_phil
 def _is_empty(f: VersionedHDF5File, name: str, version: str) -> bool:
     """Return True if the dataset at the given version is empty, False otherwise.
 
@@ -479,6 +488,7 @@ def _exists_in_version(f: VersionedHDF5File, name: str, version: str) -> bool:
     return name in f["_version_data/versions"][version]
 
 
+@with_phil
 def _all_extant_are_empty(
     f: VersionedHDF5File, name: str, versions: Iterable[str]
 ) -> bool:
@@ -507,6 +517,7 @@ def _all_extant_are_empty(
     )
 
 
+@with_phil
 def _delete_dataset(f: VersionedHDF5File, name: str, versions_to_delete: Iterable[str]):
     """Delete the given dataset from the versions."""
     version_data = f["_version_data"]
@@ -537,6 +548,7 @@ def _delete_dataset(f: VersionedHDF5File, name: str, versions_to_delete: Iterabl
     _recreate_virtual_dataset(f, name, versions_to_keep, raw_data_chunks_map)
 
 
+@with_phil
 def _walk(g: HLObject, prefix: str = "") -> list[str]:
     """Traverse the object tree, returning all `raw_data` datasets.
 
@@ -567,6 +579,7 @@ def _walk(g: HLObject, prefix: str = "") -> list[str]:
     return datasets
 
 
+@with_phil
 def delete_versions(
     f: VersionedHDF5File | File, versions_to_delete: str | Iterable[str]
 ):
@@ -639,6 +652,7 @@ def _get_parent(versions, version_name):
 delete_version = delete_versions
 
 
+@with_phil
 def modify_metadata(
     f,
     dataset_name,
@@ -804,6 +818,7 @@ def _replace_prefix(path: str, name1: str, name2: str) -> str:
     return name2 + path[len(name1) :]
 
 
+@with_phil
 def _replace_attrs_prefix(dataset: Dataset, name1: str, name2: str) -> None:
     """Replace the prefix name1 with name2 in every string attribute of dataset
     that holds an absolute path, e.g. the 'raw_data' attribute of a version dataset.
@@ -813,6 +828,7 @@ def _replace_attrs_prefix(dataset: Dataset, name1: str, name2: str) -> None:
             dataset.attrs[k] = _replace_prefix(v, name1, name2)
 
 
+@with_phil
 def swap(old: InMemoryGroup, new: InMemoryGroup) -> None:
     """
     Swap every dataset in old with the corresponding one in new
@@ -876,8 +892,13 @@ def swap(old: InMemoryGroup, new: InMemoryGroup) -> None:
                     v = _replace_prefix(v, old.name, new.name)
                 new[name].attrs[k] = v
         else:
-            # Invalidate any InMemoryGroups that point to these groups
-            InMemoryGroup._invalidate_named(get_name(old.id), get_name(new.id))
+            # Invalidate any InMemoryGroups that point to these groups. Restrict
+            # this to caches of the same underlying HDF5 file: group paths repeat
+            # across files, so invalidating every cache would discard another
+            # thread's staged wrappers.
+            InMemoryGroup._invalidate_named(
+                get_name(old.id), get_name(new.id), handles=(old, new)
+            )
             old.move(name, posixpath.join(new.name, name + "__tmp"))
             new.move(name, posixpath.join(old.name, name))
             new.move(name + "__tmp", name)

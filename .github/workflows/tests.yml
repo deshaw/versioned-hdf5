@@ -35,6 +35,8 @@ jobs:
           - py313 # Python 3.13
           - py314 # Python 3.14
           - py315 # Python 3.15
+          - py314t # Python 3.14 free-threaded (GIL disabled)
+          - py315t # Python 3.15 free-threaded, h5py built from sdist
           - h5py-dev # Python 3.15, h5py git tip (from sources)
         include:
           # Minimum dependencies on other platforms. The versions of hdf5 and h5py
@@ -90,3 +92,9 @@ jobs:
 
       - name: Run Tests
         run: pixi r -e ${{ matrix.env }} test -v
+
+      - name: Run Tests in parallel (free-threaded)
+        # Both free-threaded environments run the whole suite normally (above) and
+        # again under pytest-run-parallel with 4 threads.
+        if: matrix.env == 'py314t' || matrix.env == 'py315t'
+        run: pixi r -e ${{ matrix.env }} test-parallel -v

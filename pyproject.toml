@@ -124,6 +124,32 @@ markers = [
   "setup_args : kwargs for setup fixture.",
   "slow: slow tests",
   "api: api smoke tests",
+  # Registered here as well as by pytest-run-parallel itself, so that serial runs
+  # in environments without the plugin do not warn about unknown markers.
+  "parallel_threads(n): run a test with n threads (pytest-run-parallel)",
+  "parallel_threads_limit(n): run a test with at most n threads",
+  "force_parallel_threads(n): run a test with exactly n threads",
+  "iterations(n): run a test n times in each thread",
+  "thread_unsafe: run a test on one thread, with a reason= kwarg",
+]
+# pytest-run-parallel resolves fixtures once and shares them between all worker
+# threads. These fixtures create HDF5 objects during setup, in the main thread.
+thread_unsafe_fixtures = [
+  "any_dataset",
+  "premade_group",
+  "legacy_hash",
+  # caplog is not in pytest-run-parallel's default list; its handler and record
+  # list are process-wide and shared by all worker threads.
+  "caplog",
+]
+# Plugin auto-detects monkeypatch/caplog/mock/gc.collect; these process-global
+# operations are not in its default blocklist.
+thread_unsafe_functions = [
+  "gc.freeze",
+  "gc.unfreeze",
+  "gc.get_freeze_count",
+  "warnings.catch_warnings",
+  "warnings.simplefilter",
 ]
 filterwarnings = ["error"] # Fail on all unhandled warnings
 

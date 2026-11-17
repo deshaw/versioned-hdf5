@@ -20,11 +20,12 @@ from weakref import ReferenceType, WeakValueDictionary, ref
 
 import numpy as np
 from h5py import Dataset, Empty, Group, h5a, h5d, h5g, h5i, h5r, h5s, h5t, string_dtype
-from h5py._hl.base import guess_dtype, phil, with_phil
+from h5py._hl.base import guess_dtype
 from h5py._hl.selections import guess_shape
 from ndindex import Tuple, ndindex
 from numpy.typing import ArrayLike, DTypeLike
 
+from versioned_hdf5._lock import phil, with_phil
 from versioned_hdf5.backend import (
     DEFAULT_CHUNK_SIZE,
     Filters,
@@ -70,11 +71,13 @@ class _GroupCache:
         self.handle = ref(handle, self._discard)
         self.groups = WeakValueDictionary()
 
+    @with_phil
     def _discard(self, _ref: ReferenceType[Group]) -> None:
         """Drop the cache of a handle that is being garbage collected."""
         if InMemoryGroup._caches.get(self.key) is self:
             del InMemoryGroup._caches[self.key]
 
+    @with_phil
     def invalidate(self) -> None:
         """Forget everything that was read from the file, both in the live instances
         and in the cache, so that it is read again on next access.
@@ -107,6 +110,7 @@ class InMemoryGroup(Group):
     _initialized: bool
     _committed: bool
 
+    @with_phil
     def __new__(cls, bind: h5g.GroupID, handle: Group, *, _committed: bool = False):
         # Make sure each group only corresponds to one InMemoryGroup instance per Python
         # file handle. Otherwise a new instance would lose track of any datasets or
@@ -120,6 +124,7 @@ class InMemoryGroup(Group):
         cache.groups[bind] = obj
         return obj
 
+    @with_phil
     def __init__(self, bind: h5g.GroupID, handle: Group, *, _committed: bool = False):  # noqa: ARG002
         """Create a new InMemoryGroup object by binding to a low-level GroupID.
 
@@ -147,6 +152,7 @@ class InMemoryGroup(Group):
         self._committed = _committed
         super().__init__(bind)
 
+    @with_phil
     def close(self):
         """Mark self and any subgroups as committed."""
         self._committed = True
@@ -156,6 +162,7 @@ class InMemoryGroup(Group):
                 obj.close()
 
     @classmethod
+    @with_phil
     def _cache_for_handle(cls, handle: Group) -> _GroupCache:
         """Return the wrapper cache of one file handle, creating it if necessary.
 
@@ -168,6 +175,7 @@ class InMemoryGroup(Group):
         return cache
 
     @classmethod
+    @with_phil
     def _invalidate_all(cls) -> None:
         """Forget everything that was read from the file, in every live instance and in
         every cache, so that it is read again on next access.
@@ -180,12 +188,43 @@ class InMemoryGroup(Group):
             cache.invalidate()
 
     @classmethod
-    def _invalidate_named(cls, *names: bytes | None) -> None:
+    @with_phil
+    def _invalidate_named(
+        cls, *names: bytes | None, handles: Iterable[object] = ()
+    ) -> None:
         """Drop the cached wrappers of the groups at or below ``names``.
 
         ``None`` names are ignored, and so are groups that HDF5 can no longer name.
+        When ``handles`` is given, only caches belonging to the same underlying HDF5
+        file as one of those handles are touched. Group paths are not unique across
+        files, so invalidating every cache would let one file's replay drop another
+        file's staged wrappers. A physical file may be open through more than one
+        Python handle, so matching Python object identity is insufficient.
         """
-        for cache in list(cls._caches.values()):
+
+        def file_id(obj: object) -> object | None:
+            hid = getattr(obj, "id", None)
+            if hid is None:
+                return None
+            with suppress(AttributeError, ValueError, RuntimeError):
+                return h5i.get_file_id(hid)
+            return None
+
+        if handles:
+            file_ids = [fid for fid in (file_id(h) for h in handles) if fid is not None]
+            caches = []
+            for cache in list(cls._caches.values()):
+                cached_handle = cache.handle()
+                if cached_handle is None:
+                    continue
+                cache_file_id = file_id(cached_handle)
+                if cache_file_id is not None and any(
+                    cache_file_id == fid for fid in file_ids
+                ):
+                    caches.append(cache)
+        else:
+            caches = list(cls._caches.values())
+        for cache in caches:
             for bind in [
                 bind
                 for bind in cache.groups
@@ -194,6 +233,7 @@ class InMemoryGroup(Group):
                 del cache.groups[bind]
 
     # Based on Group.__repr__
+    @with_phil
     def __repr__(self):
         namestr = f'"{self.name}"' if self.name is not None else "(anonymous)"
         if not self:
@@ -211,6 +251,7 @@ class InMemoryGroup(Group):
             namestr = f'"{self.name}"' if self.name is not None else "(anonymous)"
             raise ValueError(f"InMemoryGroup {namestr} has already been committed")
 
+    @with_phil
     def __getitem__(self, name: str) -> InMemoryGroup | DatasetLike:
         dirname, basename = posixpath.split(name)
         if dirname:
@@ -243,10 +284,12 @@ class InMemoryGroup(Group):
         except KeyError:
             return default
 
+    @with_phil
     def __setitem__(self, name, obj):
         self._check_committed()
         self._add_to_data(name, obj)
 
+    @with_phil
     def _add_to_data(self, name, obj):
         dirname, basename = posixpath.split(name)
         if dirname:
@@ -314,6 +357,7 @@ class InMemoryGroup(Group):
                 raise NotImplementedError("Scalar datasets are not implemented.")
             self._data[name] = wrapped_dataset
 
+    @with_phil
     def __delitem__(self, name):
         self._check_committed()
         dirname, basename = posixpath.split(name)
@@ -344,6 +388,7 @@ class InMemoryGroup(Group):
     def parent(self, p):
         self._parent = p
 
+    @with_phil
     def create_group(self, name, track_order=None):
         self._check_committed()
         if name.startswith("/"):
@@ -368,6 +413,7 @@ class InMemoryGroup(Group):
             n = dirname
         return group
 
+    @with_phil
     def create_dataset(
         self,
         name: str,
@@ -501,14 +547,17 @@ class InMemoryGroup(Group):
         return ds
 
     def __iter__(self):
-        names = list(self._data) + list(self._subgroups)
-        for i in super().__iter__():
-            if i in names:
-                names.remove(i)
-            yield i
-        for i in names:
-            yield i
+        with phil:
+            names = list(self._data) + list(self._subgroups)
+            items = []
+            for i in super().__iter__():
+                if i in names:
+                    names.remove(i)
+                items.append(i)
+            items.extend(names)
+        return iter(items)
 
+    @with_phil
     def __contains__(self, item):
         item = item + "/"
         root = self.versioned_root.name + "/"
@@ -522,6 +571,7 @@ class InMemoryGroup(Group):
             return dirname in self and basename in self[dirname]
         return any(i == item for i in self)
 
+    @with_phil
     def datasets(self):
         res = self._data.copy()
 
@@ -542,6 +592,7 @@ class InMemoryGroup(Group):
             p = p._parent
         return p
 
+    @with_phil
     def _recursion_to_root(
         self,
         dataset_name: str,
@@ -560,6 +611,7 @@ class InMemoryGroup(Group):
             full_name = parent_basename + "/" + full_name
             p = p._parent
 
+    @with_phil
     def _pinned_raw_data(self, name: str) -> Dataset | None:
         """Return raw_data for a previously committed dataset, if any.
 
@@ -579,12 +631,14 @@ class InMemoryGroup(Group):
         except KeyError:
             return None
 
+    @with_phil
     def _set_chunks(self, dataset_name: str, value: tuple[int, ...] | None) -> None:
         def cb(node: InMemoryGroup, name: str) -> None:
             node._chunks[name] = value
 
         self._recursion_to_root(dataset_name, cb)
 
+    @with_phil
     def _set_filters(self, dataset_name: str, filters: Filters) -> None:
         def cb(node: InMemoryGroup, full_name: str) -> None:
             node._filters[full_name] = filters
@@ -594,6 +648,7 @@ class InMemoryGroup(Group):
     def visititems(self, func):
         self._visit("", func)
 
+    @with_phil
     def _visit(self, prefix, func):
         for name in self:
             func(posixpath.join(prefix, name), self[name])
@@ -644,6 +699,7 @@ class BufferMixin(abc.ABC):
     dtype: np.dtype  # Outwards dtype; not necessarily _buffer.dtype
     _swaps_counter: int = 0
 
+    @with_phil
     def _maybe_swap_string_dtype(self, dtype: np.dtype) -> None:
         if (
             not HAS_NPYSTRINGS
@@ -678,6 +734,7 @@ class BufferMixin(abc.ABC):
 
         self._buffer = self._astype_impl(dtype, writeable=True)
 
+    @with_phil
     def __array__(
         self,
         dtype: DTypeLike | None = None,
@@ -690,16 +747,19 @@ class BufferMixin(abc.ABC):
             return np.array(out, copy=bool(copy))
         return np.asarray(out, copy=copy)
 
+    @with_phil
     def __getitem__(self, index) -> MutableArrayProtocol:
         self._maybe_swap_string_dtype(self.dtype)
         assert self._buffer.dtype == self.dtype  # Thanks to _maybe_swap_string_dtype
         return self._buffer[index]
 
+    @with_phil
     def __setitem__(self, index, value: ArrayLike) -> None:
         if hasattr(value, "dtype"):
             self._maybe_swap_string_dtype(value.dtype)
         self._buffer[index] = value
 
+    @with_phil
     def astype(self, dtype: DTypeLike) -> MutableArrayProtocol:
         dtype = np.dtype(dtype)
         self._maybe_swap_string_dtype(dtype)
@@ -760,6 +820,7 @@ class InMemoryDataset(BufferMixin, FiltersMixin, Dataset):
 
     _staged_changes: StagedChangesArray | None
 
+    @with_phil
     def __init__(self, bind, parent, *, readonly=False):
         # Hold a reference to the original bind so h5py doesn't invalidate the id
         # XXX: We need to handle deallocation here properly when our object
@@ -773,6 +834,7 @@ class InMemoryDataset(BufferMixin, FiltersMixin, Dataset):
     # Note: don't use @cached_property. In Python <3.12, @cached_property uses an
     # interpreter-wide RLock, which can deadlock with h5py's interpreter-wide phil lock.
     @property
+    @with_phil
     def staged_changes(self) -> StagedChangesArray:
         if self._staged_changes is None:
             dcpl = self.id.get_create_plist()
@@ -800,6 +862,7 @@ class InMemoryDataset(BufferMixin, FiltersMixin, Dataset):
         assert isinstance(value, StagedChangesArray)
         self._staged_changes = value
 
+    @with_phil
     def _astype_impl(self, dtype: np.dtype, writeable: bool) -> MutableArrayProtocol:
         """Hook for BufferMixin"""
         # Backwards compatibility with h5py <3.13
@@ -853,6 +916,7 @@ class InMemoryDataset(BufferMixin, FiltersMixin, Dataset):
     def parent(self) -> InMemoryGroup:  # type: ignore[override]
         return self._parent
 
+    @with_phil
     def resize(self, size, axis=None):
         """Resize the dataset, or the specified axis.
 
@@ -1124,9 +1188,15 @@ class DatasetLike:
 
         BEWARE: Modifications to the yielded data are *NOT* written to file.
         """
-        assert len(self.shape) > 0  # Scalar datasets blocked upstream
-        for i in range(self.shape[0]):
-            yield self[i]  # type: ignore[index]
+        # Keep iteration lazy, and never hold phil while yielding to caller code.
+        # In particular, do not decorate this generator with @with_phil.
+        with phil:
+            assert len(self.shape) > 0  # Scalar datasets blocked upstream
+            n = self.shape[0]
+        for i in range(n):
+            with phil:
+                item = self[i]  # type: ignore[index]
+            yield item
 
 
 class InMemoryArrayDataset(BufferMixin, FiltersMixin, DatasetLike):
@@ -1169,6 +1239,7 @@ class InMemoryArrayDataset(BufferMixin, FiltersMixin, DatasetLike):
     def shape(self) -> tuple[int, ...]:  # type: ignore[override]
         return self._buffer.shape
 
+    @with_phil
     def _astype_impl(self, dtype: np.dtype, writeable: bool) -> MutableArrayProtocol:
         """Hook for BufferMixin"""
         # Work around https://github.com/numpy/numpy/issues/28269
@@ -1178,10 +1249,12 @@ class InMemoryArrayDataset(BufferMixin, FiltersMixin, DatasetLike):
         out.flags.writeable = writeable
         return out
 
+    @with_phil
     def __setitem__(self, index, value):
         self.parent._check_committed()
         BufferMixin.__setitem__(self, index, value)
 
+    @with_phil
     def resize(self, size, axis=None):
         self.parent._check_committed()
         new_shape = _normalize_resize_args(self.shape, size, axis)
@@ -1240,6 +1313,7 @@ class InMemorySparseDataset(BufferMixin, FiltersMixin, DatasetLike):
     def chunks(self) -> tuple[int, ...]:  # type: ignore[override]
         return self.staged_changes.chunk_size
 
+    @with_phil
     def _astype_impl(self, dtype: np.dtype, writeable: bool) -> MutableArrayProtocol:
         """Hook for BufferMixin"""
         out = self.staged_changes.astype(dtype)
@@ -1257,6 +1331,7 @@ class InMemorySparseDataset(BufferMixin, FiltersMixin, DatasetLike):
         assert isinstance(value, StagedChangesArray)
         self.staged_changes = value
 
+    @with_phil
     def __setitem__(self, index, value):
         self.parent._check_committed()
         BufferMixin.__setitem__(self, index, value)
@@ -1272,6 +1347,7 @@ class InMemorySparseDataset(BufferMixin, FiltersMixin, DatasetLike):
             fillvalue=dataset.fillvalue,
         )
 
+    @with_phil
     def resize(self, size, axis=None):
         new_shape = _normalize_resize_args(self.shape, size, axis)
         self.staged_changes.resize(new_shape)
@@ -1320,6 +1396,7 @@ class MetadataTransformView(DatasetLike, FiltersMixin):
             # while avoiding repeatedly creating astype views of on-disk h5py slabs.
             self._data = dataset.astype(self.dtype)
 
+    @with_phil
     def __getitem__(self, index):
         buf = self._data[index]
         assert isinstance(buf, (np.ndarray, np.generic))
@@ -1378,6 +1455,7 @@ class DatasetWrapper(DatasetLike):
     def __getattr__(self, attr):
         return getattr(self.dataset, attr)
 
+    @with_phil
     def __setitem__(self, index, value):
         if ndindex(index).expand(self.shape) != Tuple().expand(self.shape):
             # partial update. Just write to the buffer.
@@ -1409,6 +1487,7 @@ class DatasetWrapper(DatasetLike):
     def __getitem__(self, index):
         return self.dataset.__getitem__(index)
 
+    @with_phil
     def resize(self, size, axis=None):
         new_shape = _normalize_resize_args(self.dataset.shape, size, axis)
         if not isinstance(self.dataset, InMemoryArrayDataset) or all(
@@ -1460,11 +1539,11 @@ class DatasetWrapper(DatasetLike):
 
 
 class InMemoryDatasetID(h5d.DatasetID):
+    @with_phil
     def __init__(self, _id):
         # super __init__ is handled by DatasetID.__cinit__ automatically
-        with phil:
-            sid = self.get_space()
-            self._shape = sid.get_simple_extent_dims()
+        sid = self.get_space()
+        self._shape = sid.get_simple_extent_dims()
 
         attr = h5a.open(self, b"raw_data")
         htype = h5t.py_create(attr.dtype)

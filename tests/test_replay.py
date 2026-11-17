@@ -1429,6 +1429,34 @@ def test_delete_versions_invalidates_other_handle(vfile):
     assert_array_equal(other["r1"]["values"][:], expect)
 
 
+def test_modify_metadata_invalidates_other_file_handle(tmp_path, make_name):
+    """swap() must invalidate wrappers of every Python handle to the same file."""
+    path = tmp_path / f"{make_name('file')}.h5"
+    with h5py.File(path, "w") as seed:
+        vf0 = VersionedHDF5File(seed)
+        with vf0.stage_version("r0") as sv:
+            sv.create_dataset("d", data=np.arange(6, dtype=np.int64), chunks=(2,))
+
+    with h5py.File(path, "r+") as f1, h5py.File(path, "r+") as f2:
+        vf1 = VersionedHDF5File(f1)
+        vf2 = VersionedHDF5File(f2)
+        # Keep the cached wrapper alive across modify_metadata(). Otherwise
+        # recreate_dataset()'s gc.collect() can drop the WeakValueDictionary
+        # entry and the test would pass even against identity-only invalidation.
+        old_group = vf2["r0"]
+        old_dataset = old_group["d"]
+        assert_array_equal(old_dataset[:], np.arange(6))
+        assert old_dataset.dtype == np.int64
+
+        modify_metadata(vf1, "d", dtype=np.float32)
+
+        fresh_group = vf2["r0"]
+        assert fresh_group is not old_group
+        assert vf1["r0"]["d"].dtype == np.float32
+        assert fresh_group["d"].dtype == np.float32
+        assert_array_equal(fresh_group["d"][:], np.arange(6, dtype=np.float32))
+
+
 def test_delete_versions_invalidates_held_group(vfile):
     """A version group obtained before delete_versions() must not keep reading from the
     stale chunk offsets afterwards.

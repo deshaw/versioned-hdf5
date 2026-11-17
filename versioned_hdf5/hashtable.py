@@ -1,12 +1,13 @@
 import hashlib
 import struct
+import threading
 from collections.abc import MutableMapping
-from functools import lru_cache
 
 import numpy as np
 from h5py import File
 from ndindex import ChunkSize, Slice, Tuple
 
+from versioned_hdf5._lock import with_phil
 from versioned_hdf5.slicetools import spaceid_to_slice
 
 
@@ -37,16 +38,17 @@ class Hashtable(MutableMapping):
     hash_function = hashlib.sha256
     hash_size = hash_function().digest_size
 
-    # Cache instances of the class for performance purposes. This works off
-    # the assumption that nothing else modifies the version data.
+    # Locking. Methods that read or write the on-disk dataset (__init__, write and the
+    # alternate constructors) hold phil, like everything else that performs more than
+    # one HDF5 call. The in-memory table (hash_table, _indices, _largest_index) is
+    # instead guarded by the instance-local _lock, so that looking up or inserting a
+    # hash does not stall unrelated h5py work in other threads.
+    #
+    # _lock is a leaf lock: nothing that can acquire phil (i.e. no h5py call) may run
+    # while it is held. Acquiring phil first and then _lock is fine; the opposite
+    # order would deadlock against a thread doing just that.
 
-    # This is done here because putting @lru_cache on the class breaks the
-    # classmethods. Warning: This does not normalize kwargs, so it is possible
-    # to have multiple hashtable instances for the same hashtable.
-    @lru_cache  # type: ignore[misc]
-    def __new__(cls, *args, **kwargs):  # noqa: ARG004
-        return super().__new__(cls)
-
+    @with_phil
     def __init__(self, f, name, *, chunk_size=None, hash_table_name="hash_table"):
         from .backend import DEFAULT_CHUNK_SIZE
 
@@ -65,9 +67,12 @@ class Hashtable(MutableMapping):
             self.hash_table = self.hash_table_dataset[:]
             self._indices = {}
 
-        self._largest_index = None
+        # Read eagerly, so that largest_index never needs HDF5 (and thus phil) later
+        self._largest_index = self.hash_table_dataset.attrs["largest_index"]
+        self._lock = threading.Lock()
 
     @classmethod
+    @with_phil
     def from_versions_traverse(
         cls,
         f: File,
@@ -99,6 +104,7 @@ class Hashtable(MutableMapping):
                                 hashtable[slice_hash] = sl.raw[0]
 
     @classmethod
+    @with_phil
     def from_raw_data(cls, f, name, chunk_size=None, hash_table_name="hash_table"):
         if hash_table_name in f["_version_data"][name]:
             raise ValueError(
@@ -119,6 +125,8 @@ class Hashtable(MutableMapping):
     def hash(self, data: np.ndarray):
         """
         Compute hash for `data` array.
+
+        This is a pure function of `data` and takes no lock.
         """
         # Object dtype arrays store the ids of the elements, which may or may not be
         # reused, making it unsuitable for hashing. Instead, we need to make a combined
@@ -155,23 +163,27 @@ class Hashtable(MutableMapping):
 
     @property
     def largest_index(self):
-        if self._largest_index is None:
-            self._largest_index = self.hash_table_dataset.attrs["largest_index"]
         return self._largest_index
 
     @largest_index.setter
     def largest_index(self, value):
         self._largest_index = value
 
+    @with_phil
     def write(self):
-        largest_index = self.largest_index
+        # Take a consistent snapshot of the in-memory table, then release _lock
+        # before touching HDF5: see the note on locking above.
+        with self._lock:
+            largest_index = self._largest_index
+            records = self.hash_table[:largest_index].copy()
+
         if largest_index >= self.hash_table_dataset.shape[0]:
             self.hash_table_dataset.resize((largest_index,))
 
         # largest_index is here for backwards compatibility for when the hash
         # table shape used to always be chunk_size aligned.
-        self.hash_table_dataset.attrs["largest_index"] = self.largest_index
-        self.hash_table_dataset[:largest_index] = self.hash_table[:largest_index]
+        self.hash_table_dataset.attrs["largest_index"] = largest_index
+        self.hash_table_dataset[:largest_index] = records
 
     def inverse(self):
         r"""
@@ -179,7 +191,9 @@ class Hashtable(MutableMapping):
 
         The Slices are all `reduce()`\d.
         """
-        return {Slice(*s).reduce(): h for h, s in self.hash_table}
+        with self._lock:
+            records = self.hash_table.copy()
+        return {Slice(*s).reduce(): h for h, s in records}
 
     def __enter__(self):
         return self
@@ -189,6 +203,7 @@ class Hashtable(MutableMapping):
             return
         self.write()
 
+    @with_phil
     def _create_hashtable(self):
         f = self.f
         name = self.name
@@ -206,6 +221,7 @@ class Hashtable(MutableMapping):
         hash_table.attrs["largest_index"] = 0
         return hash_table
 
+    @with_phil
     def _load_hashtable(self, hash_table_dataset):
         largest_index = hash_table_dataset.attrs["largest_index"]
         hash_table_arr = hash_table_dataset[:largest_index]
@@ -219,9 +235,10 @@ class Hashtable(MutableMapping):
     def __getitem__(self, key):
         if isinstance(key, np.ndarray):
             key = key.tobytes()
-        i = self._indices[key]
-        shapes = self.hash_table["shape"]
-        return Slice(*shapes[i])
+        with self._lock:
+            i = self._indices[key]
+            start, stop = self.hash_table["shape"][i]
+        return Slice(start, stop)
 
     def __setitem__(self, key, value):
         if isinstance(key, np.ndarray):
@@ -248,21 +265,25 @@ class Hashtable(MutableMapping):
             raise ValueError("only step-1 slices are supported")
 
         kv = (list(key), (value.start, value.stop))
-        if key in self._indices:
-            if bytes(self.hash_table[self._indices[key]])[0] != key:
-                raise ValueError(
-                    f"The key {key!r} is already in the hashtable under another index."
-                )
-            self.hash_table[self._indices[key]] = kv
-        else:
-            if self.largest_index >= self.hash_table.shape[0]:
-                newshape = (self.hash_table.shape[0] + self.chunk_size,)
-                new_hash_table = np.zeros(newshape, dtype=self.hash_table.dtype)
-                new_hash_table[: self.hash_table.shape[0]] = self.hash_table
-                self.hash_table = new_hash_table
-            self.hash_table[self.largest_index] = kv
-            self._indices[key] = self.largest_index
-            self.largest_index += 1
+        with self._lock:
+            i = self._indices.get(key)
+            if i is not None:
+                if bytes(self.hash_table[i])[0] != key:
+                    raise ValueError(
+                        f"The key {key!r} is already in the hashtable under another "
+                        "index."
+                    )
+                self.hash_table[i] = kv
+            else:
+                i = self._largest_index
+                if i >= self.hash_table.shape[0]:
+                    newshape = (self.hash_table.shape[0] + self.chunk_size,)
+                    new_hash_table = np.zeros(newshape, dtype=self.hash_table.dtype)
+                    new_hash_table[: self.hash_table.shape[0]] = self.hash_table
+                    self.hash_table = new_hash_table
+                self.hash_table[i] = kv
+                self._indices[key] = i
+                self._largest_index = i + 1
 
     def __delitem__(self, key):
         raise NotImplementedError
